@@ -113,6 +113,14 @@
       "ready": "Ready to send",
       "sent": "Sent",
       "remove": "Remove {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} ready",
+      "notify": "Notify me when the whole batch is done",
+      "notifyTitle": "Overtone: your batch is done",
+      "notifyBody": "{{done}} of {{total}} songs have a timing.",
+      "download_one": "Download {{count}} timing (ZIP)",
+      "download_other": "Download all {{count}} timings (ZIP)"
     }
   },
   "result": {
@@ -157,7 +165,8 @@
     "engine": "Engine v3 {{hash}} · Beat This! vote {{vote}}",
     "voteOn": "on",
     "voteOff": "off",
-    "cached": "same audio analysed before: stored result"
+    "cached": "same audio analysed before: stored result",
+    "removed": "A moderator took this song off the queue, so it was not analysed. Its file has been deleted."
   },
   "login": {
     "title": "Sign in",
@@ -223,7 +232,8 @@
       "running": "Analysing",
       "done": "Done",
       "refused": "Refused",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     }
   },
   "tempo": {
@@ -290,5 +300,31 @@
     "adjusted": "These numbers are adjusted by you: the copy and the downloads carry the adjustment and say so in a comment line. Check it by ear before you use it.",
     "hint": "From {{from}} to {{to}} the onsets thin out to every other beat: the engine reads this as possible half- or double-time inside one red line (the amber mark). Evidence, not a red line: listen to it.",
     "swing": "From {{from}} to {{to}} the off-beat eighth lands late, about {{late}} ms ({{snap}} of the beat): swing. Snap those notes by ear."
+  },
+  "moderation": {
+    "staff": "Staff",
+    "remove": "Remove",
+    "requeue": "Back to the queue",
+    "removePrompt": "Remove this job from the queue? It fails and its audio is deleted. Reason for the log (optional):",
+    "requeuePrompt": "Hand this running job back to the queue? Reason for the log (optional):",
+    "failed": "The action failed.",
+    "errors": {
+      "NOT_LIVE": "It is not waiting or running any more.",
+      "NOT_RUNNING": "Only a running job can be handed back.",
+      "AUDIO_GONE": "Its audio is gone: it cannot be analysed again.",
+      "STAFF_ONLY": "Only staff can do this."
+    },
+    "logTitle": "Moderation log",
+    "logEmpty": "Nothing moderated yet.",
+    "did": {
+      "remove": "@{{moderator}} removed a job",
+      "requeue": "@{{moderator}} handed a job back to the queue"
+    }
+  },
+  "cancel": {
+    "button": "Cancel",
+    "busy": "Cancelling…",
+    "notQueued": "It is already being analysed and can no longer be cancelled.",
+    "failed": "It could not be cancelled. Try again."
   }
 }

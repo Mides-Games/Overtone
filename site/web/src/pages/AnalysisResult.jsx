@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
+import CancelButton from '../components/CancelButton.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import { tempoRange } from '../components/result/draw.js'
@@ -102,6 +103,7 @@ export default function AnalysisResult() {
 
 function Waiting({ analysis }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const running = analysis.status === 'running'
   const percent = Math.round((analysis.progress ?? 0) * 100)
   return (
@@ -121,6 +123,7 @@ function Waiting({ analysis }) {
       <p className="text-caption text-dim">
         {running && analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.queuedNote')}
       </p>
+      {!running && <CancelButton id={analysis.id} onCancelled={() => navigate('/analyze')} />}
     </section>
   )
 }
@@ -130,7 +133,7 @@ function Failed({ analysis }) {
   return (
     <section role="alert" className="space-y-2 rounded-panel border border-red/40 bg-red/10 p-5">
       <h2 className="font-display text-[17px] font-semibold">{t('result.failedTitle')}</h2>
-      <p className="text-label text-text">{t('result.failed')}</p>
+      <p className="text-label text-text">{analysis.removed ? t('result.removed') : t('result.failed')}</p>
       {analysis.error && <p className="readout text-caption text-dim">{analysis.error}</p>}
     </section>
   )

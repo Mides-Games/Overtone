@@ -50,7 +50,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (522 on 2026-10-27)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (525 on 2026-10-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -63,7 +63,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
-.venv/Scripts/python.exe bench/parity.py                       # 247 of 502 v3 engine tests held in Rust
+.venv/Scripts/python.exe bench/parity.py                       # 247 of 503 v3 engine tests held in Rust
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
 ```
@@ -100,6 +100,20 @@ cargo run --release -q -p overtone-bench -- map        # no false changes
 ```
 
 Every mode reads the golden vectors, so a new golden fixture must pass all five.
+
+And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
+
+```bash
+pnpm --dir site/api test                               # all pass (69 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (27 on 2026-10-27)
+pnpm --dir site/web build                              # the site builds
+```
+
+`bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
+the number stated here to them, so a test that lands without its count moving is named.
+Their PostgreSQL paths run against an
+in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
+`DATABASE_URL` is set.
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral
 memory (peak working set, read from outside with the one-liner in the mode's doc) and
 resampling speed, which no 44.1 kHz fixture exercises.

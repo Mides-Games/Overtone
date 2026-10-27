@@ -113,6 +113,14 @@
       "ready": "Lista para enviar",
       "sent": "Enviada",
       "remove": "Quitar {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} listas",
+      "notify": "Avisarme cuando termine todo el lote",
+      "notifyTitle": "Overtone: tu lote terminó",
+      "notifyBody": "{{done}} de {{total}} canciones tienen timing.",
+      "download_one": "Bajar {{count}} timing (ZIP)",
+      "download_other": "Bajar los {{count}} timings (ZIP)"
     }
   },
   "result": {
@@ -157,7 +165,8 @@
     "engine": "Engine v3 {{hash}} · voto de Beat This! {{vote}}",
     "voteOn": "activado",
     "voteOff": "desactivado",
-    "cached": "mismo audio analizado antes: resultado guardado"
+    "cached": "mismo audio analizado antes: resultado guardado",
+    "removed": "Un moderador sacó esta canción de la cola, así que no se analizó. Su archivo se borró."
   },
   "login": {
     "title": "Entrar",
@@ -223,7 +232,8 @@
       "running": "Analizando",
       "done": "Listo",
       "refused": "Rechazado",
-      "failed": "Falló"
+      "failed": "Falló",
+      "cancelled": "Cancelada"
     }
   },
   "tempo": {
@@ -290,5 +300,31 @@
     "adjusted": "Estos números los ajustaste vos: la copia y las descargas llevan el ajuste y lo dicen en una línea de comentario. Revisalo de oído antes de usarlo.",
     "hint": "De {{from}} a {{to}} los ataques se espacian a uno cada dos tiempos: el motor lo lee como un posible medio tiempo o doble tiempo dentro de una red line (la marca ámbar). Es evidencia, no una red line: escuchalo.",
     "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído."
+  },
+  "moderation": {
+    "staff": "Staff",
+    "remove": "Sacar",
+    "requeue": "Devolver a la cola",
+    "removePrompt": "¿Sacar este trabajo de la cola? Falla y se borra su audio. Motivo para el registro (opcional):",
+    "requeuePrompt": "¿Devolver este trabajo a la cola? Motivo para el registro (opcional):",
+    "failed": "La acción falló.",
+    "errors": {
+      "NOT_LIVE": "Ya no está en cola ni analizándose.",
+      "NOT_RUNNING": "Solo se puede devolver uno que se está analizando.",
+      "AUDIO_GONE": "Su audio ya no está: no se puede analizar de nuevo.",
+      "STAFF_ONLY": "Solo el staff puede hacer esto."
+    },
+    "logTitle": "Registro de moderación",
+    "logEmpty": "Todavía no se moderó nada.",
+    "did": {
+      "remove": "@{{moderator}} sacó un trabajo",
+      "requeue": "@{{moderator}} devolvió un trabajo a la cola"
+    }
+  },
+  "cancel": {
+    "button": "Cancelar",
+    "busy": "Cancelando…",
+    "notQueued": "Ya se está analizando y no se puede cancelar.",
+    "failed": "No se pudo cancelar. Probá de nuevo."
   }
 }

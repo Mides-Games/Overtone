@@ -48,6 +48,7 @@ components:
       required: [mine, status, private, song, uploader, anonymous, cached, createdAt, elapsedS]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{32}$", description: Only on the caller's own rows. }
+        ref: { type: string, pattern: "^[0-9a-f]{32}$", description: "Staff only, on waiting and running rows: what /analyses/{id}/moderate takes. Opens nothing." }
         mine: { type: boolean }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         position: { type: integer, minimum: 1 }
@@ -74,6 +75,7 @@ components:
         more: { type: integer, minimum: 0 }
         recent: { type: array, items: { $ref: '#/components/schemas/QueueEntry' } }
         at: { type: string, format: date-time }
+        staff: { const: true, description: Present when the caller is a Mides moderator. }
     AnalysisCreated:
       type: object
       required: [id, status, cached]
@@ -166,7 +168,7 @@ components:
               drift_bias_ms: { type: [number, 'null'], description: 'v1.1. Weighted median signed distance: positive, the music lands after the grid.' }
               onsets: { type: integer, description: v1.1. Attacks under this line. }
         findings: { type: array, items: { type: object } }
-        osu_timing: { type: string, description: The engine's own [TimingPoints] rows. }
+        osu_timing: { type: string, description: "The engine's own [TimingPoints] rows." }
         beats:
           type: object
           description: v1.1. The engine's beats (whole ms) and its local tempo at each, the tempo curve.
@@ -470,71 +472,7 @@ paths:
               type: object
               required: [sha1, filename]
               properties:
-                sha1: { type: string, pattern: '^[0-9a-f]{40}
-    get:
-      summary: The public queue
-      description: |
-        Every analysis waiting or running (running first, then queued in the
-        order the worker takes them, at most 100; `more` counts the rest) and
-        those finished in the last hour (at most 20). A private upload shows
-        its status and timing only. `id` appears on the caller's own rows,
-        recognised by the session or the anonymous cookie. Polled by the page;
-        served from a one-second snapshot.
-      responses:
-        '200':
-          description: The queue.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Queue' }
-
-  /analyses/{id}:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: An analysis's state, and its result once there is one
-      description: |
-        Readable by the session account or the anonymous cookie that created
-        it; anyone else gets the same 404 as for an id that does not exist.
-        Poll it: `position` while queued (1 = next), `progress` and `stage`
-        while running.
-      responses:
-        '200':
-          description: The analysis.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Analysis' }
-        '404': { $ref: '#/components/responses/Error' }
-
-  /analyses/{id}/timing.txt:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: The `[TimingPoints]` block, CRLF, as an .osu file holds it
-      responses:
-        '200':
-          description: An attachment.
-          content:
-            text/plain: { schema: { type: string } }
-        '404': { $ref: '#/components/responses/Error' }
-        '409':
-          description: '`NO_TIMING`: still running, refused or failed.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /analyses/{id}/timing.csv:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: 'The red lines as CSV: time_ms, bpm, beat_length_ms, meter, confidence, level'
-      responses:
-        '200':
-          description: An attachment.
-          content:
-            text/csv: { schema: { type: string } }
-        '404': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
- }
+                sha1: { type: string, pattern: '^[0-9a-f]{40}$' }
                 filename: { type: string }
                 size: { type: integer, minimum: 1 }
                 private: { type: boolean }
@@ -542,7 +480,7 @@ paths:
                 artist: { type: [string, 'null'] }
       responses:
         '200':
-          description: A hit (`AnalysisCreated` with `cached: true`) or `{ cached: false }`.
+          description: "A hit (`AnalysisCreated` with `cached: true`) or `{ cached: false }`."
           content:
             application/json:
               schema:
@@ -574,6 +512,78 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Queue' }
 
+  /analyses/moderation:
+    get:
+      summary: Staff only, the latest moderations of the queue
+      description: |
+        The last 50 removals and requeues, newest first, each with the
+        moderator's username at the time, the analysis's ref and the reason.
+      responses:
+        '200':
+          description: The log.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [log]
+                properties:
+                  log:
+                    type: array
+                    items:
+                      type: object
+                      required: [action, moderator, ref, at]
+                      properties:
+                        action: { type: string, enum: [remove, requeue] }
+                        moderator: { type: string }
+                        ref: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/{id}/moderate:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, remove a job from the queue or hand a running one back
+      description: |
+        `remove` fails a waiting or running job with "Removed from the queue by
+        a moderator." and deletes its audio; a worker already on it has its
+        answer refused. `requeue` puts a running job (a stuck one) back in the
+        queue while its audio is still spooled. Both are recorded in
+        `moderation_log` with who did it.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [remove, requeue] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '204': { description: Done and recorded. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`, or `CSRF_HEADER_MISSING`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_LIVE` (remove: it has finished), `NOT_RUNNING` (requeue: it is not running) or `AUDIO_GONE`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /analyses/{id}:
     parameters:
       - $ref: '#/components/parameters/analysisId'
@@ -591,6 +601,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Analysis' }
         '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Cancel an analysis that is still waiting
+      description: |
+        Only by whoever may read it (the session account or the anonymous
+        cookie that created it). The job, the row and the spooled audio are
+        deleted, so the song does not count against the day's quota. A song
+        the worker has already taken is not cancelled.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Cancelled. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_QUEUED`: it is being analysed, or it has finished.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /analyses/{id}/timing.txt:
     parameters:

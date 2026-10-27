@@ -10,9 +10,10 @@ document that disagrees. It also holds the library index's two sides together:
 the schema version library.sql states and the one overtone_library.py reads. It runs no analysis and imports nothing heavy.
 
 Counts are static: a Rust test is a `#[test]` attribute, a Python test a
-`def test_` method. Both suites have neither parametrised nor inherited tests,
-so the static count is what `cargo test` and `unittest` report; if that ever
-stops being true, this is the place to say so.
+`def test_` method, a site test a top-level `test(` call in `site/api/test` or
+`site/web/test`. None of the suites has parametrised, inherited or nested
+tests, so the static count is what `cargo test`, `unittest` and `node --test`
+report; if that ever stops being true, this is the place to say so.
 """
 from __future__ import annotations
 
@@ -28,9 +29,25 @@ def rust_tests() -> int:
                for p in (ROOT / "crates").rglob("*.rs"))
 
 
-def python_tests() -> int:
-    return sum(len(re.findall(r"^\s+def test_", p.read_text(encoding="utf-8"), re.M))
-               for p in (ROOT / "tests").glob("test_*.py"))
+def _count(path: Path) -> int:
+    return len(re.findall(r"^\s+def test_", path.read_text(encoding="utf-8"), re.M))
+
+
+def python_tests() -> tuple[int, int, int]:
+    """(all, engine, worker): every tests/test_*.py file, which is what
+    `unittest discover -s tests` runs, and the two the docs break out."""
+    total = sum(_count(p) for p in (ROOT / "tests").glob("test_*.py"))
+    engine, worker = (_count(ROOT / "tests" / name) for name in ("test_overtone.py", "test_worker.py"))
+    return total, engine, worker
+
+
+def site_tests() -> tuple[int, int]:
+    """(site/api, site/web): the `test(` calls `node --test "test/*.test.js"` runs
+    in each package, one per test since none is nested or generated."""
+    def count(package: str) -> int:
+        return sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
+                   for p in (ROOT / "site" / package / "test").glob("*.test.js"))
+    return count("api"), count("web")
 
 
 def crate_dirs() -> list[str]:
@@ -60,11 +77,16 @@ def library_schema() -> tuple[int | None, int | None]:
 def main() -> int:
     problems: list[str] = []
     rust = rust_tests()
-    python = python_tests()
+    python, engine, worker = python_tests()
+    if python != engine + worker:
+        problems.append(f"tests/ holds {python - engine - worker} tests outside the two files "
+                        "the docs break out; name the new file in python_tests() and the roadmap")
     crates = crate_dirs()
     golden = golden_vectors()
-    print(f"source: {python} Python tests, "
-          f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors")
+    site_api, site_web = site_tests()
+    print(f"source: {python} Python tests ({engine} engine + {worker} worker), "
+          f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors, "
+          f"{site_api} site/api and {site_web} site/web tests")
 
     def expect(doc: str, what: str, found: list[str], want: int) -> None:
         if not found:
@@ -85,6 +107,13 @@ def main() -> int:
         expect(doc, "golden vectors", re.findall(r"(\d+) committed vector files", text), golden)
         expect(doc, "golden cases in the golden check",
                re.findall(r"golden\.py check\s+# (\d+)/\d+", text), golden)
+        expect(doc, "site/api tests",
+               re.findall(r"pnpm --dir site/api test\s+# all pass \((\d+) on", text), site_api)
+        # site/web had no tests when this check was written: its line is
+        # required from the first one on, and must not outlive the last.
+        stated_web = re.findall(r"pnpm --dir site/web test\s+# all pass \((\d+) on", text)
+        if site_web or stated_web:
+            expect(doc, "site/web tests", stated_web, site_web)
         listed = sorted(set(re.findall(r"^\s+(overtone-[a-z]+)/", text, re.M)))
         if listed != crates:
             problems.append(f"{doc}: layout lists crates {listed}, crates/ holds {crates}")
@@ -99,9 +128,12 @@ def main() -> int:
            re.findall(r"cargo test --workspace\s+# (\d+) tests", readme), rust)
 
     roadmap = (ROOT / "docs" / "07-roadmap.md").read_text(encoding="utf-8")
-    line = re.findall(r"Tests: \*\*(\d+)\*\* Python · \*\*(\d+)\*\* Rust", roadmap)
+    line = re.findall(r"Tests: \*\*(\d+)\*\* Python \((\d+) engine \+ (\d+) worker\) "
+                      r"· \*\*(\d+)\*\* Rust", roadmap)
     expect("roadmap", "Python tests", [m[0] for m in line], python)
-    expect("roadmap", "Rust tests", [m[1] for m in line], rust)
+    expect("roadmap", "engine tests", [m[1] for m in line], engine)
+    expect("roadmap", "worker tests", [m[2] for m in line], worker)
+    expect("roadmap", "Rust tests", [m[3] for m in line], rust)
 
     sql_version, code_version = library_schema()
     print(f"library schema: library.sql v{sql_version}, overtone_library.py v{code_version}")

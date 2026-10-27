@@ -90,6 +90,10 @@ def limit_onnx_threads(threads: int) -> None:
         options.log_severity_level = 3
         options.intra_op_num_threads = int(threads)
         options.inter_op_num_threads = 1
+        # As the engine's own loader: the pattern only adds to the peak
+        # (python/overtone.py, _load_beat_this). Without this line the worker
+        # that caps its threads, which is every deployed one, kept the old peak.
+        options.enable_mem_pattern = False
         try:
             return onnxruntime.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
         except Exception:  # noqa: BLE001 -- as the engine's loader: no session, no vote

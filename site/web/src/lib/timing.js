@@ -187,7 +187,7 @@ const isAdjusted = ({ factor, nudgeMs }) => factor !== 1 || nudgeMs !== 0
  * the adjusted lines, with a comment line saying so (osu! reads comments on
  * their own lines only, which is where it goes).
  */
-export function timingText(result, lines, adjustment) {
+export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs: 0 }) {
   let rows = String(result?.osu_timing ?? '')
     .split(/\r?\n/)
     .filter(Boolean)
@@ -230,6 +230,16 @@ export function downloadName(filename, suffix) {
     .slice(0, 80)
   return `${stem || 'overtone'}-${suffix}`
 }
+
+/**
+ * The archive of a batch (W3.15): one `timing.txt` per song that has a
+ * timing, the engine's own rows, built from the results the page already
+ * holds so the zip needs no request.
+ */
+export const batchFiles = (items) =>
+  items
+    .filter((item) => item.status === 'done' && item.result)
+    .map((item) => ({ name: downloadName(item.file.name, 'timing.txt'), text: timingText(item.result) }))
 
 /** Hands `text` to the browser as a file to save. Nothing leaves the page. */
 export function saveText(text, name, type) {

@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
+import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
+import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
+import { batchFiles } from '../lib/timing.js'
+import { zipStore } from '../lib/zip.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -40,6 +44,8 @@ export default function Analyze() {
   const [dragging, setDragging] = useState(false)
   const [state, setState] = useState({ kind: 'idle' })
   const [recent] = useState(recentAnalyses)
+  const [notify, setNotify] = useState(false)
+  const wasComplete = useRef(false)
 
   useEffect(() => {
     api('/health')
@@ -121,6 +127,57 @@ export default function Analyze() {
     setState({ kind: 'idle' })
   }
 
+  // W3.14: a batch counts itself in the tab's title, and says when it is over
+  // with a browser notification if the person asked for one. Nothing leaves
+  // the browser: the statuses are the ones the cards already poll.
+  // A file still uploading, or waiting its turn to upload, belongs to the
+  // batch too: without it, two cached songs answered at once would end a
+  // batch of five.
+  const batch = items.filter(
+    (item) => item.upload.kind === 'sent' || item.upload.kind === 'sending' || (state.kind === 'sending' && item.upload.kind === 'ready'),
+  )
+  const progress = batchProgress(batch.map((item) => (item.upload.kind === 'sent' ? (item.status ?? 'queued') : 'sending')))
+  const [baseTitle] = useState(() => document.title)
+  useEffect(() => {
+    document.title = batchTitle(progress, t('analyze.batch.title', { finished: progress.finished, total: progress.total }), baseTitle)
+  }, [progress.finished, progress.total, baseTitle, t])
+  useEffect(() => () => {
+    document.title = baseTitle
+  }, [baseTitle])
+  useEffect(() => {
+    const permission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+    if (shouldNotify({ wasComplete: wasComplete.current, progress, wanted: notify, permission })) {
+      try {
+        new Notification(t('analyze.batch.notifyTitle'), {
+          body: t('analyze.batch.notifyBody', { done: progress.done, total: progress.total }),
+          tag: 'overtone-batch',
+        })
+      } catch {
+        // Some browsers (Android Chrome) only notify from a service worker: the title still says it.
+      }
+    }
+    wasComplete.current = progress.complete
+  }, [progress.complete, progress.done, progress.total, notify, t])
+
+  async function askToNotify(wanted) {
+    if (!wanted || typeof Notification === 'undefined') return setNotify(false)
+    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
+    setNotify(permission === 'granted')
+  }
+  const canNotify = typeof Notification !== 'undefined' && Notification.permission !== 'denied'
+
+  // W3.15: every timing of the batch in one ZIP, from the results the cards
+  // already hold. Built here, so the server sends nothing new.
+  const timings = batchFiles(items)
+  function downloadAll() {
+    const url = URL.createObjectURL(new Blob([zipStore(timings)], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'overtone-timings.zip'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   const perDay = account ? limits?.userDailyLimit : limits?.anonDailyLimit
   const atOnce = account ? limits?.userMaxPending : limits?.anonMaxPending
   const sending = state.kind === 'sending'
@@ -193,6 +250,7 @@ export default function Analyze() {
                   <FileCard
                     key={item.key}
                     item={item}
+                    onAnalysis={(analysis) => update(item.key, { status: analysis.status, result: analysis.result ?? null })}
                     problem={item.upload.kind === 'ready' ? problemWith(item) : null}
                     onRemove={sending ? null : () => setItems((list) => list.filter((other) => other.key !== item.key))}
                   />
@@ -207,6 +265,19 @@ export default function Analyze() {
                 <span className="block text-caption text-dim">{t('analyze.privateHint')}</span>
               </span>
             </label>
+
+            {items.length > 1 && timings.length > 0 && (
+              <button type="button" onClick={downloadAll} className="btn-ghost w-full">
+                {t('analyze.batch.download', { count: timings.length })}
+              </button>
+            )}
+
+            {items.length > 1 && canNotify && (
+              <label className="flex cursor-pointer items-center gap-3 px-1 text-label">
+                <input type="checkbox" checked={notify} onChange={(e) => askToNotify(e.target.checked)} className="accent-[var(--accent)]" />
+                {t('analyze.batch.notify')}
+              </label>
+            )}
 
             <button type="submit" className="btn-primary w-full" disabled={sending || (items.length > 0 && toSend === 0)}>
               {sending ? t('analyze.sendingMany') : toSend > 1 ? t('analyze.submitMany', { count: toSend }) : t('analyze.submit')}
@@ -313,13 +384,14 @@ export function messageFor(t, error, limits) {
 const extensionOf = (file) => file.name.split('.').pop()?.toLowerCase()
 
 /** One file of the list: its name and size, then its upload, then its analysis, polled. */
-function FileCard({ item, problem, onRemove }) {
+function FileCard({ item, problem, onRemove, onAnalysis }) {
   const { t } = useTranslation()
   const { file, seconds, upload } = item
   const [analysis, setAnalysis] = useState(null)
+  const [cancelled, setCancelled] = useState(false)
 
   useEffect(() => {
-    if (upload.kind !== 'sent') return undefined
+    if (upload.kind !== 'sent' || cancelled) return undefined
     let timer
     let stopped = false
     async function poll() {
@@ -327,6 +399,7 @@ function FileCard({ item, problem, onRemove }) {
         const next = await api(`/analyses/${upload.id}`)
         if (stopped) return
         setAnalysis(next)
+        onAnalysis?.(next)
         if (next.status === 'queued' || next.status === 'running') timer = setTimeout(poll, 3000)
       } catch {
         if (!stopped) timer = setTimeout(poll, 6000)
@@ -337,10 +410,12 @@ function FileCard({ item, problem, onRemove }) {
       stopped = true
       clearTimeout(timer)
     }
-  }, [upload.kind, upload.id])
+  }, [upload.kind, upload.id, cancelled])
 
   const percent =
-    upload.kind === 'sending'
+    cancelled
+      ? null
+      : upload.kind === 'sending'
       ? Math.round(upload.sent * 100)
       : analysis?.status === 'running'
         ? Math.round((analysis.progress ?? 0) * 100)
@@ -349,6 +424,7 @@ function FileCard({ item, problem, onRemove }) {
   if (problem || upload.kind === 'error') status = <span className="text-red">{problem ?? upload.message}</span>
   else if (upload.kind === 'ready') status = t('analyze.card.ready')
   else if (upload.kind === 'sending') status = t('analyze.sending', { percent })
+  else if (cancelled) status = t('queue.status.cancelled')
   else if (!analysis) status = t('analyze.card.sent')
   else if (analysis.status === 'queued') status = t('result.queued', { position: analysis.position ?? 1 })
   else if (analysis.status === 'running') {
@@ -385,9 +461,12 @@ function FileCard({ item, problem, onRemove }) {
           )}
         </span>
       </div>
-      <p className="text-caption text-dim" aria-live="polite">
-        {status}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-caption text-dim" aria-live="polite">
+          {status}
+        </p>
+        {!cancelled && analysis?.status === 'queued' && <CancelButton id={upload.id} onCancelled={() => setCancelled(true)} />}
+      </div>
       {percent !== null && (
         <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
           <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />

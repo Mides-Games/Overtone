@@ -6267,6 +6267,15 @@ class MeasurementRunTests(unittest.TestCase):
         self.index = self.tmp / "library.sqlite3"
         self.library = overtone_library.Library(self.index)
 
+    @unittest.skipUnless(hasattr(os, "wait4"), "the peak comes from os.wait4")
+    def test_a_run_reports_its_peak_memory_and_a_kill(self) -> None:
+        grow = subprocess.Popen([sys.executable, "-c", "b = bytearray(64 * 1024 * 1024)"])
+        code, peak = self.runs._wait(grow)
+        self.assertEqual(code, 0)
+        self.assertGreaterEqual(peak, 64)
+        killed = subprocess.Popen([sys.executable, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"])
+        self.assertEqual(self.runs._wait(killed)[0], -9)
+
     def _anime_song(self, folder: str) -> None:
         path = self.songs / folder
         path.mkdir(parents=True)
@@ -6334,8 +6343,9 @@ class MeasurementRunTests(unittest.TestCase):
             self.runs.build_args({"stage": "anime-single", "experiment": "rm -rf"}, "/db")
         import overtone
         for flags in self.runs.EXPERIMENTS.values():
-            for name in flags:
-                self.assertIsInstance(getattr(overtone, name), bool, name)
+            for name, value in flags.items():
+                # A switch or a setting, each of the engine's own type.
+                self.assertIs(type(getattr(overtone, name)), type(value), name)
 
     def test_gates_and_the_suite_are_named_runs_and_nothing_else(self):
         tool, argv, settings = self.runs.build_args({"tool": "gates"}, "/db")

@@ -193,12 +193,22 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
         # Beat This! reads the audio itself; the Rust report carries none of it.
         y, sr = ta._load_audio(os.fspath(path), lambda _message: None)
         analysis = ta._beat_this_vote(analysis, y, sr)
-    analysis = ta._fold_local_to_map_octave(
-        analysis, before, before_beats,
-        lambda: ta._beat_this_tempo(*ta._load_audio(os.fspath(path), lambda _message: None)))
-    return ta._snap_whole_points(ta._fold_lines_to_song_octave(
-        analysis,
-        lambda: ta._beat_this_judge_beats(*ta._load_audio(os.fspath(path), lambda _message: None))))
+    audio: list = []
+
+    def heard():
+        # Read once for every judge that asks, so Beat This! runs once.
+        if not audio:
+            audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
+        return ta._beat_this_judge_beats(*audio[0])
+
+    def tempo():
+        heard()
+        return ta._beat_this_tempo(*audio[0])
+
+    analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
+    analysis = ta._song_octave_by_beat_this(analysis, heard)
+    analysis = ta._piecewise_grid(analysis, heard, split_only=True)
+    return ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard))
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 delete process.env.DATABASE_URL;
 const { clientKey } = await import('../src/utils/client-ip.js');
-const { guard } = await import('../src/middlewares/rate-limit.js');
+const { guard, memoryCounter } = await import('../src/middlewares/rate-limit.js');
 const { ipHashOf } = await import('../src/routes/analyses.routes.js');
 
 test('IPv4 is counted by its address, IPv6 by its /64', () => {
@@ -20,19 +20,19 @@ test('IPv4 is counted by its address, IPv6 by its /64', () => {
   for (const value of [undefined, null, '', 'unknown', 'not-an-ip', '1.2.3']) assert.equal(clientKey(value), 'unknown');
 });
 
-test('addresses in one /64 are one person to the rate limit, another /64 is another', () => {
-  const limit = guard('test-v6', 2, 60_000);
-  const hit = (ip) => {
+test('addresses in one /64 are one person to the rate limit, another /64 is another', async () => {
+  const limit = guard('test-v6', 2, 60_000, { counter: memoryCounter() });
+  const hit = async (ip) => {
     let passed;
-    limit({ ip }, {}, (error) => {
+    await limit({ ip }, {}, (error) => {
       passed = error ? error.code : 'ok';
     });
     return passed;
   };
-  assert.equal(hit('2001:db8:aa:bb::1'), 'ok');
-  assert.equal(hit('2001:db8:aa:bb::2'), 'ok');
-  assert.equal(hit('2001:db8:aa:bb:ffff::3'), 'RATE_LIMITED');
-  assert.equal(hit('2001:db8:aa:bc::1'), 'ok');
+  assert.equal(await hit('2001:db8:aa:bb::1'), 'ok');
+  assert.equal(await hit('2001:db8:aa:bb::2'), 'ok');
+  assert.equal(await hit('2001:db8:aa:bb:ffff::3'), 'RATE_LIMITED');
+  assert.equal(await hit('2001:db8:aa:bc::1'), 'ok');
 });
 
 test('the anonymous quota and the queue count an IPv6 client by its /64', () => {

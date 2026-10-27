@@ -109,9 +109,9 @@
             "field_type": "text"
         },
         {
-            "name": "Token key",
-            "description": "Encrypts stored tokens.",
-            "env_variable": "TOKEN_KEY",
+            "name": "Mides client secret",
+            "description": "This server's secret for the Mides code exchange; the same value as SSO_SECRET_OVERTONE in Mides.",
+            "env_variable": "MIDES_CLIENT_SECRET",
             "default_value": "",
             "user_viewable": false,
             "user_editable": false,

@@ -105,7 +105,9 @@ export const env = {
   anonMaxPending: integer('ANON_MAX_PENDING', 3, { min: 1, max: 1000 }),
   userMaxPending: integer('USER_MAX_PENDING', 10, { min: 1, max: 1000 }),
   // The whole queue's ceiling, so no one can fill it whatever their quotas.
-  queueMax: integer('QUEUE_MAX', 200, { min: 1, max: 100_000 }),
+  // Every queued song holds up to MAX_UPLOAD_MB in the spool, so the default
+  // keeps QUEUE_MAX x MAX_UPLOAD_MB (30 x 40 = 1200 MB) inside SPOOL_MAX_MB.
+  queueMax: integer('QUEUE_MAX', 30, { min: 1, max: 100_000 }),
   // Stored results one person may open a day without analysing (W3.11): a
   // lookup or upload of audio analysed before costs no quota, so it has a cap
   // of its own.
@@ -117,6 +119,14 @@ export const env = {
   // Where uploads wait for the worker. Files in it are named by analysis id
   // only: the uploaded file's own name never reaches the filesystem.
   spoolDir: resolve(text('SPOOL_DIR', join(tmpdir(), 'overtone-spool'))),
+  // The most the spool may hold, waiting audio and uploads still arriving
+  // together. An upload reserves its size before a byte is read and is
+  // refused (503 SPOOL_FULL) when the reservation does not fit. The panel's
+  // disk limit is not something the filesystem reports, so this is the bound;
+  // the default fits the API server's 2 GB disk (docs/deploy.md).
+  spoolMaxMb: integer('SPOOL_MAX_MB', 1280, { min: 1, max: 1_048_576 }),
+  // Free space the spool always leaves on its filesystem, checked too.
+  spoolMinFreeMb: integer('SPOOL_MIN_FREE_MB', 256, { min: 0, max: 1_048_576 }),
   // The bearer the worker sends to /api/internal. `pnpm dev` generates one
   // and hands it to the worker it starts.
   workerToken: secret('WORKER_TOKEN', 'no worker started elsewhere can connect'),
@@ -131,6 +141,14 @@ export const env = {
 
 if (env.proxySecret && env.proxySecret.length < 32) problems.push('PROXY_SECRET must be at least 32 characters.');
 if (isProduction && !env.proxySecret) problems.push('PROXY_SECRET is required in production: every allocation port is public.');
+
+if (env.spoolMaxMb < env.maxUploadMb) problems.push('SPOOL_MAX_MB must be at least MAX_UPLOAD_MB, or no upload fits.');
+if (env.queueMax * env.maxUploadMb > env.spoolMaxMb) {
+  console.warn(
+    `[env] QUEUE_MAX x MAX_UPLOAD_MB (${env.queueMax * env.maxUploadMb} MB) is more than SPOOL_MAX_MB (${env.spoolMaxMb}): ` +
+      'a queue of large files is refused with SPOOL_FULL before it is full.',
+  );
+}
 
 if (isProduction && !env.databaseUrl) problems.push('DATABASE_URL is required in production.');
 if (isProduction && !env.siteUrl.startsWith('https://')) problems.push('SITE_URL must be https in production.');

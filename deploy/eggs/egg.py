@@ -186,6 +186,11 @@ def api():
                 "Where uploads wait for the worker; deleted when the result arrives (ADR-W4). Inside the "
                 "server's disk, so a restart does not lose the queue's audio.",
                 default="/home/container/.overtone/spool", rules="required|string|starts_with:/home/container/"),
+            var("Spool budget MB", "SPOOL_MAX_MB",
+                "The most the spool holds, waiting audio and uploads still arriving together; past it an "
+                "upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk "
+                "(default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it."),
+            var("Queue max", "QUEUE_MAX", "Songs waiting or running at once, everyone's together (default 30)."),
         ],
     )
 

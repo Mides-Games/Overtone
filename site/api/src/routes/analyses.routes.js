@@ -7,7 +7,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin } from '../middlewares/session.js';
 import { analyses, engineHash, newPublicId } from '../services/analysis.service.js';
 import { cookiesOf } from '../services/session.service.js';
-import { commit, discard, discardPart, receive } from '../services/spool.service.js';
+import { commit, discard, discardPart, receive, reserve } from '../services/spool.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { queueEntry } from '../utils/queue.js';
 import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../utils/upload.js';
@@ -127,6 +127,21 @@ const answerFromCache = async (req, res, cached, row) => {
   return { id: row.publicId, status: made.status, cached: true };
 };
 
+/**
+ * Uploads still arriving, per owner (as the queue's `ownerOf`: the account,
+ * or the hashed address) and in all. Counted toward the pending and queue
+ * caps, which the store only sees once a body has landed.
+ */
+const arriving = new Map();
+let arrivingTotal = 0;
+const ownerKey = (accountId, ipHash) => accountId ?? `ip:${ipHash}`;
+const arrive = (owner, step) => {
+  const now = (arriving.get(owner) ?? 0) + step;
+  if (now > 0) arriving.set(owner, now);
+  else arriving.delete(owner);
+  arrivingTotal += step;
+};
+
 router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const limit = env.maxUploadMb * 1_048_576;
@@ -167,7 +182,10 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   // in the queue at once are capped, and so is the whole queue.
   const pending = await analyses().countPending({ accountId, ipHash });
   const maxPending = accountId ? env.userMaxPending : env.anonMaxPending;
-  if (pending.mine >= maxPending) {
+  // Uploads still arriving count too: K bodies sent at once would otherwise
+  // all pass a cap the store only sees once each one has landed.
+  const owner = ownerKey(accountId, ipHash);
+  if (pending.mine + (arriving.get(owner) ?? 0) >= maxPending) {
     refuseEarly(
       res,
       new HttpError(
@@ -178,10 +196,32 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
       ),
     );
   }
-  if (pending.all >= env.queueMax) {
+  if (pending.all + arrivingTotal >= env.queueMax) {
     refuseEarly(res, new HttpError(503, 'The queue is full. Try again in a few minutes.', 'QUEUE_FULL'));
   }
 
+  // Counted from here, with no await since the checks above, until the
+  // response: received, refused or failed.
+  arrive(owner, +1);
+  let release = () => {};
+  try {
+    // The spool's room is taken before a byte is read. Node holds a body to
+    // its Content-Length, so a declared size is what can arrive; without one
+    // (chunked), the largest upload.
+    try {
+      release = await reserve(Number.isFinite(declared) && declared > 0 ? declared : limit);
+    } catch (error) {
+      refuseEarly(res, error);
+    }
+    return await receiveUpload(req, res, { accountId, ipHash, filename, limit });
+  } finally {
+    release();
+    arrive(owner, -1);
+  }
+});
+
+/** The upload's body to the spool and its row into the queue (or an answer from the cache). */
+const receiveUpload = async (req, res, { accountId, ipHash, filename, limit }) => {
   const anonHash = accountId ? null : ensureAnon(req, res);
   const id = newPublicId();
 
@@ -212,7 +252,7 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     return res.status(200).json(await answerFromCache(req, res, cached, row));
   }
 
-  await commit(id);
+  await commit(id, received.bytes);
   try {
     await store.create(row, { limits: limitsFor(accountId) });
   } catch (error) {
@@ -220,7 +260,7 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     throw error;
   }
   return res.status(202).json({ id, status: 'queued', cached: false });
-});
+};
 
 // A lookup reads one indexed row and sends no audio: much wider than uploads,
 // enough for a 50-file batch twice over in ten minutes.

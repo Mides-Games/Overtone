@@ -106,13 +106,14 @@ Every mode reads the golden vectors, so a new golden fixture must pass all five.
 And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (31 on 2026-10-27)
+pnpm --dir site/api test                               # all pass (44 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (27 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
 ```
 
 `bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
-the number stated here to them; when `site/web` has tests, a `pnpm --dir site/web test`
-line with its count belongs beside the API's. Their PostgreSQL paths run against an
+the number stated here to them, so a test that lands without its count moving is named.
+Their PostgreSQL paths run against an
 in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
 `DATABASE_URL` is set.
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral

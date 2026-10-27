@@ -479,8 +479,8 @@ con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 **W3.19 hecha el 2026-10-27** en la rama `feature/site-checks-verification`: la sección
 Verification de `CLAUDE.md`/`AGENTS.md` suma `pnpm --dir site/api test` (31 pruebas) y
 `pnpm --dir site/web build`, y `bench/facts.py` cuenta las llamadas `test(` de
-`site/api/test` y `site/web/test` contra el número escrito. `site/web` todavía no tiene
-pruebas en `master`; desde la primera, su línea con el conteo pasa a ser obligatoria.
+`site/api/test` y `site/web/test` contra el número escrito. Al mergearse con el resto de
+W3 los conteos quedaron en 44 (API) y 27 (web), con la línea de `site/web test` sumada.
 **W3.5, W3.6 y W3.7 revisadas contra el código el 2026-10-27** (rama
 `feature/site-checks-w3-5-7`):
 - **W3.5 hecha, con dos desvíos.** Están la cinta, el menú de usuario y las páginas

@@ -19,6 +19,7 @@ import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timin
  *   POST /analyses                  raw audio body, X-Filename header -> 202 { id, status }
  *   GET  /analyses/queue            the public queue: waiting, running, finished in the last hour
  *   GET  /analyses/:id              status, queue position, progress, result
+ *   DELETE /analyses/:id            cancel it while it is still queued
  *   GET  /analyses/:id/timing.txt   the [TimingPoints] block
  *   GET  /analyses/:id/timing.csv   the red lines as CSV
  *
@@ -344,6 +345,24 @@ router.get('/analyses/:id', optionalSession, async (req, res) => {
   const row = await withPosition(await readable(req));
   res.set('Cache-Control', 'no-store');
   res.json(publicView(row));
+});
+
+/**
+ * DELETE /analyses/:id (W3.12): the uploader takes back a song that is still
+ * waiting. The job, the row and the spooled audio go, so it costs nothing of
+ * the day's quota. One that is already being analysed stays (409
+ * NOT_QUEUED): the worker has no way to hear about it mid-stage, and the
+ * claim and this delete are decided by the same row lock.
+ */
+router.delete('/analyses/:id', requireSameOrigin, optionalSession, async (req, res) => {
+  const row = await readable(req);
+  if (!(await analyses().cancel(row.publicId))) {
+    throw new HttpError(409, 'Only a song still waiting in the queue can be cancelled.', 'NOT_QUEUED');
+  }
+  await discard(row.publicId);
+  // The queue page shows it gone on its next poll, not a second later.
+  queueSnapshot = { at: 0, read: null };
+  res.status(204).end();
 });
 
 const download = (suffix, type, body) => async (req, res) => {

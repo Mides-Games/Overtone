@@ -43,6 +43,9 @@ export async function api(path, { method = 'GET', json, form } = {}) {
   return data
 }
 
+/** Cancels one of your analyses while it is still queued (W3.12); 409 `NOT_QUEUED` once it is not. */
+export const cancelAnalysis = (id) => api(`/analyses/${id}`, { method: 'DELETE' })
+
 /**
  * Asks the API whether this audio was already analysed (W3.11), by its SHA-1,
  * before a byte of it is uploaded. Resolves to `{ id, status, cached: true }`

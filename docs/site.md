@@ -42,6 +42,12 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   `rate_limits` table when there is a database, so every API process behind
   the proxy shares them (W3.17), and key each address by an HMAC, never the
   address itself.
+  10 minutes.
+- **Cancelling** (W3.12). Whoever may read a queued analysis can cancel it
+  (`DELETE /api/v1/analyses/<id>`, from its card, its page or `/queue`): the
+  job, the row and the spooled audio are deleted, so it costs none of the day's
+  quota. Once the worker has claimed it the answer is 409 `NOT_QUEUED`: the
+  worker cannot be told to stop mid-stage.
 - **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
   queue; the second time it fails. Every worker call names its attempt, so a
   late answer from an abandoned attempt gets a 409.
@@ -299,3 +305,31 @@ Checked with two API processes on one PostgreSQL (PGlite behind `pglite-socket`)
 twelve uploads sent alternately to both, the first ten passed (415, no body) and
 the last two were refused with 429 and a Retry-After, whichever process got
 them; the table held the HMAC and the count, no address.
+### Knowing when a batch is done (W3.14, 2026-10-27)
+
+While two songs or more are on the upload page, the tab's title reads
+"finished/total ready" (done, refused, failed or cancelled count as finished;
+one still uploading counts in the total, so two cached answers cannot end a
+batch of five). A checkbox, shown only where the browser has notifications and
+they were not denied, asks for permission; the notification goes once, when the
+last song finishes. The counts come from the statuses the cards already poll,
+so nothing new is sent anywhere. `lib/batch.js` holds the rules and
+`site/web/test/batch.test.js` their tests.
+
+### A batch in one download (W3.15, 2026-10-27)
+
+Once a song of a batch has its timing, a button under the cards downloads
+`overtone-timings.zip`: one `<song>-timing.txt` per song that is done, named and
+written exactly as `GET /analyses/:id/timing.txt` would (`lib/timing.js`, tested
+against the API's own `utils/upload.js`). The archive is built in the browser
+from the results the cards already polled (`lib/zip.js`): entries stored, not
+compressed, since a timing is a few kilobytes; UTF-8 names; a name repeated in
+the batch gets " (2)". Refused, failed and unfinished songs are left out.
+### Cancelling a queued song (W3.12, 2026-10-27)
+
+`DELETE /api/v1/analyses/<id>` deletes the analysis while its job is still
+queued, in one statement (`DELETE ... USING jobs WHERE state = 'queued'`), so a
+worker's claim and a cancel are decided by the same row lock. Checked over HTTP
+in `test/cancel.test.js` (the owner cancels and gets the quota back; a stranger
+gets 404, a request without the same-origin header 403; a claimed job 409) and
+against PostgreSQL 18 through PGlite.

@@ -43,6 +43,11 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   the proxy shares them (W3.17), and key each address by an HMAC, never the
   address itself.
   10 minutes.
+- **Moderation** (W3.18). A Mides moderator sees, on `/queue`, Remove on every
+  waiting or running row and Back to the queue on a running one. Remove fails
+  the job ("Removed from the queue by a moderator.") and deletes its audio;
+  Back to the queue hands a stuck job to the next worker while its audio is
+  still spooled. Both go to `moderation_log` with who did it and why.
 - **Cancelling** (W3.12). Whoever may read a queued analysis can cancel it
   (`DELETE /api/v1/analyses/<id>`, from its card, its page or `/queue`): the
   job, the row and the spooled audio are deleted, so it costs none of the day's
@@ -289,6 +294,28 @@ The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
 
+### The queue, moderated (W3.18, 2026-10-27)
+
+Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`
+(`moderator`) and refreshes at every sign-in, so losing the role in Mides takes
+effect here at the next one. `GET /analyses/queue` adds `staff: true` and a `ref`
+on every live row for them; a private row still shows them no song and no
+uploader, since removing or requeueing needs neither.
+`POST /analyses/:id/moderate { action, reason? }` (same-origin, session, staff;
+anyone else 401 or 403 `STAFF_ONLY`):
+
+- `remove`: a waiting or running job fails, its audio goes. A worker already on
+  it finishes its stage and its answer is refused as stale. The uploader's page
+  says a moderator took it off the queue (`removed: true`).
+- `requeue`: a running job goes back to the queue (409 `NOT_RUNNING` otherwise,
+  409 `AUDIO_GONE` without its audio). Its attempt count is kept, so the next
+  claim's attempt is new and the old worker's late answer is refused.
+
+Each one writes `moderation_log` (who by username at the time, the action, the
+analysis, the reason) in the same transaction as the change; `GET
+/analyses/moderation` returns the last 50 for staff. With `MIDES_DEV_LOGIN` the
+Google dev user is a moderator and the Discord one is not, so both sides can be
+tried.
 ### A rate limit shared by every process (W3.17, 2026-10-27)
 
 With `DATABASE_URL` set, each request's window is one upsert into `rate_limits`

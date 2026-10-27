@@ -130,7 +130,7 @@ function Failed({ analysis }) {
   return (
     <section role="alert" className="space-y-2 rounded-panel border border-red/40 bg-red/10 p-5">
       <h2 className="font-display text-[17px] font-semibold">{t('result.failedTitle')}</h2>
-      <p className="text-label text-text">{t('result.failed')}</p>
+      <p className="text-label text-text">{analysis.removed ? t('result.removed') : t('result.failed')}</p>
       {analysis.error && <p className="readout text-caption text-dim">{analysis.error}</p>}
     </section>
   )

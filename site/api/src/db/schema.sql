@@ -213,6 +213,22 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS reports_open_idx ON reports (created_at) WHERE state = 'open';
 
+-- W3.18, the queue moderated: every job a staff member removed from the queue
+-- or handed back to it, and who did it. `moderator` is the username at the
+-- time, so the record still says who after the account goes; `public_id` stays
+-- after the analysis does (a cancelled one is deleted, W3.12).
+CREATE TABLE IF NOT EXISTS moderation_log (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id      uuid REFERENCES accounts (id) ON DELETE SET NULL,
+  moderator       text NOT NULL,
+  action          text NOT NULL CHECK (action IN ('remove', 'requeue')),
+  analysis_id     bigint REFERENCES analyses (id) ON DELETE SET NULL,
+  public_id       char(32),
+  reason          text CHECK (char_length(reason) <= 500),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS moderation_log_created_idx ON moderation_log (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,

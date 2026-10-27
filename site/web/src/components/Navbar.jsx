@@ -16,6 +16,7 @@ import Mark from './Mark.jsx'
 const LINKS = [
   { to: '/', key: 'nav.home', end: true },
   { to: '/analyze', key: 'nav.analyze' },
+  { to: '/queue', key: 'nav.queue' },
   { to: '/profile', key: 'nav.profile' },
 ]
 

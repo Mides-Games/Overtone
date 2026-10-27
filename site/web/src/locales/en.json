@@ -16,7 +16,8 @@
     "changeLanguage": "Cambiar a español",
     "otherLanguage": "ES",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "queue": "Queue"
   },
   "ticker": [
     "Overtone · automatic timing for osu! maps",
@@ -61,22 +62,21 @@
   },
   "analyze": {
     "title": "Analyze a song",
-    "subtitle": "The audio is analysed and then deleted. Only its fingerprint and the result are kept.",
-    "audioHint": "MP3, OGG, WAV or FLAC.",
-    "osuLabel": ".osu file (optional)",
-    "osuHint": "Adds the timing to your own map. Fields you did not ask to change come out byte for byte.",
+    "subtitle": "Upload the audio and Overtone finds the BPM, the offset and every red line. The audio is analysed and then deleted: only its fingerprint and the result are kept.",
+    "audioHint": "MP3, OGG, WAV, FLAC, M4A or Opus.",
     "submit": "Analyze",
-    "sending": "Uploading…",
+    "sending": "Uploading… {{percent}}%",
     "pickAudio": "Choose an audio file first.",
     "tooLong": "This song is {{minutes}} minutes long; the limit is {{limit}}.",
-    "notReady": "Analysis is not open yet. The site is being built: the queue and the analysis worker come next. The server did not read or keep your file.",
     "failed": "The upload failed: {{message}}",
-    "drop": "Drop the audio here or choose a file",
-    "notReadyTitle": "Not open yet",
+    "drop": "Drop songs or a folder here, or choose files",
+    "privacy": "No account needed. Your file is deleted as soon as it is analysed; the same audio uploaded again gets the stored result at once.",
     "limitsTitle": "Without an account",
+    "limitsTitleAccount": "With your account",
     "perDay": "Analyses a day",
     "maxLength": "Longest song",
-    "limitsNote": "A Mides account raises both limits and keeps your history.",
+    "limitsNote": "A Mides account raises the daily limit and keeps your history.",
+    "limitsNoteAccount": "The count resets at 00:00 UTC.",
     "outputsTitle": "What you will download",
     "outputs": {
       "timingPoints": "[TimingPoints] block",
@@ -84,9 +84,80 @@
       "csv": "CSV of red lines",
       "click": "Click track"
     },
+    "ready": "ready",
     "soon": "soon",
-    "chooseOsu": "Choose .osu",
-    "noOsu": "No map chosen"
+    "recentTitle": "Your recent analyses",
+    "honest": "Overtone's timing is exact on its synthetic benchmark, but on real ranked maps it is still being measured. Treat every result as a strong first draft and check it by ear before you rank.",
+    "errors": {
+      "UNSUPPORTED_FORMAT": "Choose an MP3, OGG, WAV, FLAC, M4A or Opus file.",
+      "TOO_LARGE": "The file is larger than {{limit}} MB.",
+      "EMPTY_UPLOAD": "The file is empty.",
+      "QUOTA_ANON": "Without an account you can analyse {{limit}} songs a day. Sign in for more, or come back after 00:00 UTC.",
+      "QUOTA_ACCOUNT": "You have used today's {{limit}} analyses. The count resets at 00:00 UTC.",
+      "RATE_LIMITED": "Too many uploads in a short time. Wait a few minutes and try again.",
+      "NETWORK": "The server could not be reached. Check your connection and try again.",
+      "PENDING_LIMIT_one": "You already have {{count}} song in the queue. Send more when it finishes.",
+      "PENDING_LIMIT_other": "You already have {{count}} songs in the queue. Send more when one finishes.",
+      "QUEUE_FULL": "The queue is full right now. Try again in a few minutes.",
+      "CACHE_LIMIT": "You have opened {{count}} stored results today. The count resets at 00:00 UTC."
+    },
+    "private": "Keep it off the public queue",
+    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader.",
+    "folder": "Choose a folder",
+    "atOnce_one": "Up to {{count}} song in the queue at once",
+    "atOnce_other": "Up to {{count}} songs in the queue at once",
+    "submitMany_one": "Analyze {{count}} song",
+    "submitMany_other": "Analyze {{count}} songs",
+    "sendingMany": "Sending…",
+    "card": {
+      "ready": "Ready to send",
+      "sent": "Sent",
+      "remove": "Remove {{name}}"
+    }
+  },
+  "result": {
+    "eyebrow": "Analysis",
+    "another": "Analyze another song",
+    "notFoundTitle": "Analysis not found",
+    "notFound": "It does not exist, or it was started in another browser. Analyses are visible only to whoever started them.",
+    "reconnecting": "Lost contact with the server; trying again…",
+    "queued": "In the queue: position {{position}}",
+    "queuedNote": "Your song is waiting for the analysis worker. You can leave this page open or come back to it later.",
+    "running": "Analysing…",
+    "stages": {
+      "load": "Decoding the audio",
+      "attacks": "Finding every attack",
+      "coherence": "Looking for the pulse",
+      "fallback": "No steady grid: trying the beat tracker",
+      "tracker": "Tracking beats",
+      "octave": "Choosing the beat octave",
+      "sections": "Fitting tempo sections",
+      "vote": "Checking the beats with Beat This!",
+      "result": "Writing the result"
+    },
+    "failedTitle": "The analysis failed",
+    "failed": "Overtone could not read this file. It may be damaged or not the audio its name says. Your file has been deleted.",
+    "refusedTitle": "No BPM",
+    "refusal": {
+      "no_pulse": "Overtone found no steady pulse in this audio, so it does not report a BPM.",
+      "too_short": "This audio is too short to time: it needs at least two seconds.",
+      "too_long": "This audio is longer than the limit.",
+      "refused": "Overtone could not time this audio."
+    },
+    "refusedWhy": "A guessed BPM would look precise and be wrong. Noise, ambient pads and free-time music end here on purpose.",
+    "redLines": "Red lines",
+    "time": "Time",
+    "meterGuess": "The bar was not proved by the accents: check where it starts.",
+    "copy": "Copy [TimingPoints]",
+    "copied": "Copied",
+    "copyFailed": "Could not copy: use the download",
+    "downloadTxt": "Download timing.txt",
+    "downloadCsv": "Download CSV",
+    "honest": "Check these red lines by ear before you rank. Overtone is exact on its synthetic benchmark, but its accuracy on real ranked maps is still research: amber sections need a listen first, and so may the rest.",
+    "engine": "Engine v3 {{hash}} · Beat This! vote {{vote}}",
+    "voteOn": "on",
+    "voteOff": "off",
+    "cached": "same audio analysed before: stored result"
   },
   "login": {
     "title": "Sign in",
@@ -129,5 +200,30 @@
   "notFound": {
     "title": "Nothing here",
     "back": "Back home"
+  },
+  "queue": {
+    "title": "Queue",
+    "subtitle": "Every song waiting for the analyser or being analysed right now, and the ones that finished in the last hour.",
+    "live": "Waiting and analysing",
+    "recent": "Finished in the last hour",
+    "count_one": "{{count}} song",
+    "count_other": "{{count}} songs",
+    "empty": "Nothing in the queue.",
+    "upload": "Analyse a song",
+    "more_one": "…and {{count}} more waiting.",
+    "more_other": "…and {{count}} more waiting.",
+    "privateSong": "Private upload",
+    "privateUpload": "Uploader hidden",
+    "anonymous": "Anonymous",
+    "yours": "Yours",
+    "cached": "stored result",
+    "privacy": "A song is named by its own tags, or by its file name when it has none. Anyone who ticked \"keep it off the public queue\" shows here as a private upload. Folders and paths are never shown, the audio is never served, and only you can open your own results.",
+    "status": {
+      "queued": "In the queue",
+      "running": "Analysing",
+      "done": "Done",
+      "refused": "Refused",
+      "failed": "Failed"
+    }
   }
 }

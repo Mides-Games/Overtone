@@ -41,7 +41,18 @@ export const authorizeUrl = (provider) => {
 
 /** Exchanges the SSO's one-use code for the Mides user and tokens. */
 export const exchangeCode = async (code) => {
-  const { status, data } = await call('POST', 'sso/exchange', { code });
+  const { status, data } = await call('POST', 'sso/exchange', {
+    code,
+    app: env.midesApp,
+    client_secret: env.midesClientSecret,
+  });
+
+  // A secret Mides does not accept, or one Mides has not been given: the
+  // server's configuration, not the person's code. Said in the log, not to them.
+  if ((status === 401 && data?.error === 'invalid_client') || status === 503) {
+    console.error(`[mides] the code exchange was refused (${status} ${data?.error ?? ''}): check MIDES_CLIENT_SECRET here and SSO_SECRET_OVERTONE in Mides`);
+    throw new HttpError(503, 'Sign-in is not available right now.', 'MIDES_UNAVAILABLE');
+  }
 
   if (status === 400 || status === 401) {
     throw new HttpError(400, 'The sign-in code is not valid or has expired. Try again.', 'SSO_CODE_INVALID');
@@ -51,27 +62,15 @@ export const exchangeCode = async (code) => {
     throw new HttpError(502, 'Mides did not return a valid session.', 'SSO_BAD_ANSWER');
   }
 
-  return { refresh: data.refresh_token ?? null, user: toUser(data.user) };
-};
-
-/**
- * A new access token from the refresh token. `null` only when Mides says the
- * refresh token is no longer good (401 or 422 from flask-jwt); anything else is
- * transient and throws a 503, so a Mides redeploy does not wipe stored tokens.
- */
-export const refreshAccess = async (refresh) => {
-  const { status, data } = await call('POST', 'refresh', null, refresh);
-
-  if (status === 200 && typeof data?.access_token === 'string') return data.access_token;
-  if (status === 401 || status === 422) return null;
-
-  throw new HttpError(503, 'Mides is not available right now.', 'MIDES_UNAVAILABLE');
+  // Mides gives this app no refresh token (an access with its own audience, and
+  // the minimal profile), and the access is not kept: the profile is all it needs.
+  return { user: toUser(data.user) };
 };
 
 /**
  * The Mides user in this server's shape: an explicit allow-list of public
- * profile fields. Email and phone are not here. Not storing them is the
- * cheapest way of never leaking them.
+ * profile fields. Mides sends this app only its minimal profile (no email,
+ * phone, Discord or global role); `is_moderator` becomes the one role kept.
  */
 export const toUser = (u) => ({
   midesUserId: String(u.id),
@@ -79,8 +78,8 @@ export const toUser = (u) => ({
   displayName: u.full_name || u.nickname || null,
   avatarUrl: absolute(u.photo_url),
   bannerUrl: absolute(u.banner_url),
-  discordId: u.discord_id ? String(u.discord_id) : null,
-  role: u.role ?? null,
+  discordId: null,
+  role: u.is_moderator === true ? 'moderator' : null,
 });
 
 /**

@@ -112,8 +112,8 @@ navegador ──► overtone-web (estático, Vite build)
     - el `redirect_uri` lo arma el servidor;
     - una cookie firmada protege contra CSRF;
     - la sesión es una cookie HMAC propia;
-    - el refresh token se guarda cifrado con AES-GCM.
-  - **El costo de `web`:** el token es una sesión completa de Mides. Puede postear en
+    - ~~el refresh token se guarda cifrado con AES-GCM~~: desde el 2026-10-27 no se guarda ningún token de Mides (ver abajo).
+  - **El costo de `web`** (resuelto el 2026-10-27: Mides-Dev-Web `feat/web-sso-scoped` le da a Overtone un secreto de canje, un access con audiencia `app:overtone`, sin refresh, y el perfil mínimo; Cavernia sigue con el modo viejo): el token era una sesión completa de Mides. Puede postear en
     el muro y ver email y teléfono. Por eso **nunca sale de overtone-api**: el
     navegador solo ve la cookie de Overtone, y de `/me` se guardan solo los campos
     públicos. El tipo `spa` está acotado, pero ignora `provider=` y no deja postear.
@@ -351,7 +351,7 @@ Cloudflare).
 - **Secretos:**
   - viven en las variables del panel, nunca en el repo;
   - `.env.example` lista solo los nombres: `DATABASE_URL`, `SESSION_SECRET`,
-    `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `SITE_URL`, `TOKEN_KEY`,
+    `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `SITE_URL`, `MIDES_CLIENT_SECRET`,
     `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS`, `WORKER_CONCURRENCY`.
 - **Dominio:** un subdominio de midesprojects.com detrás de Cloudflare, como los
   demás. CORS no hace falta, porque web y API comparten origen (`/api/v1` por proxy).
@@ -412,6 +412,18 @@ detalle y las puertas están en `timeline.md`.
 | W2.3 | Correrlo en Linux (WSL o el server de staging): las 24/24 lecturas de `bpm-snapshot` iguales a Windows |
 | W2.4 | Puerta `perf` del worker: costo por minuto de audio, que fija `WORKER_CONCURRENCY` |
 
+**W2.1, W2.2 y W3.4 hechos el 2026-10-26** en la rama `feat/site-analysis`, con estos
+cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
+- El worker no toma la cola de Postgres: es cliente HTTP de rutas internas de la API
+  (`/api/internal`, con `WORKER_TOKEN`). Así no lleva driver de base ni dependencias
+  nuevas, y la API es dueña de todo el estado. El `SKIP LOCKED` vive en la API.
+- No se partió de `overtone_server.py`/`overtone_runs.py` (W2.0 sigue sin mergear): el
+  worker llama a `python/overtone.py` directo, con los parámetros por defecto escritos
+  en `worker/timing_result.py`, porque la shell de escritorio se va del repo.
+- Un worker analiza de a un trabajo; `WORKER_CONCURRENCY` no existe. Más análisis a la
+  vez son más servers worker.
+- `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
+
 ### Fase W3 — El sitio, mínimo usable (MVP)
 
 | # | Tarea |
@@ -423,6 +435,46 @@ detalle y las puertas están en `timeline.md`.
 | W3.5 | `site/web`: tokens visuales de midesprojects.com (§8), layout con la cinta, el nav en píldora y el menú de usuario; páginas Inicio, Analizar, Resultado, Login |
 | W3.6 | Cuotas: anónimo vs. cuenta; rate limit por IP hasheada |
 | W3.7 | i18n EN/ES desde el día uno; la app ya es bilingüe |
+| W3.8 | **Cola visible en la página** (pedido del dueño, 2026-10-26). Una página `/queue` muestra, en vivo (SSE o polling), cada análisis pendiente y reciente: posición, quién lo subió (avatar y @ de Mides, o "anónimo"), canción (artista y título de los tags del audio; si no hay, el nombre del archivo limpio), estado (en cola, analizando con su progreso, listo, rechazado, falló) y cuánto tardó. Desde ahí se abre el resultado si es de uno o si se publicó. **Privacidad:** el nombre de archivo y el uploader se ven solo si quien subió no marcó "privado"; la ruta nunca, y el audio nunca se sirve |
+| W3.9 | **Subida múltiple.** Se pueden mandar varias canciones a la vez (arrastrar varios archivos o una carpeta). Cada una es un trabajo propio en la cola, con su propia tarjeta de progreso. Límites: cuántas a la vez por persona (anónimo menos que con cuenta), el cupo diario de siempre, y un tope total de la cola para que nadie la llene. El orden es justo entre usuarios (round-robin por persona, no FIFO puro), para que un lote de 30 no deje esperando al que subió una |
+| W3.10 | **Más de un worker.** La cola ya se reparte con `SKIP LOCKED`: escalar es levantar otro server de worker en el panel. Medir cuántos análisis simultáneos aguanta el nodo NA-01 sin lag en los servers de Minecraft, y fijar `WORKER_CONCURRENCY` con ese número |
+| W3.11 | **Preguntar antes de subir.** El navegador calcula el SHA-1 del audio y llama a `POST /analyses/lookup` con ese hash: si el mismo audio ya se analizó con el engine actual, la respuesta es el resultado guardado y el archivo no se sube. Hoy el caché solo se ve después de mandar el archivo entero, y ese envío cuenta para el tope de pendientes (W3.9) aunque no genere trabajo. Hecho cuando una canción repetida no gasta ni un byte de subida ni un lugar en la cola |
+| W3.12 | **Cancelar lo propio.** Quien subió una canción que sigue en cola puede sacarla desde su tarjeta, su página o `/queue`: el trabajo se borra, el audio del spool también, y no cuenta para la cuota del día. Una que ya se está analizando no se cancela (el worker no tiene cómo enterarse a mitad de etapa) |
+| W3.13 | **Tags de M4A y WAV.** `lib/tags.js` lee ID3v2 y Vorbis; faltan los átomos `©nam`/`©ART` de MP4 (M4A) y el chunk `LIST/INFO` de WAV. Con fixtures chicos generados en el test, no con canciones de la biblioteca |
+| W3.14 | **Avisar cuando termina un lote.** El título de la pestaña lleva la cuenta ("2/5 listas") y, si la persona lo permite, una notificación del navegador al terminar la última. Nada sale del navegador |
+| W3.15 | **Bajar un lote entero.** Desde las tarjetas de una subida múltiple: un ZIP con el `timing.txt` de cada canción lista, armado en el navegador con los resultados que ya trae. Sin dependencia nueva si alcanza con un ZIP sin compresión |
+| W3.16 | **Tiempo estimado en la cola.** Con el costo por minuto de audio que mida W2.4, cada fila de `/queue` dice cuánto falta, aproximado y marcado como estimación. Antes de W2.4 no se muestra: no se inventa precisión |
+| W3.17 | **Un rate limit que sobreviva a dos procesos.** `middlewares/rate-limit.js` cuenta en memoria y lo dice: el día que haya dos procesos de API, pasa a Postgres (o a la misma tabla que las cuotas). Hecho cuando dos APIs detrás del proxy comparten el conteo |
+| W3.18 | **La cola, moderada.** Quien tenga rol de staff en Mides ve en `/queue` un botón para sacar un trabajo o devolverlo a la cola, con registro de quién lo hizo. Es la primera pieza del panel de moderación de W6 |
+| W3.19 | **Las pruebas del sitio en la lista de verificación.** `node --test` de `site/api` y `vite build` de `site/web` entran en la sección Verification de `CLAUDE.md`/`AGENTS.md`, con su conteo, y `bench/facts.py` chequea ese conteo como hace con la suite de Python |
+
+**W3.8 hecha el 2026-10-27** en la rama `feature/queue-page`: `/queue` consulta
+`GET /api/v1/analyses/queue` cada 3 s (polling y no SSE: una foto por segundo sirve
+a todos los que miran). Los tags se leen en el navegador, no en el server. La casilla
+"privado" está en el formulario de subida. Detalle en `docs/site.md` y `timeline.md`.
+
+**W3.9 hecha el 2026-10-27** en la rama `feature/multi-upload`: varios archivos o una
+carpeta, una tarjeta por canción; topes `ANON_MAX_PENDING`/`USER_MAX_PENDING` (3/10) y
+`QUEUE_MAX` (200); orden por turnos entre personas, y a igual turno primero quien hace
+más que no recibe un análisis. Probado contra PostgreSQL (PGlite). Detalle en
+`docs/site.md` y `timeline.md`.
+
+**W3.2, estado al 2026-10-27:** la rama `feat/overtone-sso` de Mides-Dev-Web ya tiene
+los tres cambios: `"overtone"` en `SSO_APPS` como web registrada (orígenes
+`overtone.midesprojects.com` y `overtone-experimental.midesprojects.com`, camino
+`/login/callback`), el nombre en `APPS` de `Authorize.jsx` y Overtone en
+`ecosystem.js` marcado `soon` hasta que el sitio esté arriba; también `docs-sso.md` y
+el smoke de CI. Está al día con `main` y sin mergear: falta abrir el PR y mergearlo,
+que despliega solo. `GET /api/profile/by-id/<id>` (opcional) se sumó a esa rama el
+mismo día: nombre, foto y banner por id, con su caso en el smoke.
+
+**W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
+con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
+
+Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
+esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
+corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna
+necesita a otra persona; W3.16 espera la medición de W2.4.
 
 ### Fase W4 — Reviactyl
 

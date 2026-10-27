@@ -15,7 +15,7 @@
     "file_denylist": [],
     "startup": "postgres",
     "config": {
-        "files": "{}",
+        "files": "{\"pgdata/postgresql.conf\": {\"parser\": \"file\", \"find\": {\"unix_socket_directories\": \"unix_socket_directories = '/tmp'\"}}}",
         "startup": "{\"done\": \"database system is ready to accept connections\"}",
         "logs": "{}",
         "stop": "^C"

@@ -22,7 +22,14 @@ router.get('/health', async (_req, res) => {
     status: database === 'down' ? 'degraded' : 'ok',
     database,
     devLogin: env.devLogin,
-    limits: { anonDailyLimit: env.anonDailyLimit, maxAudioSeconds: env.maxAudioSeconds },
+    limits: {
+      anonDailyLimit: env.anonDailyLimit,
+      userDailyLimit: env.userDailyLimit,
+      anonMaxPending: env.anonMaxPending,
+      userMaxPending: env.userMaxPending,
+      maxAudioSeconds: env.maxAudioSeconds,
+      maxUploadMb: env.maxUploadMb,
+    },
   });
 });
 

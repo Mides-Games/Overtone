@@ -5,7 +5,7 @@
  * faster than real time, and the same `scheduleClick` the player uses makes
  * every click, so the file holds what the reader heard.
  */
-import { scheduleClick } from './player.js'
+import { DEFAULT_VOLUME, scheduleClick } from './player.js'
 import { lowerBound } from './timing.js'
 import { encodeWav } from './wav.js'
 
@@ -37,7 +37,7 @@ export function clickTrackPlan(grid, durationS, cap = MAX_TRACK_SECONDS) {
  * `songVolume` and `clickVolume` are the player's, so the mix sounds as the
  * page does. `onProgress` gets 0..1 every ten rendered seconds.
  */
-export async function renderClickTrack({ grid, durationS, buffer = null, songVolume = 0.8, clickVolume = 0.6, onProgress }) {
+export async function renderClickTrack({ grid, durationS, buffer = null, songVolume = DEFAULT_VOLUME, clickVolume = DEFAULT_VOLUME, onProgress }) {
   const plan = clickTrackPlan(grid, buffer ? Math.min(durationS || buffer.duration, buffer.duration) : durationS)
   const rate = buffer ? buffer.sampleRate : CLICK_RATE
   const channels = buffer ? Math.min(2, buffer.numberOfChannels) : 1

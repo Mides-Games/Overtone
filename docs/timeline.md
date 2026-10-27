@@ -20,6 +20,72 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The measurement server, hardened
+
+A security review of the measurement server (`python/overtone_server.py`, the library
+behind it) and its updater (`deploy/`) found four problems. All four are fixed here.
+
+### Fixed
+
+- **The updater's busy check failed open.** When the runs API did not answer (or
+  refused the token), the check read "idle", so a loaded server got its code moved
+  and restarted under a measurement. It now waits unless the API says the queue is
+  empty, and logs why it waited. A service systemd reports as not running is the
+  one exception: its runs are its own processes, so none can be going, and waiting
+  would keep a crashed server from ever getting its fix.
+
+### Hardening
+
+- **Root no longer runs anything from the checkout.** `setup-deploy-user.sh` copied
+  `overtone-update.service` and `.timer` out of `/opt/overtone`, a tree `overtone`
+  can write, into `/etc/systemd/system` as root. The script now carries both units
+  inline (a test holds them byte for byte to the committed files) and is run from
+  a root-owned copy the owner has read. `docs/server.md` runs every git and git-lfs
+  step on the checkout as `sudo -u overtone -H git` (no `safe.directory`), and the
+  venv, cargo, first-start and bench-audio steps as `overtone` too.
+- **Connections are capped and timed out.** Each connection had a thread and no
+  socket timeout. Now a connection silent for 30 s is dropped, at most 64 are
+  served at once, and one more is answered 503 from the accepting thread and closed.
+- **Wrong tokens are limited across the server.** The 1 s sleep per wrong token
+  held a thread asleep per guess, so parallel guesses piled up sleeping threads.
+  It is replaced by a server-wide limiter: past 20 wrong tokens (bearer or
+  `/login`) a minute, no token is checked, the right one included, and the reply
+  is 429 with `Retry-After`. An open browser session keeps working.
+- **An .osu's audio name stays inside its song folder.** `AudioFilename` was joined
+  to the folder as written, then stat'ed and decoded: `../../x`, an absolute path or
+  a link out sent the decoder to any file the server could read. The scan keeps
+  only a bare file name, and analysis and health open an audio file only when,
+  with links followed, it is a regular file inside its folder. An older index keeps
+  old names, so the check is where files are opened; a refused name is a
+  `no_audio` row that says why.
+
+### Measured
+
+- Suite: 511 tests OK in 1239 s, 5 skipped (500 before; 11 new: `DeployScriptTests` 5, `LibraryAudioPathTests`
+  4, `LibraryServerTests` 2). The updater tests run the real script against a
+  scratch checkout one commit behind its origin, with `systemctl` and `sudo`
+  stubbed; the no-answer case fails on the old script.
+- `bench/facts.py` ok, `bench/parity.py` matches (247 of 502), `bench/fuzz_reader.py`
+  3000 mutants with no crash, `sh -n` on both deploy scripts.
+- Headless smoke (a free port, a temp Songs folder, `LOCALAPPDATA` in a temp dir):
+  401 without the token, a scan and `/api/songs` with it; with 55 idle connections
+  open a real request answered 200 in 0.19 s; with 64 open the 65th got
+  `503 Service Unavailable`; after closing them, 200.
+- Not measured: the engine gates (no engine code changed), anything on the server
+  itself, Caddy in front.
+
+### Rejected / tried and dropped
+
+- **A per-address limiter.** Behind Caddy every client is 127.0.0.1, and
+  `X-Forwarded-For` is only as honest as the proxy's configuration; a server-wide
+  count needs neither. The price: someone sending wrong tokens can keep bearer
+  clients (scripts, the updater) out while they do. The updater then waits, which
+  is the safe side, and an open browser session still works.
+- **Letting the right token through while limited.** Then the limiter would slow
+  nothing: the guess that is right still gets in.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

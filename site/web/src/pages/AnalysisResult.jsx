@@ -11,6 +11,7 @@ import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
+import Listening from '../components/result/Listening.jsx'
 import Transport from '../components/result/Transport.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
@@ -262,7 +263,15 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
   const sections = useMemo(() => result.sections ?? [], [result])
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
   const lines = useMemo(() => adjustLines(result, adjustment), [result, adjustment])
+  // The beats alone, for the map, the arrow keys and the taps; the clicks add the subdivisions the reader asked for (W12.6).
   const grid = useMemo(() => clickGrid(lines, durationS), [lines, durationS])
+  const subdivision = snapshot.subdivision
+  const clicks = useMemo(() => (subdivision > 1 ? clickGrid(lines, durationS, { subdivision }) : grid), [lines, durationS, subdivision, grid])
+  // The engine's own lines' clicks, for the A/B (W12.5): only when the reader has moved them.
+  const engineClicks = useMemo(
+    () => (adjusted ? clickGrid(adjustLines(result), durationS, { subdivision }) : null),
+    [adjusted, result, durationS, subdivision],
+  )
   const attacks = useMemo(() => attackDrift(result.onsets?.t_ms ?? [], lines), [result, lines])
   // The worker's own per-line drift as it came; recomputed here once the reader moves the lines.
   const drift = useMemo(
@@ -280,7 +289,7 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
     [lines, durationS],
   )
 
-  useEffect(() => player.setGrid(grid), [player, grid])
+  useEffect(() => player.setGrid(clicks, engineClicks), [player, clicks, engineClicks])
   useEffect(() => player.setSections(spans), [player, spans])
   useEffect(() => {
     if (audio.kind === 'ready') player.setBuffer(audio.song.buffer)
@@ -292,6 +301,8 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
       lines,
       sections,
       grid,
+      clicks,
+      subdivision,
       beats: result.beats ?? null,
       onsets: result.onsets ?? null,
       drift: attacks,
@@ -303,7 +314,7 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
       durationS,
       range: tempoRange(lines, result.beats, adjustment.factor),
     }),
-    [lines, sections, grid, result, attacks, audio.kind, audio.song, adjustment.factor, durationS],
+    [lines, sections, grid, clicks, subdivision, result, attacks, audio.kind, audio.song, adjustment.factor, durationS],
   )
 
   const playFrom = (i) => {
@@ -380,6 +391,15 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+        <Listening
+          player={player}
+          snapshot={snapshot}
+          lines={lines}
+          grid={grid}
+          adjusted={adjusted}
+          nudgeMs={adjustment.nudgeMs}
+          onAdjust={setAdjustment}
+        />
       </TempoMap>
 
       <CheckHere
@@ -401,6 +421,7 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
           lines={lines}
           adjustment={adjustment}
           grid={grid}
+          clicks={clicks}
           durationS={durationS}
           songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
           player={player}

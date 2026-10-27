@@ -6,7 +6,7 @@
  * section's confidence along its foot), the waveform with the onsets and the
  * beat grid, the drift lane, the ruler.
  */
-import { BAR, formatBpm, formatRuler, lowerBound } from '../../lib/timing.js'
+import { BAR, formatBpm, formatRuler, lowerBound, SUB } from '../../lib/timing.js'
 
 export const MONO = "11px 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, ui-monospace, monospace"
 export const DRIFT_RANGE_MS = 30
@@ -112,7 +112,7 @@ function hatchFill(ctx, ink) {
 
 /**
  * The static layer: everything but the playhead, the hover cursor and the
- * loop. `d` carries the data: lines (adjusted), sections, grid, beats,
+ * loop. `d` carries the data: lines (adjusted), sections, grid, clicks and subdivision, beats,
  * onsets, drift, envelope, peaks, swing, hints, factor, selected, hovered.
  */
 export function paintMap(ctx, L, view, d, c) {
@@ -171,6 +171,25 @@ export function paintMap(ctx, L, view, d, c) {
   const barPx = d.lines.length ? beatPx * Math.min(...d.lines.map((l) => l.meter)) : 0
   const showBeats = beatPx >= 7
   const showBars = barPx >= 9
+  // The subdivisions the clicks play (W12.6), once they too are far enough apart: dashed and
+  // drawn first, so a beat stays a beat on top of them.
+  const sub = d.subdivision ?? 1
+  if (sub > 1 && d.clicks && beatPx / sub >= 7) {
+    const ct = d.clicks.t
+    const cl = d.clicks.level
+    ctx.strokeStyle = c.line
+    ctx.lineWidth = 1
+    ctx.setLineDash([2, 3])
+    ctx.beginPath()
+    for (let i = lowerBound(ct, view.a); i < ct.length && ct[i] <= view.b; i++) {
+      if (cl[i] !== SUB) continue
+      const x = Math.round(X(ct[i])) + 0.5
+      ctx.moveTo(x, top)
+      ctx.lineTo(x, L.waveBottom)
+    }
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
   if (showBars) {
     for (let i = lowerBound(gt, view.a); i < gt.length && gt[i] <= view.b; i++) {
       if (gl[i] !== BAR && !showBeats) continue

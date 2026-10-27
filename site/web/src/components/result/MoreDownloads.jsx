@@ -9,15 +9,19 @@ import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../.
  * The downloads after the .osz (W3.20), folded away so the export row stays
  * one button: the reader's own .osu with the red lines put in, the click
  * track as a WAV, the CSV, the result as JSON and a plain-text summary. All
- * of it is built in this browser; the .osu and the song never leave it.
+ * of it is built in this browser; the .osu and the song never leave it. The
+ * click track may carry the subdivisions the player clicks (`clicks`, W12.6);
+ * it never carries the player's latency shift.
  */
-export default function MoreDownloads({ id, analysis, lines, adjustment, grid, durationS, songBuffer, player, checks, csvHref = null }) {
+export default function MoreDownloads({ id, analysis, lines, adjustment, grid, clicks = grid, durationS, songBuffer, player, checks, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
   const osuInput = useRef(null)
   const [patch, setPatch] = useState(null) // { report } | { error } | 'busy'
   const [track, setTrack] = useState(null) // { busy, progress } | { error } | { capped }
+  const [withSubs, setWithSubs] = useState(true)
+  const subdivided = clicks !== grid
 
   async function patchOsu(file) {
     if (!file) return
@@ -36,9 +40,10 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
     if (track?.busy) return
     setTrack({ busy: withSong ? 'mix' : 'clicks', progress: 0 })
     try {
-      const { songVolume, clickVolume } = player.getSnapshot()
+      const { songVolume, clickVolume, subVolume } = player.getSnapshot()
       const out = await renderClickTrack({
-        grid,
+        grid: subdivided && withSubs ? clicks : grid,
+        subVolume,
         durationS,
         buffer: withSong ? songBuffer : null,
         songVolume,
@@ -100,6 +105,12 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
               {track?.busy === 'mix' ? t('exports.rendering') : t('exports.clicksMix')}
             </button>
           </div>
+          {subdivided && (
+            <label className="flex items-center gap-2 text-label">
+              <input type="checkbox" checked={withSubs} onChange={(e) => setWithSubs(e.target.checked)} className="accent-[var(--accent)]" />
+              <span>{t('listening.exportSubs', { n: player.getSnapshot().subdivision })}</span>
+            </label>
+          )}
           {track?.busy && (
             <div
               className="h-1.5 overflow-hidden rounded-full bg-surface-3"

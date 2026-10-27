@@ -931,5 +931,35 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "links": {
+    "title": "Cuentas vinculadas",
+    "loadFailed": "No se pudieron cargar tus cuentas vinculadas. Recargá la página para intentar de nuevo.",
+    "unlink": "Desvincular",
+    "back": "Volver a tu perfil",
+    "discord": {
+      "linked": "Vinculada. El bot de Overtone te conoce y /time-song cuenta en tu cuenta.",
+      "notLinked": "Sin vincular. Vinculala para usar el bot de Overtone con tu cuenta y su cupo.",
+      "onMides": "Vincular en Mides",
+      "code": "Vincular con el bot",
+      "codeHint": "Escribí esto en Discord, al bot de Overtone, dentro de {{minutes}} minutos:",
+      "unavailable": "Vincular Discord todavía no está disponible en este servidor.",
+      "notify": "Mandame un DM por Discord cuando termine un análisis",
+      "notifyHint": "Del bot de Overtone, para las canciones de esta cuenta. Lo podés apagar acá o con /notify off.",
+      "botOff": "El bot de Overtone todavía no corre en este servidor: no se manda nada hasta que corra."
+    },
+    "osu": {
+      "title": "Vincular osu!",
+      "link": "Vincular osu!",
+      "notLinked": "Sin vincular.",
+      "unavailable": "Vincular osu! todavía no está disponible en este servidor.",
+      "ranked_one": "{{count}} mapa rankeado",
+      "ranked_other": "{{count}} mapas rankeados",
+      "scope": "Overtone le pide a osu! solo tu identidad pública (el scope identify): tu id, nombre, foto y cantidad de mapas rankeados, leídos una vez. No guarda ningún token de osu! y nunca actúa en tu cuenta.",
+      "working": "Vinculando tu cuenta de osu!…",
+      "denied": "osu! no se vinculó: rechazaste el pedido en osu!.",
+      "stateMissing": "Este vínculo no empezó en este navegador o tardó demasiado. Empezá de nuevo desde tu perfil.",
+      "failed": "No se pudo vincular osu!: {{message}}"
+    }
   }
 }

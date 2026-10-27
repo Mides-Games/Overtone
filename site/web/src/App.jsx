@@ -12,6 +12,7 @@ import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
 import Login from './pages/Login.jsx'
 import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
+import OsuLink from './pages/OsuLink.jsx'
 import Profile from './pages/Profile.jsx'
 import Queue from './pages/Queue.jsx'
 import Status from './pages/Status.jsx'
@@ -39,6 +40,8 @@ export default function App() {
         {/* The SSO's redirect_uri: SITE_URL + /login/callback, registered with Mides. */}
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
+        {/* osu!'s OAuth redirect_uri (W9.2): SITE_URL + /link/osu, registered with the osu! app. */}
+        <Route path="link/osu" element={<OsuLink />} />
         <Route path="status" element={<Status />} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />

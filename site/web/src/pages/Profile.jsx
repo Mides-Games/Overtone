@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate } from 'react-router'
+import { Navigate, useSearchParams } from 'react-router'
 
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
+import Connections from '../components/Connections.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 
@@ -13,10 +15,37 @@ import usePageMeta from '../hooks/usePageMeta.js'
  */
 const STATS = ['timings', 'uses', 'rating']
 
+/**
+ * Back from Mides' Discord page (`?linked=discord`, W9.1): Overtone keeps no
+ * Mides token to ask again, so the profile is refreshed the way it is first
+ * read, by signing in. Mides already has a session, so the trip is a bounce.
+ * At most once a minute per tab, so a Mides that kept sending the browser
+ * back here could not make it loop.
+ */
+const RELINK_NOTE = 'overtone.relinkAt'
+const relinkOnce = () => {
+  try {
+    const last = Number(sessionStorage.getItem(RELINK_NOTE))
+    if (Number.isFinite(last) && Date.now() - last < 60_000) return false
+    sessionStorage.setItem(RELINK_NOTE, String(Date.now()))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export default function Profile() {
   const { t, i18n } = useTranslation()
   usePageMeta(t('nav.profile'))
-  const { account } = useAuth()
+  const { account, signIn } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const relink = params.get('linked') === 'discord'
+
+  useEffect(() => {
+    if (!relink || !account) return
+    setParams({}, { replace: true })
+    if (relinkOnce()) signIn('', '/profile').catch(() => {})
+  }, [relink, account, setParams, signIn])
 
   if (account === undefined) return <BrandLoader className="py-16" />
   if (account === null) return <Navigate to="/login" replace state={{ from: '/profile' }} />
@@ -54,6 +83,8 @@ export default function Profile() {
           ))}
         </dl>
       </section>
+
+      <Connections />
 
       <section className="space-y-3">
         <h2 className="label">{t('profile.timings')}</h2>

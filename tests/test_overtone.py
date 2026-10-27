@@ -6233,6 +6233,7 @@ class MeasurementRunTests(unittest.TestCase):
 
     @unittest.skipUnless(hasattr(os, "wait4"), "the peak comes from os.wait4")
     def test_a_run_reports_its_peak_memory_and_a_kill(self) -> None:
+        import subprocess
         grow = subprocess.Popen([sys.executable, "-c", "b = bytearray(64 * 1024 * 1024)"])
         code, peak = self.runs._wait(grow)
         self.assertEqual(code, 0)

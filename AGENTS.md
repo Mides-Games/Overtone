@@ -105,8 +105,8 @@ And the site's, before any commit that touches `site/` (after `pnpm install --fr
 
 ```bash
 pnpm --dir site/api test                               # all pass (100 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (90 on 2026-10-27)
-pnpm --dir site/web build                              # the site builds
+pnpm --dir site/web test                               # all pass (92 on 2026-10-27)
+pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
 ```
 
 `bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds

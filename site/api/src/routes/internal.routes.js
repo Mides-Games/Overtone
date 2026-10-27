@@ -8,6 +8,7 @@ import { bearerGuard } from '../middlewares/shared-secret.js';
 import { analyses, setEngineHash } from '../services/analysis.service.js';
 import { audioPath, discard } from '../services/spool.service.js';
 import { HttpError } from '../utils/http-error.js';
+import { workerSeen } from '../utils/worker-status.js';
 
 /**
  * The worker's side of the queue, under /api/internal (worker/main.py).
@@ -30,6 +31,11 @@ import { HttpError } from '../utils/http-error.js';
 const router = Router();
 
 router.use(bearerGuard(env.workerToken));
+// Past the bearer, so only a real worker marks itself alive (/status).
+router.use((_req, _res, next) => {
+  workerSeen();
+  next();
+});
 // A result carries every red line and the [TimingPoints] text: larger than
 // the 16 kB the public routes allow, and only the worker can send it.
 router.use(express.json({ limit: '2mb' }));

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { hasDatabase, pool, query } from '../config/database.js';
 import { HttpError } from '../utils/http-error.js';
+import { encodeCursor, likePattern, matches, microsOf } from '../utils/timings.js';
 
 /**
  * Analyses and their queue (ADR-W5): `songs` by audio SHA-1, one `analyses`
@@ -97,6 +98,18 @@ export const RECENT_LIMIT = 20;
 export const LIVE_LIMIT = 100;
 
 /**
+ * Delete-own (W3.26) takes only a finished analysis: a queued one is
+ * cancelled instead (W3.12), a running one is the worker's until it ends.
+ * What a deletion clears at once: the result, every name, the publication.
+ * A row created today stays, marked, so the day's quota still counts it;
+ * from the next UTC day it goes for good (`purgeDeleted`).
+ */
+const FINISHED = ['done', 'refused', 'failed'];
+const ERASED = () => ({
+  result: null, filename: null, tagTitle: null, tagArtist: null, publishedAt: null, private: true, error: null,
+});
+
+/**
  * Whose turn an analysis waits for (W3.9): the account, or without one the
  * hashed address the anonymous quota counts (for IPv6, the hashed /64:
  * utils/client-ip.js). A cookie cleared between uploads, or an address
@@ -175,7 +188,7 @@ const memoryStore = {
   async findCopy({ sha1, accountId, anonHash }) {
     const since = startOfUtcDay();
     for (const a of memory.analyses.values()) {
-      if (!a.cachedFrom || a.sha1 !== sha1 || a.createdAt < since) continue;
+      if (!a.cachedFrom || a.deletedAt || a.sha1 !== sha1 || a.createdAt < since) continue;
       if (accountId ? a.accountId === accountId : !a.accountId && a.anonHash === anonHash) return a;
     }
     return null;
@@ -201,7 +214,7 @@ const memoryStore = {
     const row = {
       publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash,
       private: hidden, tagTitle, tagArtist, uploader,
-      createdAt: new Date(), finishedAt: null,
+      createdAt: new Date(), finishedAt: null, publishedAt: null, deletedAt: null,
       status: 'queued', stage: null, progress: 0, error: null,
       result: null, engineHash: currentEngineHash, cachedFrom: null,
       job: { seq: ++memory.seq, state: 'queued', attempts: 0, lockedAt: null },
@@ -218,7 +231,7 @@ const memoryStore = {
 
   async get(publicId, { position: rank = true } = {}) {
     const a = memory.analyses.get(publicId);
-    if (!a) return null;
+    if (!a || a.deletedAt) return null;
     let position = null;
     if (rank && a.job?.state === 'queued') {
       position = 1 + memoryQueued().indexOf(a);
@@ -232,7 +245,7 @@ const memoryStore = {
     const running = all.filter((a) => a.job?.state === 'running').sort((x, y) => x.job.seq - y.job.seq);
     const since = Date.now() - RECENT_MINUTES * 60_000;
     const recent = all
-      .filter((a) => a.finishedAt && a.finishedAt.getTime() >= since)
+      .filter((a) => a.finishedAt && !a.deletedAt && a.finishedAt.getTime() >= since)
       .sort((x, y) => y.finishedAt - x.finishedAt)
       .slice(0, RECENT_LIMIT);
     const live = [...running.map((a) => ({ ...a, position: null })), ...queued.map((a, i) => ({ ...a, position: i + 1 }))];
@@ -331,6 +344,79 @@ const memoryStore = {
   async moderationLog(limit = MODERATION_LOG_LIMIT) {
     return memory.log.slice(-limit).reverse();
   },
+
+  // ── Published timings and history (W3.27, W5.1, W3.26) ──
+
+  async publish(publicId) {
+    const a = memory.analyses.get(publicId);
+    if (!a || a.deletedAt || a.status !== 'done') return false;
+    // Publishing again keeps the first time: a second press does not jump the list.
+    a.publishedAt ??= new Date();
+    a.private = false;
+    return true;
+  },
+
+  async unpublish(publicId) {
+    const a = memory.analyses.get(publicId);
+    if (!a || a.deletedAt) return false;
+    a.publishedAt = null;
+    return true;
+  },
+
+  async getPublished(publicId) {
+    const a = memory.analyses.get(publicId);
+    return a && a.publishedAt && !a.deletedAt && a.status === 'done' ? { ...a } : null;
+  },
+
+  async listPublished(filters) {
+    return memoryPage(
+      [...memory.analyses.values()].filter((a) => a.publishedAt && !a.deletedAt && a.status === 'done'),
+      (a) => a.publishedAt,
+      filters,
+    );
+  },
+
+  async history(accountId, filters) {
+    return memoryPage(
+      [...memory.analyses.values()].filter((a) => a.accountId === accountId && !a.deletedAt),
+      (a) => a.createdAt,
+      filters,
+    );
+  },
+
+  async deleteOwn(publicId) {
+    const a = memory.analyses.get(publicId);
+    if (!a || a.deletedAt || !FINISHED.includes(a.status) || a.job?.state === 'queued' || a.job?.state === 'running') return false;
+    if (a.createdAt < startOfUtcDay()) memory.analyses.delete(publicId);
+    else Object.assign(a, ERASED(), { deletedAt: new Date() });
+    return true;
+  },
+
+  async purgeDeleted() {
+    const since = startOfUtcDay();
+    for (const [id, a] of memory.analyses) if (a.deletedAt && a.createdAt < since) memory.analyses.delete(id);
+  },
+};
+
+/**
+ * One page of `rows`, newest first by `at(row)` and then by public id, from
+ * after the cursor: the same keyset order PostgreSQL reads. Returns
+ * `{ rows, next }`, next being the cursor of the page after, or null.
+ */
+const memoryPage = (rows, at, filters) => {
+  const key = (a) => [microsOf(at(a)), a.publicId];
+  const after = filters.cursor;
+  const sorted = rows
+    .filter((a) => matches(a, filters))
+    .map((a) => ({ a, k: key(a) }))
+    .filter(({ k }) => !after || k[0] < after.micros || (k[0] === after.micros && k[1] < after.id))
+    .sort((x, y) => (x.k[0] === y.k[0] ? (x.k[1] < y.k[1] ? 1 : -1) : x.k[0] < y.k[0] ? 1 : -1));
+  const page = sorted.slice(0, filters.limit);
+  const last = page.at(-1);
+  return {
+    rows: page.map(({ a }) => ({ ...a })),
+    next: sorted.length > filters.limit && last ? encodeCursor(last.k[0], last.k[1]) : null,
+  };
 };
 
 const memoryLog = (action, a, { accountId, moderator, reason }) =>
@@ -341,7 +427,7 @@ const memoryLog = (action, a, { accountId, moderator, reason }) =>
 const SELECT = `
   SELECT a.public_id, a.account_id, a.anon_hash, a.ip_hash, a.filename, a.size_bytes, a.status, a.stage,
          a.progress, a.error, a.result, a.engine_hash, a.created_at, a.finished_at,
-         a.private, a.tag_title, a.tag_artist,
+         a.private, a.tag_title, a.tag_artist, a.published_at, a.deleted_at,
          c.public_id AS cached_from, s.audio_sha1, j.id AS job_id, j.state AS job_state
     FROM analyses a
     JOIN songs s ON s.id = a.song_id
@@ -371,6 +457,8 @@ const fromRow = (r) =>
     private: r.private,
     tagTitle: r.tag_title,
     tagArtist: r.tag_artist,
+    publishedAt: r.published_at ?? null,
+    deletedAt: r.deleted_at ?? null,
   };
 
 /** The audit record of a moderation (W3.18), written in the same transaction as the change. */
@@ -457,7 +545,7 @@ const pgStore = {
   async findCopy({ sha1, accountId, anonHash }) {
     const { rows } = await query(
       `${SELECT}
-        WHERE s.audio_sha1 = $1 AND a.cached_from IS NOT NULL AND a.created_at >= $3
+        WHERE s.audio_sha1 = $1 AND a.cached_from IS NOT NULL AND a.created_at >= $3 AND a.deleted_at IS NULL
           AND ${accountId ? 'a.account_id = $2' : 'a.account_id IS NULL AND a.anon_hash = $2'}
         ORDER BY a.id DESC LIMIT 1`,
       [sha1, accountId ?? anonHash, startOfUtcDay()],
@@ -518,7 +606,7 @@ const pgStore = {
 
   /** One analysis; `position: false` skips ranking the whole queue, for callers that do not show it. */
   async get(publicId, { position: rank = true } = {}) {
-    const { rows } = await query(`${SELECT} WHERE a.public_id = $1`, [publicId]);
+    const { rows } = await query(`${SELECT} WHERE a.public_id = $1 AND a.deleted_at IS NULL`, [publicId]);
     const row = fromRow(rows[0]);
     if (!row) return null;
     let position = null;
@@ -550,7 +638,7 @@ const pgStore = {
       `SELECT ${COLS}
          FROM analyses a
          LEFT JOIN accounts u ON u.id = a.account_id
-        WHERE a.finished_at >= now() - make_interval(mins => $1)
+        WHERE a.finished_at >= now() - make_interval(mins => $1) AND a.deleted_at IS NULL
         ORDER BY a.finished_at DESC
         LIMIT $2`,
       [RECENT_MINUTES, RECENT_LIMIT],
@@ -735,7 +823,7 @@ const pgStore = {
   async moderationLog(limit = MODERATION_LOG_LIMIT) {
     const { rows } = await query(
       `SELECT action, moderator, account_id, public_id, reason, created_at
-         FROM moderation_log ORDER BY id DESC LIMIT $1`,
+         FROM moderation_log WHERE target_kind = 'analysis' ORDER BY id DESC LIMIT $1`,
       [limit],
     );
     return rows.map((r) => ({
@@ -743,6 +831,150 @@ const pgStore = {
       reason: r.reason, createdAt: r.created_at,
     }));
   },
+
+  // ── Published timings and history (W3.27, W5.1, W3.26) ──
+
+  async publish(publicId) {
+    // A second publish keeps the first time: pressing twice does not jump the list.
+    const { rowCount } = await query(
+      `UPDATE analyses SET published_at = coalesce(published_at, now()), private = false
+        WHERE public_id = $1 AND status = 'done' AND deleted_at IS NULL`,
+      [publicId],
+    );
+    return rowCount > 0;
+  },
+
+  async unpublish(publicId) {
+    const { rowCount } = await query(
+      'UPDATE analyses SET published_at = NULL WHERE public_id = $1 AND deleted_at IS NULL',
+      [publicId],
+    );
+    return rowCount > 0;
+  },
+
+  async getPublished(publicId) {
+    const { rows } = await query(
+      `SELECT ${LIST_COLS}, s.audio_sha1
+         FROM analyses a
+         JOIN songs s ON s.id = a.song_id
+         LEFT JOIN accounts u ON u.id = a.account_id
+        WHERE a.public_id = $1 AND ${PUBLISHED}`,
+      [publicId],
+    );
+    return rows[0] ? { ...listRow(rows[0]), sha1: rows[0].audio_sha1 } : null;
+  },
+
+  async listPublished(filters) {
+    return pgPage(PUBLISHED, [], 'a.published_at', filters);
+  },
+
+  async history(accountId, filters) {
+    return pgPage('a.account_id = $1 AND a.deleted_at IS NULL', [accountId], 'a.created_at', filters);
+  },
+
+  async deleteOwn(publicId) {
+    // Re-checked on the row in the same statement: a job the worker holds is
+    // never deleted under it. Before today the row goes; today it is erased
+    // and marked, so the day's quota still counts it.
+    const finished = `a.public_id = $1 AND a.deleted_at IS NULL AND a.status IN ('done', 'refused', 'failed')
+      AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.analysis_id = a.id AND j.state IN ('queued', 'running'))`;
+    const gone = await query(`DELETE FROM analyses a WHERE ${finished} AND a.created_at < $2`, [publicId, startOfUtcDay()]);
+    if (gone.rowCount > 0) return true;
+    const { rowCount } = await query(
+      `UPDATE analyses a SET result = NULL, filename = NULL, tag_title = NULL, tag_artist = NULL, published_at = NULL,
+                             private = true, error = NULL, deleted_at = now()
+        WHERE ${finished}`,
+      [publicId],
+    );
+    return rowCount > 0;
+  },
+
+  async purgeDeleted() {
+    await query('DELETE FROM analyses WHERE deleted_at IS NOT NULL AND created_at < $1', [startOfUtcDay()]);
+  },
+};
+
+/**
+ * A time as whole microseconds since the epoch, exactly: whole seconds and the
+ * microseconds within them apart, since one double holding both can be off by one.
+ */
+const MICROS = (col) =>
+  `(extract(epoch FROM date_trunc('second', ${col}))::bigint * 1000000 + extract(microseconds FROM ${col})::bigint % 1000000)`;
+
+const PUBLISHED = "a.published_at IS NOT NULL AND a.deleted_at IS NULL AND a.status = 'done'";
+
+/**
+ * What the recent list, a public page and the history read. No sha1 and no
+ * hashes: a list never needs them, so a list cannot leak them.
+ */
+const LIST_COLS = `a.public_id, a.account_id, a.filename, a.status, a.result, a.created_at, a.published_at,
+                   a.private, a.tag_title, a.tag_artist, a.cached_from IS NOT NULL AS cached,
+                   ${MICROS('a.created_at')} AS created_us, ${MICROS('a.published_at')} AS published_us,
+                   u.username, u.display_name, u.avatar_url`;
+
+const listRow = (r) => ({
+  publicId: r.public_id,
+  accountId: r.account_id,
+  filename: r.filename,
+  status: r.status,
+  result: r.result,
+  createdAt: r.created_at,
+  publishedAt: r.published_at,
+  private: r.private,
+  tagTitle: r.tag_title,
+  tagArtist: r.tag_artist,
+  cachedFrom: r.cached || null,
+  uploader: r.username ? { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url } : null,
+});
+
+/** Variable tempo in SQL, as utils/timings.js `isVariable` reads it: red lines at more than one BPM, to 0.01. */
+const VARIABLE = `(SELECT count(DISTINCT round((l->>'bpm')::numeric * 100)) FROM jsonb_array_elements(
+                     CASE WHEN jsonb_typeof(a.result->'red_lines') = 'array' THEN a.result->'red_lines' ELSE '[]'::jsonb END) l) > 1`;
+const BPM = `(CASE WHEN jsonb_typeof(a.result->'global_bpm') = 'number' THEN (a.result->>'global_bpm')::float8 END)`;
+
+/**
+ * One page under `where` (with its own `params`), newest first by `atCol`
+ * and then public id, after the cursor, filtered as utils/timings.js
+ * `matches` filters. One row more than the page is read, to know whether
+ * there is a next one.
+ */
+const pgPage = async (where, params, atCol, filters) => {
+  const args = [...params];
+  const arg = (value) => {
+    args.push(value);
+    return `$${args.length}`;
+  };
+  const clauses = [where];
+  if (filters.bpmMin !== null) clauses.push(`${BPM} >= ${arg(filters.bpmMin)}`);
+  if (filters.bpmMax !== null) clauses.push(`${BPM} <= ${arg(filters.bpmMax)}`);
+  if (filters.tempo) clauses.push(filters.tempo === 'variable' ? VARIABLE : `NOT ${VARIABLE}`);
+  if (filters.status) clauses.push(`a.status = ${arg(filters.status)}`);
+  if (filters.from) clauses.push(`a.created_at >= ${arg(filters.from)}`);
+  if (filters.to) clauses.push(`a.created_at < ${arg(filters.to)}`);
+  if (filters.q) {
+    const like = arg(likePattern(filters.q));
+    clauses.push(`(a.tag_title ILIKE ${like} OR a.tag_artist ILIKE ${like} OR a.filename ILIKE ${like})`);
+  }
+  if (filters.cursor) {
+    // Exact to the microsecond: the epoch plus a whole number of them.
+    const micros = arg(String(filters.cursor.micros));
+    clauses.push(`(${atCol}, a.public_id) < (timestamptz 'epoch' + ${micros}::bigint * interval '1 microsecond', ${arg(filters.cursor.id)})`);
+  }
+  const { rows } = await query(
+    `SELECT ${LIST_COLS}
+       FROM analyses a LEFT JOIN accounts u ON u.id = a.account_id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY ${atCol} DESC, a.public_id DESC
+      LIMIT ${arg(filters.limit + 1)}`,
+    args,
+  );
+  const page = rows.slice(0, filters.limit);
+  const last = page.at(-1);
+  const micros = atCol === 'a.published_at' ? 'published_us' : 'created_us';
+  return {
+    rows: page.map(listRow),
+    next: rows.length > filters.limit && last ? encodeCursor(String(last[micros]), last.public_id) : null,
+  };
 };
 
 export const analyses = () => (hasDatabase() ? pgStore : memoryStore);

@@ -7,16 +7,20 @@ import { useTheme } from '../context/ThemeContext.jsx'
 import { gutter } from '../lib/gutter.js'
 import Avatar from './Avatar.jsx'
 import Mark from './Mark.jsx'
+import { TrayButton } from './Tray.jsx'
 
 /**
  * The instrument bar: mark and name on the left, the three places on the
  * site, and on the right language, theme and the account. One slim row on a
- * wide screen; on a phone the places drop to a second row that scrolls.
+ * wide screen; on a phone the places drop to a second row that scrolls, and
+ * the analysis tray's button joins the right side (components/Tray.jsx).
  */
 const LINKS = [
   { to: '/', key: 'nav.home', end: true },
   { to: '/analyze', key: 'nav.analyze' },
   { to: '/queue', key: 'nav.queue' },
+  { to: '/community', key: 'community.nav' },
+  { to: '/recent', key: 'timings.nav.recent' },
   { to: '/profile', key: 'nav.profile' },
 ]
 
@@ -104,6 +108,9 @@ function UserMenu({ account }) {
             <Link role="menuitem" to="/profile" className={item} onClick={() => setOpen(false)}>
               {t('nav.profile')}
             </Link>
+            <Link role="menuitem" to="/history" className={item} onClick={() => setOpen(false)}>
+              {t('timings.nav.history')}
+            </Link>
             <button
               role="menuitem"
               type="button"
@@ -157,6 +164,7 @@ export default function Navbar() {
         <Places className="hidden h-full items-stretch md:flex" />
 
         <div className="ml-auto flex items-center gap-1">
+          <TrayButton />
           <LanguageToggle />
           <ThemeToggle />
           {account ? (

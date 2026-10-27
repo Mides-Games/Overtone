@@ -81,8 +81,9 @@
     "outputs": {
       "osz": ".osz to open in osu!",
       "timingPoints": "[TimingPoints] block",
-      "csv": "CSV of red lines",
-      "click": "Click track"
+      "csv": "CSV, JSON and a summary",
+      "click": "Click track (WAV)",
+      "osuPatch": "Your own .osu with the red lines put in"
     },
     "ready": "ready",
     "soon": "soon",
@@ -115,7 +116,6 @@
       "remove": "Remove {{name}}"
     },
     "batch": {
-      "title": "{{finished}}/{{total}} ready",
       "notify": "Notify me when the whole batch is done",
       "notifyTitle": "Overtone: your batch is done",
       "notifyBody": "{{done}} of {{total}} songs have a timing.",
@@ -330,5 +330,605 @@
     "busy": "Cancelling…",
     "notQueued": "It is already being analysed and can no longer be cancelled.",
     "failed": "It could not be cancelled. Try again."
+  },
+  "tray": {
+    "label": "Your analyses",
+    "show": "Analyses",
+    "hide": "Hide",
+    "titleCount_one": "{{count}} in progress",
+    "titleCount_other": "{{count}} in progress",
+    "empty": "Nothing in progress.",
+    "gone": "No longer available",
+    "dismiss": "Remove {{name}} from the tray",
+    "clearFinished": "Clear finished",
+    "inbox": "Notices",
+    "noNotices": "No notices yet.",
+    "clearInbox": "Clear",
+    "sound": "Sound",
+    "notify": "Notifications",
+    "notifyBlocked": "The browser blocks notifications for this site.",
+    "notifyTitle": "Overtone: a song is finished",
+    "notice": {
+      "done": "{{name}} has a timing.",
+      "refused": "{{name}} was refused.",
+      "failed": "{{name}} failed.",
+      "batch": "Batch finished: {{done}} of {{total}} songs have a timing."
+    },
+    "showCount_one": "Your analyses, {{count}} in progress",
+    "showCount_other": "Your analyses, {{count}} in progress"
+  },
+  "legal": {
+    "footer": {
+      "title": "Legal",
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "disclaimer": "Disclaimer",
+      "credits": "Credits",
+      "status": "Status"
+    },
+    "draft": "Draft: written for the owner's review and not yet in force. Text in an amber box is still to be filled in.",
+    "updated": "Last updated {{date}}",
+    "date": "27 October 2026",
+    "toBeSet": "To be set",
+    "resultLink": "What “check by ear” means",
+    "terms": {
+      "title": "Terms of use",
+      "description": "The terms for using the Overtone website: who runs it, what you may upload, and what it does not promise.",
+      "intro": "These terms cover the Overtone website and its API. By using the site you accept them; if you do not, please do not use it.",
+      "sections": [
+        {
+          "h": "Who runs Overtone",
+          "p": [
+            "Overtone is part of Mides Projects and was founded by githalt. It is a tool for timing osu! beatmaps: it listens to a song and proposes its BPM, its offset and its red lines.",
+            "The operator responsible for the site is [[the operator's legal name and address]]."
+          ]
+        },
+        {
+          "h": "Not affiliated with osu!",
+          "p": [
+            "Overtone is an independent project. It is not affiliated with, endorsed by or connected to osu! or ppy Pty Ltd. “osu!” is a trademark of ppy Pty Ltd, named here only to say what the tool is for."
+          ]
+        },
+        {
+          "h": "Open source",
+          "p": [
+            "Overtone's source code is public at github.com/Mides-Projects/Overtone under the MIT License. That licence covers the code. These terms cover the use of this website, a service run with that code. The software Overtone builds on keeps its own licences, listed on the Credits page."
+          ],
+          "links": [
+            {
+              "label": "Credits",
+              "to": "/credits"
+            }
+          ]
+        },
+        {
+          "h": "Your account",
+          "p": [
+            "You can analyse songs without an account. Signing in uses your Mides Projects account (through Discord or Google), which has its own terms. Overtone keeps only the public profile fields it needs, listed on the Privacy page."
+          ],
+          "links": [
+            {
+              "label": "Privacy",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "h": "What you upload",
+          "p": [
+            "Only upload audio you have the right to use this way: your own music, music you hold a licence for, or music whose rights holders allow it. You are responsible for what you upload and for having those rights. Uploading gives Mides Projects no rights over the audio, and Overtone asks for none.",
+            "The audio is used only to compute the timing, and it is deleted from the server once the analysis ends, is cancelled or is removed. It is never published or served to anyone. What remains is the result and the details listed on the Privacy page.",
+            "Unless you mark an upload private, its song name (from the file's tags, or its file name) and, if you were signed in, your Mides username are shown in the public queue while it waits and among the recent results."
+          ]
+        },
+        {
+          "h": "Acceptable use",
+          "li": [
+            "Do not upload audio you have no right to use, or files that are not audio.",
+            "Do not abuse the queue: no automated mass uploads, and no attempts to get around the daily limits, the rate limits or the queue's order.",
+            "Do not try to open other people's analyses, to break into the service or to disrupt it.",
+            "Do not put offensive or personal information in file names or tags: they can appear in the public queue."
+          ],
+          "after": [
+            "Moderators may remove uploads from the queue, and access may be limited or refused, when these rules are broken."
+          ]
+        },
+        {
+          "h": "No warranty",
+          "p": [
+            "The site and its results are provided “as is” and “as available”, without any warranty, to the extent the law allows. A timing is an automatic estimate: it can be wrong and has to be checked by ear before it is used. The service can be slow or unavailable, and it can change or stop at any time. A beatmap you submit for ranking remains your responsibility."
+          ],
+          "links": [
+            {
+              "label": "Disclaimer",
+              "to": "/disclaimer"
+            }
+          ]
+        },
+        {
+          "h": "Limits of liability",
+          "p": [
+            "To the extent the law allows, Mides Projects, githalt and Overtone's contributors are not liable for any damage arising from the use of the site or its results, including lost work, lost data or a rejected beatmap. Nothing in these terms limits a liability that the law does not allow to be limited."
+          ]
+        },
+        {
+          "h": "Changes to these terms",
+          "p": [
+            "These terms may change, for example when new features arrive. The date at the top says when they last changed, and substantial changes will be announced on the site. Using the site after a change means accepting the new terms."
+          ]
+        },
+        {
+          "h": "Law and contact",
+          "p": [
+            "These terms are governed by the laws of [[the jurisdiction]].",
+            "Questions about these terms: [[a contact address]]."
+          ]
+        }
+      ]
+    },
+    "disclaimer": {
+      "title": "Disclaimer",
+      "description": "Overtone's timing is reliable and repeatable, but not 100 % precise: a strong first draft to check by ear.",
+      "intro": "Overtone's analysis is reliable and repeatable, but it is not 100 % precise. Treat every timing as a strong first draft, and check it by ear before you use it.",
+      "sections": [
+        {
+          "h": "Repeatable, not perfect",
+          "p": [
+            "The same audio through the same engine gives the same result every time. On the project's synthetic benchmark, where the exact answer is known, all 24 sections land within 0.05 BPM and 5 ms. Real songs are harder: live playing, tempo changes, quiet intros and swing can move a red line, or halve or double a BPM.",
+            "The project publishes its measurements as they are, without rounding them up. They describe the engine on its test songs, not on yours."
+          ]
+        },
+        {
+          "h": "What the confidence means",
+          "p": [
+            "Each section shows a level: high, medium, or check by ear. It is a reading of the engine's own confidence and of how well the beats fit the grid, not a measured accuracy. A high level says the evidence was consistent, not that the line is guaranteed to be right."
+          ]
+        },
+        {
+          "h": "How to check a timing",
+          "li": [
+            "Play the song with the click track on the result page, and listen to each section: the start, and around every red line.",
+            "Start with the sections marked “check by ear”.",
+            "Fix anything that sounds off in the osu! editor before you map on it."
+          ]
+        },
+        {
+          "h": "Your beatmap, your responsibility",
+          "p": [
+            "Overtone gives no warranty on its results. A beatmap's timing, and whether the beatmap is ranked, remain the mapper's responsibility. Overtone is not affiliated with osu! or ppy Pty Ltd."
+          ],
+          "links": [
+            {
+              "label": "Terms",
+              "to": "/terms"
+            }
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacy",
+      "description": "What the Overtone website stores, why and for how long, read from its code. The audio is never kept.",
+      "intro": "This page lists what the Overtone website stores, why, and for how long, as its source code does it. There is no tracking, no advertising and no analytics.",
+      "sections": [
+        {
+          "h": "The audio is not kept",
+          "p": [
+            "The file you upload waits on the server's disk under a random id until it is analysed, and is deleted when the analysis ends, fails, is cancelled or is removed by a moderator. If the same audio was analysed before, it is deleted at once and the stored result is reused. It is never served back to you or to anyone else, and never published.",
+            "Your browser keeps its own copy in the open tab only, to play it on the result page. It is not saved, and it is not sent again."
+          ]
+        },
+        {
+          "h": "What is stored for each analysis",
+          "li": [
+            "The audio's SHA-1 fingerprint, its length and its size in bytes. The fingerprint recognises the same audio again; it cannot be turned back into sound.",
+            "The file name (up to 200 characters), and the title and artist your browser read from the file's tags, if it had any.",
+            "Whether you marked it private.",
+            "The result: the tempo, the offset, the red lines, the beats, the attacks the grid was fitted to and the engine's confidence, with the version of the engine that made it.",
+            "Its status and its times: when it was queued and when it finished.",
+            "Whose it is: your account if you were signed in; otherwise the hash of your anonymous cookie (below), never the cookie itself.",
+            "A keyed hash (HMAC) of your IP address and the day, for the daily limits. The address itself is not stored. It is not anonymous, though: whoever holds the server's secret key could check whether a given address uploaded on a given day."
+          ]
+        },
+        {
+          "h": "Your account",
+          "p": [
+            "If you sign in, Overtone keeps your Mides user id, username and display name, the addresses of your profile picture and banner, your Discord id if your Mides account has one, and your Mides role (to know who moderates). It keeps no e-mail, no phone number and no Mides password or token. These fields are refreshed at every sign-in.",
+            "Signing in happens on midesprojects.com, under Mides Projects' own privacy terms."
+          ]
+        },
+        {
+          "h": "Other records",
+          "li": [
+            "Rate limits: per address, a keyed hash and a counter, deleted about a minute after their window ends.",
+            "Moderation: when a moderator removes an upload from the queue or puts it back, the moderator's username, the action, the analysis and the reason are recorded."
+          ]
+        },
+        {
+          "h": "How long",
+          "li": [
+            "The audio: until its analysis ends, usually minutes.",
+            "An upload cancelled while it waits: deleted at once, record and audio.",
+            "Rate-limit counters: about a minute after their window.",
+            "The session cookie: 30 days (the server's default). Signing out ends every session of your account.",
+            "Analyses, results, account records and the moderation log: no automatic expiry is set yet. [[how long these are kept]]"
+          ]
+        },
+        {
+          "h": "Cookies",
+          "p": [
+            "Only the cookies the site needs to work. All of them are first-party, HttpOnly (no script can read them) and SameSite=Lax. There are no third-party cookies, which is why there is no cookie banner. On the live site their names carry the __Host- prefix."
+          ],
+          "li": [
+            "overtone_session: your signed-in session (your account id, its expiry and a version that signing out changes), for 30 days.",
+            "overtone_anon: a random id that lets this browser open the analyses it started without an account, for a year. The server keeps only its hash.",
+            "overtone_sso: set for ten minutes while you sign in, so that nobody can sign you into another account."
+          ]
+        },
+        {
+          "h": "Kept in your browser",
+          "p": [
+            "These stay in your browser's local storage and are never sent to the server:"
+          ],
+          "li": [
+            "mides.theme and mides.lang: light or dark, English or Spanish.",
+            "overtone.player.volumes: the song and click-track volumes.",
+            "overtone.recentAnalyses: the ids and file names of the last 10 analyses this browser started, to find them again.",
+            "overtone.sso: where to come back to after signing in, removed when you return."
+          ],
+          "after": [
+            "Clearing this site's data in your browser removes all of them. A browser notification is used only when you ask for one at the end of a batch."
+          ]
+        },
+        {
+          "h": "No tracking",
+          "p": [
+            "No analytics, no telemetry, no advertising, and no third-party scripts or fonts. Besides this site, your browser only contacts midesprojects.com: to sign in, and to show profile pictures.",
+            "The site's hosting and network providers may keep their own technical logs, such as IP addresses: [[which providers, and what they keep]]."
+          ]
+        },
+        {
+          "h": "Deletion and questions",
+          "p": [
+            "To have your analyses or your account record deleted, or to ask anything about this page, write to [[a contact address]]. Name the analyses (their links) or your Mides username.",
+            "A song that is still waiting in the queue can be cancelled from its page, which deletes it at once."
+          ]
+        }
+      ]
+    }
+  },
+  "credits": {
+    "title": "Credits",
+    "description": "Who makes Overtone, and the open-source software and model it is built on, each with its licence.",
+    "intro": "Overtone stands on other people's open-source work. The lists below are generated from the installed packages' own metadata (site/web/scripts/credits.mjs), not typed by hand.",
+    "team": "Team",
+    "founder": "Founder",
+    "projectOf": "A Mides Projects project",
+    "contributors": "Contributors",
+    "contributorsBody": "Everyone who has contributed to the code is listed on GitHub.",
+    "overtone": "Overtone",
+    "overtoneBody": "Overtone itself is open source under the {{licence}} License, copyright {{year}} {{holder}}.",
+    "model": "The beat model",
+    "modelBody": "{{what}}, licence {{licence}}, copyright {{year}} {{holder}}. Overtone runs its checkpoint {{checkpoint}} to vote on the beats.",
+    "engine": "The analysis engine (Python)",
+    "engineBody": "The packages the engine pins in python/requirements.lock, at those versions.",
+    "site": "The website (npm)",
+    "siteBody": "The web's and the API's dependencies, and every package the ones that run pull in. Build tools are listed without their own dependencies, which do not ship.",
+    "web": "Web, in the browser",
+    "webBuild": "Web, build tools",
+    "api": "API, on the server",
+    "package": "Package",
+    "version": "Version",
+    "licence": "Licence",
+    "direct": "direct",
+    "fonts": "Fonts",
+    "noFonts": "None downloaded: the site uses the fonts already on your device (Segoe UI, Bahnschrift, Cascadia Mono or their system equivalents).",
+    "count_one": "{{count}} package",
+    "count_other": "{{count}} packages"
+  },
+  "status": {
+    "title": "Service status",
+    "description": "Whether the Overtone API, its database and the analysis worker are up right now.",
+    "intro": "What the site's own health check says right now. It asks again every 30 seconds while this page is open, and less often while the service does not answer.",
+    "api": "API",
+    "database": "Database",
+    "worker": "Analysis worker",
+    "states": {
+      "ok": "Working",
+      "down": "Not answering",
+      "none": "In memory (development)",
+      "unknown": "Not seen yet",
+      "unreachable": "Unreachable"
+    },
+    "notes": {
+      "api": "Answers the site's requests.",
+      "database": "Keeps the queue, the results and the accounts.",
+      "worker": "Runs the analyses. While it is down, uploads wait in the queue.",
+      "workerSeen": "Last heard from {{seconds}} s ago.",
+      "workerUnknown": "No worker has called since the API last started.",
+      "unreachable": "The API did not answer, so the rest cannot be checked."
+    },
+    "checked": "Checked at {{time}}",
+    "retry": "Check now",
+    "checking": "Checking…"
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "body": "This page hit an error and stopped. Reloading usually fixes it; your uploads and results on the server are not affected.",
+    "reload": "Reload the page",
+    "home": "Go to the home page"
+  },
+  "check": {
+    "title": "Check here",
+    "note": "Sorted by time. Listen to these first.",
+    "empty": "Nothing flagged: every section is graded high, its attacks sit close to the grid, and the engine found no half- or double-time or swing. Still give it a listen before you rank.",
+    "show": "Show",
+    "play": "Loop this span with the clicks",
+    "how": "Show marks the span on the map; ⟲ loops it with the clicks. Each item is evidence the engine already reported, not a new reading.",
+    "needsAudio": "Show marks the span on the map. Pick the song above to loop it with the clicks.",
+    "line": "red line {{n}}",
+    "lines": "red lines {{from}}–{{to}}",
+    "drift": "p90 drift {{ms}} ms",
+    "pulse": "half or double time?",
+    "triplets": "triplets",
+    "reason": {
+      "check": "Check",
+      "medium": "Medium",
+      "drift": "Drift",
+      "hint": "Pulse",
+      "swing": "Swing"
+    },
+    "why": {
+      "check": "The engine is not sure of this section: low confidence, a loose fit, or a warning.",
+      "medium": "Medium confidence: probably right, worth a listen.",
+      "drift": "One attack in ten sits more than {{ms}} ms from this grid.",
+      "hint": "The onsets thin out to every other beat here: possible half- or double-time.",
+      "swing": "The off-beat eighth lands late here: swing."
+    }
+  },
+  "exports": {
+    "more": "More downloads",
+    "patchTitle": "Put the timing in your .osu",
+    "patchPick": "Pick your .osu…",
+    "patchNote": "Its red lines are replaced with these (as you have adjusted them); green lines, hit objects and every other line stay as they were, byte for byte. It is patched here: the file is not uploaded. Keep your original until you have checked the new one in osu!.",
+    "patched": "Downloaded with {{added}} red lines in place of {{removed}}; {{kept}} green lines kept as they were.",
+    "greensBefore_one": "{{count}} green line now sits before the first red line. It is kept: osu! reads it against the first red line.",
+    "greensBefore_other": "{{count}} green lines now sit before the first red line. They are kept: osu! reads them against the first red line.",
+    "carried_one": "{{count}} green line was added where a removed red line set the hitsounds, kiai or slider velocity, so the map sounds and slides as before.",
+    "carried_other": "{{count}} green lines were added where removed red lines set the hitsounds, kiai or slider velocity, so the map sounds and slides as before.",
+    "objects_one": "{{count}} hit object was not moved: it may no longer sit on the new grid. Check it in the editor.",
+    "objects_other": "{{count}} hit objects were not moved: they may no longer sit on the new grid. Check them in the editor.",
+    "patchError": {
+      "notOsu": "That is not an osu! beatmap (.osu): its first line is not \"osu file format\".",
+      "noTimingPoints": "That .osu has no [TimingPoints] section to put the red lines in.",
+      "noLines": "There are no red lines to put in.",
+      "tooBig": "That file is too big to be an .osu.",
+      "failed": "The .osu could not be read."
+    },
+    "clickTitle": "Click track (WAV)",
+    "clicksOnly": "Clicks only",
+    "clicksMix": "Clicks over the song",
+    "rendering": "Rendering…",
+    "clickNote": "The clicks you hear, the bar's first beat accented, at the song's length (up to {{minutes}} minutes). Over the song, at your volumes. Rendered here; nothing is uploaded.",
+    "clickNeedsAudio": "The clicks you hear, the bar's first beat accented, at the song's length (up to {{minutes}} minutes). Pick the song above to mix them over it.",
+    "clickCapped": "The song is longer than {{minutes}} minutes: the track stops there.",
+    "clickFailed": "The click track could not be rendered in this browser.",
+    "filesTitle": "Files",
+    "json": "Result (JSON)",
+    "summary": "Summary (TXT)",
+    "filesNote": "The CSV and the summary follow your adjustments; the JSON is the engine's result as the server sent it."
+  },
+  "community": {
+    "nav": "Community",
+    "title": "Community",
+    "subtitle": "Suggest what Overtone should do next, say what you think of it, and see what changed.",
+    "tabs": {
+      "suggestions": "Suggestions",
+      "reviews": "Reviews",
+      "changelog": "Changelog"
+    },
+    "more_one": "Show {{count}} more",
+    "more_other": "Show {{count}} more",
+    "cancel": "Cancel",
+    "yours": "Yours",
+    "loading": "Loading…",
+    "deletedAccount": "a deleted account",
+    "states": {
+      "open": "Open",
+      "review": "Under review",
+      "planned": "Planned",
+      "progress": "In progress",
+      "done": "Done",
+      "rejected": "Rejected"
+    },
+    "errors": {
+      "failed": "That did not work. Try again.",
+      "load": "This could not be loaded. Try again in a moment.",
+      "NETWORK": "The server could not be reached.",
+      "TOO_SHORT": "That is too short.",
+      "TOO_LONG": "That is too long.",
+      "REASON_REQUIRED": "This needs a reason.",
+      "STAFF_ONLY": "Only staff can do this.",
+      "SIGN_IN_REQUIRED": "Sign in first.",
+      "RATE_LIMITED": "Too many at once. Wait a few minutes.",
+      "REVIEW_LIMIT": "Without an account you can leave two reviews a day. Sign in to leave one you can edit.",
+      "FORM_TOO_FAST": "The form expired or was sent too fast. Reload the page and try again.",
+      "NOT_ACCEPTED": "This review was not accepted.",
+      "BAD_STARS": "Pick from 1 to 5 stars.",
+      "SAME_STATE": "It is already in that state.",
+      "NO_CHANGE": "Nothing to change.",
+      "NOT_FOUND": "It is not there any more."
+    },
+    "suggestions": {
+      "signInToPost": "Sign in with Mides to post a suggestion or vote.",
+      "signInToVote": "Sign in to vote",
+      "sortBy": "Sort",
+      "sort": {
+        "votes": "Most voted",
+        "new": "Newest"
+      },
+      "filter": "State",
+      "allStates": "All",
+      "empty": "No suggestions here yet.",
+      "new": "Suggest something",
+      "title": "Title",
+      "body": "What and why",
+      "post": "Post suggestion",
+      "voteLabel_one": "{{count}} vote. Vote for this",
+      "voteLabel_other": "{{count}} votes. Vote for this",
+      "staffSaid": "Staff:",
+      "details": "History",
+      "less": "Less",
+      "noHistory": "No state changes yet."
+    },
+    "reviews": {
+      "empty": "No reviews yet. Be the first.",
+      "starsLabel_one": "{{count}} star out of 5",
+      "starsLabel_other": "{{count}} stars out of 5",
+      "starsLegend": "Stars",
+      "count_one": "{{count}} review",
+      "count_other": "{{count}} reviews",
+      "weighting_one": "Anonymous reviews count half in the average ({{count}} so far).",
+      "weighting_other": "Anonymous reviews count half in the average ({{count}} so far).",
+      "formTitle": "Leave a review",
+      "editTitle": "Your review",
+      "yoursHidden": "A moderator hid your review. Only you and staff can see it.",
+      "body": "Your words",
+      "pickStars": "Pick from 1 to 5 stars.",
+      "anonymousNote": "Without an account the review is anonymous, counts half in the average, and cannot be edited later.",
+      "post": "Post review",
+      "update": "Update review",
+      "delete": "Delete",
+      "deleteConfirm": "Delete your review?",
+      "thanks": "Thanks. Your review is up.",
+      "anonymous": "Anonymous",
+      "edited": "edited"
+    },
+    "moderation": {
+      "report": "Report",
+      "reported": "Reported",
+      "reportPrompt": "What is wrong with it? Staff will read this.",
+      "hide": "Hide",
+      "unhide": "Unhide",
+      "hidePrompt": "Hide it from everyone but staff. Reason for the log (required):",
+      "unhidePrompt": "Show it again. Reason for the log (optional):",
+      "statePrompt": "Reason, shown on the suggestion (optional):",
+      "rejectPrompt": "Why is it rejected? Shown on the suggestion (required):",
+      "moveTo": "Move to…",
+      "hiddenChip": "Hidden",
+      "hiddenBecause": "Hidden: {{reason}}",
+      "reports_one": "{{count}} open report",
+      "reports_other": "{{count}} open reports",
+      "staffTitle": "Staff: reports and log",
+      "openReports": "Open reports",
+      "noReports": "No open reports.",
+      "logTitle": "Moderation log",
+      "logEmpty": "Nothing moderated yet.",
+      "kind": {
+        "suggestion": "suggestion",
+        "review": "review"
+      },
+      "did": {
+        "state": "@{{moderator}} moved it from {{from}} to {{to}}",
+        "hide": "@{{moderator}} hid a {{kind}}",
+        "unhide": "@{{moderator}} showed a {{kind}} again"
+      }
+    },
+    "changelog": {
+      "source": "From the project's engineering log (docs/timeline.md): the latest entries and what each one changed.",
+      "empty": "No entries.",
+      "unreleased": "Unreleased"
+    }
+  },
+  "timings": {
+    "nav": {
+      "recent": "Recent",
+      "history": "History"
+    },
+    "untitled": "Untitled",
+    "unknownArtist": "Unknown artist",
+    "variable": "Variable",
+    "redLines_one": "{{count}} red line",
+    "redLines_other": "{{count}} red lines",
+    "anonymous": "anonymous",
+    "timedBy": "timed by {{name}}",
+    "timedAnonymously": "timed anonymously",
+    "loadFailed": "The list could not be read. Try again in a moment.",
+    "more": "Show more",
+    "publish": {
+      "title": "Share",
+      "note": "Only you can open this result. Publish it to give it a public page and put it on the recent list; you can take it back at any time.",
+      "isPublic": "Public at",
+      "privateWarning": "This upload is private. Publishing it makes it public: its song and your name will show.",
+      "publish": "Publish",
+      "busy": "Publishing…",
+      "makePublic": "Make it public and publish",
+      "keepPrivate": "Keep it private",
+      "unpublish": "Unpublish",
+      "copyLink": "Copy link",
+      "copied": "Link copied",
+      "failed": "That did not work. Try again in a moment."
+    },
+    "page": {
+      "eyebrow": "Published timing",
+      "published": "published {{date}}",
+      "yourOwn": "Time your own song",
+      "notFoundTitle": "Timing not found",
+      "notFound": "This timing does not exist, or whoever published it took it back.",
+      "toRecent": "See recent timings"
+    },
+    "audio": {
+      "none": "Pick your own copy of this song to hear it with the clicks, see its waveform and build the .osz.",
+      "mismatch": "{{name}} is not the audio this timing was made from: its fingerprint differs. Pick the same release of the song.",
+      "privacy": "Your file is read here, on your device. Only its SHA-1 goes to the server, which answers whether it matches; the file itself is never uploaded."
+    },
+    "recent": {
+      "title": "Recent timings",
+      "subtitle": "Songs people timed and chose to publish, newest first. Each one opens its tempo map, red lines and exports.",
+      "empty": "Nobody has published a timing yet.",
+      "noMatch": "No published timing matches these filters.",
+      "analyze": "Time a song"
+    },
+    "home": {
+      "title": "Recently published",
+      "all": "All recent timings"
+    },
+    "filters": {
+      "search": "Title or artist",
+      "searchPlaceholder": "Search…",
+      "tempo": "Tempo",
+      "any": "Any",
+      "single": "Single tempo",
+      "variable": "Variable tempo",
+      "bpm": "BPM",
+      "bpmMin": "Lowest BPM",
+      "bpmMax": "Highest BPM",
+      "from": "from",
+      "to": "to",
+      "status": "Status",
+      "dates": "Analysed between",
+      "fromDate": "First day",
+      "toDate": "Last day",
+      "clear": "Clear filters"
+    },
+    "history": {
+      "title": "History",
+      "subtitle": "Everything you analysed with this account. Publish, unpublish or delete each one here.",
+      "anonymousSubtitle": "Without an account, only this browser remembers your latest analyses.",
+      "signInPrompt": "Sign in to keep every analysis in one place, find it again from any device, and publish it under your name.",
+      "browserEmpty": "This browser has no analyses yet.",
+      "forget": "Forget",
+      "empty": "You have not analysed anything with this account yet.",
+      "noMatch": "None of your analyses matches these filters.",
+      "public": "Public",
+      "openPublic": "Open public page",
+      "delete": "Delete",
+      "deleteConfirm": "Delete it for good?",
+      "deleteYes": "Delete",
+      "deleteNo": "Cancel",
+      "deleteNote": "Deleting an analysis erases its result and takes down its public page at once. A song still waiting can be cancelled from its own page; one being analysed can be deleted once it ends.",
+      "failed": "That did not work. Try again in a moment.",
+      "all": "History"
+    }
   }
 }

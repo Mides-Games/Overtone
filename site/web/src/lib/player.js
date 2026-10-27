@@ -19,7 +19,26 @@ const LOOKAHEAD_S = 0.15
 const TICK_MS = 25
 const LEAD_S = 0.06
 /** The desktop app's and the WAV export's tones: [Hz, gain] for 2 a bar's first beat, 1 a beat. */
-const TONES = { 2: [2093, 1], 1: [1568, 0.7], 0: [1318.5, 0.4] }
+export const TONES = { 2: [2093, 1], 1: [1568, 0.7], 0: [1318.5, 0.4] }
+
+/**
+ * One click on `ctx` at `when` (context seconds) into `destination`: a sine at
+ * the level's tone, an 8 ms exponential decay, 45 ms long. The player and the
+ * click-track WAV (lib/click-track.js) both call this, so what is downloaded
+ * is what was heard.
+ */
+export function scheduleClick(ctx, destination, when, level) {
+  const osc = ctx.createOscillator()
+  const env = ctx.createGain()
+  const [freq, gain] = TONES[level] ?? TONES[1]
+  osc.frequency.value = freq
+  env.gain.setValueAtTime(gain, when)
+  env.gain.setTargetAtTime(0.0001, when, 0.008)
+  osc.connect(env)
+  env.connect(destination)
+  osc.start(when)
+  osc.stop(when + 0.045)
+}
 
 let shared = null
 /**
@@ -212,17 +231,7 @@ export class Player {
   }
 
   #click(when, level) {
-    const ctx = audioContext()
-    const osc = ctx.createOscillator()
-    const env = ctx.createGain()
-    const [freq, gain] = TONES[level] ?? TONES[1]
-    osc.frequency.value = freq
-    env.gain.setValueAtTime(gain, when)
-    env.gain.setTargetAtTime(0.0001, when, 0.008)
-    osc.connect(env)
-    env.connect(this.clickBus)
-    osc.start(when)
-    osc.stop(when + 0.045)
+    scheduleClick(audioContext(), this.clickBus, when, level)
   }
 
   #tick = () => {

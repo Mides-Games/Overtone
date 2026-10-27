@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
 import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
-import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
+import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.js'
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
 import { batchFiles } from '../lib/timing.js'
@@ -29,13 +30,16 @@ const MAX_FILES = 50
 const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'CACHE_LIMIT', 'NETWORK', 'RATE_LIMITED']
 const OUTPUTS = [
   { key: 'osz', ready: true },
+  { key: 'osuPatch', ready: true },
   { key: 'timingPoints', ready: true },
+  { key: 'click', ready: true },
   { key: 'csv', ready: true },
-  { key: 'click', ready: false },
 ]
 
 export default function Analyze() {
   const { t } = useTranslation()
+  // The page's own title; the tray counts what is in flight in front of it (W3.23).
+  usePageMeta(t('analyze.title'), t('analyze.subtitle'))
   const { account } = useAuth()
   const navigate = useNavigate()
   const [limits, setLimits] = useState(null)
@@ -44,8 +48,7 @@ export default function Analyze() {
   const [dragging, setDragging] = useState(false)
   const [state, setState] = useState({ kind: 'idle' })
   const [recent] = useState(recentAnalyses)
-  const [notify, setNotify] = useState(false)
-  const wasComplete = useRef(false)
+  const { live, settings } = useTracker()
 
   useEffect(() => {
     api('/health')
@@ -99,6 +102,19 @@ export default function Analyze() {
     }
 
     setState({ kind: 'sending' })
+    // W3.22: every song sent is followed by the tray, on whichever page the
+    // person goes to next. Two or more sent together are one batch, which
+    // counts the ones not uploaded yet until this loop ends.
+    const batch = waiting.length > 1 ? `b${Date.now().toString(36)}` : null
+    if (batch) tracker.beginBatch(batch, waiting.length)
+    try {
+      await sendAll(waiting, alone, batch)
+    } finally {
+      if (batch) tracker.endBatch(batch)
+    }
+  }
+
+  async function sendAll(waiting, alone, batch) {
     for (const item of waiting) {
       const problem = problemWith(item)
       if (problem) {
@@ -113,6 +129,7 @@ export default function Analyze() {
           (await lookupAudio(item.file, options)) ??
           (await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), options))
         rememberAnalysis(created.id, item.file.name)
+        tracker.track(created.id, item.file.name, { batch, status: created.status })
         // The result page plays this same file from the browser; the server never serves it back.
         holdAudio(created.id, item.file)
         if (alone) return navigate(`/analyze/${created.id}`)
@@ -127,48 +144,18 @@ export default function Analyze() {
     setState({ kind: 'idle' })
   }
 
-  // W3.14: a batch counts itself in the tab's title, and says when it is over
-  // with a browser notification if the person asked for one. Nothing leaves
-  // the browser: the statuses are the ones the cards already poll.
-  // A file still uploading, or waiting its turn to upload, belongs to the
-  // batch too: without it, two cached songs answered at once would end a
-  // batch of five.
-  const batch = items.filter(
-    (item) => item.upload.kind === 'sent' || item.upload.kind === 'sending' || (state.kind === 'sending' && item.upload.kind === 'ready'),
-  )
-  const progress = batchProgress(batch.map((item) => (item.upload.kind === 'sent' ? (item.status ?? 'queued') : 'sending')))
-  const [baseTitle] = useState(() => document.title)
-  useEffect(() => {
-    document.title = batchTitle(progress, t('analyze.batch.title', { finished: progress.finished, total: progress.total }), baseTitle)
-  }, [progress.finished, progress.total, baseTitle, t])
-  useEffect(() => () => {
-    document.title = baseTitle
-  }, [baseTitle])
-  useEffect(() => {
-    const permission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
-    if (shouldNotify({ wasComplete: wasComplete.current, progress, wanted: notify, permission })) {
-      try {
-        new Notification(t('analyze.batch.notifyTitle'), {
-          body: t('analyze.batch.notifyBody', { done: progress.done, total: progress.total }),
-          tag: 'overtone-batch',
-        })
-      } catch {
-        // Some browsers (Android Chrome) only notify from a service worker: the title still says it.
-      }
-    }
-    wasComplete.current = progress.complete
-  }, [progress.complete, progress.done, progress.total, notify, t])
-
-  async function askToNotify(wanted) {
-    if (!wanted || typeof Notification === 'undefined') return setNotify(false)
-    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
-    setNotify(permission === 'granted')
-  }
+  // W3.14's title count and batch notification are the tray's now (W3.23), for
+  // every page: this checkbox is the same setting as the tray's switch.
   const canNotify = typeof Notification !== 'undefined' && Notification.permission !== 'denied'
 
-  // W3.15: every timing of the batch in one ZIP, from the results the cards
-  // already hold. Built here, so the server sends nothing new.
-  const timings = batchFiles(items)
+  // W3.15: every timing of the batch in one ZIP, from the readings the cards
+  // already hold (the tracker's). Built here, so the server sends nothing new.
+  const timings = batchFiles(
+    items.map((item) => {
+      const data = item.upload.kind === 'sent' ? live[item.upload.id]?.data : null
+      return { ...item, status: data?.status, result: data?.result ?? null }
+    }),
+  )
   function downloadAll() {
     const url = URL.createObjectURL(new Blob([zipStore(timings)], { type: 'application/zip' }))
     const link = document.createElement('a')
@@ -250,7 +237,6 @@ export default function Analyze() {
                   <FileCard
                     key={item.key}
                     item={item}
-                    onAnalysis={(analysis) => update(item.key, { status: analysis.status, result: analysis.result ?? null })}
                     problem={item.upload.kind === 'ready' ? problemWith(item) : null}
                     onRemove={sending ? null : () => setItems((list) => list.filter((other) => other.key !== item.key))}
                   />
@@ -274,7 +260,7 @@ export default function Analyze() {
 
             {items.length > 1 && canNotify && (
               <label className="flex cursor-pointer items-center gap-3 px-1 text-label">
-                <input type="checkbox" checked={notify} onChange={(e) => askToNotify(e.target.checked)} className="accent-[var(--accent)]" />
+                <input type="checkbox" checked={settings.notify} onChange={(e) => askToNotify(e.target.checked)} className="accent-[var(--accent)]" />
                 {t('analyze.batch.notify')}
               </label>
             )}
@@ -294,7 +280,12 @@ export default function Analyze() {
 
           {recent.length > 0 && (
             <section className="space-y-3">
-              <h2 className="label">{t('analyze.recentTitle')}</h2>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="label">{t('analyze.recentTitle')}</h2>
+                <Link to="/history" className="text-caption text-accent hover:underline">
+                  {t('timings.history.all')} →
+                </Link>
+              </div>
               <ul className="divide-y divide-line rounded-panel border border-line">
                 {recent.map((item) => (
                   <li key={item.id}>
@@ -383,34 +374,15 @@ export function messageFor(t, error, limits) {
 
 const extensionOf = (file) => file.name.split('.').pop()?.toLowerCase()
 
-/** One file of the list: its name and size, then its upload, then its analysis, polled. */
-function FileCard({ item, problem, onRemove, onAnalysis }) {
+/**
+ * One file of the list: its name and size, then its upload, then its
+ * analysis, read from the tracker (lib/tracking.js) that the tray reads too.
+ */
+function FileCard({ item, problem, onRemove }) {
   const { t } = useTranslation()
   const { file, seconds, upload } = item
-  const [analysis, setAnalysis] = useState(null)
-  const [cancelled, setCancelled] = useState(false)
-
-  useEffect(() => {
-    if (upload.kind !== 'sent' || cancelled) return undefined
-    let timer
-    let stopped = false
-    async function poll() {
-      try {
-        const next = await api(`/analyses/${upload.id}`)
-        if (stopped) return
-        setAnalysis(next)
-        onAnalysis?.(next)
-        if (next.status === 'queued' || next.status === 'running') timer = setTimeout(poll, 3000)
-      } catch {
-        if (!stopped) timer = setTimeout(poll, 6000)
-      }
-    }
-    poll()
-    return () => {
-      stopped = true
-      clearTimeout(timer)
-    }
-  }, [upload.kind, upload.id, cancelled])
+  const analysis = useAnalysis(upload.kind === 'sent' ? upload.id : null)?.data ?? null
+  const cancelled = analysis?.status === 'cancelled'
 
   const percent =
     cancelled
@@ -465,7 +437,7 @@ function FileCard({ item, problem, onRemove, onAnalysis }) {
         <p className="text-caption text-dim" aria-live="polite">
           {status}
         </p>
-        {!cancelled && analysis?.status === 'queued' && <CancelButton id={upload.id} onCancelled={() => setCancelled(true)} />}
+        {analysis?.status === 'queued' && <CancelButton id={upload.id} />}
       </div>
       {percent !== null && (
         <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>

@@ -558,6 +558,19 @@ APIs detrás del proxy comparten la cuenta; sin base sigue en memoria. La clave 
 HMAC de la dirección, nunca la dirección. Probado con dos procesos contra PostgreSQL
 (PGlite): diez subidas pasaron alternando entre los dos y la undécima recibió 429 en
 cualquiera de ellos.
+**W3.22 hecha el 2026-10-27** en la rama `feature/site-tray`: una bandeja en todas las
+páginas con cada canción propia en curso (nombre, estado, posición, etapa y %, enlace al
+resultado, cancelar mientras espera). El seguimiento pasó a un solo store
+(`site/web/src/lib/tracker.js`) que leen la página de subida, la del resultado y la
+bandeja, así que cada id se consulta una vez; se frena con la antigüedad, la posición,
+la cantidad en curso, los errores y la pestaña oculta. Los ids viven en
+`sessionStorage` y una recarga la reconstruye. En el celular el botón va en la barra de
+arriba y el panel se abre como hoja inferior solo si se pide.
+**W3.23 hecha en parte el 2026-10-27** en la misma rama: notificación del navegador por
+canción y por lote (opt-in, solo con la pestaña sin foco), sonido opcional hecho con Web
+Audio (apagado por defecto), contador en el título en cualquier página y bandeja de
+avisos que la persona limpia; las dos opciones quedan en `localStorage`. Falta el aviso
+por DM de Discord, que espera al bot (W9.4).
 **W3.14 hecha el 2026-10-27** en la rama `feature/batch-notice`: mientras corre un
 lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso para
 una notificación del navegador que sale una sola vez, al terminar la última. Usa
@@ -575,6 +588,43 @@ debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, a
 en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
 nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
 
+**W3.20 hecha en parte el 2026-10-27** en la rama `feature/site-exports`. Hechos: el
+`.osz` (ya estaba), el `.osu` propio parcheado en el navegador (`lib/osu-patch.js`: se
+reemplazan las red lines, las green lines se mantienen byte a byte, incluso las que
+quedan antes de la primera red line; donde una red line quitada fijaba hitsounds, kiai
+o velocidad de sliders que la nueva cambiaría, se agrega una green line con ese
+estado; los hit objects no se mueven y la página avisa), la pista de clic WAV
+(`OfflineAudioContext`, solo clicks o sobre la canción, hasta 10 min), el JSON
+`timing-result` tal como llegó y un resumen en texto. Las opciones ×2/÷2 ya estaban
+(el ajuste de la página). **Falta:** los formatos de otros juegos (Quaver, StepMania,
+Etterna: el engine los exporta, pero portarlos al navegador o servirlos desde la API
+es otra tarea) y las opciones de decimales del offset, solo la primera red line y BPM
+redondeado.
+
+**W3.25 hecha el 2026-10-27** en la misma rama, con lo que el resultado ya trae: el
+panel "Revisá acá" junta las secciones `check` o `medium`, las de desvío p90 mayor a
+20 ms (umbral medido, ver `docs/timeline.md`), los `pulse_hints` y los tramos de
+swing, ordenados por tiempo; cada uno se marca en el mapa o se repite con los clicks.
+Lo que queda para W11: marcar "dos métodos no coinciden" cuando el router exista.
+
+**W3.27 hecha en parte el 2026-10-27** en la rama `feature/site-public-timings`: un
+análisis terminado se publica solo si quien lo subió aprieta "Publicar" (y se
+despublica igual); uno privado pide confirmación y se hace público en la misma
+acción. `/t/<id>` (el mismo id público del análisis) muestra a cualquiera el resultado
+completo, título y artista, quién lo subió o "anónimo" y cuándo; nunca el SHA-1, el
+nombre del archivo ni los hashes. El visitante elige su propio archivo y el server
+solo contesta si coincide (`POST /timings/:id/check`), así escucha los clicks y arma
+el .osz. `deploy/web/serve.mjs` escribe el título y las etiquetas Open Graph de
+`/t/<id>` del lado del server, escapadas. **Falta:** la imagen Open Graph del gráfico
+(la tarjeta hoy es solo texto). Detalle en `docs/site.md` y `timeline.md`.
+
+**W3.26 hecha el 2026-10-27** en la misma rama: `/history` lista todo lo que analizó
+la cuenta, con búsqueda, estado, rango de BPM y fechas, y publicar, despublicar o
+borrar cada uno. Borrar un análisis terminado borra su resultado, sus nombres y su
+publicación en el momento; la fila marcada queda hasta que termina su día UTC para
+que siga contando en la cuota. Sin cuenta, la página muestra la lista de este
+navegador y pide entrar.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna
@@ -588,10 +638,10 @@ necesita a otra persona; W3.16 espera la medición de W2.4.
 | W4.2 | Entorno `experimental` levantado; los testers entran con el rol de Mides |
 | W4.3 | Entorno `master` levantado; subdominio, Cloudflare, backups |
 | W4.4 | `deploy/README.md`: cómo se hace un release y un rollback (volver al commit anterior y reiniciar) |
-| W4.5 | **Términos y condiciones** (antes de abrir producción), en EN/ES:<br>• Overtone **no está afiliado** a osu! ni a ppy Pty Ltd; "osu!" es marca de sus dueños;<br>• Overtone forma parte de **Mides Projects** y fue fundado por **githalt**;<br>• el código es open source (MIT) y está en `Mides-Projects/Overtone`;<br>• uso aceptable: solo audio que la persona tiene derecho a usar, sin abuso de la cola;<br>• el audio no se guarda; los resultados sí, y pueden mostrarse en la cola o en Community según lo que elija quien sube;<br>• la cuenta es la de Mides, con sus propios términos;<br>• cambios a los términos, contacto y jurisdicción (a definir con Mides Projects LLC) |
-| W4.6 | **Disclaimer**, visible en el resultado y en una página propia: el análisis es confiable y repetible, pero **no es 100 % preciso**. Es un punto de partida que se revisa a oído; la confianza que muestra es la del engine, no una precisión medida. Los números de Corpus B y de los stages se publican tal cual, sin redondear para arriba. Sin garantías: los mapas que se rankean siguen siendo responsabilidad del mapper |
-| W4.7 | **Privacidad:** qué se guarda (SHA-1, metadatos, resultado, hash de IP con sal, cookies), qué no (el audio), por cuánto tiempo y cómo borrarlo. Aviso de cookies solo esenciales, sin banner de consentimiento porque no hay rastreo |
-| W4.8 | **Créditos y licencias:** Beat This! (MIT), librosa, numpy y las demás dependencias con sus licencias, generadas desde los locks, más el equipo y los contribuidores |
+| W4.5 | **Términos y condiciones** (antes de abrir producción), en EN/ES:<br>• Overtone **no está afiliado** a osu! ni a ppy Pty Ltd; "osu!" es marca de sus dueños;<br>• Overtone forma parte de **Mides Projects** y fue fundado por **githalt**;<br>• el código es open source (MIT) y está en `Mides-Projects/Overtone`;<br>• uso aceptable: solo audio que la persona tiene derecho a usar, sin abuso de la cola;<br>• el audio no se guarda; los resultados sí, y pueden mostrarse en la cola o en Community según lo que elija quien sube;<br>• la cuenta es la de Mides, con sus propios términos;<br>• cambios a los términos, contacto y jurisdicción (a definir con Mides Projects LLC)<br>**Borrador hecho el 2026-10-27** (`feature/site-legal`): `/terms` en EN/ES con todo lo de arriba, marcado como borrador en la página. **Falta:** que el dueño lo revise y complete los marcadores (responsable legal y dirección, jurisdicción, contacto) |
+| W4.6 | **Disclaimer**, visible en el resultado y en una página propia: el análisis es confiable y repetible, pero **no es 100 % preciso**. Es un punto de partida que se revisa a oído; la confianza que muestra es la del engine, no una precisión medida. Los números de Corpus B y de los stages se publican tal cual, sin redondear para arriba. Sin garantías: los mapas que se rankean siguen siendo responsabilidad del mapper<br>**Hecho el 2026-10-27** (`feature/site-legal`): `/disclaimer` en EN/ES, y el "Revisar a oído" del resultado enlaza ahí. Cita solo el benchmark sintético; los números de Corpus B no están publicados en el sitio todavía |
+| W4.7 | **Privacidad:** qué se guarda (SHA-1, metadatos, resultado, hash de IP con sal, cookies), qué no (el audio), por cuánto tiempo y cómo borrarlo. Aviso de cookies solo esenciales, sin banner de consentimiento porque no hay rastreo<br>**Borrador hecho el 2026-10-27** (`feature/site-legal`): `/privacy` en EN/ES, leído del código (schema, servicios, cookies, `localStorage`). **Falta:** plazos de guarda (hoy no hay ningún job que borre análisis, cuentas ni el registro de moderación), el contacto para pedir el borrado y los proveedores de hosting, marcados para el dueño |
+| W4.8 | **Créditos y licencias:** Beat This! (MIT), librosa, numpy y las demás dependencias con sus licencias, generadas desde los locks, más el equipo y los contribuidores<br>**Hecho el 2026-10-27** (`feature/site-legal`): `/credits`, generado por `site/web/scripts/credits.mjs` desde `requirements.lock`, los `package.json` y los metadatos instalados. **Falta:** las crates de Rust, que el sitio no usa todavía |
 | W4.9 | **Branches protegidas de verdad:** quien pushea a `master` o `experimental` ejecuta código en los servers. Exigir PR (también a los admins) y, mejor, un segundo par de ojos para `master` |
 
 ### Fase W5 — Social v1 y Community
@@ -608,6 +658,35 @@ notificaciones. Y una sección **Community**:
 | W5.4 | **Moderación común** a sugerencias, reseñas, comentarios y nombres en la cola: reportar, ocultar, registro de quién hizo qué y filtro de palabras. Reusa los roles y sanciones de Mides |
 | W5.5 | **Changelog en el sitio**, generado de `docs/timeline.md`: qué cambió y qué sugerencias cerró cada versión |
 | W5.6 | **Perfiles:** la pestaña Timings en el perfil de Mides (ADR-W3), con estadísticas (canciones timeadas, usos, estrellas) e insignias (primer timing, Ranked-match, sugerencia aceptada) |
+
+**W5.2–W5.5, en parte, el 2026-10-27** en la rama `feature/site-community`: la página
+`/community` con tres pestañas (docs/site.md, "Community").
+
+- **W5.2, en parte.** Hecho: sugerencias con cuenta de Mides (anónimas no: una
+  sugerencia se contesta con sus cambios de estado y una anónima no tiene a quién
+  contestarle), un voto por cuenta, orden por votos o fecha y filtro por estado; el
+  staff (`is_moderator` de Mides) cambia el estado, el rechazo siempre con motivo, y
+  cada cambio queda en `moderation_log` y se ve en la sugerencia. Falta: comentarios,
+  unir duplicados, enlazar al roadmap o al changelog, y avisar a quien la propuso.
+- **W5.3, en parte.** Hecho: estrellas de 1 a 5 y texto, con cuenta (una, editable y
+  borrable) o anónimas (dos por día por IP hasheada, honeypot y un token firmado de al
+  menos 3 s, sin CAPTCHA de terceros); las anónimas pesan la mitad en el promedio y la
+  página lo dice; promedio y distribución. Falta: la respuesta pública del staff.
+- **W5.4, mínima.** Hecho: reportar (cualquiera) y ocultar o mostrar con motivo
+  (staff), registrado en la misma `moderation_log` de W3.18; lo oculto no lo ve nadie
+  más que el staff y su autor. Falta: comentarios y nombres de la cola, el filtro de
+  palabras y las sanciones de Mides.
+- **W5.5, en parte.** Hecho: el changelog sale de `docs/timeline.md` al construir el
+  sitio (las últimas 30 entradas, título, fecha y "Changed", en inglés). Falta: qué
+  sugerencias cerró cada versión.
+
+**W5.1 hecha en parte el 2026-10-27** en la rama `feature/site-public-timings`:
+`/recent` y una sección en el inicio listan los timings publicados (no todos los no
+privados: publicar es opt-in, W3.27), con título, artista, BPM principal, cantidad de
+red lines, quién y cuándo. Filtros por rango de BPM y tempo único o variable,
+búsqueda por título o artista, y paginación por cursor. **Falta:** portada (no hay
+ninguna guardada), filtro por fecha en la lista pública, y "más usados" o "mejor
+puntuados", que esperan los usos y las estrellas.
 
 ### Fase W6 — Social v2
 
@@ -646,8 +725,8 @@ y Compile, si tienen sentido en web. Rust en el worker cuando Corpus B lo justif
 |---|---|
 | W10.1 | **Presupuestos de rendimiento** medidos con Lighthouse local y Web Vitals: LCP < 2,5 s, CLS < 0,1, JS inicial < 200 kB comprimido. Code splitting por ruta, carga diferida del gráfico y del lector de tags, fuentes del sistema, compresión brotli o gzip y caché larga para los assets con hash. Cada número se mide y se anota (regla 1) |
 | W10.2 | **Accesibilidad WCAG 2.2 AA:** teclado completo, foco visible, contraste, `aria-live` para el progreso y texto alternativo del gráfico (tabla de red lines) |
-| W10.3 | **SEO e imagen:** meta y Open Graph por página, `sitemap.xml`, `robots.txt` y el favicon y manifest de la PWA |
-| W10.4 | **Robustez de la interfaz:** error boundaries, estados vacíos y de carga en todas las vistas, reintento con backoff y página de estado del servicio (se suma a `/status` de Mides) |
+| W10.3 | **SEO e imagen:** meta y Open Graph por página, `sitemap.xml`, `robots.txt` y el favicon y manifest de la PWA<br>**Hecho el 2026-10-27** (`feature/site-legal`): título y descripción por página (`usePageMeta`), Open Graph y Twitter en `index.html`, `robots.txt`, `sitemap.xml`, manifest e íconos PNG generados desde `favicon.svg` sin dependencia nueva. **Falta:** Open Graph por página para los crawlers (hoy leen el `index.html` de todas las rutas) y un `robots.txt` que cierre staging |
+| W10.4 | **Robustez de la interfaz:** error boundaries, estados vacíos y de carga en todas las vistas, reintento con backoff y página de estado del servicio (se suma a `/status` de Mides)<br>**Hecho en parte el 2026-10-27** (`feature/site-legal`): error boundaries, `/status` (API, base de datos y worker desde `GET /api/v1/health`) con reintento y backoff. Las vistas que había ya tenían sus estados de carga y vacíos. **Falta:** el backoff en las otras vistas que sondean (cola, resultado) y sumarse al `/status` de Mides |
 | W10.5 | **Skills del proyecto** en `.claude/skills/`, para que cualquier sesión trabaje igual:<br>• `site-ui-check`: levanta `pnpm dev`, recorre las páginas, saca capturas y revisa consola, EN/ES, oscuro/claro y 375 px;<br>• `perf-audit`: Lighthouse y tamaño del bundle;<br>• `security-review`: las 5 áreas de la revisión del 2026-10-27;<br>• `release`: experimental → master con las puertas |
 | W10.6 | **Pruebas de punta a punta** del sitio (Playwright local, sin CI): subir, cola, resultado, descargas y login de prueba, una sola línea en la sección Verification |
 | W10.7 | **Revisión de seguridad periódica,** con las mismas 5 áreas, antes de cada release a `master` y después de cada feature que toque la API, la subida o el despliegue |

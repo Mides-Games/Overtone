@@ -4,6 +4,7 @@ import { Navigate, useLocation } from 'react-router'
 
 import Mark from '../components/Mark.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
 
 const PROVIDERS = [
@@ -21,6 +22,7 @@ const PROVIDERS = [
 
 export default function Login() {
   const { t } = useTranslation()
+  usePageMeta(t('login.title'), t('login.subtitle'))
   const { account, signIn } = useAuth()
   const location = useLocation()
   const [config, setConfig] = useState(null)

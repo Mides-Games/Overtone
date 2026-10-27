@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The public routes (W10.3), by hand: src/App.jsx is the list, and
+     test/seo.test.js fails when a public route is missing here. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://overtone.midesprojects.com/</loc></url>
+  <url><loc>https://overtone.midesprojects.com/analyze</loc></url>
+  <url><loc>https://overtone.midesprojects.com/queue</loc></url>
+  <url><loc>https://overtone.midesprojects.com/community</loc></url>
+  <url><loc>https://overtone.midesprojects.com/recent</loc></url>
+  <url><loc>https://overtone.midesprojects.com/status</loc></url>
+  <url><loc>https://overtone.midesprojects.com/terms</loc></url>
+  <url><loc>https://overtone.midesprojects.com/privacy</loc></url>
+  <url><loc>https://overtone.midesprojects.com/disclaimer</loc></url>
+  <url><loc>https://overtone.midesprojects.com/credits</loc></url>
+</urlset>

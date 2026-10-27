@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +135,97 @@ test('an API that does not answer is cut after API_TIMEOUT_S with a 504', async 
   assert.equal(status, 504);
   assert.equal(JSON.parse(body).error, 'api_timeout');
   assert.ok(Date.now() - started < 10_000);
+});
+
+test('robots.txt, the sitemap and the manifest are served as themselves, with their types', async () => {
+  // A built site in miniature: the real public/ files, copied as Vite copies them.
+  const root = await mkdtemp(join(tmpdir(), 'overtone-serve-'));
+  running.push(() => rm(root, { recursive: true, force: true }));
+  const pub = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'public');
+  for (const name of ['robots.txt', 'sitemap.xml', 'manifest.webmanifest']) await copyFile(join(pub, name), join(root, name));
+  await writeFile(join(root, 'index.html'), '<!doctype html><title>app</title>');
+  const port = await serve(1, { WEB_ROOT: root });
+
+  const robots = await get(port, '/robots.txt');
+  assert.equal(robots.status, 200);
+  assert.equal(robots.headers['content-type'], 'text/plain; charset=utf-8');
+  assert.match(robots.body, /^Sitemap: https:\/\//m);
+
+  const sitemap = await get(port, '/sitemap.xml');
+  assert.equal(sitemap.headers['content-type'], 'application/xml; charset=utf-8');
+  assert.match(sitemap.body, /<urlset /);
+
+  const manifest = await get(port, '/manifest.webmanifest');
+  assert.equal(manifest.headers['content-type'], 'application/manifest+json');
+  assert.equal(JSON.parse(manifest.body).name, 'Overtone');
+  // The manifest is fetched under default-src 'self': nothing to add to the policy.
+  assert.match(manifest.headers['content-security-policy'], /default-src 'self'/);
+
+  // A missing file with an extension is a 404, never the app shell.
+  assert.equal((await get(port, '/sitemap-2.xml')).status, 404);
+});
+
+/** A WEB_ROOT holding an index.html shaped like the built one. */
+const webRoot = () => {
+  const root = mkdtempSync(join(tmpdir(), 'overtone-serve-'));
+  writeFileSync(
+    join(root, 'index.html'),
+    '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n' +
+      '    <meta name="description" content="Overtone: automatic timing for osu! maps, by Mides Projects." />\n' +
+      '    <title>Overtone · Mides Projects</title>\n  </head>\n  <body><div id="root"></div></body>\n</html>\n',
+  );
+  return root;
+};
+
+test('a published timing\'s page carries its own title and Open Graph tags, escaped', async () => {
+  const id = 'a'.repeat(32);
+  const seen = [];
+  const api = await upstream((req, res) => {
+    seen.push({ url: req.url, secret: req.headers['x-overtone-proxy'] });
+    if (req.url !== `/api/v1/timings/${id}/card`) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      return res.end('{"error":{"status":404}}');
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({
+      id, title: 'Song "</title><script>alert(1)</script>', artist: "Band & Friends'‮", bpm: 174.004, redLines: 3,
+      uploader: { username: '<img src=x onerror=alert(1)>' }, anonymous: false,
+    }));
+  });
+  const port = await serve(api, { WEB_ROOT: webRoot(), PROXY_SECRET: 's'.repeat(32) });
+
+  const { status, body, headers } = await get(port, `/t/${id}`);
+  assert.equal(status, 200);
+  assert.equal(headers['cache-control'], 'no-store');
+  assert.equal(seen[0].secret, 's'.repeat(32));
+  assert.match(body, /<title>Band &amp; Friends&#39; - Song &quot;&lt;\/title&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt; · Overtone<\/title>/);
+  assert.match(body, /<meta property="og:title" content="Band &amp; Friends&#39; - Song &quot;&lt;\/title&gt;/);
+  assert.match(body, /<meta property="og:description" content="174 BPM · 3 red lines · timed by &lt;img src=x onerror=alert\(1\)&gt;" \/>/);
+  assert.match(body, /<meta name="description" content="174 BPM/);
+  // Nothing the uploader wrote reaches the page as markup.
+  assert.equal(body.includes('<script>'), false);
+  assert.equal(body.includes('<img'), false);
+  assert.equal(body.includes('‮'), false);
+  assert.equal((body.match(/<title>/g) ?? []).length, 1);
+
+  // Not published (the API's 404), or not a timing's id: the plain page.
+  const other = await get(port, `/t/${'b'.repeat(32)}`);
+  assert.equal(other.status, 200);
+  assert.match(other.body, /<title>Overtone · Mides Projects<\/title>/);
+  assert.equal(other.body.includes('og:title'), false);
+  const odd = await get(port, '/t/not-an-id');
+  assert.equal(odd.body.includes('og:title'), false);
+  assert.equal(seen.length, 2);
+});
+
+test('an API that does not answer a card leaves the page plain, in time', async () => {
+  const api = await upstream(() => {}); // never answers
+  const port = await serve(api, { WEB_ROOT: webRoot() });
+  const started = Date.now();
+  const { status, body } = await get(port, `/t/${'c'.repeat(32)}`);
+  assert.equal(status, 200);
+  assert.equal(body.includes('og:title'), false);
+  assert.ok(Date.now() - started < 5_000);
 });
 
 test('an API that answers is forwarded as before', async () => {

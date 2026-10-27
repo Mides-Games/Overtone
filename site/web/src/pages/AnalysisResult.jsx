@@ -6,58 +6,45 @@ import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
+import CheckHere from '../components/result/CheckHere.jsx'
+import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
-import { api } from '../lib/api.js'
+import { checkSpans } from '../lib/check-spans.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
+import { tracker, useAnalysis } from '../lib/tracking.js'
+import { publishAnalysis, timingPath, unpublishAnalysis } from '../lib/timings.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
  *
- * Polls `GET /api/v1/analyses/:id` while it is queued or running (every
- * second, then every three after a minute, so a long queue does not become a
- * stream of requests). The page is its own URL, so a reload or a link back
- * from the recent list lands here again.
+ * Reads `GET /api/v1/analyses/:id` through the tracker (lib/tracking.js)
+ * while it is queued or running, at its polite pace (every second at first,
+ * slower in a long queue or a hidden tab), and the tray shows the same
+ * reading: the page and the tray never both ask. The page is its own URL, so
+ * a reload or a link back from the recent list lands here again.
  */
 export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
-  const [analysis, setAnalysis] = useState(null)
-  const [error, setError] = useState(null)
+  const reading = useAnalysis(id)
+  const analysis = reading?.data ?? null
+  const error = reading?.error ?? null
+  // The file's name names the tab: it never leaves this browser that way.
+  usePageMeta(analysis?.filename || t('result.eyebrow'))
 
+  // Only its uploader can read it at all, so one still in flight is the
+  // visitor's own: the tray follows it from here on, onto any other page.
+  const inFlight = analysis?.status === 'queued' || analysis?.status === 'running'
   useEffect(() => {
-    let alive = true
-    let timer = null
-    const started = Date.now()
-
-    async function poll() {
-      try {
-        const data = await api(`/analyses/${id}`)
-        if (!alive) return
-        setAnalysis(data)
-        setError(null)
-        if (data.status === 'queued' || data.status === 'running') {
-          timer = setTimeout(poll, Date.now() - started > 60_000 ? 3000 : 1000)
-        }
-      } catch (failure) {
-        if (!alive) return
-        if (failure.status === 404) return setError('notFound')
-        // A dropped connection is not the end of the analysis: try again.
-        setError('network')
-        timer = setTimeout(poll, 3000)
-      }
-    }
-    poll()
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [id])
+    if (inFlight) tracker.track(id, analysis.filename, { status: analysis.status })
+  }, [id, inFlight])
 
   if (error === 'notFound') {
     return (
@@ -97,8 +84,103 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
+      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setAnalysis((a) => ({ ...a, ...next }))} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
     </div>
+  )
+}
+
+/**
+ * Sharing the timing (W3.27): off until its uploader presses Publish, and
+ * undone by Unpublish. A private upload asks first, since publishing makes
+ * it public; the API refuses it otherwise (409 PRIVATE).
+ */
+function Publish({ analysis, onChange }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState({ kind: 'idle' }) // idle | confirm | busy | error | copied
+  const link = typeof window === 'undefined' ? timingPath(analysis.id) : `${window.location.origin}${timingPath(analysis.id)}`
+
+  async function publish(makePublic = false) {
+    if (analysis.private && !makePublic) return setState({ kind: 'confirm' })
+    setState({ kind: 'busy' })
+    try {
+      const done = await publishAnalysis(analysis.id, { makePublic })
+      onChange({ published: true, publishedAt: done.publishedAt, private: false })
+      setState({ kind: 'idle' })
+    } catch (error) {
+      if (error.code === 'PRIVATE') return setState({ kind: 'confirm' })
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function unpublish() {
+    setState({ kind: 'busy' })
+    try {
+      await unpublishAnalysis(analysis.id)
+      onChange({ published: false, publishedAt: undefined })
+      setState({ kind: 'idle' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link)
+      setState({ kind: 'copied' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+    setTimeout(() => setState((s) => (s.kind === 'copied' ? { kind: 'idle' } : s)), 2500)
+  }
+
+  const busy = state.kind === 'busy'
+  return (
+    <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <h2 className="label">{t('timings.publish.title')}</h2>
+        {analysis.published ? (
+          <p className="text-label text-text">
+            {t('timings.publish.isPublic')}{' '}
+            <Link to={timingPath(analysis.id)} className="readout break-all text-accent hover:underline">
+              {timingPath(analysis.id)}
+            </Link>
+          </p>
+        ) : (
+          <p className="text-label text-muted">{state.kind === 'confirm' ? t('timings.publish.privateWarning') : t('timings.publish.note')}</p>
+        )}
+        {state.kind === 'error' && (
+          <p role="alert" className="text-caption text-red">
+            {t('timings.publish.failed')}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {analysis.published ? (
+          <>
+            <button type="button" className="btn-ghost" onClick={copy} disabled={busy}>
+              {state.kind === 'copied' ? t('timings.publish.copied') : t('timings.publish.copyLink')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={unpublish} disabled={busy}>
+              {t('timings.publish.unpublish')}
+            </button>
+          </>
+        ) : state.kind === 'confirm' ? (
+          <>
+            <button type="button" className="btn-primary" onClick={() => publish(true)}>
+              {t('timings.publish.makePublic')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setState({ kind: 'idle' })}>
+              {t('timings.publish.keepPrivate')}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn-primary" onClick={() => publish(false)} disabled={busy}>
+            {busy ? t('timings.publish.busy') : t('timings.publish.publish')}
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -157,17 +239,24 @@ function Refused({ result }) {
  * The timing, to be checked by ear: the readouts, the tempo map with the song
  * and its clicks, the reader's adjustments and the exports, the red lines.
  * The song is the reader's own file, decoded here (ADR-W4).
+ *
+ * A published timing's page (W3.27) shows the same view to anyone: it has no
+ * `sha1` to check a file against, so it passes `verify`, which asks the
+ * server, and `csvHref`, the public CSV.
  */
-function Result({ id, analysis }) {
+export function Result({ id, analysis, verify = null, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
   const [selected, setSelected] = useState(null)
   const [hovered, setHovered] = useState(null)
-  const audio = useSongAudio(id, analysis.sha1)
+  const audio = useSongAudio(id, analysis.sha1, verify)
   const [player] = useState(() => new Player())
   const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
   const clockRef = useRef(null)
+  const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
+  const [checking, setChecking] = useState(null)
+  const [focus, setFocus] = useState(null)
 
   const durationS = result.duration_s ?? 0
   const sections = useMemo(() => result.sections ?? [], [result])
@@ -228,6 +317,21 @@ function Result({ id, analysis }) {
     player.play(spans[i].a, { range: spans[i], loopOn: true })
   }
 
+  // "Check here": a span shown is the map's loop band (no audio needed), brought into view; played, it loops with the clicks.
+  const spanOf = (item) => ({ a: item.startMs / 1000, b: Math.min(item.endMs / 1000, durationS || item.endMs / 1000) })
+  const showSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.setRange(spanOf(item))
+    setFocus({ ...spanOf(item), key: item.key, scroll: true })
+  }
+  const playSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.play(spanOf(item).a, { range: spanOf(item), loopOn: true })
+    setFocus({ ...spanOf(item), key: item.key, scroll: false })
+  }
+
   const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
     { label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
@@ -272,19 +376,38 @@ function Result({ id, analysis }) {
         onSelect={setSelected}
         onHover={setHovered}
         clockRef={clockRef}
+        focus={focus}
       >
-        <AudioSource audio={audio} filename={analysis.filename} />
+        <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
       </TempoMap>
 
+      <CheckHere
+        spans={checks}
+        // Lit while its band is the map's loop: drawing another loop unlights it.
+        active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
+        canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
+
       <AdjustExport
-        id={id}
         analysis={analysis}
         lines={lines}
         adjustment={adjustment}
         onAdjust={setAdjustment}
         audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
-      />
+      >
+        <MoreDownloads
+          id={id}
+          analysis={analysis}
+          lines={lines}
+          adjustment={adjustment}
+          grid={grid}
+          durationS={durationS}
+          songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+          player={player}
+          checks={checks}
+          csvHref={csvHref}
+        />
+      </AdjustExport>
 
       <RedLinesTable
         lines={lines}
@@ -300,9 +423,17 @@ function Result({ id, analysis }) {
       />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
-        <span className="chip-amber shrink-0">{t('home.checkByEar')}</span>
+        {/* W4.6: the short version here, the whole disclaimer on its own page. */}
+        <Link to="/disclaimer" className="chip-amber shrink-0 self-start transition hover:bg-amber/20">
+          {t('home.checkByEar')}
+        </Link>
         <div className="space-y-1">
-          <p className="max-w-[72ch] text-label leading-relaxed text-muted">{t('result.honest')}</p>
+          <p className="max-w-[72ch] text-label leading-relaxed text-muted">
+            {t('result.honest')}{' '}
+            <Link to="/disclaimer" className="whitespace-nowrap text-accent hover:underline">
+              {t('legal.resultLink')} →
+            </Link>
+          </p>
           <p className="readout text-caption text-dim">
             {t('result.engine', { hash: result.engine_hash, vote: result.beat_vote ? t('result.voteOn') : t('result.voteOff') })}
             {analysis.cached ? ` · ${t('result.cached')}` : ''}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../context/AuthContext.jsx'
 import { buildOsz } from '../../lib/osz.js'
-import { downloadName, saveText, timingCsv, timingText } from '../../lib/timing.js'
+import { saveText, timingText } from '../../lib/timing.js'
 
 const FACTORS = [
   { value: 0.5, label: '÷2' },
@@ -18,9 +18,10 @@ const NUDGE_LIMIT = 500
  * be checked by ear against the clicks; neither is a measurement, and the
  * engine's reading stays what it was. Then the exports, which follow them:
  * the .osz to open in osu!, built here from `audioFile` (the reader's own
- * file, null until they pick it), the [TimingPoints] block and the CSV.
+ * file, null until they pick it), and the [TimingPoints] block; `children`
+ * (the "More downloads" group) below them.
  */
-export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust, audioFile }) {
+export default function AdjustExport({ analysis, lines, adjustment, onAdjust, audioFile, children }) {
   const { t } = useTranslation()
   const { account } = useAuth() ?? {}
   const [copied, setCopied] = useState(null)
@@ -118,19 +119,11 @@ export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust
         <button type="button" className="btn-ghost" onClick={copy}>
           {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
         </button>
-        {adjusted ? (
-          <button type="button" className="btn-ghost" onClick={() => saveText(timingCsv(result, lines), downloadName(analysis.filename, 'timing.csv'), 'text/csv;charset=utf-8')}>
-            {t('result.downloadCsv')}
-          </button>
-        ) : (
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
-            {t('result.downloadCsv')}
-          </a>
-        )}
         <p className="w-full text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
           {osz === 'failed' ? t('result.oszFailed') : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
         </p>
       </div>
+      {children}
     </section>
   )
 }

@@ -7,5 +7,6 @@ Disallow: /analyze/
 Disallow: /login
 Disallow: /profile
 Disallow: /history
+Disallow: /compare
 
 Sitemap: https://overtone.midesprojects.com/sitemap.xml

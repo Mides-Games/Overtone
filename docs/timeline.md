@@ -148,6 +148,57 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Comparing timings
+
+### Changed
+
+- W12.10: the result page (and a published timing's page) compares the result with an
+  `.osu` the reader picks: a verdict in plain words, a table of matched red lines, the
+  lines only one side has, the map's lines dashed in a new blue on the tempo map, and its
+  clicks playable instead of the result's. The `.osu` is read in the browser and kept in
+  the page's state only: never uploaded, never stored.
+- W12.11: `/compare?a=<id>&b=<id>` puts two timings side by side: the visitor's own
+  analyses or published ones, each with its own x0.5 / x2 and nudge in the address, so
+  "an analysis against its adjusted version" is one link. Offered from the history, a
+  public timing and the result page. No API change.
+- The comparison (`site/web/src/lib/compare.js`) compares **grids**, not first-beat
+  times: a red line a whole number of beats from the other's, at the same tempo, is the
+  same grid in osu!. Each pair's offset is the phase of one grid against the other where
+  both lines start, and again at their last shared beat (a growing difference is drift);
+  the verdict checks every beat of the sparser grid from the later first line to the end.
+- Decided (owner away): the tolerances are the accuracy baseline's, 0.05 BPM and 5 ms,
+  and the page names them. Two red lines pair when they are within four beats of the
+  slower one (at least 1 s), in order; a verdict is `same`, `offset` (one constant shift
+  past 5 ms), `double`, `half` or `different` (with the share on the same grid, the share
+  at half or double, and where they first part). `/compare` is private-ish: out of the
+  sitemap and disallowed in robots.txt, since what it shows depends on who asks.
+
+### Fixed
+
+- A tempo change a few ms apart in the two timings (x2 and +3 ms on a two-line song) read
+  as `different`: for those ms the governing lines are an unrelated tempo. Each beat is now
+  judged against the line that owns the other grid's nearest beat. Found in the browser.
+
+### Measured
+
+- `site/web` 107/107 (17 new in `test/compare.test.js`), `vite build`, `bench/facts.py` ok.
+- In the browser, against the dev API with one real worker (Beat This! off):
+  `change-128-142.wav` against a hand-made map with its second line 2 ms late and in 3/4,
+  "same grid within 1.9 ms" with the meter change named; the same analysis at x2 +3 ms,
+  "double within 3.0 ms"; at -8 ms, "8.0 ms earlier on every beat". The map's clicks: 136,
+  including one at 30.400 s that the map's own lines imply 2 ms before its second line.
+- Speed not measured: one comparison is a few thousand beat lookups and an alignment of
+  at most 2000 x 2000 lines, done once per change.
+
+### Rejected / tried and dropped
+
+- Comparing first-beat times (offset = map's time minus the result's): a map whose red line
+  sits one bar later on the same grid would read hundreds of ms off. Phase is what osu! plays.
+- Counting agreeing beats from both grids: where both are as dense every beat was counted
+  twice, so a song half agreeing read 67 %. Only A's beats count there, weighted by length.
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

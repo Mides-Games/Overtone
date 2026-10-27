@@ -1045,5 +1045,102 @@
     "calKept": "{{kept}} toques contados, {{dropped}} descartados",
     "calSave": "Guardar {{ms}} ms",
     "calNote": "Es lo que tu navegador no informa de su demora de audio (el Bluetooth suele sumar 100 ms o más), más tu propio timing. Se guarda solo en este navegador."
+  },
+  "compare": {
+    "action": "Comparar",
+    "other": "Otro timing",
+    "result": "Resultado",
+    "resultAdjusted": "Resultado (ajustado)",
+    "map": "Mapa",
+    "withAnother": "Comparar con otro timing",
+    "withAdjusted": "Comparar el timing del engine con tu ajuste",
+    "clicksFrom": "Clics de",
+    "verdict": {
+      "same": "La misma grilla, a menos de {{ms}} ms.",
+      "later": "El mismo tempo, pero {{b}} va {{ms}} ms después que {{a}} en cada tiempo.",
+      "earlier": "El mismo tempo, pero {{b}} va {{ms}} ms antes que {{a}} en cada tiempo.",
+      "double": "{{b}} va al doble del tempo de {{a}}; por lo demás, la misma grilla a menos de {{ms}} ms.",
+      "half": "{{b}} va a la mitad del tempo de {{a}}; por lo demás, la misma grilla a menos de {{ms}} ms.",
+      "different": "Distintos: coincide el {{share}} % de la canción; se separan por primera vez en {{at}}.",
+      "noOverlap": "No hay nada que comparar: un timing empieza después de que termina la canción."
+    },
+    "tolerance": "Juzgado con las tolerancias de las pruebas de precisión, {{ms}} ms y {{bpm}} BPM, en cada tiempo desde {{from}} hasta el final. Una línea a un número entero de tiempos es la misma grilla.",
+    "related": "Otro {{share}} % cae en los mismos tiempos a la mitad o al doble del tempo.",
+    "meterDiffers_one": "El compás cambia en {{count}} red line.",
+    "meterDiffers_other": "El compás cambia en {{count}} red lines.",
+    "barsShifted_one": "En {{count}} red line el compás arranca en otro tiempo.",
+    "barsShifted_other": "En {{count}} red lines el compás arranca en otro tiempo.",
+    "unmatchedCount_one": "{{count}} red line no tiene pareja en el otro timing.",
+    "unmatchedCount_other": "{{count}} red lines no tienen pareja en el otro timing.",
+    "tableCaption": "Las red lines de {{a}} y {{b}}, emparejadas por tiempo",
+    "col": {
+      "time": "{{name}} en",
+      "offset": "Offset",
+      "offsetHint": "Cuánto se corre la segunda grilla de la primera donde arrancan las dos líneas, en ms. A un número entero de tiempos da 0.",
+      "end": "Al final",
+      "endHint": "Lo mismo, en el último tiempo que comparten las dos líneas: una diferencia que no estaba al principio es drift.",
+      "status": "Coincidencia"
+    },
+    "kind": {
+      "double": "×2",
+      "half": "×½",
+      "other": "otro tempo"
+    },
+    "barShift_one": "compás +{{count}} tiempo",
+    "barShift_other": "compás +{{count}} tiempos",
+    "agree": "coinciden",
+    "apart": "difieren",
+    "only": "solo {{name}}",
+    "onlyAgrees": "{{own}} tiene una línea acá; la grilla de {{other}} ya coincide, así que no cambia nada.",
+    "onlyMissing": "{{own}} tiene una línea acá y {{other}} no.",
+    "signNote": "Las diferencias son {{b}} menos {{a}}: un offset positivo quiere decir que {{b}} llega después.",
+    "playHere": "Reproducir desde acá",
+    "withMap": {
+      "title": "Comparar con un mapa",
+      "note": "Elegí un .osu de la misma canción para ver, red line por red line, en qué difiere su timing de este: BPM, offset y compás.",
+      "privacy": "El .osu se lee en este navegador y se olvida cuando te vas: nunca se sube ni se guarda.",
+      "pick": "Elegir un .osu",
+      "pickAgain": "Otro .osu",
+      "clear": "Dejar de comparar",
+      "lines_one": "{{count}} red line",
+      "lines_other": "{{count}} red lines",
+      "otherAudio": "El audio de este mapa es {{map}} y este análisis es de {{file}}. Si no son el mismo audio, la comparación no dice nada.",
+      "errors": {
+        "notOsu": "Ese archivo no es un .osu.",
+        "noTimingPoints": "Ese .osu no tiene sección [TimingPoints].",
+        "noRedLines": "Ese .osu no tiene ninguna red line para comparar.",
+        "tooManyLines": "Ese .osu tiene más de 2000 red lines.",
+        "tooBig": "Ese archivo pesa más de 16 MB.",
+        "unreadable": "No se pudo leer ese archivo."
+      }
+    },
+    "page": {
+      "title": "Comparar dos timings",
+      "eyebrow": "Comparar",
+      "subtitle": "Dos análisis de la misma canción, tuyos o publicados, o uno contra su propia versión ajustada: red line por red line y en un solo mapa de tempo.",
+      "side": "Timing {{letter}}",
+      "swap": "Intercambiar A y B",
+      "change": "Cambiar",
+      "cancel": "Cancelar",
+      "yours": "tuyo",
+      "published": "publicado",
+      "adjust": "Ajuste",
+      "nudge": "Corrimiento",
+      "sameAdjusted": "El otro a ×{{factor}}",
+      "noneYours": "Todavía no tenés análisis terminados en tu historial.",
+      "noneHere": "Todavía no hay análisis en este navegador. Iniciá sesión para elegir de tu historial.",
+      "pasteLabel": "Un id de análisis o un enlace a un timing publicado",
+      "pastePlaceholder": "Pegá un enlace /t/ o un id",
+      "use": "Usar",
+      "badRef": "Eso no es un enlace a un timing ni un id de análisis.",
+      "errors": {
+        "notDone": "Ese análisis no terminó o no tiene red lines.",
+        "notFound": "No existe ese timing, o no es tuyo y no está publicado.",
+        "network": "No se pudo llegar al servidor. Probá de nuevo en un momento."
+      },
+      "difference": "Red line por red line",
+      "otherAudio": "A y B son análisis de dos archivos de audio distintos: la comparación solo dice algo si son la misma canción, cortada igual.",
+      "mapNote": "El mapa de tempo de A, con las red lines de B punteadas en azul. La canción es tu propio archivo del audio de A, leído en este navegador; los clics tocan la grilla de A o la de B encima."
+    }
   }
 }

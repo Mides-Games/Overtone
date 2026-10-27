@@ -6,6 +6,7 @@ import Layout from './components/Layout.jsx'
 import AnalysisResult from './pages/AnalysisResult.jsx'
 import Analyze from './pages/Analyze.jsx'
 import Community from './pages/Community.jsx'
+import Compare from './pages/Compare.jsx'
 import History from './pages/History.jsx'
 import Home from './pages/Home.jsx'
 import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
@@ -33,6 +34,8 @@ export default function App() {
         <Route path="community" element={<Community />} />
         <Route path="recent" element={<Recent />} />
         <Route path="history" element={<History />} />
+        {/* Two timings side by side (W12.11): private-ish, its ids in the query; not in the sitemap. */}
+        <Route path="compare" element={<Compare />} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
         <Route path="t/:id" element={<TimingPage />} />
         <Route path="login" element={<Login />} />

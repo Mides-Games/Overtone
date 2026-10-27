@@ -36,6 +36,8 @@
   --red: #c42e3b;
   --amber: #8f5e08;
   --lavender: #5b45d6;
+  /* The other timing on a comparison's map (W12.10, W12.11). */
+  --compare: #1565c0;
   --onset: #bdb6cc;
   --grid: rgba(26, 23, 36, 0.09);
   --scrim: rgba(245, 244, 248, 0.82);
@@ -59,6 +61,7 @@
   --red: #ff5d6c;
   --amber: #f5b44a;
   --lavender: #a996ff;
+  --compare: #5cb3ff;
   --onset: #4a4360;
   --grid: rgba(255, 255, 255, 0.06);
   --scrim: rgba(13, 11, 18, 0.82);
@@ -86,6 +89,7 @@
   --color-red: var(--red);
   --color-amber: var(--amber);
   --color-lavender: var(--lavender);
+  --color-compare: var(--compare);
   --color-onset: var(--onset);
 
   /* The app's scale, a little larger for reading on a page. */

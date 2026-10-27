@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router'
 import BrandLoader from '../components/BrandLoader.jsx'
 import { shortDate, UploaderMark, uploaderName } from '../components/TimingList.jsx'
 import { useDocumentMeta } from '../hooks/useDocumentMeta.js'
+import { comparePath } from '../lib/compare.js'
 import { bpmLabel, checkTimingAudio, publicTiming, songLine } from '../lib/timings.js'
 import { Result } from './AnalysisResult.jsx'
 
@@ -83,9 +84,15 @@ export default function TimingPage() {
             </span>
           </div>
         </div>
-        <Link to="/analyze" className="btn-ghost shrink-0">
-          {t('timings.page.yourOwn')}
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {/* W12.11: this timing against one of the visitor's own, or another published one. */}
+          <Link to={comparePath({ id })} className="btn-ghost">
+            {t('compare.action')}
+          </Link>
+          <Link to="/analyze" className="btn-ghost">
+            {t('timings.page.yourOwn')}
+          </Link>
+        </div>
       </header>
 
       <Result id={id} analysis={analysis} verify={verify} csvHref={`/api/v1/timings/${id}/timing.csv`} />

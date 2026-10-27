@@ -1045,5 +1045,102 @@
     "calKept": "{{kept}} taps kept, {{dropped}} dropped",
     "calSave": "Save {{ms}} ms",
     "calNote": "This is what your browser does not report of its audio delay (Bluetooth often adds 100 ms or more), plus your own timing. It is kept in this browser only."
+  },
+  "compare": {
+    "action": "Compare",
+    "other": "Other timing",
+    "result": "Result",
+    "resultAdjusted": "Result (adjusted)",
+    "map": "Map",
+    "withAnother": "Compare with another timing",
+    "withAdjusted": "Compare the engine's timing with your adjusted one",
+    "clicksFrom": "Clicks from",
+    "verdict": {
+      "same": "Same grid within {{ms}} ms.",
+      "later": "Same tempo, but {{b}} is {{ms}} ms later than {{a}} on every beat.",
+      "earlier": "Same tempo, but {{b}} is {{ms}} ms earlier than {{a}} on every beat.",
+      "double": "{{b}} is at double the tempo of {{a}}, otherwise the same grid within {{ms}} ms.",
+      "half": "{{b}} is at half the tempo of {{a}}, otherwise the same grid within {{ms}} ms.",
+      "different": "Different: {{share}} % of the song agrees; they first part at {{at}}.",
+      "noOverlap": "Nothing to compare: one timing starts after the song ends."
+    },
+    "tolerance": "Judged with the accuracy gates' tolerances, {{ms}} ms and {{bpm}} BPM, on every beat from {{from}} to the end. A line a whole number of beats away is the same grid.",
+    "related": "Another {{share}} % meets on the same beats at half or double the tempo.",
+    "meterDiffers_one": "The meter differs at {{count}} red line.",
+    "meterDiffers_other": "The meter differs at {{count}} red lines.",
+    "barsShifted_one": "At {{count}} red line the bar starts on another beat.",
+    "barsShifted_other": "At {{count}} red lines the bar starts on another beat.",
+    "unmatchedCount_one": "{{count}} red line has no partner in the other timing.",
+    "unmatchedCount_other": "{{count}} red lines have no partner in the other timing.",
+    "tableCaption": "The red lines of {{a}} and {{b}}, matched by time",
+    "col": {
+      "time": "{{name}} at",
+      "offset": "Offset",
+      "offsetHint": "How far the second grid sits from the first where both lines start, in ms. A whole number of beats apart reads 0.",
+      "end": "At the end",
+      "endHint": "The same, at the last beat both lines share: a difference here that was not there at the start is drift.",
+      "status": "Agreement"
+    },
+    "kind": {
+      "double": "×2",
+      "half": "×½",
+      "other": "other tempo"
+    },
+    "barShift_one": "bar +{{count}} beat",
+    "barShift_other": "bar +{{count}} beats",
+    "agree": "agree",
+    "apart": "apart",
+    "only": "only {{name}}",
+    "onlyAgrees": "{{own}} has a line here; {{other}}'s grid already agrees, so it changes nothing.",
+    "onlyMissing": "{{own}} has a line here and {{other}} does not.",
+    "signNote": "Differences read {{b}} minus {{a}}: a positive offset means {{b}} comes later.",
+    "playHere": "Play from here",
+    "withMap": {
+      "title": "Compare with a map",
+      "note": "Pick an .osu of the same song to see, red line by red line, how its timing differs from this one: BPM, offset and meter.",
+      "privacy": "The .osu is read in this browser and forgotten when you leave: it is never uploaded or stored.",
+      "pick": "Choose an .osu",
+      "pickAgain": "Another .osu",
+      "clear": "Stop comparing",
+      "lines_one": "{{count}} red line",
+      "lines_other": "{{count}} red lines",
+      "otherAudio": "This map's audio file is {{map}}, and this analysis is of {{file}}. If they are not the same audio, the comparison means nothing.",
+      "errors": {
+        "notOsu": "That is not an .osu file.",
+        "noTimingPoints": "That .osu has no [TimingPoints] section.",
+        "noRedLines": "That .osu has no red line to compare.",
+        "tooManyLines": "That .osu has more than 2000 red lines.",
+        "tooBig": "That file is over 16 MB.",
+        "unreadable": "That file could not be read."
+      }
+    },
+    "page": {
+      "title": "Compare two timings",
+      "eyebrow": "Compare",
+      "subtitle": "Two analyses of the same song, yours or published, or one against its own adjusted version: red line by red line, and on one tempo map.",
+      "side": "Timing {{letter}}",
+      "swap": "Swap A and B",
+      "change": "Change",
+      "cancel": "Cancel",
+      "yours": "yours",
+      "published": "published",
+      "adjust": "Adjust",
+      "nudge": "Nudge",
+      "sameAdjusted": "The other one at ×{{factor}}",
+      "noneYours": "No finished analyses in your history yet.",
+      "noneHere": "No analyses in this browser yet. Sign in to pick from your history.",
+      "pasteLabel": "An analysis id or a link to a published timing",
+      "pastePlaceholder": "Paste a /t/ link or an id",
+      "use": "Use",
+      "badRef": "That is not a timing link or an analysis id.",
+      "errors": {
+        "notDone": "That analysis is not finished, or has no red lines.",
+        "notFound": "No such timing, or it is not yours and not published.",
+        "network": "The server could not be reached. Try again in a moment."
+      },
+      "difference": "Red line by red line",
+      "otherAudio": "A and B are analyses of two different audio files: the comparison only means something if they are the same song, cut the same way.",
+      "mapNote": "A's tempo map, with B's red lines dashed in blue. The song is your own file of A's audio, read in this browser; the clicks play A's or B's grid over it."
+    }
   }
 }

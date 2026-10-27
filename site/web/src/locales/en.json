@@ -113,6 +113,12 @@
       "ready": "Ready to send",
       "sent": "Sent",
       "remove": "Remove {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} ready",
+      "notify": "Notify me when the whole batch is done",
+      "notifyTitle": "Overtone: your batch is done",
+      "notifyBody": "{{done}} of {{total}} songs have a timing."
     }
   },
   "result": {

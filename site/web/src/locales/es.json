@@ -113,6 +113,12 @@
       "ready": "Lista para enviar",
       "sent": "Enviada",
       "remove": "Quitar {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} listas",
+      "notify": "Avisarme cuando termine todo el lote",
+      "notifyTitle": "Overtone: tu lote terminó",
+      "notifyBody": "{{done}} de {{total}} canciones tienen timing."
     }
   },
   "result": {

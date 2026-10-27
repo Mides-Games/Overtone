@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
 import TimingList from '../components/TimingList.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { usePagedList } from '../hooks/usePagedList.js'
 import { NO_FILTERS, recentTimings } from '../lib/timings.js'
 
@@ -17,6 +18,7 @@ const loadRecent = (filters, options) => recentTimings(filters, options).then((d
  */
 export default function Recent() {
   const { t } = useTranslation()
+  usePageMeta(t('timings.recent.title'), t('timings.recent.subtitle'))
   const [filters, setFilters] = useState(NO_FILTERS)
   const list = usePagedList(loadRecent, filters)
   const set = (key) => (event) => setFilters((f) => ({ ...f, [key]: event.target.value }))

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { StaffPanel } from '../components/community/Moderation.jsx'
 import Reviews from '../components/community/Reviews.jsx'
 import Suggestions from '../components/community/Suggestions.jsx'
@@ -20,6 +21,7 @@ const Changelog = lazy(() => import('../components/community/Changelog.jsx'))
 
 export default function Community() {
   const { t } = useTranslation()
+  usePageMeta(t('community.title'), t('community.subtitle'))
   const { account } = useAuth()
   const [params, setParams] = useSearchParams()
   const tab = TABS.includes(params.get('tab')) ? params.get('tab') : 'suggestions'

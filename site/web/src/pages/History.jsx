@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import BrandLoader from '../components/BrandLoader.jsx'
 import { shortDate } from '../components/TimingList.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { usePagedList } from '../hooks/usePagedList.js'
 import { forgetAnalysis, recentAnalyses } from '../lib/recent.js'
 import { bpmLabel, deleteAnalysis, myAnalyses, NO_FILTERS, publishAnalysis, songLine, timingPath, unpublishAnalysis } from '../lib/timings.js'
@@ -21,6 +22,7 @@ const STATUSES = ['done', 'refused', 'failed', 'queued', 'running']
  */
 export default function History() {
   const { t } = useTranslation()
+  usePageMeta(t('timings.history.title'))
   const { account } = useAuth()
 
   if (account === undefined) return <BrandLoader className="py-16" />

@@ -221,6 +221,37 @@ export function timingCsv(result, lines) {
   return `${rows.join('\r\n')}\r\n`
 }
 
+/** The result as the API served it, for the JSON download: the engine's reading, never adjusted. */
+export const resultJson = (result) => `${JSON.stringify(result, null, 2)}\n`
+
+/**
+ * A plain-text summary to keep or paste: the song, the readings, one row per
+ * red line with its level, and the spans worth a listen (`checks`, from
+ * `checkSpans`). English, as the other exports are; CRLF, as osu!'s files.
+ */
+export function summaryText({ filename, result, lines, adjustment = { factor: 1, nudgeMs: 0 }, checks = [] }) {
+  const out = [`Overtone timing: ${filename ?? 'song'}`, '']
+  const bpm = result.global_bpm === null || result.global_bpm === undefined ? null : result.global_bpm * adjustment.factor
+  out.push(`BPM        ${formatBpm(bpm)}`)
+  out.push(`Offset     ${formatMs(lines[0]?.timeMs ?? null)} ms`)
+  out.push(`Meter      ${result.meter ?? '–'}`)
+  out.push(`Red lines  ${lines.length}`)
+  out.push(`Length     ${formatClock((result.duration_s ?? 0) * 1000)}`)
+  if (isAdjusted(adjustment)) out.push(`Adjusted   ${adjustmentNote(adjustment)} (on the site, by the reader: check it by ear)`)
+  out.push('', 'Time        BPM       Meter  Confidence  Level')
+  lines.forEach((line) => {
+    const section = result.sections?.[line.index] ?? {}
+    const confidence = typeof section.confidence === 'number' ? `${Math.round(section.confidence * 100)}%` : '–'
+    out.push(
+      `${formatClock(line.timeMs).padEnd(11)} ${formatBpm(line.bpm).padEnd(9)} ${`${line.meter}/4`.padEnd(6)} ${confidence.padEnd(11)} ${section.level ?? '–'}`,
+    )
+  })
+  out.push('', checks.length ? 'Check here' : 'Check here: nothing flagged')
+  for (const item of checks) out.push(`${formatClock(item.startMs)} - ${formatClock(item.endMs)}  ${item.reasons.join(', ')}`)
+  out.push('', `Engine v3 ${result.engine_hash ?? ''} · Beat This! vote ${result.beat_vote ? 'on' : 'off'}`, 'Check these red lines by ear before you rank.')
+  return `${out.join('\r\n')}\r\n`
+}
+
 /** A file name for a download, as the API's `downloadName`: `<song>-timing.txt`. */
 export function downloadName(filename, suffix) {
   const stem = (filename ?? 'overtone')

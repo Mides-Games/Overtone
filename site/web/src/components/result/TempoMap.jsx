@@ -16,7 +16,7 @@ const OVERVIEW_H = 34
  * the playhead following the song. Two canvases: the map, repainted when the
  * view or the data change, and an overlay for what moves every frame.
  */
-export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, children }) {
+export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, focus, children }) {
   const { t } = useTranslation()
   const wrapRef = useRef(null)
   const mapRef = useRef(null)
@@ -196,6 +196,19 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       paint()
     }
   }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A span from "Check here" comes into view whole (zoomed out to hold it when it is longer than the view), and the
+  // map into the page when asked.
+  useEffect(() => {
+    if (!focus) return
+    const { a, b } = view.current
+    if (focus.a < a || focus.b > b) {
+      const width = Math.max(b - a, (focus.b - focus.a) * 1.2)
+      clampView(focus.a - (width - (focus.b - focus.a)) / 2, width)
+      paint()
+    }
+    if (focus.scroll) wrapRef.current?.closest('section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [focus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every frame while the song plays: the playhead, the clock, and the view turning its page.
   useEffect(() => {

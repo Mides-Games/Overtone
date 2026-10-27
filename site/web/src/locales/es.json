@@ -81,8 +81,9 @@
     "outputs": {
       "osz": ".osz para abrir en osu!",
       "timingPoints": "Bloque [TimingPoints]",
-      "csv": "CSV de red lines",
-      "click": "Pista de clic"
+      "csv": "CSV, JSON y un resumen",
+      "click": "Pista de clic (WAV)",
+      "osuPatch": "Tu propio .osu con las red lines puestas"
     },
     "ready": "listo",
     "soon": "pronto",
@@ -656,5 +657,65 @@
     "body": "Esta página tuvo un error y se detuvo. Recargarla suele arreglarlo; tus subidas y resultados en el servidor no se ven afectados.",
     "reload": "Recargar la página",
     "home": "Ir al inicio"
+  },
+  "check": {
+    "title": "Revisá acá",
+    "note": "Ordenado por tiempo. Escuchá esto primero.",
+    "empty": "Nada marcado: todas las secciones tienen confianza alta, sus ataques caen cerca de la grilla y el motor no encontró medio tiempo, doble tiempo ni swing. Igual escuchalo antes de rankear.",
+    "show": "Ver",
+    "play": "Repetir este tramo con los clicks",
+    "how": "Ver marca el tramo en el mapa; ⟲ lo repite con los clicks. Cada ítem es evidencia que el motor ya reportó, no una lectura nueva.",
+    "needsAudio": "Ver marca el tramo en el mapa. Elegí la canción arriba para repetirlo con los clicks.",
+    "line": "red line {{n}}",
+    "lines": "red lines {{from}}–{{to}}",
+    "drift": "desvío p90 {{ms}} ms",
+    "pulse": "¿medio o doble tiempo?",
+    "triplets": "tresillos",
+    "reason": {
+      "check": "Revisar",
+      "medium": "Media",
+      "drift": "Desvío",
+      "hint": "Pulso",
+      "swing": "Swing"
+    },
+    "why": {
+      "check": "El motor no está seguro de esta sección: confianza baja, un ajuste flojo o un aviso.",
+      "medium": "Confianza media: probablemente bien, vale una escucha.",
+      "drift": "Uno de cada diez ataques cae a más de {{ms}} ms de esta grilla.",
+      "hint": "Acá los ataques se espacian a uno cada dos tiempos: posible medio o doble tiempo.",
+      "swing": "Acá la corchea a contratiempo cae tarde: swing."
+    }
+  },
+  "exports": {
+    "more": "Más descargas",
+    "patchTitle": "Poné el timing en tu .osu",
+    "patchPick": "Elegí tu .osu…",
+    "patchNote": "Sus red lines se reemplazan por estas (con tus ajustes); las green lines, los hit objects y cada otra línea quedan como estaban, byte a byte. Se parchea acá: el archivo no se sube. Guardá el original hasta revisar el nuevo en osu!.",
+    "patched": "Descargado con {{added}} red lines en lugar de {{removed}}; {{kept}} green lines quedaron como estaban.",
+    "greensBefore_one": "{{count}} green line ahora queda antes de la primera red line. Se mantiene: osu! la lee con la primera red line.",
+    "greensBefore_other": "{{count}} green lines ahora quedan antes de la primera red line. Se mantienen: osu! las lee con la primera red line.",
+    "carried_one": "Se agregó {{count}} green line donde una red line quitada fijaba los hitsounds, el kiai o la velocidad de los sliders, para que el mapa suene y se deslice como antes.",
+    "carried_other": "Se agregaron {{count}} green lines donde red lines quitadas fijaban los hitsounds, el kiai o la velocidad de los sliders, para que el mapa suene y se deslice como antes.",
+    "objects_one": "{{count}} hit object no se movió: puede que ya no caiga en la grilla nueva. Revisalo en el editor.",
+    "objects_other": "{{count}} hit objects no se movieron: puede que ya no caigan en la grilla nueva. Revisalos en el editor.",
+    "patchError": {
+      "notOsu": "Eso no es un beatmap de osu! (.osu): su primera línea no es \"osu file format\".",
+      "noTimingPoints": "Ese .osu no tiene una sección [TimingPoints] donde poner las red lines.",
+      "noLines": "No hay red lines para poner.",
+      "tooBig": "Ese archivo es demasiado grande para ser un .osu.",
+      "failed": "No se pudo leer el .osu."
+    },
+    "clickTitle": "Pista de clic (WAV)",
+    "clicksOnly": "Solo los clicks",
+    "clicksMix": "Clicks sobre la canción",
+    "rendering": "Renderizando…",
+    "clickNote": "Los clicks que escuchás, con el primer tiempo del compás acentuado, al largo de la canción (hasta {{minutes}} minutos). Sobre la canción, a tus volúmenes. Se renderiza acá; no se sube nada.",
+    "clickNeedsAudio": "Los clicks que escuchás, con el primer tiempo del compás acentuado, al largo de la canción (hasta {{minutes}} minutos). Elegí la canción arriba para mezclarlos sobre ella.",
+    "clickCapped": "La canción dura más de {{minutes}} minutos: la pista termina ahí.",
+    "clickFailed": "No se pudo renderizar la pista de clic en este navegador.",
+    "filesTitle": "Archivos",
+    "json": "Resultado (JSON)",
+    "summary": "Resumen (TXT)",
+    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor."
   }
 }

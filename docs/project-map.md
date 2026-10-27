@@ -50,8 +50,11 @@ HTML with the workflow command below.
 
 ### Shipped areas and longer-term work
 
-Timing analysis, map checking/structure/export and the installer are shipped
-capabilities. Phase W1 of [the web platform](16-web-platform.md) parked four
+Timing analysis, map checking, structure and export are shipped engine
+capabilities. Overtone is web-only since 2026-10-26: the website (`site/`) is its
+interface, and the desktop app -- the web window, the classic Tk window and the
+installer -- was parked that day on the protected branch `parked/desktop-app` and
+the tag `v3-desktop-app`; its editing tools come back on the web in W7. Phase W1 of [the web platform](16-web-platform.md) parked four
 unfinished desktop extras on 2026-10-26 so the project's core is timing: the
 hitsound engine (Phase 6), Compile (Phase 25), Train with its hotkey (Phase 26)
 and the Library view's Songs browser and health page. They are kept whole on
@@ -65,10 +68,10 @@ are outside the 0.3.0 required rows.
 
 `bench/facts.py` was run for this snapshot and reported `facts: ok`:
 
-- Python: 775 tests (523 engine + 252 web shell), 2026-10-26 after W1.
+- Python: 491 tests, 2026-10-26 after the desktop app was parked.
 - Rust: 231 tests across 6 crates.
-- Golden vectors: 27; Rust parity manifest: 254 of 523 v3 engine tests held,
-  with 147 stages placed (the `.osu` reader's Rust twin is parked with
+- Golden vectors: 27; Rust parity manifest: 247 of 491 v3 engine tests held,
+  with 141 stages placed (the `.osu` reader's Rust twin is parked with
   `overtone-hitsound`).
 - Library schema: v3 in both `python/library.sql` and `python/overtone_library.py`.
 - Benchmark fixtures: 38 in code and 38 in `bench/fixtures.json`.
@@ -86,23 +89,22 @@ about real-song accuracy.
 
 ```mermaid
 flowchart TD
-    User[Mapper / local files] --> Launcher[Overtone.bat]
-    Launcher --> WebHost[python/overtone_web.py<br/>pywebview JSON bridge]
-    Launcher --> Classic[python/overtone.py<br/>classic Tk UI and v3 engine]
-    WebHost <--> Frontend[app/index.html · app.js · styles.css<br/>bilingual offline UI]
-    WebHost --> PyModules[Python application modules]
-    Classic --> PyModules
+    User[Mapper] --> Site[site/web<br/>React · EN/ES]
+    Site <--> API[site/api<br/>Express · PostgreSQL · Mides sign-in]
+    Owner[Owner / bench/remote.py] --> Server[python/overtone_server.py<br/>headless measurement API]
+    Shell[Command line] --> Engine
 
-    subgraph Python[python/ — app backend and v3 reference]
-        Engine[overtone.py<br/>analysis · osu I/O · classic UI · CLI]
-        Bridge[overtone_web.py<br/>window host and JSON actions]
+    subgraph Python[python/ — v3 engine and its services]
+        Engine[overtone.py<br/>analysis · osu I/O · CLI]
         RustAdapter[overtone_rust.py<br/>v4 sidecar adapter]
         Library[overtone_library.py + library.sql<br/>SQLite / FTS5 Songs index]
-        Paths[overtone_paths.py<br/>user data paths]
-        Bridge --> Engine
-        Bridge --> RustAdapter
-        Bridge --> Library
-        Bridge --> Paths
+        Runs[overtone_runs.py<br/>measurement runs]
+        Paths[overtone_paths.py<br/>data folder and version]
+        Server --> Library
+        Server --> Runs
+        Library --> Engine
+        Library --> RustAdapter
+        Engine --> Paths
     end
 
     RustAdapter --> CLI[crates/overtone-cli<br/>overtone-cli JSON sidecar]
@@ -118,8 +120,8 @@ flowchart TD
     UserFiles --> CLI
     Engine --> SafeWrites[Atomic .osu writes<br/>backup without overwrite]
     CLI --> Results[Timing · structure · ramps JSON]
-    Results --> Bridge
-    PythonData[assets/ · python/requirements.lock] --> PyModules
+    Results --> RustAdapter
+    PythonData[assets/ · python/requirements.lock] --> Engine
     RustData[Cargo.toml · Cargo.lock] --> CLI
     SafeWrites --> UserFiles
 
@@ -133,45 +135,39 @@ flowchart TD
         Corpus --> Engine
         Corpus --> CLI
         Fuzz --> Engine
+        Runs --> Accuracy
         Facts -. checks counts and schemas .-> Docs
     end
 
-    subgraph Release[installer/ — offline Windows distribution]
-        Build[build.py · PyInstaller spec · WiX source]
-        SBOM[sbom.py / sbom.json]
-        Notices[notices.py / notices.json]
-        Smoke[smoke.py]
-        Build --> SBOM
-        Build --> Notices
-        Build --> Smoke
-    end
-    Build --> Launcher
-
     subgraph Docs[docs/ — design, roadmap and process]
         Architecture[03-architecture.md · 05-dsp-pipeline.md]
-        Roadmap[07-roadmap.md · 10-precision-plan.md]
+        Roadmap[07-roadmap.md · 10-precision-plan.md · 16-web-platform.md]
         Process[workflow.md · timeline.md · project-map.md]
     end
     Architecture -. describes .-> Python
     Architecture -. describes .-> Core
     Roadmap -. prioritizes .-> Python
-    Roadmap -. prioritizes .-> Core
+    Roadmap -. prioritizes .-> Site
 ```
 
 ## Top-level ownership
 
 | Path | Responsibility | Main connections |
 |---|---|---|
-| `app/` | Web frontend and interaction | `python/overtone_web.py` JSON bridge |
-| `python/` | Application backend, v3 reference engine, `.osu` I/O and library | Web shell, Tk UI, CLI, Rust adapter |
+| `site/` | The website, Overtone's only interface: `site/api` and `site/web` | Mides sign-in, PostgreSQL, the engine through its own services |
+| `python/` | v3 reference engine, `.osu` I/O, CLI, library index and the headless measurement server | Rust adapter, bench, the owner's server |
 | `crates/` | Rust v4 analysis engine, sidecar and bench | Python adapter, audio and map inputs, Rust gates |
 | `bench/` | Accuracy, parity, robustness, coverage, performance and facts | Python v3, Rust crates, docs and benchmark data |
-| `tests/` | Python engine, file I/O and web bridge tests | `python/`, fixture files |
+| `tests/` | Python engine, file I/O, command-line and server tests | `python/`, fixture files |
 | `proto/` | Python experiments for candidate algorithms | Bench prototypes before a Rust port |
-| `assets/` | Generated branding and the Beat This! model (Git LFS) | Python engine; installer |
-| `installer/` | Local MSI and portable ZIP build, notices, SBOM and smoke checks | Python app and repository assets |
-| `.claude/`, `.agents/` | Repository UI-check skill and Graphify coding-agent skill | Local contributor workflows; no app runtime dependency |
+| `assets/` | Generated branding and the Beat This! model (Git LFS) | Python engine |
+| `deploy/` | The owner's server updater and the site's hosting | `python/overtone_server.py`, `site/` |
+| `.agents/` | Graphify coding-agent skill | Local contributor workflows; no runtime dependency |
 | `docs/` | Audit, architecture, design, roadmap, workflow and engineering record | All implementation areas |
+
+The desktop app (`app/`, `python/overtone_web.py`, `overtone_webhost.py`, the Tk
+window in `overtone.py`, `Overtone.bat`, `installer/`) left master on 2026-10-26 and
+is kept whole on `parked/desktop-app` (tag `v3-desktop-app`).
 
 ## Update and graph workflow
 

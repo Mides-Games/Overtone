@@ -1,5 +1,10 @@
 # UI / UX design
 
+> **The desktop app this document designed was parked on 2026-10-26** (branch
+> `parked/desktop-app`, tag `v3-desktop-app`; `app/styles.css` lives there now).
+> Overtone's interface is the website (`site/`, [site.md](site.md)), which keeps the
+> "Console" look. What follows is the desktop design as it was built.
+
 The brief asks for something that reads as a professional audio tool rather than a Python
 script with a window. That is mostly a matter of restraint: a small number of decisions,
 applied without exception.

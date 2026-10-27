@@ -6,7 +6,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Commits, branches and pull requests
 
 Commits, branch names and PR titles are in **English**. Code, comments and
-commit messages are English; only the app's own UI strings stay bilingual
+commit messages are English; only the website's own UI strings stay bilingual
 (EN/ES).
 
 - **Do not add `Co-Authored-By` trailers.** No AI attribution lines, no
@@ -14,12 +14,12 @@ commit messages are English; only the app's own UI strings stay bilingual
   Commits are authored by the repository owner.
 - Commit subject: `type(scope/task): short imperative description`, e.g.
   `fix(engine/octave): prefer the mapped pulse on ties`,
-  `feature(app/export): add gain option to the click track`.
+  `feature(site/export): add gain option to the click track`.
   Types: `feature` (new capability), `fix` (bug fix), `refactor` (same
   behaviour, clearer structure), `perf` (faster — with numbers), `bench`
   (benchmark, gates or golden vectors), `test` (tests only), `docs`
   (documentation only), `chore` (layout, dependencies, tooling).
-  Scope is the area (`engine`, `app`, `bench`, `rust`, `docs`, `repo`) plus the task after a slash. Description in lowercase, imperative,
+  Scope is the area (`engine`, `site`, `app`, `bench`, `rust`, `docs`, `repo`) plus the task after a slash. Description in lowercase, imperative,
   no trailing period, one line.
 - Body explains **why**, not what. The diff already says what. A `perf` or
   accuracy claim names its measurement; a gate change names the gates run
@@ -50,7 +50,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (775 on 2026-10-26)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (491 on 2026-10-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -63,11 +63,9 @@ commit messages are English; only the app's own UI strings stay bilingual
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
-.venv/Scripts/python.exe bench/parity.py                       # 254 of 523 v3 engine tests held in Rust
+.venv/Scripts/python.exe bench/parity.py                       # 247 of 491 v3 engine tests held in Rust
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
-.venv/Scripts/python.exe installer/sbom.py --check             # every pinned wheel inventoried, at its pin
-.venv/Scripts/python.exe installer/notices.py --check          # every bundled licence gathered, every copyleft offer recorded
 ```
 
 Every gate after the benchmark checks something the benchmark cannot see. `bpm-snapshot` pins the
@@ -143,56 +141,46 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 4. **The v3 Python engine stays runnable** in `python/` for as long as the
    comparison is meaningful. It is the only way "equal or better" can be audited.
    A copy in `reference/python-v3` stays deferred (2026-09-24, see the roadmap's
-   Phase 0): it would keep changing while v3 is the app's default engine.
+   Phase 0): it would keep changing while v3 is still the engine the Rust port
+   is held to.
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
-6. Offline by default. The app works fully without a network: no telemetry, no update
-   checks, no external APIs. Talking to a server is opt-in and only to the one the user
-   configured (their own `overtone_server.py`); it sends only what the work needs (the
-   audio, the parameters, the files a page uploads), and the desktop app falls back to
-   the local engine when that server does not answer. The server makes no outbound calls.
+6. No telemetry, no update checks, no third-party APIs. The engine, the command line
+   and the gates run fully offline. The website talks only to its own API and worker
+   (`site/`, `docs/site.md`); the measurement server (`overtone_server.py`) only answers
+   and makes no outbound calls. The desktop app was parked on 2026-10-26
+   (`parked/desktop-app`, tag `v3-desktop-app`); editing tools come back on the web (W7).
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
 8. Precision-critical code is not edited without running the suite. If the suite cannot be
    run, the change does not land.
 
 ## Layout
 
-The root holds almost nothing on purpose: `README.md`, the launcher
-(`Overtone.bat`), the workspace (`Cargo.toml`, `Cargo.lock`), the agent
-rules (`AGENTS.md`, `CLAUDE.md` — identical) and the Git plumbing
-(`.gitignore`, `.gitattributes`). Everything else lives in a folder:
+The root holds almost nothing on purpose: `README.md`, the workspaces
+(`Cargo.toml`, `Cargo.lock`; `package.json`, `pnpm-workspace.yaml`,
+`pnpm-lock.yaml` for the site), the agent rules (`AGENTS.md`, `CLAUDE.md` —
+identical) and the Git plumbing (`.gitignore`, `.gitattributes`). Everything
+else lives in a folder:
 
 ```
-python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's default)
-  overtone.py               engine, classic window and command line
-  overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
+site/                     the website, Overtone's only interface (docs/site.md)
+python/                   v3 engine, osu! I/O and the command line
+  overtone.py               engine and command line
+  overtone_paths.py         where Overtone's files live, and the release's version
   overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
   library.sql               the index's schema, versioned; facts.py checks the version
-  overtone_server.py        the library API: the index and its BPM cache over HTTP,
-                            behind a token, for a server that holds the Songs folder;
-                            also serves app/ as a web page (overtone_webhost.py)
-  overtone_webhost.py       the page in a browser: Api calls, events and file
-                            dialogs over HTTP instead of pywebview
+  overtone_server.py        the measurement API, headless: the index and its BPM cache
+                            over HTTP, behind a token, for a server that holds the
+                            Songs folder, and the measurement runs
+  server_page/runs.html     the server's one page: the runs, behind a cookie sign-in
   overtone_runs.py          measurement runs on the server: bench/stages.py and
                             single_bpm.py over its Songs folder, one at a time, kept
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
-  test_overtone.py          engine, I/O and classic-window tests
-  test_overtone_web.py      web bridge tests (never touch the real config)
+  test_overtone.py          engine, I/O, command-line and server tests
   fixtures/                 hand-timed samples the tests read
-app/                      web shell frontend (HTML/CSS/JS); web.js carries its bridge
-                          over HTTP when the server serves it, and does nothing on disk;
-                          runs.html is the server's measurement runs page
-Overtone.bat              double-click launcher
-installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
-                          one-line build (installer/build.py) and its smoke test
-  notices.py                every bundled licence gathered into the release tree, out of
-  notices.json              the build's own wheels and crates; the file holds only what no
-                            package carries -- the natives and the copyleft source offers
-  sbom.py                   the pinned wheels' licences, inventoried with a drift gate, and
-  sbom.json                 the CycloneDX SBOM that ships beside the artefacts
-assets/                   generated logo (assets/logo.py), window icon and the Beat This!
+assets/                   generated logo (assets/logo.py), icon and the Beat This!
                           model (assets/models/, Git LFS)
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
@@ -224,12 +212,14 @@ crates/                   the v4 Rust workspace
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
-                          its systemd timer and setup-deploy-user.sh (docs/server.md)
+                          its systemd timer and setup-deploy-user.sh (docs/server.md);
+                          eggs/ and web/ host the site (docs/deploy.md)
 .github/workflows/        deploy.yml only: a push asks the server to update
 docs/                     audit, stack evaluation, architecture, UI, DSP, roadmap,
-                          ML evaluation, naming, precision plan, MSI distribution,
-                          comfort features, audit backlog, other languages, web
-                          platform, workflow, library server, timeline
+                          ML evaluation, naming, precision plan, MSI distribution
+                          (historical: the installer was parked), comfort features,
+                          audit backlog, other languages, web platform, site, workflow,
+                          library server, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

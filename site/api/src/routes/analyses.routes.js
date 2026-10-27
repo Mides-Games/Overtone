@@ -24,7 +24,7 @@ import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timin
  *   GET  /analyses/moderation       staff: the latest removals and requeues, and who did them
  *   POST /analyses/:id/moderate     staff: { action: remove | requeue, reason? }
  *   GET  /analyses/:id              status, queue position, progress, result
- *   DELETE /analyses/:id            cancel it while it is still queued
+ *   DELETE /analyses/:id            cancel it while it is still queued, or delete it once finished
  *   GET  /analyses/:id/timing.txt   the [TimingPoints] block
  *   GET  /analyses/:id/timing.csv   the red lines as CSV
  *
@@ -41,7 +41,7 @@ const ID = /^[0-9a-f]{32}$/;
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
-const anonHashOf = (req) => {
+export const anonHashOf = (req) => {
   const token = cookiesOf(req)[ANON_COOKIE];
   return typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token) ? sha256(token) : null;
 };
@@ -302,7 +302,7 @@ router.post('/analyses/lookup', lookupRateLimit, requireSameOrigin, optionalSess
 });
 
 /** Whether this request is the one that created `row`: its session account or its anonymous cookie. */
-const isMine = (req, row, anonHash = anonHashOf(req)) =>
+export const isMine = (req, row, anonHash = anonHashOf(req)) =>
   Boolean((req.account && row.accountId === req.account.id) || (row.anonHash && row.anonHash === anonHash));
 
 // Every open queue page polls; one read of the tables serves all of them for a second.
@@ -310,6 +310,10 @@ const QUEUE_TTL_MS = 1000;
 // The promise is kept, not its value: requests that arrive while the read is
 // running wait for it instead of starting their own.
 let queueSnapshot = { at: 0, read: null };
+/** The next queue read goes to the tables: something it shows just changed. */
+export const refreshQueue = () => {
+  queueSnapshot = { at: 0, read: null };
+};
 const queueRows = () => {
   if (!queueSnapshot.read || Date.now() - queueSnapshot.at > QUEUE_TTL_MS) {
     const read = analyses()
@@ -398,7 +402,7 @@ router.post('/analyses/:id/moderate', requireSameOrigin, requireSession, require
 });
 
 /** The analysis `:id` if this request may read it, else a 404. */
-const readable = async (req) => {
+export const readable = async (req) => {
   const { id } = req.params;
   if (!ID.test(id)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
   const row = await analyses().get(id, { position: false });
@@ -430,6 +434,10 @@ const publicView = (row) => ({
   tagArtist: row.tagArtist ?? null,
   createdAt: new Date(row.createdAt).toISOString(),
   cached: Boolean(row.cachedFrom),
+  // W3.27: whether its uploader made it public, and the privacy publishing lifts.
+  private: Boolean(row.private),
+  published: Boolean(row.publishedAt),
+  ...(row.publishedAt ? { publishedAt: new Date(row.publishedAt).toISOString() } : {}),
   ...(row.status === 'queued' && row.position ? { position: row.position } : {}),
   ...(row.status === 'running' ? { progress: row.progress ?? 0, stage: row.stage ?? null } : {}),
   ...(row.status === 'done' || row.status === 'refused' ? { result: row.result } : {}),
@@ -443,16 +451,22 @@ router.get('/analyses/:id', optionalSession, async (req, res) => {
 });
 
 /**
- * DELETE /analyses/:id (W3.12): the uploader takes back a song that is still
- * waiting. The job, the row and the spooled audio go, so it costs nothing of
- * the day's quota. One that is already being analysed stays (409
+ * DELETE /analyses/:id. While the song waits (W3.12) its uploader takes it
+ * back: the job, the row and the spooled audio go, so it costs nothing of the
+ * day's quota. Once it has finished (W3.26) its uploader deletes it: the
+ * result, the names and the publication go at once, the row itself on the
+ * next UTC day (until then it still counts in that day's quota, or deleting
+ * would be a way around it). One that is being analysed stays (409
  * NOT_QUEUED): the worker has no way to hear about it mid-stage, and the
  * claim and this delete are decided by the same row lock.
  */
-router.delete('/analyses/:id', requireSameOrigin, optionalSession, async (req, res) => {
+const deleteRateLimit = guard('delete', 60, 10 * 60_000);
+
+router.delete('/analyses/:id', deleteRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
   const row = await readable(req);
-  if (!(await analyses().cancel(row.publicId))) {
-    throw new HttpError(409, 'Only a song still waiting in the queue can be cancelled.', 'NOT_QUEUED');
+  const store = analyses();
+  if (!(await store.cancel(row.publicId)) && !(await store.deleteOwn(row.publicId))) {
+    throw new HttpError(409, 'A song that is being analysed cannot be cancelled or deleted until it ends.', 'NOT_QUEUED');
   }
   await discard(row.publicId);
   // The queue page shows it gone on its next poll, not a second later.

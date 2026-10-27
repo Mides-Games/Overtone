@@ -83,6 +83,18 @@ ALTER TABLE analyses ADD COLUMN IF NOT EXISTS cached_from bigint REFERENCES anal
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS private     boolean NOT NULL DEFAULT false;
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_title   text CHECK (char_length(tag_title) <= 200);
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_artist  text CHECK (char_length(tag_artist) <= 200);
+-- W3.27 and W5.1, a timing's own page and the recent list. An analysis is
+-- public only once its uploader published it (published_at set): opt-in,
+-- never automatic, and undone by clearing it. A column, not a row in
+-- `timings`: that table is for timings people edit and fork (W4), and a
+-- published analysis is the engine's reading as it came. W3.26, delete-own:
+-- deleted_at marks a finished analysis its owner deleted. Its result, names
+-- and publication are cleared at once; the row itself stays until the day is
+-- over only so it keeps counting in that day's quota (otherwise delete and
+-- analyse again would be a way around it).
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS published_at timestamptz;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS deleted_at   timestamptz;
+CREATE INDEX IF NOT EXISTS analyses_published_idx ON analyses (published_at DESC, public_id DESC) WHERE published_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_song_idx ON analyses (song_id);
 -- The queue page reads the unfinished rows and the latest finished ones.
 CREATE INDEX IF NOT EXISTS analyses_live_idx ON analyses (status, created_at) WHERE status IN ('queued', 'running');

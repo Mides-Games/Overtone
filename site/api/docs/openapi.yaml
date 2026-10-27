@@ -831,6 +831,20 @@ paths:
               schema: { $ref: '#/components/schemas/PublicTiming' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /timings/{id}/card:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing without its result, for a link preview
+      description: What overtone-web reads to write the Open Graph tags of `/t/{id}` (deploy/web/serve.mjs).
+      responses:
+        '200':
+          description: The list's fields.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingSummary' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /timings/{id}/timing.txt:
     parameters:
       - $ref: '#/components/parameters/analysisId'

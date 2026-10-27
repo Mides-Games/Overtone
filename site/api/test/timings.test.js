@@ -184,6 +184,7 @@ test('the public page, the list and the check never carry the SHA-1, anon_hash o
     assert.ok(secrets.length >= 2);
     const bodies = [
       await (await fetch(`${base}/timings/${id}`)).text(),
+      await (await fetch(`${base}/timings/${id}/card`)).text(),
       await (await fetch(`${base}/timings?limit=50`)).text(),
       await (await fetch(`${base}/timings/${id}/timing.csv`)).text(),
       await (await fetch(`${base}/timings/${id}/check`, { method: 'POST', headers: JSON_BODY, body: JSON.stringify({ sha1 }) })).text(),

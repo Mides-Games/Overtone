@@ -17,6 +17,7 @@ import { readable } from './analyses.routes.js';
  *   DELETE /analyses/:id/publish    the uploader takes it back
  *   GET    /timings                 recent published timings from everyone: filters and a cursor
  *   GET    /timings/:id             one published timing, as anyone may see it
+ *   GET    /timings/:id/card        the same without the result: a link preview's fields
  *   GET    /timings/:id/timing.txt  its [TimingPoints] block
  *   GET    /timings/:id/timing.csv  its red lines as CSV
  *   POST   /timings/:id/check       { sha1 } -> { match }: is the visitor's file this timing's audio?
@@ -107,6 +108,17 @@ router.get('/timings/:id', readRateLimit, async (req, res) => {
   // Not cached: an unpublish must take it down at once.
   res.set('Cache-Control', 'no-store');
   res.json(publicTiming(row));
+});
+
+/**
+ * GET /timings/:id/card: the list's fields alone, without the result. What
+ * overtone-web reads to write a shared link's Open Graph tags
+ * (deploy/web/serve.mjs), so a preview does not fetch a whole tempo map.
+ */
+router.get('/timings/:id/card', readRateLimit, async (req, res) => {
+  const row = await published(req);
+  res.set('Cache-Control', 'no-store');
+  res.json(recentEntry(row));
 });
 
 const download = (suffix, type, body) => async (req, res) => {

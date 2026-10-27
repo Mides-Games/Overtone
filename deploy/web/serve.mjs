@@ -36,6 +36,12 @@
  * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
  * 0 only when the site is served over plain http, as on a laptop.
  *
+ * /t/<id>, a published timing's page (W3.27), is index.html with that
+ * timing's title and Open Graph tags written into its head, read from the
+ * API's /timings/<id>/card and escaped, so a link shared on Discord shows
+ * the song, its BPM and who timed it. Without a card in 1.5 s, or for a
+ * timing that is not published, it is the plain index.html.
+ *
  * PROXY_SECRET is the same value as the API's: every request forwarded to the
  * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
  * without it, because on the panel the API's own port is public too. A
@@ -297,6 +303,112 @@ async function file(p) {
   }
 }
 
+// ── A shared timing's link preview (W3.27) ──────────────────────────────────
+//
+// Discord, Slack and the like read a link's Open Graph tags and never run the
+// page's script, so the tags of /t/<id> are written here: the API's card of
+// that timing (title, artist, BPM, red lines, uploader; no result) into the
+// served index.html. Every value is the uploader's own text and is escaped
+// for an HTML attribute. A card that does not come in time, or a timing that
+// is not published, gets the plain page: the app says what is wrong.
+const TIMING_PAGE = /^\/t\/([0-9a-f]{32})\/?$/;
+const CARD_TIMEOUT_MS = 1500;
+const CARD_MAX_BYTES = 16 * 1024;
+
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(INVISIBLE, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// The card, read from the API as overtone-web forwards anything else: the
+// proxy secret, and the visitor's address so the API's read limit counts them.
+function timingCard(req, id) {
+  return new Promise((resolve) => {
+    const headers = { accept: 'application/json', host: UPSTREAM.host };
+    if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
+    const peer = peerOf(req);
+    headers['x-forwarded-for'] = forwardedFor(req, peer, fromTrustedProxy(peer));
+    headers['x-forwarded-proto'] = 'http';
+    const up = http.request(
+      { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: 'GET', path: `/api/v1/timings/${id}/card`, headers },
+      (r) => {
+        if (r.statusCode !== 200) {
+          r.resume();
+          return resolve(null);
+        }
+        let body = '';
+        let card = null;
+        r.setEncoding('utf8');
+        r.on('data', (chunk) => {
+          body += chunk;
+          if (body.length > CARD_MAX_BYTES) up.destroy();
+        });
+        r.on('end', () => {
+          try {
+            card = JSON.parse(body);
+          } catch {
+            card = null;
+          }
+        });
+        r.on('error', () => {});
+        // After 'end', or instead of it when the answer was cut: either way, done.
+        r.on('close', () => resolve(card && typeof card === 'object' ? card : null));
+      },
+    );
+    up.setTimeout(CARD_TIMEOUT_MS, () => up.destroy());
+    up.on('error', () => resolve(null));
+    up.end();
+  });
+}
+
+/** index.html with the timing's title and Open Graph tags in its head. */
+function withCard(html, card) {
+  const song = [card.artist, card.title].filter(Boolean).join(' - ') || 'A timing';
+  const bpm = Number.isFinite(card.bpm) ? `${Math.round(card.bpm * 100) / 100} BPM` : null;
+  const lines = Number.isInteger(card.redLines) ? `${card.redLines} red line${card.redLines === 1 ? '' : 's'}` : null;
+  const who = card.uploader?.username ? `timed by ${card.uploader.username}` : 'timed anonymously';
+  const title = escapeAttr(`${song} · Overtone`);
+  const description = escapeAttr([bpm, lines, who].filter(Boolean).join(' · '));
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Overtone" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${description}" />`,
+    `<meta name="twitter:card" content="summary" />`,
+  ].join('\n    ');
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${title}</title>`)
+    .replace(/<meta name="description" content="[^"]*"\s*\/?>/i, () => `<meta name="description" content="${description}" />`)
+    .replace(/<\/head>/i, () => `    ${tags}\n  </head>`);
+}
+
+async function serveTimingPage(req, res, id) {
+  const index = path.join(ROOT, 'index.html');
+  if (!(await file(index))) return false;
+  const card = await timingCard(req, id);
+  if (!card) return false;
+  const body = Buffer.from(withCard(await readFile(index, 'utf8'), card), 'utf8');
+  res.writeHead(200, {
+    'content-type': TYPES['.html'],
+    'content-length': body.length,
+    // Never kept: an unpublished timing must stop being described at once.
+    'cache-control': 'no-store',
+    ...(await securityHeaders()),
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
+}
+
 async function serve(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { allow: 'GET, HEAD' });
@@ -309,6 +421,8 @@ async function serve(req, res) {
     res.writeHead(400);
     return res.end();
   }
+  const timing = TIMING_PAGE.exec(rel);
+  if (timing && (await serveTimingPage(req, res, timing[1]))) return;
   // Resolved against ROOT and checked to stay inside it: `..` never escapes.
   let target = path.join(ROOT, path.normalize(rel));
   if (target !== ROOT && !target.startsWith(ROOT + path.sep)) {

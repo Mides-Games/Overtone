@@ -1008,6 +1008,43 @@
       "body": "Cuerpo",
       "responses": "Respuestas",
       "schemas": "Esquemas"
+    },
+    "versions": {
+      "title": "Versiones",
+      "note": "Cada análisis que hiciste de este mismo audio, y los ajustes que guardaste. Una versión guardada se queda solo con su ×2 / ÷2 y el corrimiento: el timing en sí es el del engine.",
+      "engine": "como lo leyó el engine",
+      "thisOne": "este",
+      "now": "como se ve ahora",
+      "open": "Abrir",
+      "labelPlaceholder": "Una nota para esta versión (opcional)",
+      "save": "Guardar {{adjustment}} como versión",
+      "saved": "Este ajuste ya está guardado como versión.",
+      "howToSave": "Probá ×2, ÷2 o un corrimiento arriba y guardalo acá para no perderlo.",
+      "saveFailed": "No se pudo guardar la versión. Probá de nuevo.",
+      "limit": "Este timing ya tiene la cantidad máxima de versiones guardadas. Borrá una primero.",
+      "loadFailed": "No se pudieron cargar las versiones.",
+      "apply": "Aplicar",
+      "forget": "Borrar la versión {{name}}",
+      "compare": "Comparar dos versiones",
+      "loading": "Leyendo la otra versión…",
+      "otherFailed": "No se pudo leer la otra versión.",
+      "same": "Estas dos versiones tienen las mismas red lines.",
+      "summary": "Las red lines se corren hasta {{ms}} ms y {{bpm}} BPM; {{onlyA}} solo en A, {{onlyB}} solo en B.",
+      "dTime": "B − A ms",
+      "dBpm": "B − A BPM",
+      "none": "ninguna"
+    },
+    "copy": {
+      "hint": "Marcá red lines para copiarlas como filas de [TimingPoints] (Shift-clic para un tramo).",
+      "ticked_one": "{{count}} red line marcada",
+      "ticked_other": "{{count}} red lines marcadas",
+      "copyTicked": "Copiar filas",
+      "clear": "Limpiar",
+      "all": "Marcar todas las red lines",
+      "tick": "Marcar la red line {{n}}",
+      "one": "Copiar esta red line como fila de [TimingPoints]",
+      "copied": "Copiado: pegalo bajo [TimingPoints]",
+      "failed": "No se pudo copiar"
     }
   }
 }

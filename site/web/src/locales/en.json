@@ -1008,6 +1008,43 @@
       "body": "Body",
       "responses": "Responses",
       "schemas": "Schemas"
+    },
+    "versions": {
+      "title": "Versions",
+      "note": "Every analysis of this same audio you made, and the adjustments you saved. A saved version keeps only its ×2 / ÷2 and nudge: the timing itself is the engine's.",
+      "engine": "as the engine read it",
+      "thisOne": "this one",
+      "now": "as shown now",
+      "open": "Open",
+      "labelPlaceholder": "A note for this version (optional)",
+      "save": "Save {{adjustment}} as a version",
+      "saved": "This adjustment is saved as a version.",
+      "howToSave": "Try ×2, ÷2 or a nudge above, then save it here to keep it.",
+      "saveFailed": "The version could not be saved. Try again.",
+      "limit": "This timing has the most saved versions it can keep. Delete one first.",
+      "loadFailed": "The versions could not be loaded.",
+      "apply": "Apply",
+      "forget": "Delete the version {{name}}",
+      "compare": "Compare two versions",
+      "loading": "Reading the other version…",
+      "otherFailed": "The other version could not be read.",
+      "same": "These two versions have the same red lines.",
+      "summary": "Red lines move by up to {{ms}} ms and {{bpm}} BPM; {{onlyA}} only in A, {{onlyB}} only in B.",
+      "dTime": "B − A ms",
+      "dBpm": "B − A BPM",
+      "none": "none"
+    },
+    "copy": {
+      "hint": "Tick red lines to copy them as [TimingPoints] rows (Shift-click for a stretch).",
+      "ticked_one": "{{count}} red line ticked",
+      "ticked_other": "{{count}} red lines ticked",
+      "copyTicked": "Copy rows",
+      "clear": "Clear",
+      "all": "Tick every red line",
+      "tick": "Tick red line {{n}}",
+      "one": "Copy this red line as a [TimingPoints] row",
+      "copied": "Copied: paste it under [TimingPoints]",
+      "failed": "Could not copy"
     }
   }
 }

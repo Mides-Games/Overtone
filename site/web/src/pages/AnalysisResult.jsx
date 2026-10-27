@@ -12,6 +12,8 @@ import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
+import Versions from '../components/result/Versions.jsx'
+import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { checkSpans } from '../lib/check-spans.js'
@@ -88,7 +90,7 @@ export default function AnalysisResult() {
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
       {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setChanged((c) => ({ id, fields: { ...(c.id === id ? c.fields : {}), ...next } }))} />}
-      {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
+      {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
     </div>
   )
 }
@@ -245,9 +247,10 @@ function Refused({ result }) {
  *
  * A published timing's page (W3.27) shows the same view to anyone: it has no
  * `sha1` to check a file against, so it passes `verify`, which asks the
- * server, and `csvHref`, the public CSV.
+ * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
+ * lists and saves versions (W12.21).
  */
-export function Result({ id, analysis, verify = null, csvHref = null }) {
+export function Result({ id, analysis, verify = null, csvHref = null, owner = false }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
@@ -412,6 +415,8 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         />
       </AdjustExport>
 
+      {owner && <Versions analysis={analysis} adjustment={adjustment} onApply={setAdjustment} />}
+
       <RedLinesTable
         lines={lines}
         sections={sections}
@@ -423,6 +428,7 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         canPlay={snapshot.ready}
         onPlayFrom={playFrom}
         onLoop={loopLine}
+        copyRows={(positions) => timingRows(result, lines, adjustment, positions)}
       />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">

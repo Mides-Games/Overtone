@@ -10,7 +10,7 @@ no network calls. Open source under the [MIT licence](LICENSE).
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![licence](https://img.shields.io/badge/licence-MIT-blue)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-784%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-785%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ## Accuracy, honestly
 
@@ -333,7 +333,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 784 tests
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 785 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

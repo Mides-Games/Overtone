@@ -19,7 +19,21 @@ import { env, secureCookies } from '../config/env.js';
  * the Mides token, which stays on the server, and no personal data.
  */
 
-export const COOKIE = 'overtone_session';
+/**
+ * A cookie's name, `__Host-` prefixed whenever cookies are Secure. The browser
+ * accepts a `__Host-` cookie only when it is Secure, has Path=/ and no
+ * Domain, so no other host under the same domain (any *.midesprojects.com)
+ * can set or shadow it: without the prefix a sibling subdomain could plant
+ * its own anonymous cookie in a visitor's browser and then read every
+ * analysis that visitor uploads. Over plain http (development) the prefix
+ * would make the browser drop the cookie, so it is left off there.
+ */
+const hostCookie = (name) => (secureCookies() ? `__Host-${name}` : name);
+
+export const COOKIE = hostCookie('overtone_session');
+
+/** The anonymous uploader's cookie (routes/analyses.routes.js). */
+export const ANON_COOKIE = hostCookie('overtone_anon');
 
 /** The separator appears in neither a uuid nor base64url, so splitting is unambiguous. */
 const SEP = '.';
@@ -76,6 +90,9 @@ export const cookieHeader = (token) => cookie(COOKIE, token, { maxAge: env.sessi
 
 export const clearedCookieHeader = () => cookie(COOKIE, '', { maxAge: 0 });
 
+/** A year, Path=/ (a `__Host-` cookie can have no other). */
+export const anonCookieHeader = (token) => cookie(ANON_COOKIE, token, { maxAge: 365 * 24 * 60 * 60 });
+
 // ── The trip to the SSO (login CSRF) ─────────────────────────────────────────
 //
 // Whoever comes back from Mides brings a code in the URL, and anybody can
@@ -118,21 +135,35 @@ export const clearedSsoCookieHeader = () => cookie(SSO_COOKIE, '', { path: AUTH_
  * A request's cookies. By hand, without cookie-parser: split on `;` and the
  * first `=`. A cookie with a stray `%` (from another site on the same domain)
  * is skipped instead of turning the whole request into a 500.
+ *
+ * A name that arrives twice is treated as absent. Two cookies of one name
+ * means a second one was set from somewhere else (another path, or a sibling
+ * host where the `__Host-` prefix is off), and which one the browser sends
+ * first is not something to stake a session or an anonymous identity on.
  */
 export const cookiesOf = (req) => {
   const raw = req.headers?.cookie;
   if (!raw) return {};
 
   const jar = {};
+  const seen = new Set();
+  const twice = new Set();
   for (const part of raw.split(';')) {
     const eq = part.indexOf('=');
     if (eq < 0) continue;
+    const name = part.slice(0, eq).trim();
+    if (seen.has(name)) {
+      twice.add(name);
+      continue;
+    }
+    seen.add(name);
     try {
-      jar[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+      jar[name] = decodeURIComponent(part.slice(eq + 1).trim());
     } catch {
       continue;
     }
   }
+  for (const name of twice) delete jar[name];
 
   return jar;
 };

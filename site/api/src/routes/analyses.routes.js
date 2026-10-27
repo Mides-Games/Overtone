@@ -2,11 +2,11 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 
 import { Router } from 'express';
 
-import { env, secureCookies } from '../config/env.js';
+import { env } from '../config/env.js';
 import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin } from '../middlewares/session.js';
 import { analyses, engineHash, newPublicId } from '../services/analysis.service.js';
-import { cookiesOf } from '../services/session.service.js';
+import { ANON_COOKIE, anonCookieHeader, cookiesOf } from '../services/session.service.js';
 import { commit, discard, discardPart, receive, reserve } from '../services/spool.service.js';
 import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
@@ -24,15 +24,14 @@ import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timin
  *   GET  /analyses/:id/timing.csv   the red lines as CSV
  *
  * No account is needed (ADR-W6). An anonymous uploader gets an HttpOnly
- * `overtone_anon` cookie, 128 random bits; the row keeps only its SHA-256.
+ * `overtone_anon` cookie (`__Host-overtone_anon` over https, Path=/), 128
+ * random bits; the row keeps only its SHA-256.
  * An analysis is readable by the session account or the anonymous cookie that
  * created it, and by nobody else: anyone else gets the same 404 as for an id
  * that does not exist.
  */
 const router = Router();
 
-const ANON_COOKIE = 'overtone_anon';
-const ANON_PATH = '/api/v1/analyses';
 const ID = /^[0-9a-f]{32}$/;
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -47,19 +46,7 @@ const ensureAnon = (req, res) => {
   const existing = anonHashOf(req);
   if (existing) return existing;
   const token = randomBytes(16).toString('base64url');
-  res.append(
-    'Set-Cookie',
-    [
-      `${ANON_COOKIE}=${token}`,
-      `Path=${ANON_PATH}`,
-      'HttpOnly',
-      'SameSite=Lax',
-      secureCookies() ? 'Secure' : null,
-      `Max-Age=${365 * 24 * 60 * 60}`,
-    ]
-      .filter(Boolean)
-      .join('; '),
-  );
+  res.append('Set-Cookie', anonCookieHeader(token));
   return sha256(token);
 };
 
@@ -336,9 +323,9 @@ const queueRows = () => {
 
 /**
  * GET /analyses/queue: what is waiting, what is being analysed and what
- * finished in the last hour, for anyone (W3.8). Under /analyses so the
- * anonymous cookie, whose path is ANON_PATH, reaches it and marks the
- * caller's own rows. Polled by the page every few seconds.
+ * finished in the last hour, for anyone (W3.8). The anonymous cookie
+ * reaches it (Path=/) and marks the caller's own rows. Polled by the page
+ * every few seconds.
  */
 router.get('/analyses/queue', optionalSession, async (req, res) => {
   const { live, more, recent } = await queueRows();

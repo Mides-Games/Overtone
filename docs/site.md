@@ -32,7 +32,7 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   the result builder, and whether the Beat This! vote ran). The same audio
   through the same engine is answered at once and not counted in the quota.
 - **Who may read it.** The id is 128 random bits; the analysis is readable by
-  the session account or the anonymous `overtone_anon` cookie that created it
+  the session account or the anonymous `__Host-overtone_anon` cookie that created it
   (the row keeps its SHA-256), and by nobody else: they get the same 404 as for
   an id that does not exist.
 - **Quota** (ADR-W6): `ANON_DAILY_LIMIT` a UTC day per client address without
@@ -150,7 +150,9 @@ returns to `/login/callback#code=…`, the web posts the code to
 `/api/v1/auth/sso/exchange`, and the API exchanges it with
 `${MIDES_AUTH_URL}/auth/sso/exchange`. The exchange refuses a browser without
 the SSO cookie and without the web's own note of the trip (login CSRF). The
-browser then holds one HttpOnly `overtone_session` cookie, an HMAC over the
+browser then holds one HttpOnly `__Host-overtone_session` cookie (plain
+`overtone_session` over http, where a `__Host-` cookie would be dropped; a name
+sent twice counts as absent), an HMAC over the
 account id, expiry and session version. The exchange sends this app's slug and
 `MIDES_CLIENT_SECRET`, so a code taken from a browser is good to nobody else.
 Mides answers with an access token of audience `app:overtone`, which opens

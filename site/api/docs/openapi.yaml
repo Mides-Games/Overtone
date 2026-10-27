@@ -7,7 +7,8 @@ info:
     the browser never calls it cross-origin, so there is no CORS.
 
     Sign-in is Mides SSO only. The browser holds one cookie,
-    `overtone_session` (HttpOnly, SameSite=Lax); Mides tokens never leave the
+    `__Host-overtone_session` (HttpOnly, SameSite=Lax, Secure, Path=/; plain
+    `overtone_session` over http in development); Mides tokens never leave the
     server. Every state-changing request carries
     `X-Requested-With: overtone-web` or is refused with 403.
 
@@ -28,7 +29,7 @@ components:
     session:
       type: apiKey
       in: cookie
-      name: overtone_session
+      name: __Host-overtone_session
   parameters:
     sameOrigin:
       name: X-Requested-With
@@ -323,8 +324,8 @@ paths:
       description: |
         The body is the audio itself, streamed to the spool and hashed (SHA-1)
         on the way; it is deleted once the worker answers (ADR-W4). No account
-        is needed: an anonymous uploader gets the HttpOnly `overtone_anon`
-        cookie (path /api/v1/analyses), which with the id is what lets it read
+        is needed: an anonymous uploader gets the HttpOnly `__Host-overtone_anon`
+        cookie (Path=/; `overtone_anon` over http), which with the id is what lets it read
         the analysis back.
 
         Checked before a byte is read: the content type, the extension

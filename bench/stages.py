@@ -380,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
                "maps": [{k: v for k, v in m.items() if k not in ("rows", "d_map", "d_eng")} | {
                    "beat_f10": beat_f(m, 10, beat_shift),
                    "tempo_ok": tempo_ok(m), "conv_10": joint(m, 10, shift),
-                   "first": m["rows"][0]} for m in maps]}
+                   "first": m["rows"][0], "rows": m["rows"]} for m in maps]}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     if args.save_baseline:

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
+import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
@@ -364,9 +365,10 @@ function FileCard({ item, problem, onRemove, onStatus }) {
   const { t } = useTranslation()
   const { file, seconds, upload } = item
   const [analysis, setAnalysis] = useState(null)
+  const [cancelled, setCancelled] = useState(false)
 
   useEffect(() => {
-    if (upload.kind !== 'sent') return undefined
+    if (upload.kind !== 'sent' || cancelled) return undefined
     let timer
     let stopped = false
     async function poll() {
@@ -385,10 +387,12 @@ function FileCard({ item, problem, onRemove, onStatus }) {
       stopped = true
       clearTimeout(timer)
     }
-  }, [upload.kind, upload.id])
+  }, [upload.kind, upload.id, cancelled])
 
   const percent =
-    upload.kind === 'sending'
+    cancelled
+      ? null
+      : upload.kind === 'sending'
       ? Math.round(upload.sent * 100)
       : analysis?.status === 'running'
         ? Math.round((analysis.progress ?? 0) * 100)
@@ -397,6 +401,7 @@ function FileCard({ item, problem, onRemove, onStatus }) {
   if (problem || upload.kind === 'error') status = <span className="text-red">{problem ?? upload.message}</span>
   else if (upload.kind === 'ready') status = t('analyze.card.ready')
   else if (upload.kind === 'sending') status = t('analyze.sending', { percent })
+  else if (cancelled) status = t('queue.status.cancelled')
   else if (!analysis) status = t('analyze.card.sent')
   else if (analysis.status === 'queued') status = t('result.queued', { position: analysis.position ?? 1 })
   else if (analysis.status === 'running') {
@@ -433,9 +438,12 @@ function FileCard({ item, problem, onRemove, onStatus }) {
           )}
         </span>
       </div>
-      <p className="text-caption text-dim" aria-live="polite">
-        {status}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-caption text-dim" aria-live="polite">
+          {status}
+        </p>
+        {!cancelled && analysis?.status === 'queued' && <CancelButton id={upload.id} onCancelled={() => setCancelled(true)} />}
+      </div>
       {percent !== null && (
         <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
           <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />

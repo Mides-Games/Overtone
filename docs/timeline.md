@@ -53,6 +53,96 @@ version is `v0.2.0-alpha`.
   stubbed).
 
 ---
+## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+
+### Changed
+
+- W3.12 of [the web platform](16-web-platform.md): `DELETE /api/v1/analyses/:id`
+  takes back a song that is still waiting. Whoever may read the analysis (the
+  session or the anonymous cookie that created it) may cancel it; anyone else
+  gets the same 404 as for an id that does not exist. The job, the row and the
+  spooled audio are deleted, so the song does not count against the day's quota.
+- A Cancel button on the upload card, on the analysis page while it is queued and
+  on the caller's own queued rows in `/queue`. A cancelled analysis is dropped
+  from the browser's recent list.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` was not YAML since W3.11: a `$'` in that edit's
+  replacement string meant "the text after the match", which pasted a second copy
+  of the queue and analysis paths into the lookup's `sha1` pattern. Two unquoted
+  descriptions did not parse either. It loads again, each path once.
+
+### Hardening
+
+- A song the worker has claimed is not cancelled (409 `NOT_QUEUED`): the worker
+  has no way to hear about it mid-stage. The delete checks `state = 'queued'` in
+  the same statement, so a claim and a cancel arriving together are decided by
+  the job's row lock, not by whichever read first.
+
+### Measured
+
+- `node --test` in `site/api`: 34/34 (3 new, over HTTP against the app: the
+  owner cancels and the row, the audio and the quota count go; a stranger gets
+  404 and a request without the same-origin header 403; a claimed job gets 409).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; a queued analysis
+  cancelled, the day's count went from 2 to 1; a claimed one refused.
+- In the browser (`pnpm dev` in memory, no worker): cancelled from `/queue`, from
+  the analysis page (back to `/analyze`) and from a batch card; the queue showed
+  each one gone.
+
+---
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
+## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+
+### Changed
+
+- `_load_beat_this` turns off `enable_mem_pattern`. The pattern plans a buffer layout
+  per input shape and keeps it; the vote runs 1500-frame chunks plus a last chunk of
+  another length on every song, so it only adds to the peak.
+
+### Measured
+
+- Beat This! alone over three Corpus B songs (135, 257 and 477 s) in one process,
+  ONNX Runtime 1.31.0, this PC with other sessions' runs in the background: peak
+  working set 1904 MB (twice) -> 1278 MB. CPU seconds 116 / 179 / 392 against
+  120-121 / 238-248 / 422-507 for the default. Every beat of the 1425 within 1 ms
+  of the default's.
+- Gates: see the PR.
+
+### Rejected / tried and dropped
+
+- `enable_cpu_mem_arena = False`: 1045 MB, beats identical, but the CPU cost moved
+  between +23 % and -27 % per song; not a clear win on a contended machine.
+  Both switches off: 991 MB at +40 % CPU.
+- Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
+  and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
+  by more than 20 ms. That is a precision change; it waits for a Corpus B run.
 
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 

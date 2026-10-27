@@ -55,12 +55,25 @@ export const downloadName = (filename, suffix) => {
   return `${stem || 'overtone'}-${suffix}`;
 };
 
+/**
+ * One CSV cell. Numbers go as they are. Text that a spreadsheet would run as a
+ * formula (a leading = + - @, or a tab or carriage return before one) gets a
+ * leading apostrophe, and anything with a comma, quote or line break is quoted.
+ */
+export const csvCell = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  let cell = String(value);
+  if (/^[=+\-@\t\r]/.test(cell)) cell = `'${cell}`;
+  return /[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+};
+
 /** The red lines as CSV: one row per line, the numbers the result carries. */
 export const timingCsv = (result) => {
   const rows = ['time_ms,bpm,beat_length_ms,meter,confidence,level'];
   (result?.red_lines ?? []).forEach((line, i) => {
     const section = result.sections?.[i] ?? {};
-    rows.push([line.time_ms, line.bpm, line.beat_length_ms, line.meter, section.confidence ?? '', section.level ?? ''].join(','));
+    rows.push([line.time_ms, line.bpm, line.beat_length_ms, line.meter, section.confidence, section.level].map(csvCell).join(','));
   });
   return `${rows.join('\r\n')}\r\n`;
 };

@@ -105,9 +105,44 @@ router.post('/jobs/:id/progress', async (req, res) => {
   res.status(204).end();
 });
 
-/** Just enough of `timing-result v1` to be sure what is stored is one. */
-const validResult = (result) =>
-  result &&
+// What a stored result may hold. The worker is trusted to be honest, not to be
+// right: a bug there, or a stolen WORKER_TOKEN, must not put a NaN, a
+// megabyte label or a formula into what every page and download reads back.
+// Fields not named here (a newer worker's) pass through unchecked.
+const MAX_LINES = 2000;
+const MAX_MS = 4 * 3600 * 1000;
+const LEVELS = new Set(['high', 'medium', 'check']);
+const REFUSAL_CODE = /^[a-z_]{1,32}$/;
+
+const finite = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+const nullOr = (check) => (value) => value === null || value === undefined || check(value);
+const text = (value, max) => typeof value === 'string' && value.length <= max;
+const time = (value) => finite(value, -60_000, MAX_MS);
+const bpm = (value) => finite(value, 1e-3, 10_000);
+
+const validLine = (line) =>
+  line && typeof line === 'object' &&
+  time(line.time_ms) &&
+  bpm(line.bpm) &&
+  finite(line.beat_length_ms, 6, 60_000_000) &&
+  Number.isInteger(line.meter) && line.meter >= 1 && line.meter <= 16 &&
+  (line.meter_known === undefined || typeof line.meter_known === 'boolean');
+
+const validSection = (section) =>
+  section && typeof section === 'object' &&
+  (section.index === undefined || (Number.isInteger(section.index) && section.index >= 0 && section.index < MAX_LINES)) &&
+  time(section.start_ms) &&
+  time(section.end_ms) &&
+  section.end_ms >= section.start_ms &&
+  bpm(section.bpm) &&
+  finite(section.confidence, 0, 1) &&
+  LEVELS.has(section.level) &&
+  nullOr((v) => finite(v, 0, 60_000))(section.residual_ms) &&
+  nullOr((v) => finite(v, 0, 1))(section.coverage);
+
+/** A `timing-result v1` whose every field the site reads is the type and size it should be. */
+export const validResult = (result) =>
+  Boolean(result) &&
   typeof result === 'object' &&
   result.format === 'timing-result' &&
   result.version === 1 &&
@@ -116,7 +151,20 @@ const validResult = (result) =>
   HASH.test(result.engine_hash) &&
   Array.isArray(result.red_lines) &&
   Array.isArray(result.sections) &&
-  typeof result.osu_timing === 'string' &&
+  result.red_lines.length <= MAX_LINES &&
+  result.sections.length <= MAX_LINES &&
+  result.red_lines.every(validLine) &&
+  result.sections.every(validSection) &&
+  text(result.osu_timing, 256 * 1024) &&
+  nullOr(bpm)(result.global_bpm) &&
+  nullOr(time)(result.offset_ms) &&
+  nullOr((v) => finite(v, 0, 86_400))(result.duration_s) &&
+  nullOr((v) => finite(v, 0, 1))(result.stability) &&
+  nullOr((v) => finite(v, 0, 60_000))(result.residual_ms) &&
+  nullOr((v) => text(v, 16))(result.meter) &&
+  nullOr((v) => text(v, 32))(result.engine_mode) &&
+  (result.findings === undefined || (Array.isArray(result.findings) && result.findings.length <= MAX_LINES)) &&
+  nullOr((r) => typeof r === 'object' && REFUSAL_CODE.test(r.code) && text(r.message, 1000))(result.refusal) &&
   (result.refused ? result.red_lines.length === 0 && result.global_bpm === null : result.red_lines.length > 0);
 
 router.post('/jobs/:id/result', async (req, res) => {

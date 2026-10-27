@@ -3192,6 +3192,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                 analysis = _beat_this_vote(analysis, y, sr)
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
+            analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y, sr))
             return _snap_whole_points(_fold_lines_to_song_octave(
                 analysis, lambda: _beat_this_judge_beats(y, sr)))
         if engine == "precision":
@@ -3207,7 +3208,9 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
     tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
                                         lambda: _beat_this_tempo(y, sr))
-    return _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+    tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y, sr))
+    tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+    return _constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3707,11 +3710,7 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
     """The tempo Beat This! hears (BPM, from its beats' median spacing), for
     LOCAL_OCTAVE_JUDGE: loaded on its own, so the judge works where the vote
     is off; None without the model, the runtime or enough beats."""
-    if not _BEAT_THIS_JUDGE:
-        _BEAT_THIS_JUDGE.append(_load_beat_this())
-    if _BEAT_THIS_JUDGE[0] is None:
-        return None
-    beats = _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+    beats = _beat_this_judge_beats(y, sr)
     if beats is None or beats.size < 16:
         return None
     return 60.0 / float(np.median(np.diff(beats)))
@@ -3724,6 +3723,56 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
 #: line's span, hears that octave. On since 2026-10-26 (bands held out
 #: tempo ok 57.7 -> 59.9 %, dev unchanged).
 SECTION_OCTAVE_JUDGE = True
+
+#: A song the beat tracker splits into dozens of red lines that one steady
+#: grid explains: on bands-variable dev, all 185 maps that fell back to the
+#: tracker missed the tempo, 72 of them mapped with a single red line while
+#: the tracker gave a median of 78. When Beat This!'s beats over the whole
+#: song sit on one grid (CONSTANT_GRID_SHARE of them within
+#: CONSTANT_GRID_TOL_MS), the song is read as that grid, at the octave of the
+#: tempo that held most of it. Off until measured on the server.
+CONSTANT_GRID = False
+CONSTANT_GRID_TOL_MS = 20.0
+CONSTANT_GRID_SHARE = 0.9
+
+
+def _constant_grid(analysis: Analysis, heard) -> Analysis:
+    """One red line where one steady grid explains Beat This!'s beats over
+    the whole song (CONSTANT_GRID); the analysis as it was otherwise."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not CONSTANT_GRID or len(points) < 2:
+        return analysis
+    found = heard()
+    if found is None:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    if beats.size < 32:
+        return analysis
+    gaps = np.diff(beats)
+    step = float(np.median(gaps))
+    if step <= 0:
+        return analysis
+    index = np.concatenate([[0], np.cumsum(np.maximum(1, np.round(gaps / step)))])
+    keep = np.ones(beats.size, dtype=bool)
+    for _ in range(3):  # least squares, then without the beats it misses by far
+        period, start = np.polyfit(index[keep], beats[keep], 1)
+        miss = np.abs(beats - (start + period * index))
+        keep = miss <= 2.0 * CONSTANT_GRID_TOL_MS
+        if keep.sum() < 32:
+            return analysis
+    if float(np.mean(miss <= CONSTANT_GRID_TOL_MS)) < CONSTANT_GRID_SHARE:
+        return analysis
+    bpm = 60000.0 / float(period)
+    song = _song_tempo(points, float(analysis.duration) * 1000.0) or bpm
+    bpm *= min((0.5, 1.0, 2.0), key=lambda f: abs(np.log2(bpm * f / song)))
+    period = 60000.0 / bpm
+    # The grid's beat nearest the first red line, so its bar stays where it was.
+    first = points[0].offset_ms
+    offset = start + round((first - start) / period) * period
+    while offset - period >= 0.0 and offset > first + period / 2.0:
+        offset -= period
+    line = replace(points[0], bpm=bpm, offset_ms=float(offset))
+    return _snap_whole_points(replace(analysis, points=[line]))
 
 
 def _song_tempo(points: list, duration_ms: float) -> float | None:
@@ -3791,6 +3840,11 @@ def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
     return replace(analysis, points=out)
 
 
+#: The judge's last answer, by the audio it heard: the judges ask Beat This!
+#: about one song up to four times, and each pass costs seconds.
+_BEAT_THIS_HEARD: list = []
+
+
 def _beat_this_judge_beats(y: np.ndarray, sr: int):
     """Beat This!'s beats (s) by the judge's own session (the vote's switch
     aside); None without the model or the runtime."""
@@ -3798,7 +3852,59 @@ def _beat_this_judge_beats(y: np.ndarray, sr: int):
         _BEAT_THIS_JUDGE.append(_load_beat_this())
     if _BEAT_THIS_JUDGE[0] is None:
         return None
-    return _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+    key = (id(y), int(y.size), int(sr))
+    if _BEAT_THIS_HEARD and _BEAT_THIS_HEARD[0][0] == key and _BEAT_THIS_HEARD[0][1] is y:
+        return _BEAT_THIS_HEARD[0][2]
+    beats = _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+    _BEAT_THIS_HEARD[:] = [(key, y, beats)]
+    return beats
+
+
+#: The whole song read an octave off what Beat This! hears: mappers time slow
+#: songs at 80-100 and fast punk and metal at 240-260, where MAP_OCTAVE_RANGE
+#: (120-240) folds them the other way (bands-variable: 35 single-line maps
+#: an octave off). When Beat This!'s tempo is near 2x or 1/2 of the song's
+#: own, every red line moves to its octave. Off until measured on the server.
+SONG_OCTAVE_BEAT_THIS = False
+
+
+def _song_octave_by_beat_this(analysis: Analysis, heard) -> Analysis:
+    """Every red line at Beat This!'s octave when it hears the song near 2x
+    or 1/2 of its own tempo (SONG_OCTAVE_BEAT_THIS); a halved line keeps the
+    phase nearest Beat This!'s beats."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not SONG_OCTAVE_BEAT_THIS or not points:
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = _song_tempo(points, duration_ms)
+    found = heard() if song else None
+    if found is None or len(found) < 16:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    tempo = 60000.0 / float(np.median(np.diff(beats)))
+    ratio = tempo / song
+    factor = (2.0 if abs(ratio / 2.0 - 1.0) <= LOCAL_OCTAVE_SLACK
+              else 0.5 if abs(ratio / 0.5 - 1.0) <= LOCAL_OCTAVE_SLACK else None)
+    if factor is None:
+        return analysis
+    out = []
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        target = point.bpm * factor
+        offset = point.offset_ms
+        inside = beats[(beats >= point.offset_ms) & (beats <= end)]
+        if factor < 1.0 and inside.size >= 2:
+            period = 60000.0 / target
+
+            def distance(start: float) -> float:
+                grid = start + np.arange(max(1, int((end - start) / period) + 1)) * period
+                i = np.clip(np.searchsorted(inside, grid), 1, inside.size - 1)
+                return float(np.median(np.minimum(np.abs(inside[i - 1] - grid),
+                                                  np.abs(inside[i] - grid))))
+
+            offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
+        out.append(replace(point, bpm=target, offset_ms=offset))
+    return replace(analysis, points=out)
 
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).

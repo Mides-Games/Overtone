@@ -125,20 +125,40 @@ def run_job(api: Api, job: dict, runner: isolate.Runner) -> str:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def exit_with_stdin() -> None:
-    """Leave when stdin closes. ``pnpm dev`` starts the worker with a pipe
-    for stdin and never writes to it, so the pipe closes exactly when the
-    API process that started it goes, however it goes."""
+def exit_with_parent(pid: int) -> None:
+    """Leave when the process that started the worker is gone. ``pnpm dev``
+    passes its own pid; node --watch restarts it without running exit
+    handlers on Windows, so the worker checks on it rather than waiting to be
+    told. (It used to read stdin until the pipe closed, but on Windows a
+    thread blocked reading a pipe stalls the start of the analysis child.)"""
     import threading
+    import time
+
+    def alive() -> bool:
+        if os.name == "nt":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+            if not handle:
+                return False
+            try:
+                return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT
+            finally:
+                kernel32.CloseHandle(handle)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
 
     def watch() -> None:
-        try:
-            sys.stdin.buffer.read()
-        except (OSError, ValueError):
-            pass
+        while alive():
+            time.sleep(2.0)
         os._exit(0)
 
-    threading.Thread(target=watch, daemon=True, name="stdin-watch").start()
+    threading.Thread(target=watch, daemon=True, name="parent-watch").start()
 
 
 def main() -> int:
@@ -153,8 +173,9 @@ def main() -> int:
     except ValueError:
         poll = 2.0
 
-    if os.environ.get("WORKER_EXIT_WITH_STDIN") == "1":
-        exit_with_stdin()
+    parent = os.environ.get("WORKER_PARENT_PID", "").strip()
+    if parent.isdigit():
+        exit_with_parent(int(parent))
     threads = os.environ.get("WORKER_THREADS", "").strip()
     limits = isolate.limits_from_env()
     runner = isolate.Runner(int(threads) if threads.isdigit() and int(threads) > 0 else None, limits)

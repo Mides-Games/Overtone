@@ -66,6 +66,32 @@ class ResultOnAudioTests(unittest.TestCase):
         self.assertEqual(stages[-1], ("result", 0.95))
         json.dumps(result)  # plain JSON all the way down
 
+        # v1.1: still a v1 for every v1 reader, plus the evidence the page draws.
+        self.assertEqual((result["version"], result["minor"]), (1, 1))
+        beats = result["beats"]
+        self.assertEqual(len(beats["t_ms"]), len(beats["bpm"]))
+        self.assertEqual(beats["t_ms"], sorted(beats["t_ms"]))
+        self.assertTrue(all(isinstance(t, int) for t in beats["t_ms"]))
+        # The bars are the click track's: one every four beats of each line, from the line.
+        bars = result["downbeats_ms"]
+        self.assertEqual(bars[0], round(result["red_lines"][0]["time_ms"]))
+        self.assertAlmostEqual(bars[1] - bars[0], 4 * 60000 / 128, delta=1)
+        self.assertIn(round(result["red_lines"][1]["time_ms"]), bars)
+        onsets = result["onsets"]
+        self.assertEqual(len(onsets["t_ms"]), len(onsets["w"]))
+        self.assertGreater(len(onsets["t_ms"]), 50)
+        self.assertEqual(max(onsets["w"]), 100)
+        self.assertTrue(0 < len(result["onset_envelope"]["v"]) <= tr.ENVELOPE_BINS)
+        for section in result["sections"]:
+            # A synthetic click track sits on its grid to a fraction of a millisecond.
+            self.assertLess(section["drift_ms"], 2.0)
+            self.assertGreaterEqual(section["drift_p90_ms"], section["drift_ms"])
+            self.assertGreater(section["onsets"], 10)
+        self.assertEqual(result["swing"]["spans"], [])
+        self.assertEqual(result["pulse_hints"], [])
+        # Well inside the budget the page is built for (300 kB for six minutes).
+        self.assertLess(len(json.dumps(result, separators=(",", ":"))), 40_000)
+
     def test_white_noise_is_refused_without_a_bpm(self):
         result = tr.analyse(self.noise, vote=False, hash_="test")
         self.assertTrue(result["refused"])
@@ -109,6 +135,19 @@ class ResultPartsTests(unittest.TestCase):
         self.assertEqual(tr.stage_of("Loading and normalizing audio…"), ("load", 0.05))
         self.assertEqual(tr.stage_of("Checking the beats with Beat This!…")[0], "vote")
         self.assertIsNone(tr.stage_of("Something new"))
+
+    def test_drift_measures_attacks_against_the_lines_grid(self):
+        beat = 0.5  # 120 BPM from 1 s
+        on_grid = 1.0 + np.arange(16) * beat
+        late = on_grid + 0.004                      # every attack 4 ms after its beat
+        eighths = 1.0 + (np.arange(8) + 0.5) * beat + 0.002   # fewer, 2 ms late
+        times = np.sort(np.r_[late, eighths])
+        drift = tr._drift(times, np.ones_like(times), 1.0, 9.0, beat)
+        self.assertEqual(drift["onsets"], 24)
+        self.assertAlmostEqual(drift["drift_ms"], 4.0, delta=0.01)   # the weighted median
+        self.assertAlmostEqual(drift["drift_bias_ms"], 4.0, delta=0.01)
+        self.assertAlmostEqual(tr._drift(np.r_[-1.0, 20.0], np.ones(2), 1.0, 9.0, beat)["onsets"], 0)
+        self.assertIsNone(tr._drift(on_grid[:3], np.ones(3), 1.0, 9.0, beat)["drift_ms"])
 
     def test_levels(self):
         self.assertEqual(tr._level(0.99, 0.2, False, "precision"), "high")

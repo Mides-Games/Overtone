@@ -105,7 +105,7 @@ And the site's, before any commit that touches `site/` (after `pnpm install --fr
 
 ```bash
 pnpm --dir site/api test                               # all pass (69 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (33 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (53 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
 ```
 

@@ -20,6 +20,55 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · More downloads and "Check here"
+
+### Changed
+
+- The result page patches the reader's own `.osu` in the browser (W3.20): its red
+  lines replaced by the page's, every byte outside `[TimingPoints]` identical, green
+  lines kept as written (also those that end up before the first red line: osu! reads
+  them against it, and deleting them would lose velocity and hitsounds). Where a
+  removed red line's hitsound state or velocity reset would otherwise change, a green
+  line carries it; hit objects are not moved and the page warns that they may be off
+  the new grid. The file never reaches the server.
+- A click-track WAV, rendered with an `OfflineAudioContext` by the player's own click
+  function: the clicks alone, or over the song at the player's volumes. Capped at
+  600 s, the site's analysis limit (ten minutes of 16-bit stereo at 48 kHz is 115 MB).
+- The result as JSON (as the API served it) and a plain-text summary. The CSV moved
+  with them into a folded "More downloads" group; the `.osz` stays the one primary
+  button.
+- "Check here" (W3.25): one list, sorted by time, of the `check`/`medium` sections,
+  the sections with a 90th-percentile drift over 20 ms, the half/double hints and the
+  swing spans, each shown on the map or looped with the clicks. Evidence the engine
+  already reported, gathered; not a new reading.
+
+### Measured
+
+- The drift threshold, on 2026-10-27, through the worker's own `build_result` with
+  the vote off (scratch script, not committed): the 34 synthetic files (exact grids)
+  have every section's `drift_p90_ms` under 10 ms (median 0.5) except the two built to
+  be hard, very-noisy-132 (27.0) and swing-120 (39.9). Corpus B's 20 hand-timed songs
+  (one refused): 30 sections with a drift, p10 22.0, median 29.3, max 50.2 ms; 28 over
+  20 ms, and all 30 already graded `check`. So 20 ms keeps a clean grid off the list
+  with twice the margin, and on real music the level is what flags it: the measure
+  nears its ceiling there (an eighth of a beat, 34 ms at 222 BPM) and cannot tell a
+  right grid from a wrong one.
+- The click track of `change-128-142.wav`: 135 of 135 clicks within 0.024 ms (one
+  sample) of the grid, accents on the bar; rendered in about 1 s for 60 s of audio.
+
+### Rejected / tried and dropped
+
+- Dropping green lines that end up before the first red line: osu! reads them, and a
+  silent loss of slider velocity or hitsounds is worse than a line in an odd place.
+- A green line for every removed red line: a red line moved 2 ms would leave a green
+  line 2 ms before it for nothing. Only where the state would change.
+- Decoding the `.osu` as UTF-8 (or `TextDecoder('latin1')`, which is really
+  windows-1252): either can change bytes. One char per byte is lossless.
+- A drift threshold relative to the beat (p90 over half the eighth-beat ceiling): it
+  would flag most Corpus B sections too (the ones worked out by hand sit at 0.53-0.8
+  of the ceiling), and those are already `check`; an
+  absolute 20 ms is simpler to explain and separates the synthetic corpus the same way.
+
 ## Unreleased — 2026-10-27 · The result page hands over an .osz
 
 ### Changed

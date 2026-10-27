@@ -389,6 +389,70 @@ was not exercised), a compressed format the browser cannot decode (the page
 says so and keeps the timing), and listening: every number above was read, and
 nothing was heard.
 
+### More downloads and "Check here" (W3.20, W3.25, 2026-10-27)
+
+The export row keeps one primary button (the `.osz`) and the copy; everything else
+is in a folded "More downloads" group (`components/result/MoreDownloads.jsx`). All of
+it is built in the browser; the reader's `.osu` and song never leave it.
+
+- **The reader's own `.osu`, patched** (`lib/osu-patch.js`). The file is read one char
+  per byte (not decoded), so a BOM, CRLF, mixed breaks or non-UTF-8 text survive, and
+  only the body of `[TimingPoints]` is rebuilt; every other byte comes out identical
+  (CLAUDE.md rule 5 in spirit). The download keeps the file's own name; the original
+  is not touched.
+  - Red lines are replaced by the page's (adjusted when the reader adjusted them), in
+    osu!'s order: by time, a red line before a green one at the same ms.
+  - Green lines are kept as their own bytes and in their file order. One that now sits
+    before the first red line is **kept**: osu! reads it against the first red line,
+    as it does for anything before it, and deleting it would lose its slider velocity
+    and hitsounds. The page counts them.
+  - A red line also carries the hitsound state (sample set, index, volume, kiai) and
+    resets the slider velocity. Each new red line takes the state in force where it
+    lands; where a removed red line's state would otherwise change (another volume, a
+    kiai or a green's velocity running on), a green line (`-100`) with that state is
+    added at its time and counted. One red line moved a few ms adds none.
+  - Hit objects are not moved (out of scope): the page says how many there are and
+    that they may no longer sit on the new grid.
+  - Refused with a message: not an `.osu` (first line), no `[TimingPoints]`, over 16 MB.
+- **Click track WAV** (`lib/click-track.js`, `lib/wav.js`): an `OfflineAudioContext`
+  renders the clicks with the player's own `scheduleClick` (same tones, the bar's first
+  beat accented), alone (44.1 kHz mono) or over the song at the player's volumes (the
+  decoded song's rate and channels). Capped at 600 s, the site's own analysis limit;
+  the render suspends every 10 rendered seconds to move a progress bar.
+- **Files:** the CSV (the API's, or built here when adjusted), the result as JSON as the
+  API served it (never adjusted), and a plain-text summary (readings, one row per red
+  line, the "check here" spans; English, as the other exports).
+- **"Check here"** (`lib/check-spans.js`, `components/result/CheckHere.jsx`), between the
+  map and the exports: sections graded `check` or `medium`, sections whose
+  `drift_p90_ms` is over 20 ms, the `pulse_hints`, and the swing spans, sorted by
+  time; neighbouring sections with the same reasons are one span. "Show" draws the span
+  as the map's loop band and brings it into view (no audio needed); ⟲ loops it with the
+  clicks. An empty list says so and still says to listen. The 20 ms threshold was
+  measured on 2026-10-27 (see the timeline).
+
+Checked with the dev site (5185/3015, the real worker, Beat This! vote off: the
+worktree has no model) in the browser pane, the page's audio routed through a gain-0
+node and every download caught in the page instead of saved:
+
+- `change-128-142.wav`: "Check here" empty. The clicks-only WAV: 135 clicks, the 135
+  of the grid, each within 0.024 ms (one sample) of its red line's beat, the bar's
+  first beat at 0.98 peak and the others at 0.68. The mix: 5,760,044 bytes (60 s at the
+  decoded 48 kHz). Both rendered in about 1 s, the progress bar seen at 0-67 %.
+- A fixture `.osu` patched in the page: head and `[HitObjects]` byte-identical, the
+  engine's two red lines in, a green before the first red line kept, one green carried
+  where a removed red line had set volume 40, ended a kiai and reset a 0.5x
+  velocity, the report shown. The JSON and the summary read back.
+- `swing-120.wav`: two items (swing, and drift at p90 39.9 ms); Show lit the item and
+  drew the band without audio; ⟲ disabled until the song was picked, then looped it.
+- `halftime-150-75.wav`: one pulse item, 0:29.3-0:54.9; Show on a zoomed-in map moved
+  the view to hold the span whole.
+- 375 px in ES, light and dark: no element past the edge; on a phone a check item puts
+  its time and buttons on one row and its reasons under them.
+
+Not checked: opening the patched `.osu` or the WAVs in osu! or an audio editor (every
+number above was read), Safari and Firefox, a 10-minute render's memory on a phone,
+and listening.
+
 ### The queue, moderated (W3.18, 2026-10-27)
 
 Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`

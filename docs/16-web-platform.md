@@ -575,6 +575,25 @@ debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, a
 en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
 nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
 
+**W3.20 hecha en parte el 2026-10-27** en la rama `feature/site-exports`. Hechos: el
+`.osz` (ya estaba), el `.osu` propio parcheado en el navegador (`lib/osu-patch.js`: se
+reemplazan las red lines, las green lines se mantienen byte a byte, incluso las que
+quedan antes de la primera red line; donde una red line quitada fijaba hitsounds, kiai
+o velocidad de sliders que la nueva cambiaría, se agrega una green line con ese
+estado; los hit objects no se mueven y la página avisa), la pista de clic WAV
+(`OfflineAudioContext`, solo clicks o sobre la canción, hasta 10 min), el JSON
+`timing-result` tal como llegó y un resumen en texto. Las opciones ×2/÷2 ya estaban
+(el ajuste de la página). **Falta:** los formatos de otros juegos (Quaver, StepMania,
+Etterna: el engine los exporta, pero portarlos al navegador o servirlos desde la API
+es otra tarea) y las opciones de decimales del offset, solo la primera red line y BPM
+redondeado.
+
+**W3.25 hecha el 2026-10-27** en la misma rama, con lo que el resultado ya trae: el
+panel "Revisá acá" junta las secciones `check` o `medium`, las de desvío p90 mayor a
+20 ms (umbral medido, ver `docs/timeline.md`), los `pulse_hints` y los tramos de
+swing, ordenados por tiempo; cada uno se marca en el mapa o se repite con los clicks.
+Lo que queda para W11: marcar "dos métodos no coinciden" cuando el router exista.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

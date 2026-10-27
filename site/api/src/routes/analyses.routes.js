@@ -332,6 +332,9 @@ const publicView = (row) => ({
   id: row.publicId,
   status: row.status,
   filename: row.filename,
+  // Only its uploader reads this view, and they hold the file: the result page
+  // checks a file picked again against it before playing it (ADR-W4).
+  sha1: row.sha1 ?? null,
   createdAt: new Date(row.createdAt).toISOString(),
   cached: Boolean(row.cachedFrom),
   ...(row.status === 'queued' && row.position ? { position: row.position } : {}),

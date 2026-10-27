@@ -87,6 +87,11 @@ components:
         id: { type: string }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         filename: { type: [string, 'null'] }
+        sha1:
+          type: [string, 'null']
+          description: >-
+            The audio's SHA-1. The result page compares it with the file picked
+            again in the browser before it plays it; the audio itself is never kept or served.
         createdAt: { type: string, format: date-time }
         cached: { type: boolean, description: Answered from an earlier analysis of the same audio and engine. }
         position: { type: integer, minimum: 1, description: While queued; 1 is next. }

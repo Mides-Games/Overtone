@@ -394,6 +394,7 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         adjustment={adjustment}
         onAdjust={setAdjustment}
         audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+        songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
       >
         <MoreDownloads
           id={id}

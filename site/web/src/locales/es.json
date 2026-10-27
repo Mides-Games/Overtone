@@ -930,5 +930,32 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "oszPlus": {
+    "title": "Opciones del .osz",
+    "suggestion": "sugerencia",
+    "note": "El preview, el lead-in y el kiai son sugerencias a partir del volumen de la canción y las red lines, no mediciones: revisalos en el editor de osu! antes de rankear.",
+    "cover": "Portada como fondo",
+    "coverFound": "De los tags del propio archivo, guardada como {{name}}.",
+    "coverNone": "Los tags del archivo no tienen una portada JPEG o PNG.",
+    "coverReading": "Leyendo los tags del archivo…",
+    "coverAlt": "La portada de la canción, de sus tags",
+    "preview": "Preview time",
+    "previewAt": "{{time}}: donde empiezan los 15 s más fuertes, en un compás.",
+    "previewNone": "Ningún tramo se destaca: la selección de canciones elige el suyo.",
+    "needsSong": "Necesita la canción decodificada arriba.",
+    "leadIn": "Audio lead-in",
+    "leadInAt": "{{ms}} ms: el primer sonido llega a los {{first}} s, muy pronto para agarrar el pulso.",
+    "leadInNone": "No hace falta: el primer sonido llega a los {{first}} s.",
+    "leadInUnknown": "No hay de dónde sacarlo: ni red line ni ataque.",
+    "kiai": "Kiai time",
+    "kiaiAt": "Green lines sobre los compases claramente más fuertes que el resto: {{spans}}.",
+    "kiaiNone": "Ningún tramo es claramente más fuerte que el resto: nada que sugerir.",
+    "openTipTitle": "¿Querés que el .osz se abra solo en osu!?",
+    "openTipChromium": "En Chrome o Edge, abrí el menú de la descarga (los ⋯ al lado, en la lista de descargas) y elegí “Abrir siempre archivos de este tipo”. El próximo .osz va directo a osu!.",
+    "openTipFirefox": "En Firefox, abrí Ajustes → General → Archivos y aplicaciones, buscá el tipo .osz y ponelo para abrir con osu!. El próximo .osz va directo a osu!.",
+    "openTipOsu": "Hace falta tener osu! instalado con los .osz asociados, cosa que hace su instalador. El sitio no puede abrir el archivo por vos: una página web nunca ejecuta lo que descarga.",
+    "openTipClose": "Entendido",
+    "openTipNever": "No mostrar más"
   }
 }

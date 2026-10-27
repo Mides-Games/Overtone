@@ -112,6 +112,22 @@ CREATE INDEX IF NOT EXISTS jobs_claimed_idx ON jobs (claimed_at) WHERE claimed_a
 -- The sweep that hands a stuck job back (JOB_TIMEOUT_S) reads running rows by age.
 CREATE INDEX IF NOT EXISTS jobs_running_idx ON jobs (locked_at) WHERE state = 'running';
 
+-- ── Rate limits ─────────────────────────────────────────────────────────────
+
+-- W3.17: the per-address request limits (middlewares/rate-limit.js), here so
+-- that every API process behind the proxy counts together. One row per bucket
+-- and client; `client` is an HMAC of the address, never the address. A row is
+-- one fixed window: the upsert that counts a request also starts a new window
+-- once reset_at has passed, and dead windows are swept a minute later.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket          text NOT NULL CHECK (char_length(bucket) <= 32),
+  client          text NOT NULL CHECK (char_length(client) <= 64),
+  count           integer NOT NULL CHECK (count >= 1),
+  reset_at        timestamptz NOT NULL,
+  PRIMARY KEY (bucket, client)
+);
+CREATE INDEX IF NOT EXISTS rate_limits_reset_idx ON rate_limits (reset_at);
+
 -- ── Timings and the social layer ────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS timings (
@@ -196,6 +212,22 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS reports_open_idx ON reports (created_at) WHERE state = 'open';
+
+-- W3.18, the queue moderated: every job a staff member removed from the queue
+-- or handed back to it, and who did it. `moderator` is the username at the
+-- time, so the record still says who after the account goes; `public_id` stays
+-- after the analysis does (a cancelled one is deleted, W3.12).
+CREATE TABLE IF NOT EXISTS moderation_log (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id      uuid REFERENCES accounts (id) ON DELETE SET NULL,
+  moderator       text NOT NULL,
+  action          text NOT NULL CHECK (action IN ('remove', 'requeue')),
+  analysis_id     bigint REFERENCES analyses (id) ON DELETE SET NULL,
+  public_id       char(32),
+  reason          text CHECK (char_length(reason) <= 500),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS moderation_log_created_idx ON moderation_log (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -14,8 +14,8 @@ import { connect, describe, readSchema } from './apply.js';
  */
 
 const EXPECTED = [
-  'accounts', 'analyses', 'collection_items', 'collections', 'jobs', 'notifications',
-  'reports', 'songs', 'timing_comments', 'timing_ratings', 'timing_reactions', 'timing_uses', 'timings',
+  'accounts', 'analyses', 'collection_items', 'collections', 'jobs', 'moderation_log', 'notifications',
+  'rate_limits', 'reports', 'songs', 'timing_comments', 'timing_ratings', 'timing_reactions', 'timing_uses', 'timings',
 ];
 
 const url = (process.env.DATABASE_URL ?? '').trim();

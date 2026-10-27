@@ -52,6 +52,289 @@ version is `v0.2.0-alpha`.
 - `node --test` in `site/web`: 4/4; with one Spanish placeholder removed on
   purpose it failed on that key, as it should. `site/api` 31/31, untouched.
   `vite build` passes.
+## Unreleased — 2026-10-27 · W3.18: the queue, moderated
+
+### Changed
+
+- W3.18 of [the web platform](16-web-platform.md), the first piece of W6's
+  moderation panel: a Mides moderator sees on `/queue` a Remove button on every
+  waiting or running job and Back to the queue on a running one, each asking for
+  an optional reason, and the moderation log under the queue.
+- `POST /api/v1/analyses/:id/moderate` and `GET /api/v1/analyses/moderation`,
+  staff only; the new `moderation_log` table records who did what, when and why,
+  in the same transaction as the change.
+- A removed song's page says a moderator took it off the queue instead of
+  suggesting the file was damaged.
+- The dev login's Google user is a moderator, so the buttons can be tried without
+  Mides.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` did not parse on this branch either (see W3.12);
+  the same fix is carried here so the new paths could be added.
+
+### Hardening
+
+- Staff get an opaque `ref` on live rows, not the `id` that opens a result, and a
+  private row still shows them no song and no uploader.
+- A requeue keeps the attempt count, so the worker that had the job cannot
+  overwrite the next attempt's answer; it is refused without its spooled audio.
+- The log keeps the moderator's username at the time, so it still says who after
+  the account is gone.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new, over HTTP with dev sign-ins: only
+  staff may act or read the log; staff see a `ref` and a private row stays
+  private; a removal fails the job, deletes its audio, tells the uploader and is
+  logged with reason and username; a requeued job waits again, the old attempt is
+  refused and the next claim's attempt is higher; no requeue without audio).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; remove, a second remove
+  refused, requeue of a running job, its stale answer refused, a new claim at
+  attempt 2, the log read back newest first.
+- In the browser (`pnpm dev` in memory, signed in as the Google dev user): the
+  staff row showed Remove and Back to the queue; a running job went back to
+  position 1, a queued one was removed, and the log listed both with the reason.
+## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
+
+### Changed
+
+- `bench/worker_parity.py`: the 24 benchmark cases through `worker/timing_result.py`
+  as a job runs them (the Beat This! vote on), each `timing-result v1` checked against
+  `bench/bpm_snapshot.json` with its own tolerance (0.01 BPM): global BPM, every red
+  line, their count, the meter and the engine path. `gates.py bpm-snapshot` pins the
+  engine; this pins what the worker makes of it -- written-out parameters, snapping,
+  the filter on non-finite points, the rounding into JSON. It imports neither
+  `gates.py` nor the desktop shell, and refuses to run without the vote, since a host
+  missing the model would differ for that reason alone.
+
+### Measured
+
+- Windows (Python 3.14.7, numpy 2.5.3, scipy 1.18.1, libsndfile 1.2.2, worker engine
+  `88089672ec54bf2d`): **24/24** match. Wall time 10.8-37.3 s per case, 129 s for
+  `long-6min`, on a machine shared with other runs.
+- **Linux: not measured.** This machine has no WSL distribution (`wsl.exe` only
+  prints its usage; turning it on needs admin and a reboot) and no Docker; the
+  measurement server tracks `feature/library-api`, which has no `worker/`. On the
+  VPS, in a clone of its own so the running server is untouched:
+
+  ```bash
+  git clone --branch bench/worker-parity https://github.com/Mides-Projects/Overtone.git /opt/overtone-w23
+  cd /opt/overtone-w23 && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+  cd /opt/overtone-w23 && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/w23.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/w23.lock
+  cd /opt/overtone-w23 && .venv/bin/python bench/worker_parity.py && .venv/bin/python bench/gates.py bpm-snapshot
+  ```
+
+  W2.3 is done when both print 24/24 there.
+
+### Rejected / tried and dropped
+
+- Queuing the Linux run on the measurement server now (decided 2026-10-27, owner away
+  and decisions delegated). `bench/remote.py run` only queues `stages` and
+  `single_bpm` against the code the server already runs (`feature/library-api`, no
+  `worker/`), so the gate cannot go through that queue. Switching the server's branch
+  or opening an SSH shell beside it would cut into the engine experiment matrix it is
+  running for hours, and the matrix's timings with it. So the run waits for the matrix
+  to finish, then follows the steps above in a separate clone.
+
+---
+
+## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
+
+### Changed
+
+- W3.17 of [the web platform](16-web-platform.md): with a database, the request
+  limits (`/api` 300 a minute, uploads 10 and lookups 120 per ten minutes,
+  sign-in 20 per ten minutes) count in a new `rate_limits` table, one upsert per
+  request, so two APIs behind the proxy share every count. Without a database
+  they count in memory, as before.
+
+### Hardening
+
+- The address is no longer the key, even in memory: it is an HMAC under
+  `SESSION_SECRET`, so the table holds no address (the rate-limit half of W3.6).
+- A client alternating between two processes used to get twice every limit.
+- If the table cannot be reached, the request is counted in the process's own
+  memory and the outage is logged once: a limit must not take the site down.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new: the 429 and its Retry-After, two
+  processes apart in memory and together on one counter, the counter seeing only
+  the hash, the fallback when the count fails, a window starting again).
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; two API processes on one
+  database, twelve uploads sent alternately: ten passed, the 11th and 12th got 429
+  (Retry-After 588 s) from whichever process they hit; `rate_limits` held the HMAC
+  and the count, no address.
+- Not measured: the upsert's cost on the server's PostgreSQL. It adds one write to
+  every request; PGlite's timings say nothing about a real server.
+
+---
+
+## Unreleased — 2026-10-27 · W3.15: a batch in one ZIP
+
+### Changed
+
+- W3.15 of [the web platform](16-web-platform.md): under the cards of a batch, a
+  button downloads `overtone-timings.zip` with the `timing.txt` of every song that
+  is done. It is built in the browser from the results the cards already polled:
+  no request, no server code, no dependency.
+- `lib/zip.js` writes a stored (uncompressed) ZIP with UTF-8 names and a CRC-32;
+  `lib/timing.js` writes each file exactly as the API's `timing.txt` does. Each
+  card now hands the page its whole analysis, not only its status (W3.14).
+
+### Hardening
+
+- A name repeated within a batch (two `intro.mp3` from different folders) gets
+  " (2)" before its extension, compared without case, so no entry hides another
+  when unpacked on Windows.
+
+### Rejected / tried and dropped
+
+- Deflate. A `[TimingPoints]` block is a few kilobytes and a batch at most 50 of
+  them: compression would save little and need a dependency or a hand-written
+  deflater. The row asked for none if a stored ZIP would do, and it does.
+
+### Measured
+
+- `node --test` in `site/web`: 10/10 (6 new: the CRC against `zlib.crc32`, an
+  archive read back entry by entry from its central directory, repeated names,
+  an empty batch, the timing file byte for byte against the API's helpers, which
+  songs go in). `vite build` passes.
+- An archive from `zipStore` opens in Python's `zipfile` (`testzip()` clean) and
+  in Windows' `Expand-Archive`, accented names included.
+- In the browser (`pnpm dev` in memory, a fake worker): a batch of two finished
+  songs offered "Download all 2 timings (ZIP)" and produced a 322-byte
+  `overtone-timings.zip` whose first entry was `zip one-timing.txt`.
+
+---
+
+## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
+
+### Changed
+
+- W3.14 of [the web platform](16-web-platform.md): while a batch runs, the tab's
+  title carries its count ("2/5 ready · Overtone"), and goes back to the page's
+  own title when the page is left. A checkbox under the list asks the browser for
+  permission to notify; if granted, one notification says "3 of 5 songs have a
+  timing" when the last one finishes.
+- Each card reports the status it polls to the page, which is all the count
+  needs: nothing leaves the browser that did not before.
+- `site/web` gets a `test` script (`node --test`) for its pure modules.
+
+### Hardening
+
+- A file still uploading or waiting to upload counts in the batch's total, so
+  two songs answered at once from the cache do not end a batch of five early.
+- The notification is sent once per batch, only when asked for and granted; a
+  browser that only notifies from a service worker (Android Chrome) gets the
+  title alone instead of an error.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4 (the count, the single-song case, the title,
+  when the notification goes). `site/api` 31/31, untouched. `vite build` passes.
+- In the browser (`pnpm dev` in memory, a fake worker answering one job at a
+  time, `Notification` stubbed to record calls): the title read 0/3, 1/3 and
+  3/3 ready; one notification, "3 of 3 songs have a timing."; the title came back
+  on leaving the page.
+- Not checked: a real system notification (the pane's permission prompt was
+  stubbed).
+
+---
+## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+
+### Changed
+
+- W3.12 of [the web platform](16-web-platform.md): `DELETE /api/v1/analyses/:id`
+  takes back a song that is still waiting. Whoever may read the analysis (the
+  session or the anonymous cookie that created it) may cancel it; anyone else
+  gets the same 404 as for an id that does not exist. The job, the row and the
+  spooled audio are deleted, so the song does not count against the day's quota.
+- A Cancel button on the upload card, on the analysis page while it is queued and
+  on the caller's own queued rows in `/queue`. A cancelled analysis is dropped
+  from the browser's recent list.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` was not YAML since W3.11: a `$'` in that edit's
+  replacement string meant "the text after the match", which pasted a second copy
+  of the queue and analysis paths into the lookup's `sha1` pattern. Two unquoted
+  descriptions did not parse either. It loads again, each path once.
+
+### Hardening
+
+- A song the worker has claimed is not cancelled (409 `NOT_QUEUED`): the worker
+  has no way to hear about it mid-stage. The delete checks `state = 'queued'` in
+  the same statement, so a claim and a cancel arriving together are decided by
+  the job's row lock, not by whichever read first.
+
+### Measured
+
+- `node --test` in `site/api`: 34/34 (3 new, over HTTP against the app: the
+  owner cancels and the row, the audio and the quota count go; a stranger gets
+  404 and a request without the same-origin header 403; a claimed job gets 409).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; a queued analysis
+  cancelled, the day's count went from 2 to 1; a claimed one refused.
+- In the browser (`pnpm dev` in memory, no worker): cancelled from `/queue`, from
+  the analysis page (back to `/analyze`) and from a batch card; the queue showed
+  each one gone.
+
+---
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
+## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+
+### Changed
+
+- `_load_beat_this` turns off `enable_mem_pattern`. The pattern plans a buffer layout
+  per input shape and keeps it; the vote runs 1500-frame chunks plus a last chunk of
+  another length on every song, so it only adds to the peak.
+
+### Measured
+
+- Beat This! alone over three Corpus B songs (135, 257 and 477 s) in one process,
+  ONNX Runtime 1.31.0, this PC with other sessions' runs in the background: peak
+  working set 1904 MB (twice) -> 1278 MB. CPU seconds 116 / 179 / 392 against
+  120-121 / 238-248 / 422-507 for the default. Every beat of the 1425 within 1 ms
+  of the default's.
+- Gates: see the PR.
+
+### Rejected / tried and dropped
+
+- `enable_cpu_mem_arena = False`: 1045 MB, beats identical, but the CPU cost moved
+  between +23 % and -27 % per song; not a clear win on a contended machine.
+  Both switches off: 991 MB at +40 % CPU.
+- Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
+  and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
+  by more than 20 ms. That is a precision change; it waits for a Corpus B run.
 
 ---
 
@@ -1974,8 +2257,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -2159,8 +2440,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed
@@ -2188,8 +2467,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -2208,8 +2485,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -2221,8 +2496,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
-
----
 
 ---
 
@@ -8389,9 +8662,6 @@ bpm-snapshot 24/24 · golden.py 27/27 · facts
 UI                              unit-tested bridge only; ids, both languages, no
                                 duplicates cross-checked. Harness pass owed, stated.
 ```
-
----
-
 
 ---
 

@@ -600,7 +600,8 @@ rules are tested), hearing the chime, a screen reader, Safari, a real worker run
   `session.service.js` (the three cookies, their lifetimes and flags); the spool and
   ADR-W4 (when the audio is deleted); `rate-limit.js` (windows swept a minute after
   they end); the web's `localStorage` keys (`mides.theme`, `mides.lang`,
-  `overtone.player.volumes`, `overtone.recentAnalyses`, `overtone.sso`). There is
+  `overtone.player.volumes`, `overtone.player.latencyMs`, `overtone.player.listening`,
+  `overtone.recentAnalyses`, `overtone.sso`). There is
   **no expiry job** for analyses, songs, accounts or the moderation log, and the page
   says so ("no automatic expiry is set yet") instead of naming a period. It also says
   plainly that the IP hash is keyed, not anonymous. A change to what is stored has to
@@ -816,3 +817,87 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### Listening tools: latency, tap tempo, tap offset, A/B, subdivisions (W12.2-W12.6, 2026-10-27)
+
+A panel under the transport (`components/result/Listening.jsx`) for checking a timing
+by ear. The rules are pure functions in `lib/listening.js`, tested in
+`test/listening.test.js`; the player (`lib/player.js`) carries the audio side.
+
+- **Subdivisions (W12.6).** `clickGrid(lines, duration, { subdivision })` in
+  `lib/timing.js` adds 1, 2 or 3 `SUB` clicks between beats, counted from each line's
+  offset exactly as the engine's `click_schedule` does, so none crosses into the next
+  line. They sound with the existing level-0 tone (1318.5 Hz, 0.4) through their own
+  gain under the clicks' bus (muting the clicks mutes them), at their own volume
+  (default 60 % of the clicks'). Off, 1/2, 1/3, 1/4 and the volume are kept in
+  `overtone.player.listening`. The map draws them dashed under the beat lines once
+  they are 7 px apart, and the legend names them. The click-track WAV offers "with
+  the 1/n subdivisions" (on by default when they are on) at the same volume.
+  The map, the arrow keys, the loop snapping and the taps keep the beats-only grid.
+- **A/B (W12.5).** Once the reader has adjusted the lines, the player also holds the
+  engine's own lines' clicks; "Your lines / The engine's" (or A) swaps them at the
+  same playhead: the clicks already handed to the audio context are dropped and
+  scheduled again from now, the song untouched. Unadjusted, the switch is disabled
+  and says the two are the same.
+- **Tap tempo (W12.3).** The Tap button (pointer down, Space or Enter on it) or T
+  anywhere. A run restarts after a 2 s pause and keeps the last 24 taps. From 4 taps:
+  the median interval with stray intervals dropped (beyond 3 robust deviations, or
+  10 % of the interval when the hand is steadier than that), as BPM, with the spread
+  of the kept intervals' BPM. Divided by the playback rate, then compared with the red
+  line at the playhead: "matches" within 4 %, "about ×2" or "about ×0.5" within 4 % of
+  those, the ratio otherwise.
+- **Tap offset (W12.4).** While the song plays, each tap is also placed on the song's
+  timeline where it was heard (`heardPositionAt`, the context's output timestamp) less
+  the calibrated latency, and measured against the nearest beat of the reader's
+  current lines. From 8 kept taps (stray ones beyond 3 robust deviations or 15 ms
+  dropped): the median signed offset and its spread, proposed as current nudge plus
+  that offset. "Set the global offset to …" applies it through the existing
+  adjustment and clears the taps; nothing changes before the press. Without a
+  calibrated latency the page says a late hand reads as a late song.
+- **Latency (W12.2).** "Calibrate…" opens a modal `<dialog>` (Esc closes it, focus goes
+  back to the button): 24 clicks at 100 BPM, nothing to look at on purpose, tapped with
+  Space, Enter, T or a pad. The first four are not counted. Each tap is placed in
+  context time with the same output-timestamp mapping, so the latency the browser
+  reports is already out; what is measured is what it does not report plus the
+  person's own timing. The median of the counted taps, stray ones dropped; refused
+  under 8 kept taps or over a 40 ms spread. "Save" keeps it in
+  `overtone.player.latencyMs` (validated on read, ±500 ms); Reset forgets it.
+- **What the latency moves.** The taps, always. The clicks only when the reader ticks
+  "Play the clicks that much early" (off by default, kept in
+  `overtone.player.listening`): the song and the clicks leave through the same audio
+  context and output, so any device delay reaches both alike, and moving the clicks
+  alone would put them off the song by that much. The roadmap asked for the clicks
+  to move; the switch keeps that available without making it the default (see the
+  timeline). No export ever carries it.
+- **Keys:** T taps, A swaps the clicks, S steps the subdivision; `tempo.keys` says so.
+  Every page-wide key goes through `lib/keys.js` `pageKeyIgnored`, which now also
+  steps aside while a modal dialog is open (Space in the calibration does not play
+  the song).
+
+Checked with the dev site (5191/3021, the real worker, Beat This! vote off) in the
+browser pane, `change-128-142.wav`, the song at volume 0:
+
+- Tap tempo: 12 T presses timed to the grid read 128 BPM ±0.0, "matches the red line
+  here (128)". The same presses 20 ms after each beat proposed +20 ms ±2.0 (12 kept);
+  applied, the global offset read 20. With a latency of 20 ms saved and taps 40 ms
+  after the moved grid, it proposed +19 ms ±5.2 (9 of 12 kept), i.e. 39 ms in all.
+- Calibration: 24 taps 35 ms after each click, one 200 ms off: 35 ms ±1.0, 19 kept and
+  1 dropped; saved, shown as "35 ms", read back after a reload. Esc and Close both
+  close it, focus returns to Calibrate, Space while it is open did not start the song.
+- A swaps `abEngine` once the lines are adjusted; S set 1/2 and the grid went from
+  135 to 269 clicks; the subdivision survived a reload.
+- The map drew the dashed subdivisions when zoomed in (11 to 49 lines across four
+  zoom levels) and none further out.
+- The clicks-only WAV with 1/2 at a 50 % subdivision volume: 269 clicks, the 269 of the
+  grid, the subdivisions at 0.20 peak (0.4 × 0.5), the first at 0.6345 s (0.400 +
+  0.234 s).
+- 375 px wide in ES, light: nothing past the edge but the red-line table, which scrolls
+  in its own box as before; the dialog fits (18-357 px).
+- `site/web` 101/101 (11 new), `vite build`, `bench/facts.py` ok.
+
+Not checked: listening (the pane's audio was at volume 0, and every number above
+was read, not heard), a human hand on the calibration (the taps were synthesised at
+exact times), Bluetooth or any device whose reported latency is wrong, Safari and
+Firefox, a phone's touch taps, screenshots of the dialog and the map (the pane was
+hidden most of the time, so they were checked through the DOM and the canvas
+calls), and the dark theme of the dialog beyond its tokens.

@@ -426,6 +426,15 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
 | W3.8 | **Cola visible en la página** (pedido del dueño, 2026-10-26). Una página `/queue` muestra, en vivo (SSE o polling), cada análisis pendiente y reciente: posición, quién lo subió (avatar y @ de Mides, o "anónimo"), canción (artista y título de los tags del audio; si no hay, el nombre del archivo limpio), estado (en cola, analizando con su progreso, listo, rechazado, falló) y cuánto tardó. Desde ahí se abre el resultado si es de uno o si se publicó. **Privacidad:** el nombre de archivo y el uploader se ven solo si quien subió no marcó "privado"; la ruta nunca, y el audio nunca se sirve |
 | W3.9 | **Subida múltiple.** Se pueden mandar varias canciones a la vez (arrastrar varios archivos o una carpeta). Cada una es un trabajo propio en la cola, con su propia tarjeta de progreso. Límites: cuántas a la vez por persona (anónimo menos que con cuenta), el cupo diario de siempre, y un tope total de la cola para que nadie la llene. El orden es justo entre usuarios (round-robin por persona, no FIFO puro), para que un lote de 30 no deje esperando al que subió una |
 | W3.10 | **Más de un worker.** La cola ya se reparte con `SKIP LOCKED`: escalar es levantar otro server de worker en el panel. Medir cuántos análisis simultáneos aguanta el nodo NA-01 sin lag en los servers de Minecraft, y fijar `WORKER_CONCURRENCY` con ese número |
+| W3.11 | **Preguntar antes de subir.** El navegador calcula el SHA-1 del audio y llama a `POST /analyses/lookup` con ese hash: si el mismo audio ya se analizó con el engine actual, la respuesta es el resultado guardado y el archivo no se sube. Hoy el caché solo se ve después de mandar el archivo entero, y ese envío cuenta para el tope de pendientes (W3.9) aunque no genere trabajo. Hecho cuando una canción repetida no gasta ni un byte de subida ni un lugar en la cola |
+| W3.12 | **Cancelar lo propio.** Quien subió una canción que sigue en cola puede sacarla desde su tarjeta, su página o `/queue`: el trabajo se borra, el audio del spool también, y no cuenta para la cuota del día. Una que ya se está analizando no se cancela (el worker no tiene cómo enterarse a mitad de etapa) |
+| W3.13 | **Tags de M4A y WAV.** `lib/tags.js` lee ID3v2 y Vorbis; faltan los átomos `©nam`/`©ART` de MP4 (M4A) y el chunk `LIST/INFO` de WAV. Con fixtures chicos generados en el test, no con canciones de la biblioteca |
+| W3.14 | **Avisar cuando termina un lote.** El título de la pestaña lleva la cuenta ("2/5 listas") y, si la persona lo permite, una notificación del navegador al terminar la última. Nada sale del navegador |
+| W3.15 | **Bajar un lote entero.** Desde las tarjetas de una subida múltiple: un ZIP con el `timing.txt` de cada canción lista, armado en el navegador con los resultados que ya trae. Sin dependencia nueva si alcanza con un ZIP sin compresión |
+| W3.16 | **Tiempo estimado en la cola.** Con el costo por minuto de audio que mida W2.4, cada fila de `/queue` dice cuánto falta, aproximado y marcado como estimación. Antes de W2.4 no se muestra: no se inventa precisión |
+| W3.17 | **Un rate limit que sobreviva a dos procesos.** `middlewares/rate-limit.js` cuenta en memoria y lo dice: el día que haya dos procesos de API, pasa a Postgres (o a la misma tabla que las cuotas). Hecho cuando dos APIs detrás del proxy comparten el conteo |
+| W3.18 | **La cola, moderada.** Quien tenga rol de staff en Mides ve en `/queue` un botón para sacar un trabajo o devolverlo a la cola, con registro de quién lo hizo. Es la primera pieza del panel de moderación de W6 |
+| W3.19 | **Las pruebas del sitio en la lista de verificación.** `node --test` de `site/api` y `vite build` de `site/web` entran en la sección Verification de `CLAUDE.md`/`AGENTS.md`, con su conteo, y `bench/facts.py` chequea ese conteo como hace con la suite de Python |
 
 **W3.8 hecha el 2026-10-27** en la rama `feature/queue-page`: `/queue` consulta
 `GET /api/v1/analyses/queue` cada 3 s (polling y no SSE: una foto por segundo sirve
@@ -437,6 +446,11 @@ carpeta, una tarjeta por canción; topes `ANON_MAX_PENDING`/`USER_MAX_PENDING` (
 `QUEUE_MAX` (200); orden por turnos entre personas, y a igual turno primero quien hace
 más que no recibe un análisis. Probado contra PostgreSQL (PGlite). Detalle en
 `docs/site.md` y `timeline.md`.
+
+Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
+esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
+corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna
+necesita a otra persona; W3.16 espera la medición de W2.4.
 
 ### Fase W4 — Reviactyl
 

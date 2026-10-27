@@ -20,6 +20,48 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · A fuller .osz
+
+### Changed
+
+- W12.9: the site's `.osz` can carry the file's own cover as `bg.jpg`/`bg.png` (ID3 `APIC`,
+  MP4 `covr`, FLAC `PICTURE`, Ogg Vorbis/Opus `METADATA_BLOCK_PICTURE`), a suggested
+  `PreviewTime` (the loudest 15 s, on a bar), a suggested `AudioLeadIn` (first sound under
+  1.5 s → brought to 2 s) and suggested kiai green lines (bars clearly louder than the
+  song, at most three runs). Checkboxes under ".osz options": cover and preview on, lead-in
+  and kiai off, because the first two change nothing a player feels and the last two are
+  mapping decisions a loudness heuristic should not make unasked. The rules and their
+  reasons are in `docs/site.md`.
+- Every `.osu` the site builds is tagged `overtone overtone_timings` (owner's rule), so maps
+  made with it can be found; extra tags are kept after those two.
+- After the `.osz` downloads, a dismissible tip says how to make the browser open `.osz`
+  files in osu! by itself (Chrome/Edge "Always open files of this type", Firefox's Files and
+  Applications) and that osu! must be installed with `.osz` associated.
+
+### Hardening
+
+- The cover reader never throws, skips tags over 16 MB, keeps only images whose first bytes
+  are JPEG or PNG, and bounds every walk (boxes, blocks, Ogg pages) by a step count.
+
+### Measured
+
+- Not measured on real music: the suggestions were checked on two bench-derived FLACs
+  (see `docs/site.md`), where the whole synthetic corpus is flat (-20 dB a bar) and
+  rightly gets no kiai. site/web tests 90 → 114.
+
+### Rejected / tried and dropped
+
+- Opening the `.osz` in osu! straight from the page: a page cannot run a download, and
+  `osu://` (stable and lazer) only reaches online beatmaps, not a local file. Anything
+  more would need the reader's machine configured behind their back.
+- Considered, not built: a fixed-percentile kiai threshold (top quarter of bars), which on
+  a song mastered flat would mark noise as the chorus; the 3 dB spread requirement refuses
+  instead. And the preview at the loudest window's own start, which on a long chorus is an
+  arbitrary tie somewhere inside it; walking back to the earliest start within 5 % finds
+  the top (the 61.3 s chorus test pins it).
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

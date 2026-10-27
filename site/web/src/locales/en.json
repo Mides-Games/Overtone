@@ -115,7 +115,6 @@
       "remove": "Remove {{name}}"
     },
     "batch": {
-      "title": "{{finished}}/{{total}} ready",
       "notify": "Notify me when the whole batch is done",
       "notifyTitle": "Overtone: your batch is done",
       "notifyBody": "{{done}} of {{total}} songs have a timing.",
@@ -330,5 +329,31 @@
     "busy": "Cancelling…",
     "notQueued": "It is already being analysed and can no longer be cancelled.",
     "failed": "It could not be cancelled. Try again."
+  },
+  "tray": {
+    "label": "Your analyses",
+    "show": "Analyses",
+    "hide": "Hide",
+    "titleCount_one": "{{count}} in progress",
+    "titleCount_other": "{{count}} in progress",
+    "empty": "Nothing in progress.",
+    "gone": "No longer available",
+    "dismiss": "Remove {{name}} from the tray",
+    "clearFinished": "Clear finished",
+    "inbox": "Notices",
+    "noNotices": "No notices yet.",
+    "clearInbox": "Clear",
+    "sound": "Sound",
+    "notify": "Notifications",
+    "notifyBlocked": "The browser blocks notifications for this site.",
+    "notifyTitle": "Overtone: a song is finished",
+    "notice": {
+      "done": "{{name}} has a timing.",
+      "refused": "{{name}} was refused.",
+      "failed": "{{name}} failed.",
+      "batch": "Batch finished: {{done}} of {{total}} songs have a timing."
+    },
+    "showCount_one": "Your analyses, {{count}} in progress",
+    "showCount_other": "Your analyses, {{count}} in progress"
   }
 }

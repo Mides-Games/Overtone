@@ -11,53 +11,33 @@ import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
 import { useSongAudio } from '../hooks/useSongAudio.js'
-import { api } from '../lib/api.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
+import { tracker, useAnalysis } from '../lib/tracking.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
  *
- * Polls `GET /api/v1/analyses/:id` while it is queued or running (every
- * second, then every three after a minute, so a long queue does not become a
- * stream of requests). The page is its own URL, so a reload or a link back
- * from the recent list lands here again.
+ * Reads `GET /api/v1/analyses/:id` through the tracker (lib/tracking.js)
+ * while it is queued or running, at its polite pace (every second at first,
+ * slower in a long queue or a hidden tab), and the tray shows the same
+ * reading: the page and the tray never both ask. The page is its own URL, so
+ * a reload or a link back from the recent list lands here again.
  */
 export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
-  const [analysis, setAnalysis] = useState(null)
-  const [error, setError] = useState(null)
+  const reading = useAnalysis(id)
+  const analysis = reading?.data ?? null
+  const error = reading?.error ?? null
 
+  // Only its uploader can read it at all, so one still in flight is the
+  // visitor's own: the tray follows it from here on, onto any other page.
+  const inFlight = analysis?.status === 'queued' || analysis?.status === 'running'
   useEffect(() => {
-    let alive = true
-    let timer = null
-    const started = Date.now()
-
-    async function poll() {
-      try {
-        const data = await api(`/analyses/${id}`)
-        if (!alive) return
-        setAnalysis(data)
-        setError(null)
-        if (data.status === 'queued' || data.status === 'running') {
-          timer = setTimeout(poll, Date.now() - started > 60_000 ? 3000 : 1000)
-        }
-      } catch (failure) {
-        if (!alive) return
-        if (failure.status === 404) return setError('notFound')
-        // A dropped connection is not the end of the analysis: try again.
-        setError('network')
-        timer = setTimeout(poll, 3000)
-      }
-    }
-    poll()
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [id])
+    if (inFlight) tracker.track(id, analysis.filename, { status: analysis.status })
+  }, [id, inFlight])
 
   if (error === 'notFound') {
     return (

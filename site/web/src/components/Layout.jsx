@@ -5,10 +5,12 @@ import { gutter } from '../lib/gutter.js'
 import Footer from './Footer.jsx'
 import Navbar from './Navbar.jsx'
 import TickerBar from './TickerBar.jsx'
+import Tray from './Tray.jsx'
 
 /**
  * The page frame: the signal strip and the instrument bar stay together at the
- * top, then the page in one column, then the footer.
+ * top, then the page in one column, then the footer, and the analysis tray
+ * over all of it, so a song being analysed is followed on every page.
  */
 export default function Layout() {
   const { t } = useTranslation()
@@ -26,6 +28,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <Footer />
+      <Tray />
     </div>
   )
 }

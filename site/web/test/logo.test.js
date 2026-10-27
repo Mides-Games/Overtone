@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 /**
- * The site's logo is Overtone's own, written by assets/logo.py (the desktop
- * app's icon), never redrawn: run `.venv/Scripts/python.exe assets/logo.py`
+ * The site's logo is Overtone's own, written by assets/logo.py next to the
+ * desktop app's icon (its cleaner web mark), never redrawn by hand: run `.venv/Scripts/python.exe assets/logo.py`
  * after changing the mark, and these hold the outputs together.
  */
 const read = (path) => readFileSync(new URL(path, import.meta.url))
 
-test('favicon.svg is assets/logo.svg, byte for byte', () => {
-  assert.deepEqual(read('../public/favicon.svg'), read('../../../assets/logo.svg'))
+test('favicon.svg is assets/logo-web.svg, the web mark, byte for byte', () => {
+  assert.deepEqual(read('../public/favicon.svg'), read('../../../assets/logo-web.svg'))
 })
 
 test('every PNG icon the manifest and index.html name exists at its stated size', () => {

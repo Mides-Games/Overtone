@@ -20,6 +20,23 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · A cleaner logo for the web
+
+### Changed
+
+- The owner found the full logo untidy in a browser tab. `assets/logo.py` gains a web
+  variant of the same mark (`web_svg_text`, `render_web`): the fundamental alone,
+  thicker and inset from the edges, and the red line as a rounded bar inside the
+  panel; no faint harmonics, which turned to noise at 16 px. Every site icon and the
+  favicon use it; `logo.png` and `logo.ico` keep the desktop app's full mark.
+
+### Measured
+
+- `logo.png` and `logo.ico` byte-identical (md5 unchanged). Looked at in the browser
+  pane at 256, 64, 32, 22 and 16 px on the light and dark page colours.
+
+---
+
 ## Unreleased — 2026-10-27 · The site shows Overtone's own logo
 
 ### Fixed

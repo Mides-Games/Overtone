@@ -83,6 +83,12 @@ EXPERIMENTS = {
                          "LOCAL_OCTAVE_JUDGE": True},
     "section-octave": {"SECTION_OCTAVE_JUDGE": True},
     "constant-grid": {"CONSTANT_GRID": True},
+    "song-octave": {"SONG_OCTAVE_BEAT_THIS": True},
+    "both": {"CONSTANT_GRID": True, "SONG_OCTAVE_BEAT_THIS": True},
+    "constant-grid-loose": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
+                            "CONSTANT_GRID_SHARE": 0.8},
+    "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
+                             "CONSTANT_GRID_SHARE": 0.7},
 }
 #: The most analyses one run holds at once.
 MAX_JOBS = 8

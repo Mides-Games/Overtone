@@ -98,7 +98,8 @@
       "NETWORK": "No se pudo llegar al servidor. Revisá tu conexión y probá de nuevo.",
       "PENDING_LIMIT_one": "Ya tenés {{count}} canción en la cola. Mandá más cuando termine.",
       "PENDING_LIMIT_other": "Ya tenés {{count}} canciones en la cola. Mandá más cuando termine alguna.",
-      "QUEUE_FULL": "La cola está llena ahora mismo. Probá en unos minutos."
+      "QUEUE_FULL": "La cola está llena ahora mismo. Probá en unos minutos.",
+      "CACHE_LIMIT": "Hoy ya abriste {{count}} resultados guardados. La cuenta vuelve a cero a las 00:00 UTC."
     },
     "private": "No mostrarla en la cola pública",
     "privateHint": "La cola solo mostrará que se está analizando algo: sin canción, sin nombre de archivo y sin quién la subió.",

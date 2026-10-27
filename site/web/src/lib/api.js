@@ -35,7 +35,11 @@ export async function api(path, { method = 'GET', json, form } = {}) {
   }
 
   const data = response.status === 204 ? null : await response.json().catch(() => null)
-  if (!response.ok) throw new ApiError(response.status, data?.error?.code, data?.error?.message)
+  if (!response.ok) {
+    const error = new ApiError(response.status, data?.error?.code, data?.error?.message)
+    error.details = data?.error?.details ?? null
+    throw error
+  }
   return data
 }
 
@@ -59,7 +63,10 @@ export async function lookupAudio(file, options = {}) {
       json: { sha1, filename: file.name, size: file.size, private: Boolean(options.private), title: options.title ?? null, artist: options.artist ?? null },
     })
     return found?.cached ? found : null
-  } catch {
+  } catch (error) {
+    // Over the daily cap of stored results the upload would be refused the
+    // same way: say so now instead of sending the whole file first.
+    if (error.code === 'CACHE_LIMIT') throw error
     return null
   }
 }

@@ -98,7 +98,8 @@
       "NETWORK": "The server could not be reached. Check your connection and try again.",
       "PENDING_LIMIT_one": "You already have {{count}} song in the queue. Send more when it finishes.",
       "PENDING_LIMIT_other": "You already have {{count}} songs in the queue. Send more when one finishes.",
-      "QUEUE_FULL": "The queue is full right now. Try again in a few minutes."
+      "QUEUE_FULL": "The queue is full right now. Try again in a few minutes.",
+      "CACHE_LIMIT": "You have opened {{count}} stored results today. The count resets at 00:00 UTC."
     },
     "private": "Keep it off the public queue",
     "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader.",

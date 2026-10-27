@@ -93,6 +93,40 @@ const refuseEarly = (res, error) => {
   throw error;
 };
 
+/**
+ * The limits a new analysis of this request is held to, checked again by the
+ * store inside the insert (services/analysis.service.js, `refusal`). The
+ * early checks below only spare reading a body that would be refused; this
+ * second check is the one two parallel requests cannot both pass.
+ */
+const limitsFor = (accountId) => ({
+  scope: accountId ? 'account' : 'anonymous',
+  quota: accountId ? env.userDailyLimit : env.anonDailyLimit,
+  maxPending: accountId ? env.userMaxPending : env.anonMaxPending,
+  queueMax: env.queueMax,
+  cacheDaily: env.cacheDailyLimit,
+});
+
+/**
+ * Answers from the stored result of `sha1`: the copy this person already has
+ * today when there is one (so asking again creates nothing), else a new copy,
+ * held to the daily cap on stored results. Returns the JSON to send.
+ */
+const answerFromCache = async (req, res, cached, row) => {
+  const store = analyses();
+  // An upload has set the anonymous cookie already (row.anonHash); a lookup may not have.
+  const known = row.accountId ? null : (row.anonHash ?? anonHashOf(req));
+  const copy = known || row.accountId
+    ? await store.findCopy({ sha1: row.sha1, accountId: row.accountId, anonHash: known })
+    : null;
+  if (copy) return { id: copy.publicId, status: copy.status, cached: true };
+  const made = await store.create(
+    { ...row, anonHash: row.accountId ? null : (known ?? ensureAnon(req, res)), cachedFrom: cached },
+    { limits: limitsFor(row.accountId) },
+  );
+  return { id: row.publicId, status: made.status, cached: true };
+};
+
 router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const limit = env.maxUploadMb * 1_048_576;
@@ -175,13 +209,12 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   const cached = await store.findCached(received.sha1, engineHash());
   if (cached) {
     await discardPart(id);
-    const made = await store.create({ ...row, cachedFrom: cached });
-    return res.status(200).json({ id, status: made.status, cached: true });
+    return res.status(200).json(await answerFromCache(req, res, cached, row));
   }
 
   await commit(id);
   try {
-    await store.create(row);
+    await store.create(row, { limits: limitsFor(accountId) });
   } catch (error) {
     await discard(id);
     throw error;
@@ -201,8 +234,10 @@ const SHA1 = /^[0-9a-f]{40}$/;
  * same file would have got (200, `cached: true`), and nothing is uploaded.
  * Otherwise 200 `{ cached: false }` and the browser uploads as before.
  *
- * Like a cached upload, a hit costs no quota and no place in the queue, so
- * none of those limits is checked here. Knowing the hash stands in for
+ * Like a cached upload, a hit costs no quota and no place in the queue. It
+ * has a daily cap of its own (CACHE_DAILY_LIMIT), and asking again for audio
+ * this person already has today returns that same analysis, so a lookup in a
+ * loop neither fills the tables nor floods the public queue. Knowing the hash stands in for
  * having the file, which is the same trust the upload's cache already gives.
  */
 router.post('/analyses/lookup', lookupRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
@@ -220,20 +255,16 @@ router.post('/analyses/lookup', lookupRateLimit, requireSameOrigin, optionalSess
   const cached = await store.findCached(sha1, engineHash());
   if (!cached) return res.json({ cached: false });
 
-  const accountId = req.account?.id ?? null;
-  const id = newPublicId();
-  const made = await store.create({
+  const row = {
     ...shown(req, { hidden: body.private === true, title: body.title, artist: body.artist }),
     filename,
-    accountId,
-    publicId: id,
+    accountId: req.account?.id ?? null,
+    publicId: newPublicId(),
     sha1,
     sizeBytes,
-    anonHash: accountId ? null : ensureAnon(req, res),
     ipHash: ipHashOf(req),
-    cachedFrom: cached,
-  });
-  return res.json({ id, status: made.status, cached: true });
+  };
+  return res.json(await answerFromCache(req, res, cached, row));
 });
 
 /** Whether this request is the one that created `row`: its session account or its anonymous cookie. */
@@ -242,12 +273,23 @@ const isMine = (req, row, anonHash = anonHashOf(req)) =>
 
 // Every open queue page polls; one read of the tables serves all of them for a second.
 const QUEUE_TTL_MS = 1000;
-let queueSnapshot = { at: 0, data: null };
-const queueRows = async () => {
-  if (!queueSnapshot.data || Date.now() - queueSnapshot.at > QUEUE_TTL_MS) {
-    queueSnapshot = { at: Date.now(), data: await analyses().queue() };
+// The promise is kept, not its value: requests that arrive while the read is
+// running wait for it instead of starting their own.
+let queueSnapshot = { at: 0, read: null };
+const queueRows = () => {
+  if (!queueSnapshot.read || Date.now() - queueSnapshot.at > QUEUE_TTL_MS) {
+    const read = analyses()
+      .queue()
+      .then((data) => ({
+        ...data,
+        positions: new Map(data.live.filter((r) => r.position).map((r) => [r.publicId, r.position])),
+      }));
+    queueSnapshot = { at: Date.now(), read };
+    read.catch(() => {
+      if (queueSnapshot.read === read) queueSnapshot = { at: 0, read: null };
+    });
   }
-  return queueSnapshot.data;
+  return queueSnapshot.read;
 };
 
 /**
@@ -269,9 +311,21 @@ router.get('/analyses/queue', optionalSession, async (req, res) => {
 const readable = async (req) => {
   const { id } = req.params;
   if (!ID.test(id)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
-  const row = await analyses().get(id);
+  const row = await analyses().get(id, { position: false });
   if (!row || !isMine(req, row)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
   return row;
+};
+
+/**
+ * A queued row's place, from the one-second queue snapshot every poller
+ * shares, so polling N analyses does not rank the whole queue N times. Past
+ * the snapshot's LIVE_LIMIT rows the store ranks it on its own, as before.
+ */
+const withPosition = async (row) => {
+  if (row.status !== 'queued') return row;
+  const { positions } = await queueRows();
+  const position = positions.get(row.publicId) ?? (await analyses().get(row.publicId))?.position ?? null;
+  return { ...row, position };
 };
 
 const publicView = (row) => ({
@@ -287,7 +341,7 @@ const publicView = (row) => ({
 });
 
 router.get('/analyses/:id', optionalSession, async (req, res) => {
-  const row = await readable(req);
+  const row = await withPosition(await readable(req));
   res.set('Cache-Control', 'no-store');
   res.json(publicView(row));
 });

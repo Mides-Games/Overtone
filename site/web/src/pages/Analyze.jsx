@@ -21,7 +21,7 @@ const EXTENSIONS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus']
 /** The most files one list holds; past it the oldest drop off. */
 const MAX_FILES = 50
 /** Refusals that the next file of a batch would get too. */
-const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'NETWORK', 'RATE_LIMITED']
+const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'CACHE_LIMIT', 'NETWORK', 'RATE_LIMITED']
 const OUTPUTS = [
   { key: 'timingPoints', ready: true },
   { key: 'csv', ready: true },
@@ -298,6 +298,8 @@ export function messageFor(t, error, limits) {
       return t('analyze.errors.PENDING_LIMIT', { count: error.details?.limit ?? '' })
     case 'QUEUE_FULL':
       return t('analyze.errors.QUEUE_FULL')
+    case 'CACHE_LIMIT':
+      return t('analyze.errors.CACHE_LIMIT', { count: error.details?.limit ?? '' })
     case 'NETWORK':
       return t('analyze.errors.NETWORK')
     default:

@@ -104,6 +104,10 @@ export const env = {
   userMaxPending: integer('USER_MAX_PENDING', 10, { min: 1, max: 1000 }),
   // The whole queue's ceiling, so no one can fill it whatever their quotas.
   queueMax: integer('QUEUE_MAX', 200, { min: 1, max: 100_000 }),
+  // Stored results one person may open a day without analysing (W3.11): a
+  // lookup or upload of audio analysed before costs no quota, so it has a cap
+  // of its own.
+  cacheDailyLimit: integer('CACHE_DAILY_LIMIT', 100, { min: 1, max: 100_000 }),
   maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 600, { min: 10, max: 3600 }),
   // The largest upload: checked against Content-Length before a byte is read,
   // and again while the body streams to disk.

@@ -22,8 +22,13 @@ set -euo pipefail
 ROLE=@ROLE@
 say() { echo "[overtone-$ROLE] $*"; }
 
+# git-lfs only where the model is pulled (the worker). The installer image's
+# Debian 11 index can point at a git-lfs build the security mirror no longer has
+# (404 on 2026-10-27), which failed every web and api install for nothing.
+PKGS=(git ca-certificates)
+[ "$ROLE" = worker ] && PKGS+=(git-lfs)
 apt-get update -y >/dev/null
-apt-get install -y --no-install-recommends git git-lfs ca-certificates >/dev/null
+apt-get install -y --no-install-recommends "${PKGS[@]}" >/dev/null
 
 mkdir -p /mnt/server
 cd /mnt/server

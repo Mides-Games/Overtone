@@ -735,7 +735,7 @@ const pgStore = {
   async moderationLog(limit = MODERATION_LOG_LIMIT) {
     const { rows } = await query(
       `SELECT action, moderator, account_id, public_id, reason, created_at
-         FROM moderation_log ORDER BY id DESC LIMIT $1`,
+         FROM moderation_log WHERE target_kind = 'analysis' ORDER BY id DESC LIMIT $1`,
       [limit],
     );
     return rows.map((r) => ({

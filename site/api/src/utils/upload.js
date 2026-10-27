@@ -14,7 +14,7 @@ const UNSAFE = /[\u0000-\u001f\u007f<>:"|?*\\/]/g;
  * overrides and isolates (an RLO turns "song‮vaw.exe" into what looks like
  * "songexe.wav" on the public queue), the zero-width characters and the BOM.
  */
-const INVISIBLE = /[\u0080-\u009f؜​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+export const INVISIBLE = /[\u0080-\u009f؜​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
 
 /**
  * The display name of an upload from its `X-Filename` header (percent-encoded

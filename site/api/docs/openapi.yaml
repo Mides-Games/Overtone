@@ -231,6 +231,51 @@ components:
         bannerUrl: { type: [string, 'null'], format: uri }
         role: { type: [string, 'null'] }
         createdAt: { type: string, format: date-time }
+    Author:
+      type: [object, 'null']
+      description: The public face of a Mides account. `null` for an anonymous review or a deleted account.
+      properties:
+        username: { type: string }
+        displayName: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'], format: uri }
+    Suggestion:
+      type: object
+      description: |
+        Text is plain text: cleaned of control and bidi characters, never HTML.
+        `hidden` appears only when it is true (staff, or the author opening their
+        own). `hiddenReason` and `reports` (open reports) are sent to staff only.
+      required: [id, title, body, state, votes, voted, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        title: { type: string, minLength: 3, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 4000 }
+        state: { type: string, enum: [open, review, planned, progress, done, rejected] }
+        stateReason: { type: [string, 'null'], description: The latest state change's reason. A rejection always has one. }
+        votes: { type: integer }
+        voted: { type: boolean, description: Whether the session account has voted for it. }
+        author: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+        reports: { type: integer }
+    Review:
+      type: object
+      description: As a suggestion, `hidden`, `hiddenReason` and `reports` appear only as said there. No address or hash is ever sent.
+      required: [id, stars, body, anonymous, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        stars: { type: integer, minimum: 1, maximum: 5 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        author: { $ref: '#/components/schemas/Author' }
+        anonymous: { type: boolean }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+        reports: { type: integer }
   responses:
     Error:
       description: An error.
@@ -651,3 +696,353 @@ paths:
             text/csv: { schema: { type: string } }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+
+  # ── Community (W5.2-W5.4) ─────────────────────────────────────────────────
+
+  /community/suggestions:
+    get:
+      summary: Suggestions, a page of 50
+      description: |
+        For anyone. Hidden ones are left out, except for staff (who also get
+        `staff: true`). `total` counts the filtered list.
+      parameters:
+        - { name: sort, in: query, schema: { type: string, enum: [votes, new], default: votes } }
+        - { name: state, in: query, schema: { type: string, enum: [open, review, planned, progress, done, rejected] } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        '200':
+          description: A page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Suggestion' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  staff: { type: boolean, const: true }
+    post:
+      summary: Post a suggestion (signed in)
+      description: |
+        Anonymous suggestions are not taken: a suggestion is a thread its author
+        follows. Text that is too long is refused (`TOO_LONG`), never cut;
+        `TOO_SHORT` when nothing is left after cleaning. 30 per address per ten
+        minutes.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body]
+              properties:
+                title: { type: string, minLength: 3, maxLength: 120 }
+                body: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '201':
+          description: Posted, in state `open`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestion: { $ref: '#/components/schemas/Suggestion' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A suggestion and its history
+      description: |
+        `history` is every state change, newest first: who (the moderator's
+        username at the time), when, from, to and why. Staff also see hides
+        and unhides. A hidden suggestion is a 404 for everyone but staff and
+        its author.
+      responses:
+        '200':
+          description: The suggestion.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestion, history]
+                properties:
+                  suggestion: { $ref: '#/components/schemas/Suggestion' }
+                  history:
+                    type: array
+                    items:
+                      type: object
+                      required: [action, moderator, at]
+                      properties:
+                        action: { type: string, enum: [state, hide, unhide] }
+                        from: { type: [string, 'null'] }
+                        to: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        moderator: { type: string }
+                        at: { type: string, format: date-time }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}/vote:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Vote for it (signed in; one vote per account, a second is a no-op)
+      responses:
+        '200':
+          description: The count now.
+          content:
+            application/json:
+              schema: { type: object, properties: { votes: { type: integer }, voted: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Take the vote back
+      responses:
+        '200':
+          description: The count now.
+          content:
+            application/json:
+              schema: { type: object, properties: { votes: { type: integer }, voted: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}/state:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, move a suggestion to another state
+      description: |
+        Any state to any other (a rejected one can be opened again). A
+        rejection needs a reason (`REASON_REQUIRED`). Recorded in
+        `moderation_log` with the state before and after, in the same
+        transaction, and shown on the suggestion.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [open, review, planned, progress, done, rejected] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Changed.
+          content:
+            application/json:
+              schema: { type: object, properties: { from: { type: string }, to: { type: string } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`SAME_STATE`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/reviews:
+    get:
+      summary: The site's reviews, their average and distribution
+      description: |
+        `stats.average` weighs an anonymous review at half (`stats.anonymous`
+        says how many there are); `distribution` counts 1 to 5 stars. Hidden
+        reviews count nowhere and are listed for staff only. `mine` is the
+        session account's own review, hidden or not.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        '200':
+          description: A page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stats, items, total, offset, limit, mine]
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      anonymous: { type: integer }
+                      average: { type: [number, 'null'] }
+                      distribution: { type: array, items: { type: integer }, minItems: 5, maxItems: 5 }
+                  items: { type: array, items: { $ref: '#/components/schemas/Review' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  mine: { oneOf: [{ $ref: '#/components/schemas/Review' }, { type: 'null' }] }
+                  staff: { type: boolean, const: true }
+    post:
+      summary: Leave a review, or edit your own
+      description: |
+        Signed in: creates the account's one review (201) or replaces its stars
+        and text (200); an edit keeps a moderator's hide. Anonymous: needs
+        `token` from `GET /community/reviews/form`, at least 3 s and at most
+        6 h old (`FORM_TOO_FAST` otherwise), and at most 2 anonymous reviews per
+        address per UTC day (`REVIEW_LIMIT`, counted by the daily address
+        HMAC). `website` is a honeypot: anything in it is `NOT_ACCEPTED`.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stars, body]
+              properties:
+                stars: { type: integer, minimum: 1, maximum: 5 }
+                body: { type: string, minLength: 1, maxLength: 2000 }
+                token: { type: string }
+                website: { type: string, description: Leave empty. }
+      responses:
+        '200':
+          description: Your review, edited.
+          content:
+            application/json:
+              schema: { type: object, properties: { review: { $ref: '#/components/schemas/Review' } } }
+        '201':
+          description: Posted.
+          content:
+            application/json:
+              schema: { type: object, properties: { review: { $ref: '#/components/schemas/Review' } } }
+        '400':
+          description: '`BAD_STARS`, `TOO_SHORT`, `TOO_LONG`, `FORM_TOO_FAST` or `NOT_ACCEPTED`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429':
+          description: '`REVIEW_LIMIT` or `RATE_LIMITED`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/reviews/form:
+    get:
+      summary: A token for the anonymous review form
+      description: The time it was made and an HMAC of it. Nothing is stored.
+      responses:
+        '200':
+          description: The token.
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, minMs: { type: integer } } }
+
+  /community/reviews/mine:
+    delete:
+      summary: Delete your own review (signed in)
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/{kind}/{id}/report:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews] } }
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Report a suggestion or a review (anyone)
+      description: |
+        Signed in or not; an anonymous reporter is known by the daily address
+        HMAC. A second open report from the same person on the same item is a
+        no-op. Staff hiding or unhiding the item resolves its open reports.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '204': { description: Reported. }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/{kind}/{id}/moderate:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews] } }
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, hide or unhide a suggestion or a review
+      description: Hiding needs a reason. Recorded in `moderation_log` in the same transaction.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [hide, unhide] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '204': { description: Done and recorded. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NO_CHANGE`: it is hidden already, or not hidden.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/moderation:
+    get:
+      summary: Staff only, the open reports and the community's moderation log
+      responses:
+        '200':
+          description: The last 50 of each.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action: { type: string, enum: [state, hide, unhide] }
+                        kind: { type: string, enum: [suggestion, review] }
+                        ref: { type: string }
+                        from: { type: [string, 'null'] }
+                        to: { type: [string, 'null'] }
+                        moderator: { type: string }
+                        reason: { type: [string, 'null'] }
+                        at: { type: string, format: date-time }
+                  reports:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [suggestion, review] }
+                        ref: { type: string }
+                        count: { type: integer }
+                        reasons: { type: array, items: { type: string }, maxItems: 5 }
+                        at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }

@@ -641,6 +641,27 @@ notificaciones. Y una sección **Community**:
 | W5.5 | **Changelog en el sitio**, generado de `docs/timeline.md`: qué cambió y qué sugerencias cerró cada versión |
 | W5.6 | **Perfiles:** la pestaña Timings en el perfil de Mides (ADR-W3), con estadísticas (canciones timeadas, usos, estrellas) e insignias (primer timing, Ranked-match, sugerencia aceptada) |
 
+**W5.2–W5.5, en parte, el 2026-10-27** en la rama `feature/site-community`: la página
+`/community` con tres pestañas (docs/site.md, "Community").
+
+- **W5.2, en parte.** Hecho: sugerencias con cuenta de Mides (anónimas no: una
+  sugerencia se contesta con sus cambios de estado y una anónima no tiene a quién
+  contestarle), un voto por cuenta, orden por votos o fecha y filtro por estado; el
+  staff (`is_moderator` de Mides) cambia el estado, el rechazo siempre con motivo, y
+  cada cambio queda en `moderation_log` y se ve en la sugerencia. Falta: comentarios,
+  unir duplicados, enlazar al roadmap o al changelog, y avisar a quien la propuso.
+- **W5.3, en parte.** Hecho: estrellas de 1 a 5 y texto, con cuenta (una, editable y
+  borrable) o anónimas (dos por día por IP hasheada, honeypot y un token firmado de al
+  menos 3 s, sin CAPTCHA de terceros); las anónimas pesan la mitad en el promedio y la
+  página lo dice; promedio y distribución. Falta: la respuesta pública del staff.
+- **W5.4, mínima.** Hecho: reportar (cualquiera) y ocultar o mostrar con motivo
+  (staff), registrado en la misma `moderation_log` de W3.18; lo oculto no lo ve nadie
+  más que el staff y su autor. Falta: comentarios y nombres de la cola, el filtro de
+  palabras y las sanciones de Mides.
+- **W5.5, en parte.** Hecho: el changelog sale de `docs/timeline.md` al construir el
+  sitio (las últimas 30 entradas, título, fecha y "Changed", en inglés). Falta: qué
+  sugerencias cerró cada versión.
+
 ### Fase W6 — Social v2
 
 Colecciones, ranking de timers (por usos y estrellas), la insignia Ranked-match,

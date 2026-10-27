@@ -717,5 +717,127 @@
     "json": "Result (JSON)",
     "summary": "Summary (TXT)",
     "filesNote": "The CSV and the summary follow your adjustments; the JSON is the engine's result as the server sent it."
+  },
+  "community": {
+    "nav": "Community",
+    "title": "Community",
+    "subtitle": "Suggest what Overtone should do next, say what you think of it, and see what changed.",
+    "tabs": {
+      "suggestions": "Suggestions",
+      "reviews": "Reviews",
+      "changelog": "Changelog"
+    },
+    "more_one": "Show {{count}} more",
+    "more_other": "Show {{count}} more",
+    "cancel": "Cancel",
+    "yours": "Yours",
+    "loading": "Loading…",
+    "deletedAccount": "a deleted account",
+    "states": {
+      "open": "Open",
+      "review": "Under review",
+      "planned": "Planned",
+      "progress": "In progress",
+      "done": "Done",
+      "rejected": "Rejected"
+    },
+    "errors": {
+      "failed": "That did not work. Try again.",
+      "load": "This could not be loaded. Try again in a moment.",
+      "NETWORK": "The server could not be reached.",
+      "TOO_SHORT": "That is too short.",
+      "TOO_LONG": "That is too long.",
+      "REASON_REQUIRED": "This needs a reason.",
+      "STAFF_ONLY": "Only staff can do this.",
+      "SIGN_IN_REQUIRED": "Sign in first.",
+      "RATE_LIMITED": "Too many at once. Wait a few minutes.",
+      "REVIEW_LIMIT": "Without an account you can leave two reviews a day. Sign in to leave one you can edit.",
+      "FORM_TOO_FAST": "The form expired or was sent too fast. Reload the page and try again.",
+      "NOT_ACCEPTED": "This review was not accepted.",
+      "BAD_STARS": "Pick from 1 to 5 stars.",
+      "SAME_STATE": "It is already in that state.",
+      "NO_CHANGE": "Nothing to change.",
+      "NOT_FOUND": "It is not there any more."
+    },
+    "suggestions": {
+      "signInToPost": "Sign in with Mides to post a suggestion or vote.",
+      "signInToVote": "Sign in to vote",
+      "sortBy": "Sort",
+      "sort": {
+        "votes": "Most voted",
+        "new": "Newest"
+      },
+      "filter": "State",
+      "allStates": "All",
+      "empty": "No suggestions here yet.",
+      "new": "Suggest something",
+      "title": "Title",
+      "body": "What and why",
+      "post": "Post suggestion",
+      "voteLabel_one": "{{count}} vote. Vote for this",
+      "voteLabel_other": "{{count}} votes. Vote for this",
+      "staffSaid": "Staff:",
+      "details": "History",
+      "less": "Less",
+      "noHistory": "No state changes yet."
+    },
+    "reviews": {
+      "empty": "No reviews yet. Be the first.",
+      "starsLabel_one": "{{count}} star out of 5",
+      "starsLabel_other": "{{count}} stars out of 5",
+      "starsLegend": "Stars",
+      "count_one": "{{count}} review",
+      "count_other": "{{count}} reviews",
+      "weighting_one": "Anonymous reviews count half in the average ({{count}} so far).",
+      "weighting_other": "Anonymous reviews count half in the average ({{count}} so far).",
+      "formTitle": "Leave a review",
+      "editTitle": "Your review",
+      "yoursHidden": "A moderator hid your review. Only you and staff can see it.",
+      "body": "Your words",
+      "pickStars": "Pick from 1 to 5 stars.",
+      "anonymousNote": "Without an account the review is anonymous, counts half in the average, and cannot be edited later.",
+      "post": "Post review",
+      "update": "Update review",
+      "delete": "Delete",
+      "deleteConfirm": "Delete your review?",
+      "thanks": "Thanks. Your review is up.",
+      "anonymous": "Anonymous",
+      "edited": "edited"
+    },
+    "moderation": {
+      "report": "Report",
+      "reported": "Reported",
+      "reportPrompt": "What is wrong with it? Staff will read this.",
+      "hide": "Hide",
+      "unhide": "Unhide",
+      "hidePrompt": "Hide it from everyone but staff. Reason for the log (required):",
+      "unhidePrompt": "Show it again. Reason for the log (optional):",
+      "statePrompt": "Reason, shown on the suggestion (optional):",
+      "rejectPrompt": "Why is it rejected? Shown on the suggestion (required):",
+      "moveTo": "Move to…",
+      "hiddenChip": "Hidden",
+      "hiddenBecause": "Hidden: {{reason}}",
+      "reports_one": "{{count}} open report",
+      "reports_other": "{{count}} open reports",
+      "staffTitle": "Staff: reports and log",
+      "openReports": "Open reports",
+      "noReports": "No open reports.",
+      "logTitle": "Moderation log",
+      "logEmpty": "Nothing moderated yet.",
+      "kind": {
+        "suggestion": "suggestion",
+        "review": "review"
+      },
+      "did": {
+        "state": "@{{moderator}} moved it from {{from}} to {{to}}",
+        "hide": "@{{moderator}} hid a {{kind}}",
+        "unhide": "@{{moderator}} showed a {{kind}} again"
+      }
+    },
+    "changelog": {
+      "source": "From the project's engineering log (docs/timeline.md): the latest entries and what each one changed.",
+      "empty": "No entries.",
+      "unreleased": "Unreleased"
+    }
   }
 }

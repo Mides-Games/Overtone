@@ -181,6 +181,59 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W5.2-W5.5: a Community page
+
+### Changed
+
+- The site has a Community page with three tabs. **Suggestions**: anyone reads,
+  a Mides account posts and votes (one vote each), sorted by votes or date and
+  filtered by state; staff move a suggestion through open, under review,
+  planned, in progress, done or rejected, a rejection always with a reason, and
+  every change is on the suggestion for anyone to read. **Reviews**: 1 to 5
+  stars and a few words, with an account (one, editable) or anonymous, with the
+  average and the distribution; an anonymous review counts half in the average,
+  and the page says so. **Changelog**: the latest 30 entries of this timeline,
+  their titles, dates and Changed bullets, in English.
+- Anyone can report a suggestion or a review; staff hide or unhide it with a
+  reason, and see the open reports and the log of what they did.
+
+### Hardening
+
+- Anonymous reviews: two a day per address, counted by the daily address HMAC
+  the uploads already use, a hidden honeypot field and a signed form token at
+  least 3 s old. No third-party CAPTCHA, since the site calls no outside
+  service. Suggestions need an account: a suggestion is answered by its state
+  changes, and an anonymous one has nobody to answer.
+- A hidden item is the same 404 as a missing one for everyone but staff and its
+  author. Text is cleaned of control and bidi characters and rendered as text;
+  too long is refused, never cut. The changelog's markdown becomes tokens, not
+  HTML, and only absolute http(s) links stay links. Same-origin guard and a
+  per-address rate limit on every new mutating route.
+- One moderation log: `moderation_log` (W3.18) gained `target_kind`,
+  `target_ref` and the states before and after; the queue's log reads its own
+  rows only.
+
+### Measured
+
+- `node --test` in `site/api`: 81/81 (12 new). The same 12 and the queue's 5
+  moderation tests against PostgreSQL 18.6 (PGlite 0.5.11 behind
+  `pglite-socket`): 12/12 and 5/5; `check` applies the schema twice, 18 tables.
+- `node --test` in `site/web`: 36/36 (3 new). `vite build` passes; the main
+  bundle is 476 kB as before, the changelog its own 31 kB chunk (10 kB gzipped).
+- In the browser: a staff review moved the average from 3.75 to 4.17, as
+  computed by hand with anonymous reviews at half.
+
+### Rejected / tried and dropped
+
+- Anonymous suggestions: see Hardening. Reviews are where an anonymous opinion goes.
+- A generated `changelog.json` committed or written into `src/`: it would go
+  stale the first time the timeline changed without a build. A Vite virtual
+  module reads the timeline on every build instead.
+- A client-reported time on the form: it can be any number. The minimum time is
+  a server-signed token instead.
+
+---
+
 ## Unreleased — 2026-10-27 · The result page hands over an .osz
 
 ### Changed

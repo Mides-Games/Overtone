@@ -229,6 +229,80 @@ CREATE TABLE IF NOT EXISTS moderation_log (
 );
 CREATE INDEX IF NOT EXISTS moderation_log_created_idx ON moderation_log (created_at DESC);
 
+-- ── Community: suggestions, reviews, and their moderation (W5.2-W5.4) ───────
+
+-- A suggestion from a signed-in account. `public_id` is 128 random bits in
+-- hex, as an analysis has. Only staff change `state`; `state_reason` is the
+-- latest change's reason (a rejection always has one), and the whole history
+-- is in moderation_log. A hidden one is shown to staff only.
+CREATE TABLE IF NOT EXISTS suggestions (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id       text NOT NULL UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$'),
+  account_id      uuid REFERENCES accounts (id) ON DELETE SET NULL,
+  title           text NOT NULL CHECK (char_length(title) BETWEEN 3 AND 120),
+  body            text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 4000),
+  state           text NOT NULL DEFAULT 'open'
+                    CHECK (state IN ('open', 'review', 'planned', 'progress', 'done', 'rejected')),
+  state_reason    text CHECK (char_length(state_reason) <= 500),
+  hidden          boolean NOT NULL DEFAULT false,
+  hidden_reason   text CHECK (char_length(hidden_reason) <= 500),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS suggestions_created_idx ON suggestions (created_at DESC);
+
+-- One vote per account and suggestion: the primary key is the rule.
+CREATE TABLE IF NOT EXISTS suggestion_votes (
+  suggestion_id   bigint NOT NULL REFERENCES suggestions (id) ON DELETE CASCADE,
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (suggestion_id, account_id)
+);
+
+-- A review of the site: with an account (one per account, editable) or
+-- anonymous. `ip_hash` is kept for anonymous ones only, the same daily HMAC an
+-- anonymous upload keeps, to count them per address and day; it is never shown.
+CREATE TABLE IF NOT EXISTS reviews (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id       text NOT NULL UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$'),
+  account_id      uuid REFERENCES accounts (id) ON DELETE CASCADE,
+  ip_hash         text,
+  stars           smallint NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  body            text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+  hidden          boolean NOT NULL DEFAULT false,
+  hidden_reason   text CHECK (char_length(hidden_reason) <= 500),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_account_idx ON reviews (account_id) WHERE account_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reviews_created_idx ON reviews (created_at DESC);
+CREATE INDEX IF NOT EXISTS reviews_ip_day_idx ON reviews (ip_hash, created_at) WHERE account_id IS NULL;
+
+-- Reports reach suggestions and reviews too, from anyone: an anonymous
+-- reporter is known by the daily address HMAC, never the address. One open
+-- report per reporter and item; a staff decision on the item resolves them.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS ip_hash text;
+ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_target_kind_check;
+ALTER TABLE reports ADD CONSTRAINT reports_target_kind_check
+  CHECK (target_kind IN ('timing', 'comment', 'account', 'suggestion', 'review'));
+CREATE UNIQUE INDEX IF NOT EXISTS reports_once_idx
+  ON reports (target_kind, target_id, (coalesce(account_id::text, 'ip:' || ip_hash))) WHERE state = 'open';
+CREATE INDEX IF NOT EXISTS reports_target_idx ON reports (target_kind, target_id) WHERE state = 'open';
+
+-- One moderation log for the queue and the community (W3.18's table): what
+-- was acted on (`target_kind`, `target_ref` its public id), and for a
+-- suggestion's state change the state before and after. Rows written before
+-- this are the queue's, which the default says.
+ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS target_kind text NOT NULL DEFAULT 'analysis'
+  CHECK (target_kind IN ('analysis', 'suggestion', 'review'));
+ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS target_ref text CHECK (char_length(target_ref) <= 64);
+ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS from_state text CHECK (char_length(from_state) <= 16);
+ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS to_state text CHECK (char_length(to_state) <= 16);
+ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_action_check;
+ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_action_check
+  CHECK (action IN ('remove', 'requeue', 'hide', 'unhide', 'state'));
+CREATE INDEX IF NOT EXISTS moderation_log_target_idx ON moderation_log (target_kind, target_ref);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,

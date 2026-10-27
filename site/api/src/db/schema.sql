@@ -29,13 +29,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   cached_at       timestamptz NOT NULL DEFAULT now()
 );
 
--- The Mides refresh token, sealed with AES-256-GCM (utils/secret-box.js). It
--- never reaches the browser.
-CREATE TABLE IF NOT EXISTS mides_tokens (
-  account_id      uuid PRIMARY KEY REFERENCES accounts (id) ON DELETE CASCADE,
-  refresh_sealed  text NOT NULL,
-  updated_at      timestamptz NOT NULL DEFAULT now()
-);
+-- Overtone keeps no Mides token: Mides gives it an access with its own audience
+-- and no refresh, and the profile is all it needs. The table that held sealed
+-- refresh tokens goes, and takes any old ones with it.
+DROP TABLE IF EXISTS mides_tokens;
 
 -- ── Songs, analyses and the queue ───────────────────────────────────────────
 

@@ -87,8 +87,10 @@ export const env = {
   siteUrl: origin('SITE_URL', 'http://localhost:5173'),
   sessionSecret: secret('SESSION_SECRET'),
   sessionDays: integer('SESSION_DAYS', 30, { min: 1, max: 90 }),
-  // Seals the Mides refresh token at rest (AES-256-GCM, key derived with HKDF).
-  tokenKey: secret('TOKEN_KEY'),
+  // This server's secret for Mides' code exchange (SSO_APPS.overtone.secret_env
+  // there, SSO_SECRET_OVERTONE): a code is only good with it, so one stolen from
+  // a browser is good to nobody. The same value on both sides.
+  midesClientSecret: secret('MIDES_CLIENT_SECRET', 'the real Mides sign-in is refused'),
   // The Mides identity API, e.g. https://midesprojects.com/api (the service
   // appends /auth/...). Server to server only.
   midesAuthUrl: origin('MIDES_AUTH_URL'),

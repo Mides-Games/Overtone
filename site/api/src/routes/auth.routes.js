@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { env, ssoConfigured } from '../config/env.js';
 import { authRateLimit } from '../middlewares/rate-limit.js';
 import { requireSameOrigin } from '../middlewares/session.js';
-import { keepMidesToken, sessionAccount, signOut, upsertFromMides } from '../services/account.service.js';
+import { sessionAccount, signOut, upsertFromMides } from '../services/account.service.js';
 import { authorizeUrl, exchangeCode, PROVIDERS } from '../services/mides.service.js';
 import {
   clearedCookieHeader,
@@ -83,9 +83,8 @@ router.post('/auth/sso/exchange', authRateLimit, requireSameOrigin, async (req, 
     );
   }
 
-  const { user, refresh } = env.devLogin && code.startsWith('dev.') ? devUser(code) : await exchangeCode(code);
+  const { user } = env.devLogin && code.startsWith('dev.') ? devUser(code) : await exchangeCode(code);
   const account = await upsertFromMides(user);
-  await keepMidesToken(account.id, refresh);
 
   res.set('Set-Cookie', [clearedSsoCookieHeader(), cookieHeader(issue(account.id, account.session_version))]);
   res.json({ ok: true });
@@ -110,7 +109,6 @@ router.post('/auth/logout', requireSameOrigin, async (req, res) => {
 const devUser = (code) => {
   const provider = code.split('.')[1] === 'google' ? 'google' : 'discord';
   return {
-    refresh: null,
     user: {
       midesUserId: `dev-${provider}`,
       username: `dev_${provider}`,

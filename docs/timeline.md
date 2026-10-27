@@ -20,6 +20,44 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.15: a batch in one ZIP
+
+### Changed
+
+- W3.15 of [the web platform](16-web-platform.md): under the cards of a batch, a
+  button downloads `overtone-timings.zip` with the `timing.txt` of every song that
+  is done. It is built in the browser from the results the cards already polled:
+  no request, no server code, no dependency.
+- `lib/zip.js` writes a stored (uncompressed) ZIP with UTF-8 names and a CRC-32;
+  `lib/timing.js` writes each file exactly as the API's `timing.txt` does. Each
+  card now hands the page its whole analysis, not only its status (W3.14).
+
+### Hardening
+
+- A name repeated within a batch (two `intro.mp3` from different folders) gets
+  " (2)" before its extension, compared without case, so no entry hides another
+  when unpacked on Windows.
+
+### Rejected / tried and dropped
+
+- Deflate. A `[TimingPoints]` block is a few kilobytes and a batch at most 50 of
+  them: compression would save little and need a dependency or a hand-written
+  deflater. The row asked for none if a stored ZIP would do, and it does.
+
+### Measured
+
+- `node --test` in `site/web`: 10/10 (6 new: the CRC against `zlib.crc32`, an
+  archive read back entry by entry from its central directory, repeated names,
+  an empty batch, the timing file byte for byte against the API's helpers, which
+  songs go in). `vite build` passes.
+- An archive from `zipStore` opens in Python's `zipfile` (`testzip()` clean) and
+  in Windows' `Expand-Archive`, accented names included.
+- In the browser (`pnpm dev` in memory, a fake worker): a batch of two finished
+  songs offered "Download all 2 timings (ZIP)" and produced a 322-byte
+  `overtone-timings.zip` whose first entry was `zip one-timing.txt`.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
 
 ### Changed

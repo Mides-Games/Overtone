@@ -464,6 +464,11 @@ lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso pa
 una notificación del navegador que sale una sola vez, al terminar la última. Usa
 los estados que las tarjetas ya consultan: nada nuevo sale del navegador.
 
+**W3.15 hecha el 2026-10-27** en la rama `feature/batch-zip` (sobre W3.14): un botón
+debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, armado
+en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
+nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

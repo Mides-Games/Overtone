@@ -290,3 +290,13 @@ they were not denied, asks for permission; the notification goes once, when the
 last song finishes. The counts come from the statuses the cards already poll,
 so nothing new is sent anywhere. `lib/batch.js` holds the rules and
 `site/web/test/batch.test.js` their tests.
+
+### A batch in one download (W3.15, 2026-10-27)
+
+Once a song of a batch has its timing, a button under the cards downloads
+`overtone-timings.zip`: one `<song>-timing.txt` per song that is done, named and
+written exactly as `GET /analyses/:id/timing.txt` would (`lib/timing.js`, tested
+against the API's own `utils/upload.js`). The archive is built in the browser
+from the results the cards already polled (`lib/zip.js`): entries stored, not
+compressed, since a timing is a few kilobytes; UTF-8 names; a name repeated in
+the batch gets " (2)". Refused, failed and unfinished songs are left out.

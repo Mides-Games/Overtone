@@ -33,6 +33,7 @@ export function readPalette() {
     redInk: dark ? '#22070b' : '#ffffff',
     amber: v('--amber'),
     lavender: v('--lavender'),
+    compare: v('--compare'),
     onset: v('--onset'),
     grid: v('--grid'),
   }
@@ -113,7 +114,8 @@ function hatchFill(ctx, ink) {
 /**
  * The static layer: everything but the playhead, the hover cursor and the
  * loop. `d` carries the data: lines (adjusted), sections, grid, beats,
- * onsets, drift, envelope, peaks, swing, hints, factor, selected, hovered.
+ * onsets, drift, envelope, peaks, swing, hints, factor, selected, hovered,
+ * and other: another timing's red lines to draw beside them, or null.
  */
 export function paintMap(ctx, L, view, d, c) {
   const { x0, x1 } = L
@@ -238,6 +240,25 @@ export function paintMap(ctx, L, view, d, c) {
     ctx.lineTo(b, y)
     ctx.stroke()
   })
+  // The other timing's BPM (W12.10, W12.11), dashed so it reads apart even where the two coincide.
+  const other = d.other?.length ? d.other : null
+  if (other) {
+    const ends = other.map((l) => l.timeMs / 1000).concat([d.durationS])
+    ctx.strokeStyle = c.compare
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 4])
+    other.forEach((line, i) => {
+      const a = Math.max(X(ends[i]), x0)
+      const b = Math.min(X(ends[i + 1]), x1)
+      if (b <= a) return
+      const y = Math.round(Y(Math.min(Math.max(line.bpm, lo), hi))) + 0.5
+      ctx.beginPath()
+      ctx.moveTo(a, y)
+      ctx.lineTo(b, y)
+      ctx.stroke()
+    })
+    ctx.setLineDash([])
+  }
 
   // Each section's level along the plot's foot, a pixel apart at each line.
   d.lines.forEach((line, i) => {
@@ -386,6 +407,33 @@ export function paintMap(ctx, L, view, d, c) {
     ctx.fillText(text, Math.min(Math.max(x, half + 1), L.width - half - 1), L.driftBottom + 6)
   }
 
+  // The other timing's red lines, dashed under the result's, each with its BPM along the plot's foot where there is room.
+  if (other) {
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    let room = -1e9
+    other.forEach((line, i) => {
+      const x = Math.round(X(line.timeMs / 1000)) + 0.5
+      if (x < x0 || x > x1) return
+      ctx.strokeStyle = c.compare
+      ctx.lineWidth = 1.4
+      ctx.setLineDash([4, 3])
+      ctx.beginPath()
+      ctx.moveTo(x, L.tempoTop)
+      ctx.lineTo(x, L.driftBottom)
+      ctx.stroke()
+      ctx.setLineDash([])
+      const meterChanged = i === 0 ? line.meter !== 4 : line.meter !== other[i - 1].meter
+      const label = formatBpm(line.bpm) + (meterChanged ? ` · ${line.meter}/4` : '')
+      const w = ctx.measureText(label).width
+      if (x + 3 > room && x + 3 + w < x1) {
+        ctx.fillStyle = c.compare
+        ctx.fillText(label, x + 3, L.tempoBottom - 9)
+        room = x + 3 + w + 6
+      }
+    })
+  }
+
   // Red lines, with chips staggered over two rows; a third overlap draws the line alone.
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
@@ -484,4 +532,7 @@ export function paintOverview(ctx, width, height, d, c) {
     ctx.fillStyle = c.red
     ctx.fillRect(Math.round(a), 0, i === d.selected ? 2 : 1, height - 3)
   })
+  // The other timing's lines: the lower half, so a line both share shows as red above and blue below.
+  ctx.fillStyle = c.compare
+  for (const line of d.other ?? []) ctx.fillRect(Math.round(X(line.timeMs / 1000)), mid, 1.5, height - 3 - mid)
 }

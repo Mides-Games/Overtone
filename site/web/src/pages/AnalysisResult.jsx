@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import CompareWithMap from '../components/compare/CompareWithMap.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
@@ -15,6 +16,7 @@ import Transport from '../components/result/Transport.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { checkSpans } from '../lib/check-spans.js'
+import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
 import { tracker, useAnalysis } from '../lib/tracking.js'
@@ -257,6 +259,9 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
   const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
   const [checking, setChecking] = useState(null)
   const [focus, setFocus] = useState(null)
+  // W12.10: a map the reader picked to compare with, held here only, and which timing the clicks play.
+  const [map, setMap] = useState(null)
+  const [clicks, setClicks] = useState('a')
 
   const durationS = result.duration_s ?? 0
   const sections = useMemo(() => result.sections ?? [], [result])
@@ -280,7 +285,8 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
     [lines, durationS],
   )
 
-  useEffect(() => player.setGrid(grid), [player, grid])
+  const mapGrid = useMemo(() => (map ? clickGrid(map.lines, durationS) : null), [map, durationS])
+  useEffect(() => player.setGrid(clicks === 'b' && mapGrid ? mapGrid : grid), [player, grid, mapGrid, clicks])
   useEffect(() => player.setSections(spans), [player, spans])
   useEffect(() => {
     if (audio.kind === 'ready') player.setBuffer(audio.song.buffer)
@@ -301,9 +307,11 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
       hints: result.pulse_hints ?? [],
       factor: adjustment.factor,
       durationS,
-      range: tempoRange(lines, result.beats, adjustment.factor),
+      range: tempoRange(map ? [...lines, ...map.lines] : lines, result.beats, adjustment.factor),
+      other: map?.lines ?? null,
+      otherLabel: t('compare.map'),
     }),
-    [lines, sections, grid, result, attacks, audio.kind, audio.song, adjustment.factor, durationS],
+    [lines, sections, grid, result, attacks, audio.kind, audio.song, adjustment.factor, durationS, map, t],
   )
 
   const playFrom = (i) => {
@@ -387,6 +395,31 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         // Lit while its band is the map's loop: drawing another loop unlights it.
         active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
         canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
+
+      <CompareWithMap
+        lines={lines}
+        durationS={durationS}
+        adjusted={adjusted}
+        filename={analysis.filename}
+        map={map}
+        onMap={(next) => {
+          setMap(next)
+          if (!next) setClicks('a')
+        }}
+        clicks={clicks}
+        onClicks={setClicks}
+        // A second early, so the line is heard coming in.
+        onPlayAt={snapshot.ready ? (ms) => player.play(Math.max(0, ms / 1000 - 1), { range: null, loopOn: false }) : null}
+      >
+        <Link to={comparePath({ id })} className="btn-ghost h-8 px-3 text-caption">
+          {t('compare.withAnother')}
+        </Link>
+        {adjusted && (
+          <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost h-8 px-3 text-caption">
+            {t('compare.withAdjusted')}
+          </Link>
+        )}
+      </CompareWithMap>
 
       <AdjustExport
         analysis={analysis}

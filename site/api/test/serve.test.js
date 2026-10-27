@@ -71,6 +71,45 @@ const get = (port, path, headers = {}) =>
       .on('error', reject);
   });
 
+/** A stand-in API as the real one reads addresses: Express with TRUST_PROXY=2. */
+const echoIp = async () => {
+  const { default: express } = await import('express');
+  const app = express();
+  app.set('trust proxy', 2);
+  app.get('/api/ip', (req, res) => res.json({ ip: req.ip, xff: req.get('X-Forwarded-For') ?? null }));
+  return upstream(app);
+};
+
+test('a client that reaches the web directly is counted by its own address, whatever it writes', async () => {
+  const api = await echoIp();
+  const port = await serve(api); // TRUSTED_PROXY_ADDRS unset: nobody is a proxy
+  const forged = await get(port, '/api/ip', { 'X-Forwarded-For': '6.6.6.6, 7.7.7.7' });
+  assert.deepEqual(JSON.parse(forged.body), { ip: '127.0.0.1', xff: '127.0.0.1' });
+  const plain = await get(port, '/api/ip');
+  assert.equal(JSON.parse(plain.body).ip, '127.0.0.1');
+});
+
+test('behind a trusted proxy the client is the address the proxy appended, not one it was sent', async () => {
+  const api = await echoIp();
+  // The test connects from 127.0.0.1, so here it plays Cloudflare: a client
+  // sent "6.6.6.6", and the proxy appended the address it saw.
+  const port = await serve(api, { TRUSTED_PROXY_ADDRS: '173.245.48.0/20, 127.0.0.0/8, 2400:cb00::/32' });
+  const { body } = await get(port, '/api/ip', { 'X-Forwarded-For': '6.6.6.6, 203.0.113.9' });
+  assert.deepEqual(JSON.parse(body), { ip: '203.0.113.9', xff: '203.0.113.9, 127.0.0.1' });
+});
+
+test('a connection outside the trusted ranges gets no say in its address', async () => {
+  const api = await echoIp();
+  const port = await serve(api, { TRUSTED_PROXY_ADDRS: '173.245.48.0/20,2400:cb00::/32' });
+  const { body } = await get(port, '/api/ip', { 'X-Forwarded-For': '6.6.6.6, 203.0.113.9' });
+  assert.equal(JSON.parse(body).ip, '127.0.0.1');
+});
+
+test('a malformed trusted range stops the start', async () => {
+  await assert.rejects(serve(1, { TRUSTED_PROXY_ADDRS: '300.1.1.1/8' }), /not an address or CIDR range/);
+  await assert.rejects(serve(1, { TRUSTED_PROXY_ADDRS: '10.0.0.0/33' }), /not an address or CIDR range/);
+});
+
 test('an API that does not answer is cut after API_TIMEOUT_S with a 504', async () => {
   const api = await upstream(() => {}); // never answers
   const port = await serve(api, { API_TIMEOUT_S: '1' });

@@ -128,10 +128,15 @@ def web():
              "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, "
              "the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
              rules="required|string|starts_with:http://"),
+         var("Trusted proxy addresses", "TRUSTED_PROXY_ADDRS",
+             "Comma-separated addresses or CIDR ranges of the TLS proxy in front (behind Cloudflare: its "
+             "published IPv4 and IPv6 ranges, docs/deploy.md §9). Only a connection from inside them has "
+             "its X-Forwarded-For read; anyone else is counted by their own address. Empty = trust no one.",
+             rules="nullable|string"),
          var("Trusted proxy hops", "TRUSTED_PROXY_HOPS",
-             "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many "
-             "X-Forwarded-For entries plus the connection's address and drops what a client wrote "
-             "before them. The API's TRUST_PROXY is this + 1.",
+             "Proxies in front of this server: 1 for the TLS proxy. From a trusted address, serve.mjs keeps "
+             "that many X-Forwarded-For entries plus the connection's address and drops what a client "
+             "wrote before them. The API's TRUST_PROXY is this + 1.",
              default="1", rules="required|integer|between:0,10"),
          var("API timeout", "API_TIMEOUT_S",
              "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). "

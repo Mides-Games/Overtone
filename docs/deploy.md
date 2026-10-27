@@ -219,8 +219,8 @@ repo es público, se deja vacío.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
-| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
+| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod), `TRUSTED_PROXY_ADDRS` (los rangos del proxy TLS, [§9](#9-tls-la-pregunta-abierta); vacío hasta que esté) |
+| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging), `TRUSTED_PROXY_ADDRS` |
 | `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`), `SPOOL_MAX_MB` (1280: el disco del server es de 2 GB, y `QUEUE_MAX × MAX_UPLOAD_MB` = 30 × 40 entra), `QUEUE_MAX` (30) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4`; con valores por defecto: `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120), `WORKER_TIMEOUT_FACTOR` (3) |
@@ -440,15 +440,29 @@ según el proxy:
   en `127.0.0.1`, y entonces ni siquiera quedan expuestas.
 
 En los dos casos, el proxy tiene que mandar `X-Forwarded-Proto: https` y
-`X-Forwarded-For`. `serve.mjs` pasa `X-Forwarded-Proto` tal como llega, para que la
-API sepa que la cookie de sesión va por HTTPS. `X-Forwarded-For` no: se queda con
-las últimas `TRUSTED_PROXY_HOPS` entradas (las que agregó el proxy; 1 por defecto)
-más la dirección de la conexión, y descarta lo que el cliente haya escrito antes.
-La API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), y
-así el rate limit cuenta por visitante y no por `serve.mjs`. Si delante hay dos
-proxies (Cloudflare y además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`.
-Quien llegue directo al puerto podría falsificarlos, y por eso el firewall importa.
-Para la API eso ya no depende del firewall: sin `PROXY_SECRET` responde 404
+`X-Forwarded-For`. `serve.mjs` solo los lee si la conexión viene de una dirección
+de `TRUSTED_PROXY_ADDRS` (direcciones o rangos CIDR separados por comas; 2026-10-27).
+De ahí se queda con las últimas `TRUSTED_PROXY_HOPS` entradas de `X-Forwarded-For`
+(las que agregó el proxy; 1 por defecto) más la dirección de la conexión, y descarta
+lo que el cliente haya escrito antes. **De cualquier otra conexión descarta el header
+entero** (y `X-Forwarded-Proto`/`-Host`) y reenvía solo la dirección del socket. La
+API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), y en los
+dos casos `req.ip` es el cliente real: detrás del proxy, la dirección que el proxy
+agregó; directo al puerto, la del socket. Si delante hay dos proxies (Cloudflare y
+además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`, y `TRUSTED_PROXY_ADDRS`
+es el del proxy que le habla a `serve.mjs`. Con la variable vacía (el default) no se
+confía en nadie: el rate limit cuenta por la dirección del proxy, que es lo seguro
+hasta que se sepa cuál es.
+
+**Detrás de Cloudflare**, `TRUSTED_PROXY_ADDRS` son sus rangos publicados
+(<https://www.cloudflare.com/ips/>, leídos el 2026-10-27; revisarlos de vez en
+cuando, Cloudflare avisa antes de cambiarlos):
+
+```text
+173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32
+```
+
+Para la API esto ya no depende del firewall: sin `PROXY_SECRET` responde 404
 ([§2](#el-puerto-de-la-api-se-da-por-público-proxy_secret)).
 
 `serve.mjs` manda en cada página `Content-Security-Policy` (solo el propio origen;

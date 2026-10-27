@@ -13,14 +13,17 @@
  * cached for a year; index.html is never cached, so a release is visible on
  * the next load.
  *
- * TRUSTED_PROXY_HOPS (default 1) is how many proxies sit in front of this
- * process: 1 for the TLS proxy (Cloudflare, nginx or Caddy). The API counts its
- * rate limit per client address, and everything it receives comes from here,
- * so the X-Forwarded-For it reads has to be one this process vouches for: the
- * last TRUSTED_PROXY_HOPS entries of the incoming header (the ones those
- * proxies appended) plus the address of the connection itself. Whatever a
- * client wrote further left is dropped. The API then trusts this process and
- * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
+ * TRUSTED_PROXY_ADDRS is the comma-separated addresses or CIDR ranges of the
+ * TLS proxy in front (Cloudflare's published ranges, docs/deploy.md). The API
+ * counts its rate limit and quotas per client address, and everything it
+ * receives comes from here, so the X-Forwarded-For it reads has to be one this
+ * process vouches for. A connection from inside TRUSTED_PROXY_ADDRS keeps the
+ * last TRUSTED_PROXY_HOPS (default 1) entries of its header (the ones the
+ * proxies appended) plus its own address; whatever a client wrote further left
+ * is dropped. Any other connection, including everyone while the variable is
+ * empty, has its header discarded whole and is forwarded as its own address.
+ * The API trusts this process and those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS
+ * + 1, which names the real client in both cases.
  *
  * API_TIMEOUT_S (default 60) cuts a forwarded request whose connection to the
  * API has been idle that long (504), so an API that hangs cannot pin this
@@ -39,12 +42,14 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
+const TRUSTED = trustedProxies(process.env.TRUSTED_PROXY_ADDRS);
 const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
 const API_TIMEOUT_MS = seconds(process.env.API_TIMEOUT_S, 60) * 1000;
 const PROXY_HEADER = 'x-overtone-proxy';
@@ -106,16 +111,48 @@ function forwardable(headers) {
   return out;
 }
 
-// The chain the API reads: the last HOPS entries the trusted proxies appended,
-// then the connection's own address. Never what a client typed before them.
-function forwardedFor(req) {
+function trustedProxies(raw) {
+  const list = new net.BlockList();
+  const ranges = String(raw ?? '').split(',').map((r) => r.trim()).filter(Boolean);
+  for (const range of ranges) {
+    const [address, bits, ...rest] = range.split('/');
+    const family = net.isIP(address);
+    const max = family === 6 ? 128 : 32;
+    const prefix = bits === undefined ? max : Number(bits);
+    if (!family || rest.length || !/^\d*$/.test(bits ?? '') || !Number.isInteger(prefix) || prefix < 0 || prefix > max) {
+      console.error(`overtone-web: TRUSTED_PROXY_ADDRS holds "${range}", not an address or CIDR range`);
+      process.exit(1);
+    }
+    list.addSubnet(address, prefix, family === 6 ? 'ipv6' : 'ipv4');
+  }
+  return { list, count: ranges.length };
+}
+
+// The connection's own address; an IPv4 client on a dual-stack socket arrives
+// as ::ffff:a.b.c.d and is matched, and forwarded, as a.b.c.d.
+function peerOf(req) {
+  const raw = req.socket.remoteAddress || '';
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  return mapped ? mapped[1] : raw;
+}
+
+function fromTrustedProxy(peer) {
+  const family = net.isIP(peer);
+  return TRUSTED.count > 0 && family > 0 && TRUSTED.list.check(peer, family === 6 ? 'ipv6' : 'ipv4');
+}
+
+// The chain the API reads. From a trusted proxy: the last HOPS entries it
+// appended, then its own address. From anyone else: their address alone,
+// whatever X-Forwarded-For they wrote, since nothing vouches for it.
+function forwardedFor(req, peer, trusted) {
+  if (!trusted) return peer || 'unknown';
   const raw = req.headers['x-forwarded-for'];
   const incoming = (Array.isArray(raw) ? raw.join(',') : raw || '')
     .split(',')
     .map((a) => a.trim())
     .filter(Boolean);
   const kept = HOPS > 0 ? incoming.slice(-HOPS) : [];
-  return [...kept, req.socket.remoteAddress || 'unknown'].join(', ');
+  return [...kept, peer || 'unknown'].join(', ');
 }
 
 // The worker's routes are reached on the API's own port with their own bearer
@@ -145,9 +182,12 @@ function proxy(req, res) {
   // through here, with an X-Forwarded-For this process wrote.
   delete headers[PROXY_HEADER];
   if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
-  headers['x-forwarded-for'] = forwardedFor(req);
-  headers['x-forwarded-proto'] ||= 'http';
-  headers['x-forwarded-host'] ||= req.headers.host || '';
+  const peer = peerOf(req);
+  const trusted = fromTrustedProxy(peer);
+  headers['x-forwarded-for'] = forwardedFor(req, peer, trusted);
+  // The same rule for the scheme and host a proxy reports.
+  if (!trusted || !headers['x-forwarded-proto']) headers['x-forwarded-proto'] = 'http';
+  if (!trusted || !headers['x-forwarded-host']) headers['x-forwarded-host'] = req.headers.host || '';
   headers.host = UPSTREAM.host;
   const up = http.request(
     { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: req.method, path: req.url, headers },
@@ -284,6 +324,6 @@ server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
   console.log(
     `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
-      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}, proxy secret ${PROXY_SECRET ? 'set' : 'NOT set'}`,
+      `${HOPS} trusted proxy hop(s) from ${TRUSTED.count} trusted range(s), HSTS ${HSTS ? 'on' : 'off'}, proxy secret ${PROXY_SECRET ? 'set' : 'NOT set'}`,
   );
 });

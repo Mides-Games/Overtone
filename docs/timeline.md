@@ -20,6 +20,54 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · One grid where the tracker drifts, and two ideas dropped
+
+### Changed
+
+- `CONSTANT_GRID` is on, at 30 ms and 0.8: where the precision grid gives way to the
+  beat tracker and Beat This!'s beats over the whole song sit on one steady grid, the
+  song is read as that one red line instead of the tracker's dozens. On bands-variable
+  dev every one of the 185 maps that reached the tracker missed the tempo; 72 of them
+  are mapped with a single line, and the tracker gave a median of 78.
+- The piecewise grid (`PIECEWISE_GRID`, still off) now splits only the tracker's lines;
+  the precision grid's one line is never split.
+
+### Fixed
+
+- A stage report keeps an analysis error's message, so a map lost to an error names
+  its cause instead of only the word "error".
+
+### Measured
+
+On the server, ranked maps, engine `app`, tempo ok / octave ×1 (2026-10-27):
+
+| Run | bands dev | bands held out | anime-variable dev | anime-variable held out |
+|---|---|---|---|---|
+| base | 46.7 / 83.5 | 59.9 / 82.4 | 31.5 / 84.8 | 19.5 / 77.6 |
+| constant grid, 20 ms / 0.9 | 50.3 / 83.5 | 59.9 / 82.4 | 31.5 / 85.1 | 20.4 / 77.6 |
+| constant grid, 30 ms / 0.8 | 51.1 / 83.5 | 59.9 / 82.4 | — | — |
+| constant grid, 40 ms / 0.7 | 51.1 / 83.5 | — | — | — |
+
+anime-single (78.8 / 92.8 dev, 81.9 / 94.3 held out) never reaches the tracker, so the
+constant grid cannot move it. The 30 ms setting is on for its dev gain; its anime
+numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 239849c.
+
+### Rejected / tried and dropped
+
+- **The song's octave from Beat This! (`SONG_OCTAVE_BEAT_THIS`).** bands dev 46.7 → 43.7,
+  held out 59.9 (octave ×1 82.4 → 84.9); anime-single dev 78.8 → 73.6 and octave ×1
+  92.8 → 86.7, held out 81.9 → 75.8. On bands it fixed 4 maps and broke 8, and both
+  groups halved to the same 92–115 BPM, so no rule on the tempo tells them apart.
+- **Splitting the precision grid's line into steady stretches** (`_piecewise_grid` on
+  the precision path). bands dev 46.7 → 32.4 (penalty 40), 32.4 (penalty 120), 33.5
+  (with the constant grid); held out 59.9 → 30.1. Map by map, 23 one-line songs split
+  into 2–10 lines lost 119 maps and an error lost 8, against 8 gained. A penalty three
+  times higher changed nothing: Beat This!'s beats wander by more than 1.5 % within a
+  steady song, which no price per line separates from a real change. On the tracker
+  path the same split gained 28 maps and lost none, so it stays there to be measured.
+
+---
+
 ## Unreleased — 2026-10-27 · A cleaner logo for the web
 
 ### Changed

@@ -3747,10 +3747,12 @@ SECTION_OCTAVE_JUDGE = True
 #: the tracker gave a median of 78. When Beat This!'s beats over the whole
 #: song sit on one grid (CONSTANT_GRID_SHARE of them within
 #: CONSTANT_GRID_TOL_MS), the song is read as that grid, at the octave of the
-#: tempo that held most of it. Off until measured on the server.
-CONSTANT_GRID = False
-CONSTANT_GRID_TOL_MS = 20.0
-CONSTANT_GRID_SHARE = 0.9
+#: tempo that held most of it. On since 2026-10-27 at 30 ms and 0.8:
+#: bands tempo ok dev 46.7 -> 51.1 %, held out 59.9 unchanged; anime-variable
+#: dev 31.5 unchanged, held out 19.5 -> 20.4 %; anime-single never reaches it.
+CONSTANT_GRID = True
+CONSTANT_GRID_TOL_MS = 30.0
+CONSTANT_GRID_SHARE = 0.8
 
 #: Red lines as the fewest steady stretches that explain Beat This!'s beats.
 #: Two failures share one cause: the precision grid gives one line where the

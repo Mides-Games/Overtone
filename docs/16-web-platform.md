@@ -467,6 +467,13 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.18 hecha el 2026-10-27** en la rama `feature/queue-moderation`: un moderador de
+Mides (`is_moderator`, guardado como `mides_role`) ve en `/queue` "Sacar" en cada fila
+viva y "Devolver a la cola" en la que se está analizando, con un motivo opcional. Cada
+acción queda en `moderation_log` (quién, qué, cuándo, por qué) en la misma transacción,
+y el registro se ve debajo de la cola. Una fila privada le sigue sin mostrar canción ni
+uploader. El usuario de prueba de Google del login de desarrollo es moderador.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

@@ -20,6 +20,54 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.18: the queue, moderated
+
+### Changed
+
+- W3.18 of [the web platform](16-web-platform.md), the first piece of W6's
+  moderation panel: a Mides moderator sees on `/queue` a Remove button on every
+  waiting or running job and Back to the queue on a running one, each asking for
+  an optional reason, and the moderation log under the queue.
+- `POST /api/v1/analyses/:id/moderate` and `GET /api/v1/analyses/moderation`,
+  staff only; the new `moderation_log` table records who did what, when and why,
+  in the same transaction as the change.
+- A removed song's page says a moderator took it off the queue instead of
+  suggesting the file was damaged.
+- The dev login's Google user is a moderator, so the buttons can be tried without
+  Mides.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` did not parse on this branch either (see W3.12);
+  the same fix is carried here so the new paths could be added.
+
+### Hardening
+
+- Staff get an opaque `ref` on live rows, not the `id` that opens a result, and a
+  private row still shows them no song and no uploader.
+- A requeue keeps the attempt count, so the worker that had the job cannot
+  overwrite the next attempt's answer; it is refused without its spooled audio.
+- The log keeps the moderator's username at the time, so it still says who after
+  the account is gone.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new, over HTTP with dev sign-ins: only
+  staff may act or read the log; staff see a `ref` and a private row stays
+  private; a removal fails the job, deletes its audio, tells the uploader and is
+  logged with reason and username; a requeued job waits again, the old attempt is
+  refused and the next claim's attempt is higher; no requeue without audio).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; remove, a second remove
+  refused, requeue of a running job, its stale answer refused, a new claim at
+  attempt 2, the log read back newest first.
+- In the browser (`pnpm dev` in memory, signed in as the Google dev user): the
+  staff row showed Remove and Back to the queue; a running job went back to
+  position 1, a queued one was removed, and the log listed both with the reason.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

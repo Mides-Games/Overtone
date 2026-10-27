@@ -39,6 +39,11 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   an account, `USER_DAILY_LIMIT` with one. The address is stored as an HMAC of
   the address and the day. A separate limit allows 10 uploads per address per
   10 minutes.
+- **Moderation** (W3.18). A Mides moderator sees, on `/queue`, Remove on every
+  waiting or running row and Back to the queue on a running one. Remove fails
+  the job ("Removed from the queue by a moderator.") and deletes its audio;
+  Back to the queue hands a stuck job to the next worker while its audio is
+  still spooled. Both go to `moderation_log` with who did it and why.
 - **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
   queue; the second time it fails. Every worker call names its attempt, so a
   late answer from an abandoned attempt gets a 409.
@@ -279,3 +284,26 @@ not with two real addresses taking turns.
 The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
+
+### The queue, moderated (W3.18, 2026-10-27)
+
+Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`
+(`moderator`) and refreshes at every sign-in, so losing the role in Mides takes
+effect here at the next one. `GET /analyses/queue` adds `staff: true` and a `ref`
+on every live row for them; a private row still shows them no song and no
+uploader, since removing or requeueing needs neither.
+`POST /analyses/:id/moderate { action, reason? }` (same-origin, session, staff;
+anyone else 401 or 403 `STAFF_ONLY`):
+
+- `remove`: a waiting or running job fails, its audio goes. A worker already on
+  it finishes its stage and its answer is refused as stale. The uploader's page
+  says a moderator took it off the queue (`removed: true`).
+- `requeue`: a running job goes back to the queue (409 `NOT_RUNNING` otherwise,
+  409 `AUDIO_GONE` without its audio). Its attempt count is kept, so the next
+  claim's attempt is new and the old worker's late answer is refused.
+
+Each one writes `moderation_log` (who by username at the time, the action, the
+analysis, the reason) in the same transaction as the change; `GET
+/analyses/moderation` returns the last 50 for staff. With `MIDES_DEV_LOGIN` the
+Google dev user is a moderator and the Discord one is not, so both sides can be
+tried.

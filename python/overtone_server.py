@@ -11,7 +11,9 @@ It is the standard library's threaded HTTP server, JSON in and out, and
 nothing else: no framework, no outbound connection. Every request carries
 ``Authorization: Bearer <token>``. It listens on 127.0.0.1 unless told
 otherwise; reach it through an SSH tunnel, or put a TLS proxy in front
-before exposing it (docs/server.md).
+before exposing it (docs/server.md). A connection that says nothing for
+``SOCKET_TIMEOUT`` is dropped, at most ``MAX_CONNECTIONS`` are served at once
+(503 past that), and wrong tokens are limited across the whole server (429).
 
     python python/overtone_server.py --songs /srv/osu/Songs
 
@@ -41,9 +43,11 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
 from __future__ import annotations
 
 import argparse
+import collections
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import sys
@@ -74,6 +78,23 @@ MAX_BODY = 64 * 1024
 RUNS_PAGE = Path(__file__).resolve().parent / "server_page" / "runs.html"
 #: The cookie a signed-in browser carries.
 SESSION_COOKIE = "overtone_session"
+#: Seconds a connection may wait between two reads before it is dropped: a
+#: client that opens one and says nothing holds a thread for no longer.
+SOCKET_TIMEOUT = 30.0
+#: Connections served at once. One more is answered 503 and closed, so idle
+#: or slow clients cannot make the server start threads without end.
+MAX_CONNECTIONS = 64
+#: Wrong tokens (a bearer header or the sign-in form) the whole server takes
+#: in FAILED_WINDOW seconds; past that, every token is refused with 429 until
+#: the oldest failure is a window old. Server-wide, because behind the proxy
+#: every client has the proxy's address.
+FAILED_LOGINS = 20
+FAILED_WINDOW = 60.0
+#: What a connection past MAX_CONNECTIONS is told before it is closed.
+BUSY_BODY = b'{"error": "Too many connections; try again."}\n'
+BUSY_REPLY = (b"HTTP/1.0 503 Service Unavailable\r\nContent-Type: application/json\r\n"
+              b"Retry-After: 5\r\nConnection: close\r\n"
+              b"Content-Length: " + str(len(BUSY_BODY)).encode() + b"\r\n\r\n" + BUSY_BODY)
 
 
 class Job:
@@ -226,6 +247,77 @@ class Service:
         return HTTPStatus.OK, found
 
 
+class FailedLogins:
+    """Wrong tokens, counted across the whole server: at most ``limit`` in any
+    ``window`` seconds. Past that no token is checked at all (``retry_after``
+    says for how long), so guesses cost the guesser time without holding a
+    thread asleep for each one, as a per-request delay did."""
+
+    def __init__(self, limit: int = FAILED_LOGINS, window: float = FAILED_WINDOW,
+                 clock=time.monotonic) -> None:
+        self.limit = limit
+        self.window = window
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._failures: collections.deque[float] = collections.deque()
+
+    def _prune(self, now: float) -> None:
+        while self._failures and now - self._failures[0] >= self.window:
+            self._failures.popleft()
+
+    def retry_after(self) -> int:
+        """Whole seconds until a token is checked again; 0 while it is."""
+        with self._lock:
+            now = self._clock()
+            self._prune(now)
+            if len(self._failures) < self.limit:
+                return 0
+            return max(1, math.ceil(self._failures[0] + self.window - now))
+
+    def failed(self) -> None:
+        with self._lock:
+            now = self._clock()
+            self._prune(now)
+            self._failures.append(now)
+
+
+class Server(ThreadingHTTPServer):
+    """The threaded server, with a cap: at most ``max_connections`` handled
+    at once. One past it is answered 503 from the accepting thread and
+    closed, never queued and never given a thread of its own."""
+
+    daemon_threads = True
+    # Closing waits for no connection: an idle one would hold it for the
+    # whole socket timeout, and daemon threads end with the process.
+    block_on_close = False
+
+    def __init__(self, address, handler, max_connections: int = MAX_CONNECTIONS) -> None:
+        self.max_connections = max_connections
+        self._slots = threading.BoundedSemaphore(max_connections)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address) -> None:
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.settimeout(1.0)
+                request.sendall(BUSY_REPLY)
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
 class Sessions:
     """Browser sessions as signed cookies: an expiry and a nonce, signed with
     a key drawn from the API token. Nothing is kept on the server, so a
@@ -285,8 +377,8 @@ def _long_enough(token: str, source: str) -> str:
 def load_token(explicit_file: str | None = None) -> str:
     """The bearer token: the environment's, else the file's, else a new one
     written to Overtone's data folder (readable by its owner only). One
-    shorter than MIN_TOKEN is refused: the token is the whole lock, and the
-    wrong-token delay is per connection, so a short one is guessable."""
+    shorter than MIN_TOKEN is refused: the token is the whole lock, and a
+    short one is guessable even at FAILED_LOGINS a minute."""
     if os.environ.get(TOKEN_ENV):
         return _long_enough(os.environ[TOKEN_ENV].strip(), f"${TOKEN_ENV}")
     path = Path(explicit_file) if explicit_file else data_root() / TOKEN_FILE
@@ -303,13 +395,18 @@ def load_token(explicit_file: str | None = None) -> str:
     return token
 
 
-def make_handler(service: Service, token: str, log: bool = True):
+def make_handler(service: Service, token: str, log: bool = True,
+                 logins: FailedLogins | None = None, timeout: float = SOCKET_TIMEOUT):
     expected = f"Bearer {token}".encode()
     service.sessions = Sessions(token)
+    logins = logins if logins is not None else FailedLogins()
+    socket_timeout = timeout
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Overtone"
         sys_version = ""
+        # Set on the socket before the first read (StreamRequestHandler.setup).
+        timeout = socket_timeout
 
         def log_message(self, format, *args):  # noqa: A002 -- the base class's name
             if not log:
@@ -345,16 +442,32 @@ def make_handler(service: Service, token: str, log: bool = True):
             morsel = cookie.get(SESSION_COOKIE)
             return morsel.value if morsel else None
 
-        def _signed_in(self, method: str) -> bool:
+        def _signed_in(self, method: str) -> bool | None:
             """A bearer token, or a session cookie; a cookie alone may change
             nothing without the page's own header (no cross-site form can
-            send one)."""
+            send one). None: a bearer header came while wrong tokens are
+            being refused, so it was not checked (the reply is 429)."""
             given = (self.headers.get("Authorization") or "").encode()
-            if given and hmac.compare_digest(given, expected):
-                return True
+            if given:
+                if logins.retry_after():
+                    return None
+                if hmac.compare_digest(given, expected):
+                    return True
+                logins.failed()
             if service.sessions.valid(self._session()):
                 return method in ("GET", "HEAD") or self.headers.get("X-Overtone") == "1"
             return False
+
+        def _limited(self, page: bool = False) -> None:
+            wait = logins.retry_after() or 1
+            headers = (("Retry-After", str(wait)),)
+            message = f"Too many wrong tokens; try again in {wait} s."
+            if page:
+                body = LOGIN_PAGE.replace("{error}", message).encode("utf-8")
+                self._send(HTTPStatus.TOO_MANY_REQUESTS, body, "text/html; charset=utf-8",
+                           headers)
+            else:
+                self._reply(HTTPStatus.TOO_MANY_REQUESTS, {"error": message}, headers)
 
         def _secure(self) -> bool:
             return (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
@@ -409,9 +522,12 @@ def make_handler(service: Service, token: str, log: bool = True):
             if length is None:
                 return
             form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+            if logins.retry_after():
+                self._limited(page=True)
+                return
             given = f"Bearer {(form.get('token') or [''])[-1].strip()}".encode()
             if not hmac.compare_digest(given, expected):
-                time.sleep(1.0)  # a guess costs a second
+                logins.failed()
                 page = LOGIN_PAGE.replace("{error}", "That token is not this server's.")
                 self._send(HTTPStatus.UNAUTHORIZED, page.encode("utf-8"), "text/html; charset=utf-8")
                 return
@@ -430,7 +546,11 @@ def make_handler(service: Service, token: str, log: bool = True):
             if url.path == "/login" and method in ("GET", "POST"):
                 self._login(method)
                 return
-            if not self._signed_in(method):
+            signed_in = self._signed_in(method)
+            if signed_in is None:
+                self._limited()
+                return
+            if not signed_in:
                 if method == "GET" and not url.path.startswith("/api/"):
                     self._redirect("/login")
                 else:
@@ -520,13 +640,14 @@ def disable_beat_vote() -> None:
     ta._BEAT_THIS_SESSION[:] = [None]
 
 
-def serve(service: Service, host: str, port: int, token: str,
-          log: bool = True) -> ThreadingHTTPServer:
+def serve(service: Service, host: str, port: int, token: str, log: bool = True,
+          logins: FailedLogins | None = None, max_connections: int = MAX_CONNECTIONS,
+          timeout: float = SOCKET_TIMEOUT) -> Server:
     """The server, bound and ready; ``serve_forever`` runs it. ``log``: one
-    line per request on stderr."""
-    server = ThreadingHTTPServer((host, port), make_handler(service, token, log))
-    server.daemon_threads = True
-    return server
+    line per request on stderr. ``logins``, ``max_connections`` and
+    ``timeout`` are the limits above; only the tests give them."""
+    return Server((host, port), make_handler(service, token, log, logins, timeout),
+                  max_connections)
 
 
 def main(argv: list[str] | None = None) -> int:

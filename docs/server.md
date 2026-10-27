@@ -14,6 +14,13 @@ Qué hace y qué no:
   proxy con TLS. **Nunca** lo publiques sin TLS, porque el token viajaría en
   claro.
 - Cada petición lleva `Authorization: Bearer <token>`.
+- Una conexión que no manda nada en 30 s se cierra. Atiende 64 a la vez; a
+  la siguiente le contesta `503` y la cierra, sin darle un hilo.
+- Tokens equivocados (cabecera o `/login`): 20 por minuto en todo el
+  servidor, porque detrás de Caddy todos llegan desde la misma dirección.
+  Pasado eso no comprueba ningún token, tampoco el bueno, y contesta `429`
+  con `Retry-After` hasta que el fallo más viejo cumple un minuto. Una
+  sesión del navegador ya abierta sigue valiendo.
 - Un audio sin pulso (ruido, pads, silencio) queda como `refused`, con el
   motivo del motor y sin BPM. No se inventa nada.
 

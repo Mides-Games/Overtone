@@ -5948,6 +5948,95 @@ class LibraryServerTests(unittest.TestCase):
         self.assertTrue(idle.analyze_job.stop.is_set())
         self.assertIs(server.time, time)
 
+    def _serve(self, **limits) -> int:
+        """A second server on the same service, with its own limits; its port."""
+        import threading
+        server = self.server_module.serve(self.service, "127.0.0.1", 0, "secret", log=False,
+                                          **limits)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server.server_address[1]
+
+    @staticmethod
+    def _request(port, method, path, body=None, headers=None):
+        import http.client
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        try:
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            return reply.status, dict(reply.getheaders()), reply.read()
+        finally:
+            connection.close()
+
+    def test_wrong_tokens_are_limited_across_the_server_without_a_sleep(self):
+        import time
+        now = [1000.0]
+        logins = self.server_module.FailedLogins(limit=3, window=60.0, clock=lambda: now[0])
+        port = self._serve(logins=logins)
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        def bearer(token):
+            return self._request(port, "GET", "/api/status",
+                                 headers={"Authorization": f"Bearer {token}"})
+
+        started = time.monotonic()
+        self.assertEqual(bearer("wrong")[0], 401)
+        self.assertEqual(self._request(port, "POST", "/login", "token=wrong", form)[0], 401)
+        self.assertEqual(bearer("nope")[0], 401)
+        # No guess holds its thread asleep any more (it was a second each).
+        self.assertLess(time.monotonic() - started, 1.0)
+        # Past the limit no token is checked at all, the right one included.
+        status, headers, _ = bearer("secret")
+        self.assertEqual((status, headers.get("Retry-After")), (429, "60"))
+        status, _, page = self._request(port, "POST", "/login", "token=secret", form)
+        self.assertEqual(status, 429)
+        self.assertIn(b"Too many wrong tokens", page)
+        # A signed-in browser keeps working, and asking with no token is no guess.
+        cookie = f"{self.server_module.SESSION_COOKIE}={self.service.sessions.new()}"
+        self.assertEqual(self._request(port, "GET", "/api/v1/whoami",
+                                       headers={"Cookie": cookie})[0], 200)
+        self.assertEqual(self._request(port, "GET", "/api/status")[0], 401)
+        now[0] += 30
+        self.assertEqual(bearer("secret")[0], 429)
+        now[0] += 30
+        self.assertEqual(bearer("secret")[0], 200)
+
+    def test_idle_connections_are_capped_and_dropped(self):
+        import socket
+        import time
+        port = self._serve(max_connections=3, timeout=2.0)
+        idle = [socket.create_connection(("127.0.0.1", port), timeout=10) for _ in range(2)]
+        self.addCleanup(lambda: [sock.close() for sock in idle])
+        # Below the cap, connections that say nothing do not hold up a request.
+        status, _, _ = self._request(port, "GET", "/api/status",
+                                     headers={"Authorization": "Bearer secret"})
+        self.assertEqual(status, 200)
+        idle.append(socket.create_connection(("127.0.0.1", port), timeout=10))
+        # At the cap, one more is told so and closed, never given a thread.
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as extra:
+            reply = b""
+            while chunk := extra.recv(4096):
+                reply += chunk
+        self.assertTrue(reply.startswith(b"HTTP/1.0 503 "), reply[:40])
+        self.assertIn(b"Retry-After", reply)
+        # An idle connection is dropped once it has said nothing for the timeout.
+        started = time.monotonic()
+        for sock in idle:
+            self.assertEqual(sock.recv(1), b"")
+        self.assertLess(time.monotonic() - started, 8.0)
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                status = self._request(port, "GET", "/api/status",
+                                       headers={"Authorization": "Bearer secret"})[0]
+            except OSError:
+                status = None
+            if status == 200 or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
+        self.assertEqual(status, 200)
+
     def test_the_token_is_generated_once_and_kept_private(self):
         from unittest import mock
         path = self.tmp / "token"

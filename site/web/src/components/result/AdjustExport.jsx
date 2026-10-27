@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../context/AuthContext.jsx'
+import { changesLines, exportLines } from '../../lib/export-options.js'
 import { buildOsz } from '../../lib/osz.js'
 import { saveText, timingText } from '../../lib/timing.js'
+import { useExportOptions } from './ExportOptions.jsx'
 
 const FACTORS = [
   { value: 0.5, label: '÷2' },
@@ -28,7 +30,10 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
   const [osz, setOsz] = useState(null) // null, 'busy' or 'failed'
   const result = analysis.result
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
-  const text = () => timingText(result, lines, adjustment)
+  // The export options (W12.8) shape what is written, never what is heard.
+  const options = useExportOptions()
+  const written = useMemo(() => exportLines(lines, options), [lines, options])
+  const text = () => timingText(result, written, adjustment, options)
 
   // Functional updates: two presses before a render must both count.
   const setNudge = (value) =>
@@ -51,7 +56,7 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
     if (!audioFile || osz === 'busy') return
     setOsz('busy')
     try {
-      const { name, bytes } = await buildOsz({ file: audioFile, analysis, lines, adjustment, creator: account?.username })
+      const { name, bytes } = await buildOsz({ file: audioFile, analysis, lines: written, adjustment, options, creator: account?.username })
       saveText(bytes, name, 'application/x-osu-beatmap-archive')
       setOsz(null)
     } catch {
@@ -122,9 +127,27 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
         <p className="w-full text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
           {osz === 'failed' ? t('result.oszFailed') : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
         </p>
+        {changesLines(options) && <OptionsInForce options={options} />}
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * The export options that change what is written, said beside the .osz: they
+ * are remembered across songs, so one set weeks ago must never go unnoticed.
+ */
+function OptionsInForce({ options }) {
+  const { t } = useTranslation()
+  const parts = []
+  if (options.bpmDecimals !== null) parts.push(t('exportOptions.inForce.bpm', { count: options.bpmDecimals }))
+  if (options.firstLineOnly) parts.push(t('exportOptions.inForce.first'))
+  if (options.globalOffsetMs) parts.push(t('exportOptions.inForce.offset', { ms: `${options.globalOffsetMs > 0 ? '+' : ''}${options.globalOffsetMs}` }))
+  return (
+    <p role="status" className="w-full rounded-control border border-amber/40 bg-amber/10 px-3 py-1.5 text-caption text-text">
+      {t('exportOptions.inForce.label', { list: parts.join(' · ') })}
+    </p>
   )
 }
 

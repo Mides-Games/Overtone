@@ -930,5 +930,43 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "exportOptions": {
+    "title": "Opciones de exportación",
+    "reset": "Volver al timing como está",
+    "offsetDecimals": "Decimales del offset (ms)",
+    "offsetDecimalsNote": "Para Quaver y StepMania, que aceptan fracciones de milisegundo. osu! siempre lee ms enteros; Clone Hero cuenta en ticks.",
+    "bpmDecimals": "Redondear el BPM a",
+    "bpmFull": "Completo",
+    "bpmNote": "Cada BPM se escribe como lo tiene la página. Redondearlo lo hace más fácil de leer, y corre la grilla al final de cada red line.",
+    "driftEnd": "Con el BPM redondeado, la grilla se corre hasta {{ms}} ms al final de la canción.",
+    "driftLine": "Con el BPM redondeado, la grilla se corre hasta {{ms}} ms al final de la red line {{line}}.",
+    "firstOnly": "Solo la primera red line",
+    "firstOnlyNote": "Para una canción que querés en un solo tempo: el resto corre con la grilla de la primera línea, sin revisar.",
+    "firstOnlyOn_one": "{{count}} red line posterior queda afuera de las exportaciones.",
+    "firstOnlyOn_other": "{{count}} red lines posteriores quedan afuera de las exportaciones.",
+    "globalOffset": "Sumar a cada offset",
+    "globalOffsetNote": "Para la convención de sincronía de un juego o de un pack. A diferencia del nudge, solo mueve lo que se escribe, nunca los clicks que escuchás, y se recuerda entre canciones.",
+    "inForce": {
+      "label": "Opciones de exportación activas: {{list}}. El .osz, la copia y los otros archivos las siguen; los clicks no.",
+      "bpm_one": "BPM a {{count}} decimal",
+      "bpm_other": "BPM a {{count}} decimales",
+      "first": "solo la primera red line",
+      "offset": "{{ms}} ms sumados"
+    }
+  },
+  "gameFormats": {
+    "title": "Otros juegos (solo timing, sin notas)",
+    "note": "Las red lines como las exportás, en las unidades de cada juego: abrí el archivo en el editor del juego y charteá encima. Se arma acá; no se sube nada, y ningún juego confirmó todavía que acepte el archivo.",
+    "etterna": "Etterna lee el .sm de StepMania: usá ese. No tiene un formato de timing propio para escribir.",
+    "cloneHero": "Clone Hero: se guarda como notes.chart. Ponelo en una carpeta con tu canción llamada song{{ext}}.",
+    "rows_one": "StepMania pone un cambio de tempo en el 1/48 de tiempo más cercano: acá eso mueve {{count}} cambio hasta {{ms}} ms.",
+    "rows_other": "StepMania pone un cambio de tempo en el 1/48 de tiempo más cercano: acá eso mueve {{count}} cambios hasta {{ms}} ms.",
+    "smMeter": "Un .sm no tiene compases, así que se leen como 4/4. El .ssc los conserva.",
+    "quaMeter_one": "Quaver solo conoce 4/4 y 3/4: {{count}} red line en otro compás se escribe como 4/4.",
+    "quaMeter_other": "Quaver solo conoce 4/4 y 3/4: {{count}} red lines en otro compás se escriben como 4/4.",
+    "chartFitted_one": "{{count}} cambio de tempo cae entre los ticks de Clone Hero: el BPM anterior se ajusta apenas para que caiga a tiempo (a menos de {{ms}} ms).",
+    "chartFitted_other": "{{count}} cambios de tempo caen entre los ticks de Clone Hero: el BPM anterior a cada uno se ajusta apenas para que caigan a tiempo (a menos de {{ms}} ms).",
+    "failed": "No se pudo armar ese archivo con estas red lines."
   }
 }

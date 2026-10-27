@@ -930,5 +930,43 @@
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
     }
+  },
+  "exportOptions": {
+    "title": "Export options",
+    "reset": "Back to the timing as it is",
+    "offsetDecimals": "Offset decimals (ms)",
+    "offsetDecimalsNote": "For Quaver and StepMania, which take fractions of a millisecond. osu! always reads whole ms; Clone Hero counts in ticks.",
+    "bpmDecimals": "Round the BPM to",
+    "bpmFull": "Full",
+    "bpmNote": "Every BPM written as the page has it. Rounding makes it easier to read, and walks the grid off by the end of each red line.",
+    "driftEnd": "With the BPM rounded, the grid is up to {{ms}} ms off by the end of the song.",
+    "driftLine": "With the BPM rounded, the grid is up to {{ms}} ms off by the end of red line {{line}}.",
+    "firstOnly": "First red line only",
+    "firstOnlyNote": "For a song you want on one tempo: the rest of it runs on the first line’s grid, unchecked.",
+    "firstOnlyOn_one": "{{count}} later red line is left out of the exports.",
+    "firstOnlyOn_other": "{{count}} later red lines are left out of the exports.",
+    "globalOffset": "Add to every offset",
+    "globalOffsetNote": "For a game’s or a pack’s own sync convention. Unlike the nudge, it only moves what is written, never the clicks you hear, and it is remembered across songs.",
+    "inForce": {
+      "label": "Export options on: {{list}}. The .osz, the copy and the other files follow them; the clicks do not.",
+      "bpm_one": "BPM to {{count}} decimal",
+      "bpm_other": "BPM to {{count}} decimals",
+      "first": "first red line only",
+      "offset": "{{ms}} ms added"
+    }
+  },
+  "gameFormats": {
+    "title": "Other games (timing only, no notes)",
+    "note": "The red lines as you export them, in each game’s own units: open the file in the game’s editor and chart on it. Built here; nothing is uploaded, and no game has been asked whether it accepts the file.",
+    "etterna": "Etterna reads StepMania’s .sm: use that one. It has no timing format of its own to write.",
+    "cloneHero": "Clone Hero: saved as notes.chart. Put it in a folder with your song named song{{ext}}.",
+    "rows_one": "StepMania puts a tempo change on the nearest 1/48 of a beat: here that moves {{count}} change by up to {{ms}} ms.",
+    "rows_other": "StepMania puts a tempo change on the nearest 1/48 of a beat: here that moves {{count}} changes by up to {{ms}} ms.",
+    "smMeter": "A .sm has no time signatures, so its bars read as 4/4. The .ssc keeps them.",
+    "quaMeter_one": "Quaver knows 4/4 and 3/4 only: {{count}} red line in another meter is written as 4/4.",
+    "quaMeter_other": "Quaver knows 4/4 and 3/4 only: {{count}} red lines in another meter are written as 4/4.",
+    "chartFitted_one": "{{count}} tempo change falls between Clone Hero’s ticks: the BPM before it is adjusted by a hair so it lands on time (within {{ms}} ms).",
+    "chartFitted_other": "{{count}} tempo changes fall between Clone Hero’s ticks: the BPM before each is adjusted by a hair so they land on time (within {{ms}} ms).",
+    "failed": "That file could not be built from these red lines."
   }
 }

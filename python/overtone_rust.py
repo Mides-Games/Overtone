@@ -207,6 +207,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
 
     analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
     analysis = ta._song_octave_by_beat_this(analysis, heard)
+    analysis = ta._piecewise_grid(analysis, heard, split_only=True)
     return ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard))
 
 

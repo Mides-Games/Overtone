@@ -3193,6 +3193,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y, sr))
+            analysis = _piecewise_grid(analysis, lambda: _beat_this_judge_beats(y, sr), split_only=True)
             return _snap_whole_points(_fold_lines_to_song_octave(
                 analysis, lambda: _beat_this_judge_beats(y, sr)))
         if engine == "precision":
@@ -3210,6 +3211,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                                         lambda: _beat_this_tempo(y, sr))
     tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y, sr))
     tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+    tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
     return _constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
 
 
@@ -3734,6 +3736,108 @@ SECTION_OCTAVE_JUDGE = True
 CONSTANT_GRID = False
 CONSTANT_GRID_TOL_MS = 20.0
 CONSTANT_GRID_SHARE = 0.9
+
+#: Red lines as the fewest steady stretches that explain Beat This!'s beats.
+#: Two failures share one cause: the precision grid gives one line where the
+#: song changes tempo (15 bands-variable dev songs, 75 maps, mapped 180 ->
+#: 195 -> 200 and the like), and the tracker gives ~78 drifting lines where
+#: the mapper used a few. Optimal partitioning of the beats into straight
+#: lines, each new line costing PIECEWISE_PENALTY beats' worth of
+#: PIECEWISE_SIGMA_MS error. Off until measured on the server.
+PIECEWISE_GRID = False
+PIECEWISE_SIGMA_MS = 15.0
+PIECEWISE_PENALTY = 40.0
+PIECEWISE_MIN_BEATS = 16
+
+
+def _piecewise_segments(beats_ms: np.ndarray) -> list[tuple[int, int, float, float]]:
+    """(first, end, period ms, start ms) per steady stretch of the beats, by
+    optimal partitioning; each stretch holds PIECEWISE_MIN_BEATS or more."""
+    t = np.asarray(beats_ms, dtype=float)
+    n = t.size
+    least = PIECEWISE_MIN_BEATS
+    if n < 2 * least:
+        return []
+    gaps = np.diff(t)
+    from scipy.ndimage import median_filter
+    local = np.maximum(median_filter(gaps, size=17, mode="nearest"), 1e-6)
+    x = np.concatenate([[0.0], np.cumsum(np.maximum(1.0, np.round(gaps / local)))])
+    # Residuals from one line over the whole song keep the sums small, so
+    # the closed-form errors below lose nothing to cancellation.
+    slope, intercept = np.polyfit(x, t, 1)
+    r = t - (intercept + slope * x)
+    z = np.zeros(1)
+    s1, sr = np.concatenate([z, np.cumsum(x)]), np.concatenate([z, np.cumsum(r)])
+    sxx = np.concatenate([z, np.cumsum(x * x)])
+    sxr = np.concatenate([z, np.cumsum(x * r)])
+    srr = np.concatenate([z, np.cumsum(r * r)])
+    penalty = PIECEWISE_PENALTY * PIECEWISE_SIGMA_MS ** 2
+    best = np.full(n + 1, np.inf)
+    best[0] = 0.0
+    back = np.zeros(n + 1, dtype=int)
+    for j in range(least, n + 1):
+        i = np.arange(0, j - least + 1)
+        i = i[np.isfinite(best[i])]
+        if not i.size:
+            continue
+        m = (j - i).astype(float)
+        mx, mr = (s1[j] - s1[i]) / m, (sr[j] - sr[i]) / m
+        vxx = (sxx[j] - sxx[i]) - m * mx * mx
+        vxr = (sxr[j] - sxr[i]) - m * mx * mr
+        vrr = (srr[j] - srr[i]) - m * mr * mr
+        sse = np.maximum(vrr - np.where(vxx > 0, vxr * vxr / np.where(vxx > 0, vxx, 1.0), 0.0), 0.0)
+        cost = best[i] + sse + penalty
+        k = int(np.argmin(cost))
+        best[j], back[j] = cost[k], int(i[k])
+    if not np.isfinite(best[n]):
+        return []
+    cuts, j = [], n
+    while j > 0:
+        cuts.append((back[j], j))
+        j = back[j]
+    out = []
+    for i, j in reversed(cuts):
+        period, start = np.polyfit(x[i:j] - x[i], t[i:j], 1)
+        out.append((int(i), int(j), float(period), float(start)))
+    return out
+
+
+def _piecewise_grid(analysis: Analysis, heard, split_only: bool = False) -> Analysis:
+    """Red lines from the steady stretches of Beat This!'s beats
+    (PIECEWISE_GRID), each at the octave of the song's own tempo. With
+    ``split_only`` (the precision grid) a one-line song is split only where
+    the stretches really change tempo, and anything else is left as it was."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not PIECEWISE_GRID or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    if split_only and len(points) != 1:
+        return analysis
+    found = heard()
+    if found is None:
+        return analysis
+    segments = _piecewise_segments(np.sort(np.asarray(found, dtype=float) * 1000.0))
+    if not segments:
+        return analysis
+    song = _song_tempo(points, float(analysis.duration) * 1000.0) or 60000.0 / segments[0][2]
+    lines = []
+    for first, _end, period, start in segments:
+        bpm = 60000.0 / period
+        fold = 2.0 ** round(float(np.log2(song / bpm)))
+        if abs(np.log2(bpm * fold / song)) < 0.25:
+            bpm *= fold
+        lines.append((start, bpm, first))
+    if split_only:
+        tempos = [bpm for _, bpm, _ in lines]
+        if len(lines) < 2 or max(tempos) / min(tempos) < 1.015:
+            return analysis
+    out = []
+    for n, (start, bpm, first) in enumerate(lines):
+        if n == 0:
+            # The first line keeps the bar the analysis found, on this grid.
+            period = 60000.0 / bpm
+            start += round((points[0].offset_ms - start) / period) * period
+        out.append(replace(points[0], bpm=float(bpm), offset_ms=float(start), beat_index=int(first)))
+    return replace(analysis, points=out)
 
 
 def _constant_grid(analysis: Analysis, heard) -> Analysis:

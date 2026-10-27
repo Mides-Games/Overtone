@@ -15,14 +15,14 @@
     "file_denylist": [],
     "startup": "postgres",
     "config": {
-        "files": "{\"pgdata/postgresql.conf\": {\"parser\": \"file\", \"find\": {\"unix_socket_directories\": \"unix_socket_directories = '/tmp'\"}}}",
+        "files": "{\"pgdata/postgresql.conf\": {\"parser\": \"file\", \"find\": {\"unix_socket_directories\": \"unix_socket_directories = '/tmp'\", \"#hba_file\": \"hba_file = '/home/container/pg_hba.overtone.conf'\", \"hba_file\": \"hba_file = '/home/container/pg_hba.overtone.conf'\"}}, \"pg_hba.overtone.conf\": {\"parser\": \"file\", \"find\": {\"local\": \"local all all trust\", \"host overtone \": \"host overtone {{server.build.env.DB_ROLE}} all scram-sha-256\", \"host overtone_experimental \": \"host overtone_experimental {{server.build.env.DB_ROLE_STAGING}} all scram-sha-256\", \"host all \": \"host all all all reject\", \"host replication\": \"# (host replication: removed by the egg)\", \"hostssl\": \"# (hostssl: removed by the egg)\", \"hostnossl\": \"# (hostnossl: removed by the egg)\", \"hostgssenc\": \"# (hostgssenc: removed by the egg)\", \"hostnogssenc\": \"# (hostnogssenc: removed by the egg)\", \"include\": \"# (include: removed by the egg)\"}}}",
         "startup": "{\"done\": \"database system is ready to accept connections\"}",
         "logs": "{}",
         "stop": "^C"
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\n# Install script of the overtone-db egg.\n#\n# Nothing to download: the official postgres image initialises PGDATA on its\n# first start, as the panel's user, with POSTGRES_USER, POSTGRES_PASSWORD and\n# POSTGRES_DB. This only checks that a reinstall will not hide an existing\n# cluster behind a new password: the image reads those variables when PGDATA\n# is empty and never again.\nset -euo pipefail\n\nmkdir -p /mnt/server\nif [ -f /mnt/server/pgdata/PG_VERSION ]; then\n    echo \"[overtone-db] /home/container/pgdata already holds a PostgreSQL $(cat /mnt/server/pgdata/PG_VERSION) cluster; kept as it is.\"\n    echo \"[overtone-db] POSTGRES_PASSWORD and POSTGRES_DB are not applied to it again.\"\nelse\n    echo \"[overtone-db] empty; the first start creates the cluster in /home/container/pgdata.\"\nfi\n",
+            "script": "#!/bin/bash\n# Install script of the overtone-db egg.\n#\n# Nothing to download: the official postgres image initialises PGDATA on its\n# first start, as the panel's user, with POSTGRES_USER, POSTGRES_PASSWORD and\n# POSTGRES_DB. This checks that a reinstall will not hide an existing cluster\n# behind a new password (the image reads those variables when PGDATA is empty\n# and never again), and writes who may connect.\n#\n# pg_hba.overtone.conf, next to pgdata: the image's own pg_hba.conf lets any\n# address try the superuser's password, and every container on the node can\n# reach this port. Ours lets the superuser in only through the container's own\n# socket (in /tmp, where nothing else reaches), each environment's role only to\n# its own database with its password, and refuses everything else. Wings points\n# postgresql.conf at it and rewrites its lines before every start\n# (deploy/eggs/egg.py), so an edit does not survive a restart; this script is\n# what creates it, so a server made before it needs one reinstall.\nset -euo pipefail\n\nmkdir -p /mnt/server\nif [ -f /mnt/server/pgdata/PG_VERSION ]; then\n    echo \"[overtone-db] /home/container/pgdata already holds a PostgreSQL $(cat /mnt/server/pgdata/PG_VERSION) cluster; kept as it is.\"\n    echo \"[overtone-db] POSTGRES_PASSWORD and POSTGRES_DB are not applied to it again.\"\nelse\n    echo \"[overtone-db] empty; the first start creates the cluster in /home/container/pgdata.\"\nfi\n\nsuperuser=${POSTGRES_USER:-postgres}\nhba=/mnt/server/pg_hba.overtone.conf\n{\n    echo \"# Who may connect to overtone-db. Written by the egg's install (deploy/eggs/install-db.sh);\"\n    echo \"# Wings rewrites these lines before every start (deploy/eggs/egg.py). See docs/deploy.md, section 4.\"\n    echo \"local all all trust\"\n    for pair in \"overtone:${DB_ROLE:-}\" \"overtone_experimental:${DB_ROLE_STAGING:-}\"; do\n        database=${pair%%:*}\n        role=${pair#*:}\n        if [ -z \"$role\" ]; then\n            echo \"[overtone-db] no role set for $database: nothing may connect to it over the network.\" >&2\n        elif [ \"$role\" = \"$superuser\" ]; then\n            echo \"[overtone-db] ERROR: the role for $database is the superuser; give each environment its own role.\" >&2\n            exit 1\n        else\n            echo \"host $database $role all scram-sha-256\"\n        fi\n    done\n    echo \"host all all all reject\"\n} >\"$hba.new\"\nchmod 600 \"$hba.new\"\nmv \"$hba.new\" \"$hba\"\necho \"[overtone-db] wrote pg_hba.overtone.conf: the superuser by socket only, each role to its own database.\"\n",
             "container": "ghcr.io/pterodactyl/installers:debian",
             "entrypoint": "bash"
         }
@@ -65,7 +65,27 @@
             "default_value": "overtone",
             "user_viewable": true,
             "user_editable": false,
-            "rules": "required|string|alpha_dash",
+            "rules": "required|string|in:overtone",
+            "field_type": "text"
+        },
+        {
+            "name": "Production role",
+            "description": "The role overtone-api connects as, to the overtone database only (docs/deploy.md §4). Never the superuser. Changing it takes effect on the next start.",
+            "env_variable": "DB_ROLE",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|alpha_dash|max:63",
+            "field_type": "text"
+        },
+        {
+            "name": "Staging role",
+            "description": "The role overtone-api-exp connects as, to overtone_experimental only. Never the superuser.",
+            "env_variable": "DB_ROLE_STAGING",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|alpha_dash|max:63",
             "field_type": "text"
         },
         {

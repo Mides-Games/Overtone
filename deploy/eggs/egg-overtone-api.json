@@ -139,6 +139,16 @@
             "field_type": "text"
         },
         {
+            "name": "Mides image origins",
+            "description": "Other origins Mides serves profile pictures from (comma-separated, e.g. its CDN). A picture anywhere but here and MIDES_WEB_URL is not kept. The same value as overtone-web's.",
+            "env_variable": "MIDES_IMAGE_ORIGINS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
             "name": "Mides app",
             "description": "This app's name in the Mides SSO.",
             "env_variable": "MIDES_APP",
@@ -246,6 +256,26 @@
             "user_viewable": true,
             "user_editable": false,
             "rules": "required|string|starts_with:/home/container/",
+            "field_type": "text"
+        },
+        {
+            "name": "Spool budget MB",
+            "description": "The most the spool holds, waiting audio and uploads still arriving together; past it an upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk (default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it.",
+            "env_variable": "SPOOL_MAX_MB",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Queue max",
+            "description": "Songs waiting or running at once, everyone's together (default 30).",
+            "env_variable": "QUEUE_MAX",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
             "field_type": "text"
         }
     ]

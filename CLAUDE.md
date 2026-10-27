@@ -50,7 +50,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (511 on 2026-10-27)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (521 on 2026-10-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage

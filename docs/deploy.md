@@ -88,7 +88,7 @@ Allocation** y la pestaña **Network** de cada server), no en el repo.
 | `overtone-api-exp` | `<bridge-ip>:<api-exp-port>` | `overtone-web-exp` y `overtone-worker-exp`, igual |
 | `overtone-worker` | `<bridge-ip>:<worker-port>` | nadie: no escucha. El panel pide una allocation igual. |
 | `overtone-worker-exp` | `<bridge-ip>:<worker-exp-port>` | nadie |
-| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs (el worker no habla con la base: es cliente HTTP de la API) |
+| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs, cada una con su rol y solo a su base (el worker no habla con la base: es cliente HTTP de la API). El superusuario no entra por la red ([§4](#4-primer-arranque)). |
 
 **Admin → Nodes → NA-01 → Allocation:** crear `<bridge-ip>` con los cinco puertos
 de la API, el worker y la base (los dos entornos). Los de las dos webs van en la IP
@@ -215,21 +215,44 @@ workers). Swap en 0 en todos.
 En todos: `BRANCH` según la tabla, `AUTO_UPDATE=1`, `USER_UPLOAD=0` y
 `ROLLBACK_COMMIT` vacío. `GIT_TOKEN` se completa mientras el repo sea privado, con
 un fine-grained token de solo lectura (*Contents: read*) sobre el repo. Cuando el
-repo es público, se deja vacío.
+repo es público, se deja vacío. `start.sh` lo usa solo para git y hace
+`unset GIT_TOKEN` apenas termina el checkout (2026-10-27), así que pnpm, pip, node y
+python no lo heredan. Sigue en el entorno del contenedor, que el panel arma con
+todas las variables: cualquiera que lea los archivos o la configuración del
+server lo puede ver.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
-| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
-| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
+| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod), `TRUSTED_PROXY_ADDRS` (los rangos del proxy TLS, [§9](#9-tls-la-pregunta-abierta); vacío hasta que esté), `MIDES_WEB_URL` y `MIDES_IMAGE_ORIGINS` (los mismos que su API) |
+| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging), `TRUSTED_PROXY_ADDRS`, `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS` |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS` (si Mides sirve las fotos desde otro origen, p. ej. un CDN), `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`), `SPOOL_MAX_MB` (1280: el disco del server es de 2 GB, y `QUEUE_MAX × MAX_UPLOAD_MB` = 30 × 40 entra), `QUEUE_MAX` (30) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
-| `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
-| `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |
-| `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
+| `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4`; con valores por defecto: `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120), `WORKER_TIMEOUT_FACTOR` (3) |
+| `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2`; los mismos valores por defecto |
+| `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `DB_ROLE=<rol-prod>` y `DB_ROLE_STAGING=<rol-staging>` (ver §4). `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
 del panel, nunca en el repo. Las variables secretas del egg están marcadas como no
 visibles para el dueño del server: solo un admin las lee.
+
+### Subusuarios del panel
+
+Ocultar una variable no alcanza: **quien puede tocar los archivos de un server lee sus
+secretos igual.** El proceso los tiene en su entorno, y el código que corre sale de
+archivos que esa persona puede editar (un `console.log(process.env)` en `site/api`, o
+`start.sh` mismo), y en `overtone-db` puede reescribir `pg_hba.overtone.conf` antes
+del próximo arranque. Por eso, en estos siete servers:
+
+- **Ningún subusuario tiene permisos de archivos** (`file.*`: leer, crear, editar,
+  borrar, archivar, descargar), **ni de SFTP** (`file.sftp`), **ni de startup**
+  (`startup.*`: ver o cambiar variables y la imagen), **ni de backups**
+  (`backup.*`: un backup es una copia de todos los archivos, `pgdata` incluido).
+- Lo que sí puede tener alguien que no es admin: consola en solo lectura y
+  start/stop/restart (`control.*`), para reiniciar un release.
+- El dueño de los servers es una cuenta de admin, no una personal.
+- Si alguna vez alguien necesitó esos permisos, se rotan los secretos de ese entorno
+  (`SESSION_SECRET`, `PROXY_SECRET`, `WORKER_TOKEN`, la contraseña del rol de la base,
+  `MIDES_CLIENT_SECRET` con su par en Mides) cuando se le quitan.
 
 ## 4. Primer arranque
 
@@ -242,16 +265,48 @@ El orden importa la primera vez: **db → api → worker → web**.
    root. `<uuid>` es el UUID del server (Admin → Servers → overtone-db); Wings
    nombra así su contenedor.
 
+   El socket está en `/tmp` (ver §2), así que todo `psql` y `pg_dump` dentro del
+   contenedor lleva `-h /tmp`.
+
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE <rol-prod> LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE <rol-staging> LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO <rol-prod>" -c "ALTER SCHEMA public OWNER TO <rol-prod>" -c "CREATE DATABASE overtone_experimental OWNER <rol-staging>" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
+   docker exec -i <uuid> psql -h /tmp -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE <rol-prod> LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE <rol-staging> LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO <rol-prod>" -c "ALTER SCHEMA public OWNER TO <rol-prod>" -c "CREATE DATABASE overtone_experimental OWNER <rol-staging>" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
    ```
 
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO <rol-staging>"
+   docker exec -i <uuid> psql -h /tmp -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO <rol-staging>"
    ```
 
    `<rol-prod>` y `<rol-staging>` son los nombres de rol que se elijan; se anotan,
-   como las contraseñas, solo en las variables del panel.
+   como las contraseñas, solo en las variables del panel: en las `DATABASE_URL` de
+   cada API y en `DB_ROLE` / `DB_ROLE_STAGING` de `overtone-db`.
+
+   **Quién se puede conectar (2026-10-27).** La imagen oficial deja que cualquier
+   dirección pruebe la contraseña del superusuario por TCP, y a ese puerto llega
+   cualquier contenedor del nodo. El egg lo cierra con su propio
+   `pg_hba.overtone.conf` (lo escribe `install-db.sh`, al lado de `pgdata`):
+
+   ```text
+   local all all trust
+   host overtone <DB_ROLE> all scram-sha-256
+   host overtone_experimental <DB_ROLE_STAGING> all scram-sha-256
+   host all all all reject
+   ```
+
+   El superusuario entra solo por el socket del contenedor (`docker exec … -h /tmp`),
+   cada rol solo a su base y con su contraseña, y todo lo demás se rechaza. Antes de
+   cada arranque Wings apunta `hba_file` de `postgresql.conf` a ese archivo y reescribe
+   sus líneas por prefijo con los valores de las variables; una línea agregada a mano
+   con otra forma (`hostssl`, `include`, …) queda comentada, y lo que vaya después del
+   `reject` no alcanza a nadie. **Un server creado antes de esto necesita un
+   Reinstall** (el cluster se conserva) con `DB_ROLE` y `DB_ROLE_STAGING` puestas: sin
+   el archivo, postgres no arranca. Para comprobarlo:
+
+   ```bash
+   docker exec -i <uuid> psql -h /tmp -U postgres -c "SELECT type, database, user_name, auth_method FROM pg_hba_file_rules"
+   ```
+
+   y, desde el contenedor de una API, `postgres://postgres:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`
+   tiene que dar `pg_hba.conf rejects connection`.
 
    Así staging no puede leer ni tocar la base de producción. Cada base se puede
    volcar, restaurar o borrar por separado. El plan decía "dos schemas en una
@@ -289,6 +344,33 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
   publicar su resultado; un segundo sale en el acto, y la API devuelve ese trabajo a
   la cola pasado `JOB_TIMEOUT_S` (dos intentos en total). El worker no tiene
   driver de base: toma trabajos de `/api/internal` con `WORKER_TOKEN`.
+- **Cada análisis corre en un proceso hijo** (`worker/isolate.py`, 2026-10-27). Un
+  audio es entrada no confiable: unos KB de header pueden anunciar horas de audio a
+  cualquier frecuencia. Por eso:
+  - antes de decodificar, se rechaza (`too_heavy`) un header que diga más de
+    192 kHz, más de 8 canales o más de `max_seconds × 192000` frames;
+  - el motor corre en un hijo que se arranca una vez y queda caliente entre
+    trabajos. Cada trabajo tiene un límite de reloj de
+    `max(WORKER_TIMEOUT_MIN_S, WORKER_TIMEOUT_FACTOR × duración)` (120 s y 3× por
+    defecto); pasado eso, el hijo se mata y el trabajo falla con `timeout`;
+  - en Linux, el hijo tiene `RLIMIT_AS` de `WORKER_MEMORY_MB` (1800 por defecto; 0
+    lo apaga) y `MALLOC_ARENA_MAX=2`. Si se queda sin memoria, o si el OOM killer
+    lo mata, el trabajo falla con `too_heavy`. En Windows no hay rlimit y se avisa;
+  - el worker sigue atendiendo: el siguiente trabajo arranca un hijo nuevo. Mientras
+    espera, reenvía el último progreso cada 60 s, así el barrido de `JOB_TIMEOUT_S`
+    de la API no confunde un análisis largo con uno muerto.
+
+  **Lo que cuesta:** el hijo importa el motor, carga el modelo y analiza 8 s de
+  clicks (con el voto) antes de decir que está listo. Eso prueba que el límite de
+  memoria deja lugar para un análisis y compila numba antes del primer trabajo real.
+  Medido en Windows el 2026-10-27, con un track de 120 s y el voto: el arranque pasó
+  de 24,9 s (en proceso, sin autoprueba) a 42,8–55,5 s; cada análisis tardó lo mismo
+  dentro del ruido de esta máquina (en el hijo, medianas de 45,4 y 59,3 s; en
+  proceso, 46,8 s, y 56–84 s en otra corrida). Un hijo que se mató paga ese arranque
+  otra vez antes del siguiente trabajo. El primer arranque en Linux imprime el pico
+  de espacio de direcciones después de la autoprueba: si queda cerca de
+  `WORKER_MEMORY_MB`, hay que subirlo. Si la autoprueba no entra en el límite, el
+  worker no arranca y lo dice.
 
 ## 5. Cómo es un release
 
@@ -322,6 +404,16 @@ tenía `deploy/overtone-update.sh` en la VPS:
   contrato de arriba).
 - **Cada movimiento queda en `.overtone/deployed.log`** (fecha, qué pasó, commit,
   rama), visible desde el file manager del panel.
+
+**Las herramientas, fijadas.** `package.json` fija pnpm con `packageManager`
+(`pnpm@11.25.0+sha512.…`, la versión con la que se escribió `pnpm-lock.yaml`): corepack
+baja exactamente esa y rechaza un tarball con otro hash, en vez de traer la última.
+Las dependencias de Node salen del lockfile (`--frozen-lockfile`), con sus hashes. Las
+de Python todavía no: `pip install -r` instala las versiones fijas de
+`python/requirements.lock`, pero sin comprobar hashes. **Pendiente (W):** generar el
+lock con hashes (`pip-compile --generate-hashes` o `pip download` + `pip hash`, para
+las wheels manylinux del worker) y pasar a `pip install --require-hashes`. Hace falta
+red y la plataforma Linux para juntar las wheels, y no se hizo en esta sesión.
 
 Para cambiar un server de rama: cambiar `BRANCH` y hacer **Reinstall**. La
 reinstalación cambia el clon de rama y no borra lo que git no versiona. Un arranque
@@ -361,12 +453,40 @@ dependencias se reconstruyen. Solo importa `overtone-db`.
    versión de Reviactyl rota el más viejo cuando se llega al límite: si no lo hace,
    la tarea falla y hay que borrarlo a mano.
 2. **`pg_dump` lógico, diario, desde el host.** El panel no puede programarlo: sus
-   tareas solo mandan comandos a la consola, y postgres no la lee. Va en el crontab
-   de root en NA-01:
+   tareas solo mandan comandos a la consola, y postgres no la lee. Va en un script
+   de root en NA-01, `/usr/local/sbin/overtone-backup` (`chmod 700`):
 
-   ```bash
-   30 4 * * * mkdir -p /var/backups/overtone && docker exec <uuid> pg_dump -U postgres -Fc overtone > /var/backups/overtone/overtone-$(date +\%F).dump && find /var/backups/overtone -name '*.dump' -mtime +14 -delete
+   ```sh
+   #!/bin/sh
+   # One logical dump of production, kept 14 days (docs/deploy.md §7).
+   set -eu
+   umask 077                       # the dumps hold every account: root only
+   dir=/var/backups/overtone
+   mkdir -p "$dir"
+   out="$dir/overtone-$(date -u +%F).dump"
+   tmp="$out.partial"
+   trap 'rm -f "$tmp"' EXIT        # a failed dump never takes a good one's name
+   docker exec <uuid> pg_dump -h /tmp -U postgres -Fc overtone >"$tmp"
+   docker exec -i <uuid> pg_restore --list <"$tmp" >/dev/null   # readable to the end
+   mv "$tmp" "$out"
+   find "$dir" -name 'overtone-*.dump' -mtime +14 -delete
    ```
+
+   y en el crontab de root, a las 04:00 UTC, antes del backup del panel de las 04:30
+   (que para postgres):
+
+   ```text
+   0 4 * * * /usr/local/sbin/overtone-backup
+   ```
+
+   - `-h /tmp`: el socket de PostgreSQL se movió a `/tmp` (§2). Sin eso, `pg_dump`
+     busca `/var/run/postgresql` y falla, y la línea vieja del crontab dejaba un
+     dump vacío con fecha de hoy.
+   - `umask 077`: los dumps quedan `0600` y la carpeta `0700`.
+   - El dump se escribe a `.partial` y se renombra solo si `pg_dump` y la lectura
+     de prueba terminaron bien; si no, se borra.
+   - **Correrlo una vez a mano** antes de confiarle el cron, y mirar el resultado:
+     `/usr/local/sbin/overtone-backup && ls -l /var/backups/overtone`.
 
    Staging no se respalda: se puede recrear. Los dumps tienen que salir del nodo
    (a un bucket o a otra máquina). Un backup que vive en el mismo disco no
@@ -374,7 +494,7 @@ dependencias se reconstruyen. Solo importa `overtone-db`.
 3. **Probar la restauración** una vez, y después de cada cambio grande de schema:
 
    ```bash
-   docker exec -i <uuid> sh -c 'createdb -U postgres restore_test && pg_restore -U postgres -d restore_test' < /var/backups/overtone/overtone-<fecha>.dump
+   docker exec -i <uuid> sh -c 'createdb -h /tmp -U postgres restore_test && pg_restore -h /tmp -U postgres -d restore_test' < /var/backups/overtone/overtone-<fecha>.dump
    ```
 
 ## 8. Actualizar PostgreSQL
@@ -412,19 +532,36 @@ según el proxy:
   en `127.0.0.1`, y entonces ni siquiera quedan expuestas.
 
 En los dos casos, el proxy tiene que mandar `X-Forwarded-Proto: https` y
-`X-Forwarded-For`. `serve.mjs` pasa `X-Forwarded-Proto` tal como llega, para que la
-API sepa que la cookie de sesión va por HTTPS. `X-Forwarded-For` no: se queda con
-las últimas `TRUSTED_PROXY_HOPS` entradas (las que agregó el proxy; 1 por defecto)
-más la dirección de la conexión, y descarta lo que el cliente haya escrito antes.
-La API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), y
-así el rate limit cuenta por visitante y no por `serve.mjs`. Si delante hay dos
-proxies (Cloudflare y además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`.
-Quien llegue directo al puerto podría falsificarlos, y por eso el firewall importa.
-Para la API eso ya no depende del firewall: sin `PROXY_SECRET` responde 404
+`X-Forwarded-For`. `serve.mjs` solo los lee si la conexión viene de una dirección
+de `TRUSTED_PROXY_ADDRS` (direcciones o rangos CIDR separados por comas; 2026-10-27).
+De ahí se queda con las últimas `TRUSTED_PROXY_HOPS` entradas de `X-Forwarded-For`
+(las que agregó el proxy; 1 por defecto) más la dirección de la conexión, y descarta
+lo que el cliente haya escrito antes. **De cualquier otra conexión descarta el header
+entero** (y `X-Forwarded-Proto`/`-Host`) y reenvía solo la dirección del socket. La
+API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), y en los
+dos casos `req.ip` es el cliente real: detrás del proxy, la dirección que el proxy
+agregó; directo al puerto, la del socket. Si delante hay dos proxies (Cloudflare y
+además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`, y `TRUSTED_PROXY_ADDRS`
+es el del proxy que le habla a `serve.mjs`. Con la variable vacía (el default) no se
+confía en nadie: el rate limit cuenta por la dirección del proxy, que es lo seguro
+hasta que se sepa cuál es.
+
+**Detrás de Cloudflare**, `TRUSTED_PROXY_ADDRS` son sus rangos publicados
+(<https://www.cloudflare.com/ips/>, leídos el 2026-10-27; revisarlos de vez en
+cuando, Cloudflare avisa antes de cambiarlos):
+
+```text
+173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32
+```
+
+Para la API esto ya no depende del firewall: sin `PROXY_SECRET` responde 404
 ([§2](#el-puerto-de-la-api-se-da-por-público-proxy_secret)).
 
 `serve.mjs` manda en cada página `Content-Security-Policy` (solo el propio origen;
-imágenes también de `https:`, por los avatares y banners de Mides; el script
+imágenes también de `data:` y de los orígenes de Mides, `MIDES_WEB_URL` y
+`MIDES_IMAGE_ORIGINS`, y de ningún otro: la API tampoco guarda una URL de avatar
+fuera de ellos, porque una imagen en otro host le avisa a ese host quién mira la
+cola pública; el script
 inline de `index.html` se permite por su hash, calculado del build),
 `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` y,
 con `HSTS=1` (el default del egg), `Strict-Transport-Security: max-age=31536000`.
@@ -469,3 +606,17 @@ Agregado el 2026-10-26, con el worker y el flujo de análisis (Node 24.22, Windo
 - `pnpm --dir site/api test`: los guardias de `PROXY_SECRET` y de `WORKER_TOKEN`.
 - `worker/main.py` imprime `overtone-worker: ready` y analizó de punta a punta;
   el `^C` en dos tiempos y `WORKER_THREADS` no se probaron en Linux.
+
+Agregado el 2026-10-27, con el endurecimiento de seguridad (rama
+`fix/security-hardening`, Windows):
+
+- Se probó: el worker con su proceso hijo (tiempo, muerte, `MemoryError`, el motor
+  real) y los headers rechazados; el presupuesto del spool contra un server real;
+  `serve.mjs` delante de una API de prueba con `trust proxy` 2 (directo, detrás de un
+  proxy confiable, fuera de los rangos); `install-db.sh` en Git Bash y la reescritura
+  de Wings simulada sobre `pg_hba.overtone.conf`; el script de backup con un `docker`
+  falso.
+- No se probó: `RLIMIT_AS` y `MALLOC_ARENA_MAX` en Linux (Windows no tiene rlimit),
+  `pg_hba.overtone.conf` contra un PostgreSQL y un Wings reales (que Wings reemplace
+  `{{server.build.env.DB_ROLE}}` en un archivo de texto y que `hba_file` se aplique),
+  corepack con el `packageManager` fijado, y nada en NA-01.

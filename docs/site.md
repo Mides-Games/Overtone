@@ -32,7 +32,7 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   the result builder, and whether the Beat This! vote ran). The same audio
   through the same engine is answered at once and not counted in the quota.
 - **Who may read it.** The id is 128 random bits; the analysis is readable by
-  the session account or the anonymous `overtone_anon` cookie that created it
+  the session account or the anonymous `__Host-overtone_anon` cookie that created it
   (the row keeps its SHA-256), and by nobody else: they get the same 404 as for
   an id that does not exist.
 - **Quota** (ADR-W6): `ANON_DAILY_LIMIT` a UTC day per client address without
@@ -124,6 +124,7 @@ is missing.
 | `MIDES_CLIENT_SECRET` | random per process | This server's secret for Mides' code exchange: the same value as `SSO_SECRET_OVERTONE` in Mides-Dev-Web. Without the right one Mides refuses every code (sign-in answers 503 and the log says which setting). 32+ characters. **Required in production.** |
 | `MIDES_AUTH_URL` | none | The Mides identity API, e.g. `https://midesprojects.com/api`; the service calls `${MIDES_AUTH_URL}/auth/...`. |
 | `MIDES_WEB_URL` | none | The Mides site that serves `/authorize`, e.g. `https://midesprojects.com`. |
+| `MIDES_IMAGE_ORIGINS` | none | Other origins Mides serves profile pictures from (comma-separated). A picture on any origin but these and `MIDES_WEB_URL`'s is not kept (initials instead), and overtone-web's `img-src` allows the same list. |
 | `MIDES_APP` | `overtone` | The app name registered in Mides' `SSO_APPS`. |
 | `MIDES_DEV_LOGIN` | off (`pnpm dev` turns it on) | Fake sign-in without Mides. **Refused when `NODE_ENV=production`.** Set `0` in `.env` to try the real SSO in development. |
 | `ANON_DAILY_LIMIT` | `5` | Analyses a UTC day per client address without an account. |
@@ -131,6 +132,9 @@ is missing.
 | `MAX_AUDIO_SECONDS` | `600` | Longest song: checked in the browser, then by the worker from the file's header (or the decoded length) before it is timed. |
 | `MAX_UPLOAD_MB` | `40` | Largest upload: refused on `Content-Length` before a byte is read, and cut off while the body streams. |
 | `SPOOL_DIR` | `<OS temp>/overtone-spool` | Where uploads wait for the worker (mode 0700). Without a database it is emptied at start, since the queue died with the process. |
+| `SPOOL_MAX_MB` | `1280` | The spool's budget: waiting audio plus the uploads still arriving, each of which reserves its `Content-Length` (or `MAX_UPLOAD_MB`) before a byte is read. Past it, 503 `SPOOL_FULL`. Counted by the API process, since a panel's disk limit is not visible to `statfs`. |
+| `SPOOL_MIN_FREE_MB` | `256` | Free space an upload must leave on the spool's filesystem, checked too (503 `SPOOL_FULL`). |
+| `QUEUE_MAX` | `30` | Songs waiting, running or still arriving, everyone's together (503 `QUEUE_FULL`). The default keeps `QUEUE_MAX × MAX_UPLOAD_MB` inside `SPOOL_MAX_MB`; the API warns at start when it does not. |
 | `WORKER_TOKEN` | random per process | The bearer of `/api/internal`. 32+ characters. **Required in production.** `pnpm dev` generates one and hands it to the worker it starts. |
 | `JOB_TIMEOUT_S` | `900` | A job running longer goes back to the queue; two attempts in all. |
 | `PROXY_SECRET` | none | The header overtone-web (`deploy/web/serve.mjs`) adds to everything it forwards; without it the API answers 404, except `/api/internal`. 32+ characters. **Required in production** (docs/deploy.md). Not needed with Vite's proxy. |
@@ -147,7 +151,9 @@ returns to `/login/callback#code=…`, the web posts the code to
 `/api/v1/auth/sso/exchange`, and the API exchanges it with
 `${MIDES_AUTH_URL}/auth/sso/exchange`. The exchange refuses a browser without
 the SSO cookie and without the web's own note of the trip (login CSRF). The
-browser then holds one HttpOnly `overtone_session` cookie, an HMAC over the
+browser then holds one HttpOnly `__Host-overtone_session` cookie (plain
+`overtone_session` over http, where a `__Host-` cookie would be dropped; a name
+sent twice counts as absent), an HMAC over the
 account id, expiry and session version. The exchange sends this app's slug and
 `MIDES_CLIENT_SECRET`, so a code taken from a browser is good to nobody else.
 Mides answers with an access token of audience `app:overtone`, which opens
@@ -263,7 +269,8 @@ The Analyze form takes several files or a folder and sends them one after anothe
 each its own analysis with its own card. Three limits hold however many are sent:
 the daily quota, `ANON_MAX_PENDING` / `USER_MAX_PENDING` songs of one person waiting
 or running at once (429 `PENDING_LIMIT`), and `QUEUE_MAX` for the whole queue (503
-`QUEUE_FULL`).
+`QUEUE_FULL`). Uploads still arriving count toward both (2026-10-27): before, K bodies
+sent at once all passed a cap the store only saw once each had landed.
 
 The queue's order is round robin between people: every person's 1st song before
 anyone's 2nd, each person's songs in the order sent, and between equal turns

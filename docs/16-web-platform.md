@@ -488,6 +488,11 @@ página del análisis y en `/queue`; una ya tomada por el worker contesta 409.
 `©nam`/`©ART` de M4A y `LIST/INFO` (o un chunk `id3 `) de WAV, recorriendo cajas y
 chunks aunque estén después del audio; 13 tests con fixtures armados en el test.
 
+**W3.15 hecha el 2026-10-27** en la rama `feature/batch-zip` (sobre W3.14): un botón
+debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, armado
+en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
+nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

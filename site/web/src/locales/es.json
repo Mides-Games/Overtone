@@ -157,7 +157,8 @@
     "engine": "Engine v3 {{hash}} · voto de Beat This! {{vote}}",
     "voteOn": "activado",
     "voteOff": "desactivado",
-    "cached": "mismo audio analizado antes: resultado guardado"
+    "cached": "mismo audio analizado antes: resultado guardado",
+    "removed": "Un moderador sacó esta canción de la cola, así que no se analizó. Su archivo se borró."
   },
   "login": {
     "title": "Entrar",
@@ -224,6 +225,26 @@
       "done": "Listo",
       "refused": "Rechazado",
       "failed": "Falló"
+    }
+  },
+  "moderation": {
+    "staff": "Staff",
+    "remove": "Sacar",
+    "requeue": "Devolver a la cola",
+    "removePrompt": "¿Sacar este trabajo de la cola? Falla y se borra su audio. Motivo para el registro (opcional):",
+    "requeuePrompt": "¿Devolver este trabajo a la cola? Motivo para el registro (opcional):",
+    "failed": "La acción falló.",
+    "errors": {
+      "NOT_LIVE": "Ya no está en cola ni analizándose.",
+      "NOT_RUNNING": "Solo se puede devolver uno que se está analizando.",
+      "AUDIO_GONE": "Su audio ya no está: no se puede analizar de nuevo.",
+      "STAFF_ONLY": "Solo el staff puede hacer esto."
+    },
+    "logTitle": "Registro de moderación",
+    "logEmpty": "Todavía no se moderó nada.",
+    "did": {
+      "remove": "@{{moderator}} sacó un trabajo",
+      "requeue": "@{{moderator}} devolvió un trabajo a la cola"
     }
   }
 }

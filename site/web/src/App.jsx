@@ -3,54 +3,63 @@ import { Route, Routes } from 'react-router'
 
 import BrandLoader from './components/BrandLoader.jsx'
 import Layout from './components/Layout.jsx'
-import AnalysisResult from './pages/AnalysisResult.jsx'
-import Analyze from './pages/Analyze.jsx'
-import Community from './pages/Community.jsx'
-import History from './pages/History.jsx'
 import Home from './pages/Home.jsx'
-import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
-import Login from './pages/Login.jsx'
-import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
-import Profile from './pages/Profile.jsx'
-import Queue from './pages/Queue.jsx'
-import Status from './pages/Status.jsx'
 
-// The credits carry the whole dependency list (src/data/credits.json): loaded
-// when someone opens them, not with every page.
+/*
+ * Every page but the home page and the 404 is its own chunk (W10.1), loaded
+ * when someone opens it: a first visit downloads the frame and the home page,
+ * not the tempo map, the player, the exports, the tag reader or the community.
+ * The two kept eager are the likeliest first paint and the page that must
+ * never wait on a network that just failed. The routes' chunks and their
+ * budgets are in scripts/budget.mjs.
+ */
+const AnalysisResult = lazy(() => import('./pages/AnalysisResult.jsx'))
+const Analyze = lazy(() => import('./pages/Analyze.jsx'))
+const Community = lazy(() => import('./pages/Community.jsx'))
 const Credits = lazy(() => import('./pages/Credits.jsx'))
-import Recent from './pages/Recent.jsx'
-import TimingPage from './pages/TimingPage.jsx'
+const History = lazy(() => import('./pages/History.jsx'))
+const Login = lazy(() => import('./pages/Login.jsx'))
+const LoginCallback = lazy(() => import('./pages/LoginCallback.jsx'))
+const Profile = lazy(() => import('./pages/Profile.jsx'))
+const Queue = lazy(() => import('./pages/Queue.jsx'))
+const Recent = lazy(() => import('./pages/Recent.jsx'))
+const Status = lazy(() => import('./pages/Status.jsx'))
+const TimingPage = lazy(() => import('./pages/TimingPage.jsx'))
+const legal = () => import('./pages/Legal.jsx')
+const Terms = lazy(() => legal().then((m) => ({ default: m.Terms })))
+const Privacy = lazy(() => legal().then((m) => ({ default: m.Privacy })))
+const Disclaimer = lazy(() => legal().then((m) => ({ default: m.Disclaimer })))
+
+/** A lazy page, with the brand loader while its chunk arrives. */
+const page = (Page) => (
+  <Suspense fallback={<BrandLoader className="py-16" />}>
+    <Page />
+  </Suspense>
+)
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
-        <Route path="analyze" element={<Analyze />} />
-        <Route path="analyze/:id" element={<AnalysisResult />} />
-        <Route path="queue" element={<Queue />} />
-        <Route path="community" element={<Community />} />
-        <Route path="recent" element={<Recent />} />
-        <Route path="history" element={<History />} />
+        <Route path="analyze" element={page(Analyze)} />
+        <Route path="analyze/:id" element={page(AnalysisResult)} />
+        <Route path="queue" element={page(Queue)} />
+        <Route path="community" element={page(Community)} />
+        <Route path="recent" element={page(Recent)} />
+        <Route path="history" element={page(History)} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
-        <Route path="t/:id" element={<TimingPage />} />
-        <Route path="login" element={<Login />} />
+        <Route path="t/:id" element={page(TimingPage)} />
+        <Route path="login" element={page(Login)} />
         {/* The SSO's redirect_uri: SITE_URL + /login/callback, registered with Mides. */}
-        <Route path="login/callback" element={<LoginCallback />} />
-        <Route path="profile" element={<Profile />} />
-        <Route path="status" element={<Status />} />
-        <Route path="terms" element={<Terms />} />
-        <Route path="privacy" element={<Privacy />} />
-        <Route path="disclaimer" element={<Disclaimer />} />
-        <Route
-          path="credits"
-          element={
-            <Suspense fallback={<BrandLoader className="py-16" />}>
-              <Credits />
-            </Suspense>
-          }
-        />
+        <Route path="login/callback" element={page(LoginCallback)} />
+        <Route path="profile" element={page(Profile)} />
+        <Route path="status" element={page(Status)} />
+        <Route path="terms" element={page(Terms)} />
+        <Route path="privacy" element={page(Privacy)} />
+        <Route path="disclaimer" element={page(Disclaimer)} />
+        <Route path="credits" element={page(Credits)} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

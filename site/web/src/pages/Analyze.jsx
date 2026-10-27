@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
+import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
 
 /**
@@ -106,6 +107,8 @@ export default function Analyze() {
           (await lookupAudio(item.file, options)) ??
           (await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), options))
         rememberAnalysis(created.id, item.file.name)
+        // The result page plays this same file from the browser; the server never serves it back.
+        holdAudio(created.id, item.file)
         if (alone) return navigate(`/analyze/${created.id}`)
         update(item.key, { upload: { kind: 'sent', id: created.id } })
       } catch (error) {

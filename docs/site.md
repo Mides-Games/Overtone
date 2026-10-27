@@ -54,6 +54,18 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   own `[TimingPoints]` rows. The schema is in `site/api/docs/openapi.yaml`.
   The three levels are a reading of the engine's confidence (0.90 and 0.75)
   and its residual (30 ms), not a measured accuracy.
+- **`timing-result v1.1`** (2026-10-27) keeps `version: 1` and adds `minor: 1`,
+  so every v1 reader (the API's check, the exports) reads it unchanged. It adds
+  only what the engine already computed, rounded for the page: `beats` (the
+  engine's beats in whole ms and its local tempo at each), `downbeats_ms` (the
+  click track's bar starts), `onsets` (the attacks the grid was fitted to, whole
+  ms, weights 0-100), `onset_envelope` (pooled to at most 4000 values),
+  `swing` (swing_lane's swung spans), `pulse_hints` (density_hints), and per
+  section `drift_ms`, `drift_p90_ms`, `drift_bias_ms` and `onsets`: how far
+  the attacks under a red line sit from its nearest 1/1-1/4 tick, measured as
+  the desktop drift lane measured it. About 15 kB for a 60 s song and 49 kB
+  for `long-6min.wav`. A v1.0 result stored before has none of it, and the
+  page draws what there is.
 
 The root `package.json` and `pnpm-workspace.yaml` make the two one pnpm
 workspace. The engine (`python/`, `crates/`) is not part of it.
@@ -168,9 +180,9 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
 
 ## What is stubbed
 
-- The `.osu` with the timing injected and the click track are not offered yet;
-  the Analyze page lists them as "soon". Copy `[TimingPoints]`, `timing.txt` and
-  the CSV work.
+- The `.osu` with the timing injected and the click track as a file are not
+  offered yet; the Analyze page lists them as "soon". Copy `[TimingPoints]`,
+  `timing.txt` and the CSV work, and the result page plays the clicks live.
 - An account's history: an analysis made while signed in is readable from any
   browser of that account, but there is no list of them yet (the Analyze page's
   "recent" list is this browser's own storage).
@@ -286,3 +298,73 @@ not with two real addresses taking turns.
 The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
+
+### The result page (2026-10-27)
+
+`/analyze/:id`, once done, is where a song is timed: what the desktop Timing view
+did, from the browser. Code: `site/web/src/pages/AnalysisResult.jsx`,
+`components/result/` (the map, the transport, the table, the adjustments),
+`lib/timing.js` (grid, drift, exports), `lib/player.js` (Web Audio),
+`lib/session-audio.js` and `hooks/useSongAudio.js` (the song in the browser).
+
+- **The tempo map.** Two canvases sized to the device pixel ratio: the map,
+  repainted when the view or the data change, and an overlay for the playhead,
+  the hover cursor and the loop. Lanes: the red lines' chips (BPM, and the meter
+  where it changes), the tempo plot (local tempo in lavender, each line's BPM in
+  red, each section's level along its foot, the half/double hints in amber), the
+  waveform with the onsets as ticks and the beat and bar grid, the drift lane
+  (each onset's distance from its line's nearest 1/1-1/4 tick, +-30 ms) and the
+  ruler. Before the first red line is hatched: osu! runs that grid backwards.
+  Wheel or pinch zooms, drag pans, the overview below moves the view, a click
+  seeks or picks a red line, Shift-drag draws a loop snapped to beats (Alt: free).
+- **The song never leaves the browser** (ADR-W4). The Analyze form hands each
+  file it sends to `holdAudio(id, file)` for the session. Reopened without it
+  (a reload, the recent list), the page asks for the file, hashes it with
+  SubtleCrypto and plays it only when the SHA-1 equals the analysis's (the API's
+  view now carries `sha1`, to its owner only). Decoding is `decodeAudioData`;
+  the waveform's min/max peaks are built in chunks so the page keeps painting.
+  One decoded song is kept at a time (six minutes of stereo float is ~130 MB).
+- **Playback** ports the desktop player: the song through one gain, the clicks
+  through another (separate volumes, a mute), clicks scheduled 150 ms ahead on
+  the AudioContext clock with the WAV export's three tones, the bar's first beat
+  accented. A rate of 0.5-1.5 resamples the song, so its pitch moves and every
+  attack stays at t / rate, and each click is placed at t / rate. Loop the
+  drawn span, or the red line's section under the playhead; play from a red
+  line (one beat early). Keys: Space, arrows (a beat; Shift a bar), + - 0, [ ],
+  L, C, F.
+- **The clicks are the click track's**: `clickGrid` builds the schedule as
+  `click_schedule` does (each line up to, not onto, the next; the last to the
+  end inclusive; the bar on the line's meter), from the red lines as the reader
+  has them. Its bars equal the worker's `downbeats_ms`.
+- **The table** follows the map both ways (hover and selection), with the
+  engine's confidence and level, the drift (median, 90th percentile, lean) and
+  the fit residual, and a play and a loop button per line.
+- **The reader's adjustments**, display and export only: x2 / /2 every BPM, and
+  a global nudge in ms. The map, the clicks, the drift and the exports follow
+  them; copy and downloads are then built in the page, with a comment line
+  saying they were adjusted, and the page says to check them by ear. Unadjusted,
+  copy is the engine's `osu_timing` and the downloads are the API's. The
+  adjusted drift is measured from onsets in whole ms, so it can read up to
+  0.5 ms off the worker's unadjusted figure.
+
+Checked with `pnpm dev` in the browser pane on 2026-10-27, Beat This! vote on,
+the page's audio routed through a muted gain:
+
+- `change-128-142.wav`: two red lines at 128 and 142; the clicks, read back from
+  the scheduled oscillators against the song's start, within 0.0001 ms of the
+  red lines' grid at 0.75, 1 and 1.25, at 1.5 across a drawn loop's wrap (no
+  click doubled at the loop end), and at x2 with +5 ms; the exported text and
+  CSV after x2 and +5 (`405,234.375000486957,4,...` with its comment line).
+- `long-6min.wav` (186 BPM, one line): zoomed in and playing at 1.5 for 8 s,
+  399 animation frames, the worst 31.7 ms, no long task, the view turning its
+  page with the playhead; six zoom repaints in 33 ms.
+- `halftime-150-75.wav`: the half-time hint drawn and explained from 0:29.3.
+- A reload asks for the file; another song's file is refused by its SHA-1, the
+  right one plays (1.1 s to hash and decode a 60 s WAV).
+- EN and ES, dark and light, 375 px with no element past the edge (the rate
+  buttons wrap), keys, hover and selection in both directions.
+
+Not checked: Safari and Firefox (Chromium only), a real phone's touch (pinch
+was not exercised), a compressed format the browser cannot decode (the page
+says so and keeps the timing), and listening: every number above was read, and
+nothing was heard.

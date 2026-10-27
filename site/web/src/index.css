@@ -189,6 +189,13 @@ h3 {
       transition placeholder:text-dim focus:border-accent;
   }
 
+  /* The result page's small instrument buttons: zoom, rate, loop, ×2. Pressed reads as lit. */
+  .tool-btn {
+    @apply inline-flex h-8 min-w-8 items-center justify-center rounded-control border border-line-strong bg-surface px-1.5
+      font-mono text-label text-text tabular-nums transition hover:border-line-hover hover:bg-surface-2
+      disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent/15 aria-pressed:text-accent;
+  }
+
   .chip-amber {
     @apply chip border-amber/40 bg-amber/10 text-amber;
   }

@@ -177,6 +177,60 @@ each on `fix/security-hardening`.
   yet: the result page falls back to "could not time this audio" plus the engine's
   English message (left for the result-view branch, which is rewriting that page).
 
+## Unreleased — 2026-10-27 · Timing a song on the site
+
+### Changed
+
+- The result page is a tempo map instead of a table: the red lines over the
+  waveform, the local tempo, each section's level, the beat and bar grid, the
+  onsets and their drift from the grid, swing and the half/double hints, with
+  zoom, pan, an overview and a following playhead. The song plays from the
+  reader's own file with the red lines' clicks mixed over it, at 0.5-1.5, looped
+  over a drawn span or a section, from any red line, by keys. The red lines'
+  table follows the map both ways and shows drift and the fit residual. x2 / /2
+  and a global nudge in ms change the map, the clicks and the exports together,
+  labelled as the reader's adjustment to check by ear. docs/site.md has it all.
+- The worker writes `timing-result v1.1`: `version` 1, `minor` 1, plus the
+  engine's beats and local tempo, the click track's bar starts, the attacks, the
+  onset envelope, swing_lane's spans, density_hints, and each red line's drift.
+  All read-only: `python/overtone.py` is untouched. The engine hash takes the
+  minor, so v1.0 results are not served from the cache as v1.1.
+- The API's analysis view carries the audio's `sha1`, for its owner.
+
+### Hardening
+
+- The audio still never reaches the server's answers (ADR-W4): playback and the
+  waveform come from the file the reader picked, kept in the page for the
+  session. A reopened result asks for the file again and plays it only when its
+  SHA-1 equals the analysis's, so another song is never lined up with these red
+  lines.
+
+### Measured
+
+- Payload, vote off: 14.7 kB for `change-128-142.wav` (60 s), 49.2 kB for
+  `long-6min.wav`, against a budget of 300 kB for six minutes.
+- Clicks against the red lines' grid, read back from the scheduled oscillators:
+  within 0.0001 ms at rates 0.75, 1, 1.25 and 1.5, across a loop's wrap, and
+  after x2 with +5 ms. The page's bar starts equal the worker's `downbeats_ms`.
+- `long-6min.wav` playing at 1.5 for 8 s, zoomed in: 399 frames, the worst
+  31.7 ms, no long task (the machine was running other agents' benchmarks).
+- `tests.test_worker` 10 (one new, and the v1.1 fields checked on audio),
+  `pnpm test` 31, `pnpm build` 428 kB JS / 137 kB gzip, `bench/facts.py` ok after
+  the stated counts moved to 785. The full Python suite: 785 OK, 8 skipped, in
+  1349 s (other agents' suites and benchmarks were running beside it). The engine
+  gates were not run: no engine file changed.
+- Not measured: Safari, Firefox, a real phone, and nothing was listened to (the
+  page's output was muted during the checks).
+
+### Rejected / tried and dropped
+
+- Sending onsets at 0.1 ms: twice the bytes for a drift the page only recomputes
+  after the reader nudges, where whole ms read at most 0.5 ms off the worker's
+  own figure, which the table shows unadjusted.
+- A pitch-kept time stretch for the slower rates: the desktop app measured one
+  moving attacks by about 24 ms, which is the error the clicks are there to hear.
+  Resampling keeps every attack at t / rate.
+
 ---
 
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
+import CancelButton from '../components/CancelButton.jsx'
 import { api } from '../lib/api.js'
 
 /**
@@ -99,6 +100,7 @@ export default function AnalysisResult() {
 
 function Waiting({ analysis }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const running = analysis.status === 'running'
   const percent = Math.round((analysis.progress ?? 0) * 100)
   return (
@@ -118,6 +120,7 @@ function Waiting({ analysis }) {
       <p className="text-caption text-dim">
         {running && analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.queuedNote')}
       </p>
+      {!running && <CancelButton id={analysis.id} onCancelled={() => navigate('/analyze')} />}
     </section>
   )
 }

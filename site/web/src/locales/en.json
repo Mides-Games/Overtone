@@ -223,7 +223,14 @@
       "running": "Analysing",
       "done": "Done",
       "refused": "Refused",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     }
+  },
+  "cancel": {
+    "button": "Cancel",
+    "busy": "Cancelling…",
+    "notQueued": "It is already being analysed and can no longer be cancelled.",
+    "failed": "It could not be cancelled. Try again."
   }
 }

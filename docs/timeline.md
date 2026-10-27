@@ -20,6 +20,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+
+### Changed
+
+- W3.12 of [the web platform](16-web-platform.md): `DELETE /api/v1/analyses/:id`
+  takes back a song that is still waiting. Whoever may read the analysis (the
+  session or the anonymous cookie that created it) may cancel it; anyone else
+  gets the same 404 as for an id that does not exist. The job, the row and the
+  spooled audio are deleted, so the song does not count against the day's quota.
+- A Cancel button on the upload card, on the analysis page while it is queued and
+  on the caller's own queued rows in `/queue`. A cancelled analysis is dropped
+  from the browser's recent list.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` was not YAML since W3.11: a `$'` in that edit's
+  replacement string meant "the text after the match", which pasted a second copy
+  of the queue and analysis paths into the lookup's `sha1` pattern. Two unquoted
+  descriptions did not parse either. It loads again, each path once.
+
+### Hardening
+
+- A song the worker has claimed is not cancelled (409 `NOT_QUEUED`): the worker
+  has no way to hear about it mid-stage. The delete checks `state = 'queued'` in
+  the same statement, so a claim and a cancel arriving together are decided by
+  the job's row lock, not by whichever read first.
+
+### Measured
+
+- `node --test` in `site/api`: 34/34 (3 new, over HTTP against the app: the
+  owner cancels and the row, the audio and the quota count go; a stranger gets
+  404 and a request without the same-origin header 403; a claimed job gets 409).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; a queued analysis
+  cancelled, the day's count went from 2 to 1; a claimed one refused.
+- In the browser (`pnpm dev` in memory, no worker): cancelled from `/queue`, from
+  the analysis page (back to `/analyze`) and from a batch card; the queue showed
+  each one gone.
+
+---
 ## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
 
 ### Changed

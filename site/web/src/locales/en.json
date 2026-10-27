@@ -16,7 +16,8 @@
     "changeLanguage": "Cambiar a español",
     "otherLanguage": "ES",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "queue": "Queue"
   },
   "ticker": [
     "Overtone · automatic timing for osu! maps",
@@ -95,7 +96,9 @@
       "QUOTA_ACCOUNT": "You have used today's {{limit}} analyses. The count resets at 00:00 UTC.",
       "RATE_LIMITED": "Too many uploads in a short time. Wait a few minutes and try again.",
       "NETWORK": "The server could not be reached. Check your connection and try again."
-    }
+    },
+    "private": "Keep it off the public queue",
+    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader."
   },
   "result": {
     "eyebrow": "Analysis",
@@ -182,5 +185,30 @@
   "notFound": {
     "title": "Nothing here",
     "back": "Back home"
+  },
+  "queue": {
+    "title": "Queue",
+    "subtitle": "Every song waiting for the analyser or being analysed right now, and the ones that finished in the last hour.",
+    "live": "Waiting and analysing",
+    "recent": "Finished in the last hour",
+    "count_one": "{{count}} song",
+    "count_other": "{{count}} songs",
+    "empty": "Nothing in the queue.",
+    "upload": "Analyse a song",
+    "more_one": "…and {{count}} more waiting.",
+    "more_other": "…and {{count}} more waiting.",
+    "privateSong": "Private upload",
+    "privateUpload": "Uploader hidden",
+    "anonymous": "Anonymous",
+    "yours": "Yours",
+    "cached": "stored result",
+    "privacy": "A song is named by its own tags, or by its file name when it has none. Anyone who ticked \"keep it off the public queue\" shows here as a private upload. Folders and paths are never shown, the audio is never served, and only you can open your own results.",
+    "status": {
+      "queued": "In the queue",
+      "running": "Analysing",
+      "done": "Done",
+      "refused": "Refused",
+      "failed": "Failed"
+    }
   }
 }

@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
+import { readTags } from '../lib/tags.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -30,6 +31,8 @@ export default function Analyze() {
   const [limits, setLimits] = useState(null)
   const [audio, setAudio] = useState(null)
   const [seconds, setSeconds] = useState(null)
+  const [tags, setTags] = useState({ title: null, artist: null })
+  const [hidden, setHidden] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [state, setState] = useState({ kind: 'idle' })
   const [recent] = useState(recentAnalyses)
@@ -43,8 +46,12 @@ export default function Analyze() {
   async function pickAudio(file) {
     setAudio(file)
     setSeconds(null)
+    setTags({ title: null, artist: null })
     setState({ kind: 'idle' })
-    if (file) setSeconds(await durationOf(file))
+    if (!file) return
+    const [length, read] = await Promise.all([durationOf(file), readTags(file)])
+    setSeconds(length)
+    setTags(read)
   }
 
   function problemWith(file) {
@@ -67,7 +74,7 @@ export default function Analyze() {
 
     setState({ kind: 'sending', sent: 0 })
     try {
-      const created = await uploadAudio(audio, (sent) => setState({ kind: 'sending', sent }))
+      const created = await uploadAudio(audio, (sent) => setState({ kind: 'sending', sent }), { private: hidden, ...tags })
       rememberAnalysis(created.id, audio.name)
       navigate(`/analyze/${created.id}`)
     } catch (error) {
@@ -126,6 +133,14 @@ export default function Analyze() {
                 </span>
               </div>
             )}
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
+              <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
+              <span className="space-y-0.5">
+                <span className="block text-label">{t('analyze.private')}</span>
+                <span className="block text-caption text-dim">{t('analyze.privateHint')}</span>
+              </span>
+            </label>
 
             <button type="submit" className="btn-primary w-full" disabled={state.kind === 'sending'}>
               {state.kind === 'sending' ? t('analyze.sending', { percent: Math.round(state.sent * 100) }) : t('analyze.submit')}

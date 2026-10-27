@@ -44,8 +44,11 @@ export async function api(path, { method = 'GET', json, form } = {}) {
  * the share sent through `onProgress(0..1)`. XMLHttpRequest rather than fetch
  * because fetch cannot report upload progress. Resolves to `{ id, status,
  * cached }`; rejects with an ApiError (`details` carries the server's).
+ *
+ * `options.private` keeps the song and the uploader off the public queue;
+ * `options.title` and `options.artist` are the file's own tags (lib/tags.js).
  */
-export function uploadAudio(file, onProgress) {
+export function uploadAudio(file, onProgress, options = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/v1/analyses')
@@ -54,6 +57,9 @@ export function uploadAudio(file, onProgress) {
     xhr.setRequestHeader('Content-Type', 'application/octet-stream')
     // A header is Latin-1: the name travels percent-encoded.
     xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name))
+    if (options.private) xhr.setRequestHeader('X-Private', '1')
+    if (options.title) xhr.setRequestHeader('X-Title', encodeURIComponent(options.title))
+    if (options.artist) xhr.setRequestHeader('X-Artist', encodeURIComponent(options.artist))
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total)
     }

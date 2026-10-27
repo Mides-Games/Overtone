@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { isTyping } from '../../lib/commands.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, paintMap, paintOverview, readPalette } from './draw.js'
 
@@ -400,13 +401,13 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
 
   // Keys, anywhere on the page but in a field: Space plays, arrows step a beat (Shift: a bar),
   // + and - zoom, 0 fits, [ and ] walk the red lines, L loops, C mutes the clicks, F follows.
+  // The shortcut help (components/CommandPalette.jsx) lists the same keys: change both together.
   useEffect(() => {
     const onKey = (event) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return
       const target = event.target
-      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
-        if (!(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio', 'button'].includes(target.type))) return
-      }
+      // Not while typing, and not behind an open dialog (the palette, the shortcut help).
+      if (isTyping(target) || target?.closest?.('dialog[open]')) return
       const grid = data.grid
       const step = (dir, bar) => {
         const pos = player.position()

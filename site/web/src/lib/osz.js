@@ -42,6 +42,31 @@ export function songNames({ tagTitle, tagArtist, filename }) {
 }
 
 /**
+ * The tags every map Overtone builds carries, so a map made with it can be
+ * found by them (the owner's rule, 2026-10-27). Always first, never dropped.
+ */
+export const OVERTONE_TAGS = ['overtone', 'overtone_timings']
+
+/**
+ * `[Metadata] Tags`: Overtone's two, then any `extra` (a string or a list)
+ * the caller passes, split on spaces as osu! splits them, without repeats or
+ * line breaks.
+ */
+export function mapTags(extra = '') {
+  const words = (Array.isArray(extra) ? extra.join(' ') : String(extra ?? ''))
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  const seen = new Set()
+  return [...OVERTONE_TAGS, ...words].filter((word) => {
+    const key = word.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).join(' ')
+}
+
+/**
  * Red rows and green `{ timeMs, row }` lines in osu!'s order: by time, a red
  * line before a green one at the same ms (the green one then overrides its
  * effects, as the editor writes them).
@@ -65,7 +90,7 @@ export function mergeRows(redRows, greens = []) {
  * `[Events]` as the editor writes it) and `greens`, kiai green lines from
  * lib/osz-suggest.js `kiaiRows`.
  */
-export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, previewMs = null, leadInMs = 0, background = null, greens = [] }) {
+export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, previewMs = null, leadInMs = 0, background = null, greens = [], tags = '' }) {
   const red = timingText(result, lines, adjustment)
     .split('\r\n')
     .filter((row) => row && row !== '[TimingPoints]' && !row.startsWith('//'))
@@ -102,7 +127,7 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     `Creator:${field(creator) || 'Overtone'}`,
     'Version:Timing',
     'Source:',
-    'Tags:overtone',
+    `Tags:${mapTags(tags)}`,
     'BeatmapID:0',
     'BeatmapSetID:-1',
     '',

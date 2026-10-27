@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildOsz, mergeRows, osuFile, songNames } from '../src/lib/osz.js'
+import { buildOsz, mapTags, mergeRows, osuFile, songNames } from '../src/lib/osz.js'
 import { kiaiRows } from '../src/lib/osz-suggest.js'
 import { adjustLines } from '../src/lib/timing.js'
 import { crc32 } from '../src/lib/zip.js'
@@ -101,6 +101,19 @@ test('the extras go where osu! reads them: preview, lead-in, the background even
     '30400,-100,4,1,0,100,0,1',
     '40000,-100,4,1,0,100,0,0',
   ])
+})
+
+test('every .osu carries the overtone tags, and keeps the ones it is given', () => {
+  const base = { title: 'S', artist: 'A', creator: 'x', audioName: 'audio.mp3', lines: [], result: { red_lines: [], osu_timing: '' }, adjustment: unadjusted }
+  assert.match(osuFile(base), /\r\nTags:overtone overtone_timings\r\n/)
+  assert.match(osuFile({ ...base, tags: 'anime  Overtone\nop' }), /\r\nTags:overtone overtone_timings anime op\r\n/)
+  assert.equal(mapTags(['tv size', 'overtone_timings']), 'overtone overtone_timings tv size')
+})
+
+test('the .osz built for download carries the tags too', async () => {
+  const file = new File([new Uint8Array(4)], 'a.mp3')
+  const { bytes } = await buildOsz({ file, analysis: { filename: 'a.mp3', result }, lines: adjustLines(result, unadjusted), adjustment: unadjusted })
+  assert.match(new TextDecoder().decode(entries(bytes)[1].data), /\r\nTags:overtone overtone_timings\r\n/)
 })
 
 test('red rows come before green ones at the same ms, each kept in its order', () => {

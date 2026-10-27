@@ -47,6 +47,7 @@ components:
       required: [mine, status, private, song, uploader, anonymous, cached, createdAt, elapsedS]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{32}$", description: Only on the caller's own rows. }
+        ref: { type: string, pattern: "^[0-9a-f]{32}$", description: "Staff only, on waiting and running rows: what /analyses/{id}/moderate takes. Opens nothing." }
         mine: { type: boolean }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         position: { type: integer, minimum: 1 }
@@ -73,6 +74,7 @@ components:
         more: { type: integer, minimum: 0 }
         recent: { type: array, items: { $ref: '#/components/schemas/QueueEntry' } }
         at: { type: string, format: date-time }
+        staff: { const: true, description: Present when the caller is a Mides moderator. }
     AnalysisCreated:
       type: object
       required: [id, status, cached]
@@ -458,6 +460,78 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Queue' }
+
+  /analyses/moderation:
+    get:
+      summary: Staff only, the latest moderations of the queue
+      description: |
+        The last 50 removals and requeues, newest first, each with the
+        moderator's username at the time, the analysis's ref and the reason.
+      responses:
+        '200':
+          description: The log.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [log]
+                properties:
+                  log:
+                    type: array
+                    items:
+                      type: object
+                      required: [action, moderator, ref, at]
+                      properties:
+                        action: { type: string, enum: [remove, requeue] }
+                        moderator: { type: string }
+                        ref: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/{id}/moderate:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, remove a job from the queue or hand a running one back
+      description: |
+        `remove` fails a waiting or running job with "Removed from the queue by
+        a moderator." and deletes its audio; a worker already on it has its
+        answer refused. `requeue` puts a running job (a stuck one) back in the
+        queue while its audio is still spooled. Both are recorded in
+        `moderation_log` with who did it.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [remove, requeue] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '204': { description: Done and recorded. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`, or `CSRF_HEADER_MISSING`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_LIVE` (remove: it has finished), `NOT_RUNNING` (requeue: it is not running) or `AUDIO_GONE`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /analyses/{id}:
     parameters:

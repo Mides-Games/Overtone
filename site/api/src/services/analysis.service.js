@@ -80,6 +80,14 @@ export const refusal = ({ mine, all, today, cachedToday }, limits, cached) => {
   return null;
 };
 
+/**
+ * Moderation (W3.18): staff may take a waiting or running job off the queue,
+ * which fails it with this message, or hand a running one back to it. Each
+ * is recorded with who did it, in `moderation_log`.
+ */
+export const REMOVED = 'Removed from the queue by a moderator.';
+export const MODERATION_LOG_LIMIT = 50;
+
 /** How long a finished analysis stays on the public queue, and how many of them. */
 export const RECENT_MINUTES = 60;
 export const RECENT_LIMIT = 20;
@@ -121,7 +129,7 @@ export const fairOrder = (queued, owner = ownerOf, lastServed = () => 0) => {
 
 // ── Memory ──────────────────────────────────────────────────────────────────
 
-const memory = { analyses: new Map(), seq: 0 };
+const memory = { analyses: new Map(), seq: 0, log: [] };
 
 const memoryQueued = () => {
   const all = [...memory.analyses.values()];
@@ -291,7 +299,32 @@ const memoryStore = {
     }
     return failed;
   },
+
+  async remove(publicId, by) {
+    const a = memory.analyses.get(publicId);
+    if (a?.job?.state !== 'queued' && a?.job?.state !== 'running') return false;
+    Object.assign(a.job, { state: 'failed', lockedAt: null });
+    Object.assign(a, { status: 'failed', error: REMOVED, stage: null, finishedAt: new Date() });
+    memoryLog('remove', a, by);
+    return true;
+  },
+
+  async requeue(publicId, by) {
+    const a = memory.analyses.get(publicId);
+    if (a?.job?.state !== 'running') return false;
+    Object.assign(a.job, { state: 'queued', lockedAt: null });
+    Object.assign(a, { status: 'queued', stage: null, progress: 0 });
+    memoryLog('requeue', a, by);
+    return true;
+  },
+
+  async moderationLog(limit = MODERATION_LOG_LIMIT) {
+    return memory.log.slice(-limit).reverse();
+  },
 };
+
+const memoryLog = (action, a, { accountId, moderator, reason }) =>
+  memory.log.push({ action, moderator, accountId, publicId: a.publicId, reason: reason ?? null, createdAt: new Date() });
 
 // ── PostgreSQL ──────────────────────────────────────────────────────────────
 
@@ -329,6 +362,14 @@ const fromRow = (r) =>
     tagTitle: r.tag_title,
     tagArtist: r.tag_artist,
   };
+
+/** The audit record of a moderation (W3.18), written in the same transaction as the change. */
+const pgLog = (client, action, analysisId, publicId, { accountId, moderator, reason }) =>
+  client.query(
+    `INSERT INTO moderation_log (account_id, moderator, action, analysis_id, public_id, reason)
+          VALUES ($1, $2, $3, $4, $5, $6)`,
+    [accountId, moderator, action, analysisId, publicId, reason ?? null],
+  );
 
 const transaction = async (work) => {
   const client = await pool.connect();
@@ -625,6 +666,60 @@ const pgStore = {
       [timeoutS, MAX_ATTEMPTS],
     );
     return rows.filter((r) => r.state === 'failed').map((r) => r.public_id);
+  },
+
+  async remove(publicId, by) {
+    return transaction(async (client) => {
+      const { rows: [row] } = await client.query(
+        `WITH job AS (
+           UPDATE jobs j SET state = 'failed', locked_at = NULL, error = 'removed by staff'
+             FROM analyses a
+            WHERE a.id = j.analysis_id AND a.public_id = $1 AND j.state IN ('queued', 'running')
+           RETURNING j.analysis_id
+         )
+         UPDATE analyses a SET status = 'failed', error = $2, stage = NULL, finished_at = now()
+           FROM job WHERE a.id = job.analysis_id
+         RETURNING a.id`,
+        [publicId, REMOVED],
+      );
+      if (!row) return false;
+      await pgLog(client, 'remove', row.id, publicId, by);
+      return true;
+    });
+  },
+
+  async requeue(publicId, by) {
+    return transaction(async (client) => {
+      // The attempt count is kept: the next claim's attempt is new, so a late
+      // answer from the worker that had it is refused as stale.
+      const { rows: [row] } = await client.query(
+        `WITH job AS (
+           UPDATE jobs j SET state = 'queued', locked_at = NULL
+             FROM analyses a
+            WHERE a.id = j.analysis_id AND a.public_id = $1 AND j.state = 'running'
+           RETURNING j.analysis_id
+         )
+         UPDATE analyses a SET status = 'queued', stage = NULL, progress = 0
+           FROM job WHERE a.id = job.analysis_id
+         RETURNING a.id`,
+        [publicId],
+      );
+      if (!row) return false;
+      await pgLog(client, 'requeue', row.id, publicId, by);
+      return true;
+    });
+  },
+
+  async moderationLog(limit = MODERATION_LOG_LIMIT) {
+    const { rows } = await query(
+      `SELECT action, moderator, account_id, public_id, reason, created_at
+         FROM moderation_log ORDER BY id DESC LIMIT $1`,
+      [limit],
+    );
+    return rows.map((r) => ({
+      action: r.action, moderator: r.moderator, accountId: r.account_id, publicId: r.public_id?.trim() ?? null,
+      reason: r.reason, createdAt: r.created_at,
+    }));
   },
 };
 

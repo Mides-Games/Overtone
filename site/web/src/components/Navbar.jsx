@@ -20,6 +20,7 @@ const LINKS = [
   { to: '/analyze', key: 'nav.analyze' },
   { to: '/queue', key: 'nav.queue' },
   { to: '/community', key: 'community.nav' },
+  { to: '/recent', key: 'timings.nav.recent' },
   { to: '/profile', key: 'nav.profile' },
 ]
 
@@ -106,6 +107,9 @@ function UserMenu({ account }) {
           <div className="pt-1.5">
             <Link role="menuitem" to="/profile" className={item} onClick={() => setOpen(false)}>
               {t('nav.profile')}
+            </Link>
+            <Link role="menuitem" to="/history" className={item} onClick={() => setOpen(false)}>
+              {t('timings.nav.history')}
             </Link>
             <button
               role="menuitem"

@@ -280,7 +280,12 @@ export default function Analyze() {
 
           {recent.length > 0 && (
             <section className="space-y-3">
-              <h2 className="label">{t('analyze.recentTitle')}</h2>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="label">{t('analyze.recentTitle')}</h2>
+                <Link to="/history" className="text-caption text-accent hover:underline">
+                  {t('timings.history.all')} →
+                </Link>
+              </div>
               <ul className="divide-y divide-line rounded-panel border border-line">
                 {recent.map((item) => (
                   <li key={item.id}>

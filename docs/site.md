@@ -751,3 +751,68 @@ linking a suggestion to the roadmap or a changelog entry, notifying its author
 of a state change; the staff's public reply on a review; the word filter and
 Mides' sanctions in moderation, and reports on the queue's names; the changelog
 naming the suggestions each release closed.
+
+### Published timings, recent and history (W3.27, W5.1, W3.26, 2026-10-27)
+
+The privacy model, also written at the top of `site/api/src/routes/timings.routes.js`:
+
+- **Nothing is public until its uploader publishes it.** `POST
+  /analyses/<id>/publish` on a finished (`done`) analysis sets `published_at`;
+  `DELETE` on the same path clears it. Anonymous uploaders can publish too, while
+  their cookie lasts; the page then says "anonymous". Anyone but the uploader gets
+  the 404 of a missing id.
+- **A private analysis** (W3.8) is refused with 409 `PRIVATE` unless the request
+  sends `makePublic: true`, which lifts the privacy in the same statement. The web
+  asks first. Unpublishing does not make it private again.
+- **The public URL is `/t/<id>`**, the analysis's own public id: `/analyses/<id>`
+  still needs the uploader's session or cookie, so a second id would protect
+  nothing.
+- **What anyone sees:** title and artist (tags, else read from the file name as
+  "Artist - Title"; never the file name), the result, the uploader's public Mides
+  profile or "anonymous", when it was published. Never the audio's SHA-1,
+  `anon_hash` or `ip_hash`: the views in `utils/timings.js` are built field by
+  field.
+- **The .osz on a public page:** the visitor picks their own file, the browser
+  hashes it and `POST /timings/<id>/check` answers only `{ match }` (20 per 10
+  minutes). On a match the page plays it against the clicks and builds the .osz,
+  as for the uploader. The timing's hash never reaches the browser.
+
+`GET /timings` is the recent list (search, `bpmMin`/`bpmMax`, `tempo=single|variable`,
+at most 50 a page, a keyset cursor in microseconds so a timing published meanwhile
+neither repeats nor skips a row); `GET /me/analyses` is the account's history with
+`status`, `from` and `to` as well. `DELETE /analyses/<id>` now also deletes a
+finished analysis: its result, names and publication are erased at once, and the
+marked row stays until its UTC day ends so that it still counts in that day's
+quota (a hard delete would hand the quota back); an hourly purge takes it after.
+
+`deploy/web/serve.mjs` serves `/t/<id>` as `index.html` with the timing's title,
+description and `og:*` tags in its head, read from `GET /timings/<id>/card` (no
+result) within 1.5 s and escaped; otherwise, or for a timing that is not
+published, the plain page. The SPA sets the same tags client-side. There is no
+Open Graph image yet.
+
+Checked:
+
+- `site/api` 84/84: 13 new in `test/timings.test.js` on the memory store (only
+  the uploader publishes; not a queued song or a refusal; private needs
+  `makePublic`; the page, the card, the list, the CSV and the check never carry
+  the SHA-1, `anon_hash` or `ip_hash`; unpublish takes it down; delete takes it off
+  recent and history and the quota still counts it; a running song is not deleted;
+  paging with a timing published in between; the filters; the history; strict
+  filter parsing), 2 new in `test/serve.test.js` (hostile title, artist and
+  username come out escaped; an unpublished or late card gives the plain page).
+- The PostgreSQL store against PostgreSQL 18 through PGlite 0.5.12: `check`
+  (15 tables, applied twice), `db:migrate` twice, and a script over the store
+  (publish lifting privacy, every filter, two pages against one read, no SHA-1 in
+  the views, history with status and dates, unpublish, delete today and from an
+  earlier day, the purge, a running job not deleted).
+- `site/web` 36/36 (3 new for `lib/timings.js`), `vite build`.
+- In the browser (dev API in memory, results posted by a stand-in worker):
+  publishing from the result page, the private confirmation and delete from
+  `/history`, the filters on `/recent`, the public page and its 404, EN and ES,
+  dark and light, 375 px wide (a form overflow there was fixed).
+
+Not checked: a real worker's result on a public page, picking a matching file on
+the public page in the browser (the check route is tested, the button is not),
+a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
+was, the routes ran on the memory one).

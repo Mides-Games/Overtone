@@ -11,7 +11,7 @@ import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../.
  * track as a WAV, the CSV, the result as JSON and a plain-text summary. All
  * of it is built in this browser; the .osu and the song never leave it.
  */
-export default function MoreDownloads({ id, analysis, lines, adjustment, grid, durationS, songBuffer, player, checks }) {
+export default function MoreDownloads({ id, analysis, lines, adjustment, grid, durationS, songBuffer, player, checks, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
@@ -132,7 +132,7 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
               {t('result.downloadCsv')}
             </button>
           ) : (
-            <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
+            <a className="btn-ghost" href={csvHref ?? `/api/v1/analyses/${id}/timing.csv`} download>
               {t('result.downloadCsv')}
             </a>
           )}

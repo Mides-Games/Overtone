@@ -42,6 +42,28 @@ components:
       required: true
       description: 128 random bits in hex.
       schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    cursor:
+      name: cursor
+      in: query
+      description: The `next` of the previous page, as given. Keyset paging, so a row published meanwhile neither repeats nor skips a row.
+      schema: { type: string, pattern: '^\d{1,17}-[0-9a-f]{32}$' }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, default: 24, description: Capped at 50. }
+    q:
+      name: q
+      in: query
+      description: Text in the title, the artist or the file name, any case; at most 100 characters are read.
+      schema: { type: string }
+    bpmMin:
+      name: bpmMin
+      in: query
+      schema: { type: number, minimum: 0, maximum: 1000 }
+    bpmMax:
+      name: bpmMax
+      in: query
+      schema: { type: number, minimum: 0, maximum: 1000 }
   schemas:
     QueueEntry:
       type: object
@@ -107,6 +129,9 @@ components:
           enum: [load, attacks, coherence, fallback, tracker, octave, sections, vote, result, null]
         result: { $ref: '#/components/schemas/TimingResult' }
         error: { type: string, description: When failed. }
+        private: { type: boolean, description: Kept off the public queue's song and uploader (W3.8). }
+        published: { type: boolean, description: "Its uploader published it: /timings/{id} shows it to anyone (W3.27)." }
+        publishedAt: { type: string, format: date-time, description: While published. }
     TimingResult:
       type: object
       description: |
@@ -276,6 +301,60 @@ components:
         hidden: { type: boolean, const: true }
         hiddenReason: { type: [string, 'null'] }
         reports: { type: integer }
+
+    Uploader:
+      type: [object, 'null']
+      description: The uploader's public Mides profile; null for an anonymous upload.
+      properties:
+        username: { type: string }
+        displayName: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'] }
+
+    TimingSummary:
+      type: object
+      description: |
+        One published timing in the recent list (W5.1). Never the audio's
+        SHA-1, the file name, `anon_hash` or `ip_hash`.
+      required: [id, title, artist, bpm, redLines, variable, uploader, anonymous, publishedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$', description: 'Its page is /t/{id} on the web.' }
+        title: { type: [string, 'null'], description: "The title tag, else read from the file name." }
+        artist: { type: [string, 'null'], description: "The artist tag, else read from the file name as \"Artist - Title\"." }
+        bpm: { type: [number, 'null'], description: The main BPM (`global_bpm`). }
+        redLines: { type: integer, minimum: 0 }
+        variable: { type: boolean, description: Red lines at more than one BPM (to 0.01); a meter change alone is not. }
+        uploader: { $ref: '#/components/schemas/Uploader' }
+        anonymous: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+
+    PublicTiming:
+      description: A published timing's own page (W3.27).
+      allOf:
+        - $ref: '#/components/schemas/TimingSummary'
+        - type: object
+          required: [createdAt, result]
+          properties:
+            createdAt: { type: string, format: date-time, description: When it was analysed. }
+            result: { $ref: '#/components/schemas/TimingResult' }
+
+    HistoryEntry:
+      type: object
+      description: One of the signed-in account's own analyses (W3.26).
+      required: [id, filename, title, artist, status, bpm, redLines, variable, private, published, cached, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        filename: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        artist: { type: [string, 'null'] }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        bpm: { type: [number, 'null'] }
+        redLines: { type: integer, minimum: 0 }
+        variable: { type: boolean }
+        private: { type: boolean }
+        published: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+        cached: { type: boolean }
+        createdAt: { type: string, format: date-time }
   responses:
     Error:
       description: An error.
@@ -658,20 +737,25 @@ paths:
               schema: { $ref: '#/components/schemas/Analysis' }
         '404': { $ref: '#/components/responses/Error' }
     delete:
-      summary: Cancel an analysis that is still waiting
+      summary: Cancel an analysis that is still waiting, or delete one that has finished
       description: |
         Only by whoever may read it (the session account or the anonymous
-        cookie that created it). The job, the row and the spooled audio are
-        deleted, so the song does not count against the day's quota. A song
-        the worker has already taken is not cancelled.
+        cookie that created it). While it waits (W3.12) the job, the row and
+        the spooled audio are deleted, so the song does not count against the
+        day's quota. Once finished (W3.26) its result, names and publication
+        are erased at once and the analysis is gone for everyone; the row
+        itself stays, marked, until its UTC day is over so that it still
+        counts in that day's quota. A song the worker has already taken is
+        neither cancelled nor deleted. Rate limited (60 per 10 minutes).
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
       responses:
-        '204': { description: Cancelled. }
+        '204': { description: Cancelled or deleted. }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
         '409':
-          description: '`NOT_QUEUED`: it is being analysed, or it has finished.'
+          description: '`NOT_QUEUED`: it is being analysed.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1055,3 +1139,216 @@ paths:
                         at: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Publish a finished analysis (W3.27)
+      description: |
+        Only by whoever may read it; anyone else gets the 404 of a missing id.
+        Opt-in and reversible: nothing is public until this is called. Only a
+        `done` analysis has a timing to share. A private one (W3.8) is
+        refused with `PRIVATE` unless `makePublic: true` lifts its privacy in
+        the same statement. Publishing again keeps the first time.
+        Rate limited (30 per 10 minutes, shared with unpublishing).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                makePublic: { type: boolean, description: Also lift the privacy of a private analysis. }
+      responses:
+        '200':
+          description: Published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, published, publishedAt, private]
+                properties:
+                  id: { type: string }
+                  published: { const: true }
+                  publishedAt: { type: string, format: date-time }
+                  private: { const: false }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_PUBLISHABLE` (not `done`) or `PRIVATE` (private, and `makePublic` was not sent).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Unpublish it
+      description: |
+        Its page and its row in the recent list are gone on the next read.
+        Its privacy stays as publishing left it. Idempotent.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Not published. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings:
+    get:
+      summary: Recent published timings from everyone (W5.1)
+      description: |
+        Newest published first. Public and read-only; rate limited (240 per
+        10 minutes, shared with the other /timings reads) and at most 50 a page.
+        A malformed filter is a 400 `BAD_FILTER`, never everything.
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/bpmMin'
+        - $ref: '#/components/parameters/bpmMax'
+        - name: tempo
+          in: query
+          schema: { type: string, enum: [single, variable] }
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [timings, next]
+                properties:
+                  timings: { type: array, items: { $ref: '#/components/schemas/TimingSummary' } }
+                  next: { type: [string, 'null'], description: The cursor of the next page; null on the last. }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: One published timing, as anyone may see it (W3.27)
+      description: Not published, unpublished, deleted or never there are the same 404.
+      responses:
+        '200':
+          description: The timing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicTiming' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/card:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing without its result, for a link preview
+      description: What overtone-web reads to write the Open Graph tags of `/t/{id}` (deploy/web/serve.mjs).
+      responses:
+        '200':
+          description: The list's fields.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingSummary' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/timing.txt:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's `[TimingPoints]` block
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/plain: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/timing.csv:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's red lines as CSV
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/csv: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/check:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Is the visitor's file this timing's audio?
+      description: |
+        The visitor's browser hashes the file they picked and sends the hash;
+        the answer is only whether it matches. The timing's own hash never
+        leaves the server. A match lets the page play the song against the
+        clicks and build the .osz, as it does for the uploader (ADR-W4: the
+        file never leaves the browser). Rate limited (20 per 10 minutes).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sha1]
+              properties:
+                sha1: { type: string, pattern: '^[0-9a-fA-F]{40}$' }
+      responses:
+        '200':
+          description: Match or not.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [match]
+                properties:
+                  match: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/analyses:
+    get:
+      summary: The signed-in account's own analyses (W3.26)
+      description: |
+        Newest first, every status, published or not; deleted ones are gone.
+        Anonymous analyses are not here: without an account the web keeps its
+        own short list in the browser.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - name: status
+          in: query
+          schema: { type: string, enum: [queued, running, done, refused, failed] }
+        - $ref: '#/components/parameters/bpmMin'
+        - $ref: '#/components/parameters/bpmMax'
+        - name: from
+          in: query
+          description: First UTC day, included.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Last UTC day, included.
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [analyses, next]
+                properties:
+                  analyses: { type: array, items: { $ref: '#/components/schemas/HistoryEntry' } }
+                  next: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }

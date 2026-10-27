@@ -839,5 +839,96 @@
       "empty": "No entries.",
       "unreleased": "Unreleased"
     }
+  },
+  "timings": {
+    "nav": {
+      "recent": "Recent",
+      "history": "History"
+    },
+    "untitled": "Untitled",
+    "unknownArtist": "Unknown artist",
+    "variable": "Variable",
+    "redLines_one": "{{count}} red line",
+    "redLines_other": "{{count}} red lines",
+    "anonymous": "anonymous",
+    "timedBy": "timed by {{name}}",
+    "timedAnonymously": "timed anonymously",
+    "loadFailed": "The list could not be read. Try again in a moment.",
+    "more": "Show more",
+    "publish": {
+      "title": "Share",
+      "note": "Only you can open this result. Publish it to give it a public page and put it on the recent list; you can take it back at any time.",
+      "isPublic": "Public at",
+      "privateWarning": "This upload is private. Publishing it makes it public: its song and your name will show.",
+      "publish": "Publish",
+      "busy": "Publishing…",
+      "makePublic": "Make it public and publish",
+      "keepPrivate": "Keep it private",
+      "unpublish": "Unpublish",
+      "copyLink": "Copy link",
+      "copied": "Link copied",
+      "failed": "That did not work. Try again in a moment."
+    },
+    "page": {
+      "eyebrow": "Published timing",
+      "published": "published {{date}}",
+      "yourOwn": "Time your own song",
+      "notFoundTitle": "Timing not found",
+      "notFound": "This timing does not exist, or whoever published it took it back.",
+      "toRecent": "See recent timings"
+    },
+    "audio": {
+      "none": "Pick your own copy of this song to hear it with the clicks, see its waveform and build the .osz.",
+      "mismatch": "{{name}} is not the audio this timing was made from: its fingerprint differs. Pick the same release of the song.",
+      "privacy": "Your file is read here, on your device. Only its SHA-1 goes to the server, which answers whether it matches; the file itself is never uploaded."
+    },
+    "recent": {
+      "title": "Recent timings",
+      "subtitle": "Songs people timed and chose to publish, newest first. Each one opens its tempo map, red lines and exports.",
+      "empty": "Nobody has published a timing yet.",
+      "noMatch": "No published timing matches these filters.",
+      "analyze": "Time a song"
+    },
+    "home": {
+      "title": "Recently published",
+      "all": "All recent timings"
+    },
+    "filters": {
+      "search": "Title or artist",
+      "searchPlaceholder": "Search…",
+      "tempo": "Tempo",
+      "any": "Any",
+      "single": "Single tempo",
+      "variable": "Variable tempo",
+      "bpm": "BPM",
+      "bpmMin": "Lowest BPM",
+      "bpmMax": "Highest BPM",
+      "from": "from",
+      "to": "to",
+      "status": "Status",
+      "dates": "Analysed between",
+      "fromDate": "First day",
+      "toDate": "Last day",
+      "clear": "Clear filters"
+    },
+    "history": {
+      "title": "History",
+      "subtitle": "Everything you analysed with this account. Publish, unpublish or delete each one here.",
+      "anonymousSubtitle": "Without an account, only this browser remembers your latest analyses.",
+      "signInPrompt": "Sign in to keep every analysis in one place, find it again from any device, and publish it under your name.",
+      "browserEmpty": "This browser has no analyses yet.",
+      "forget": "Forget",
+      "empty": "You have not analysed anything with this account yet.",
+      "noMatch": "None of your analyses matches these filters.",
+      "public": "Public",
+      "openPublic": "Open public page",
+      "delete": "Delete",
+      "deleteConfirm": "Delete it for good?",
+      "deleteYes": "Delete",
+      "deleteNo": "Cancel",
+      "deleteNote": "Deleting an analysis erases its result and takes down its public page at once. A song still waiting can be cancelled from its own page; one being analysed can be deleted once it ends.",
+      "failed": "That did not work. Try again in a moment.",
+      "all": "History"
+    }
   }
 }

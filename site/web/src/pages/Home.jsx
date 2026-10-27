@@ -1,11 +1,48 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import TimingList from '../components/TimingList.jsx'
 import TimingStrip from '../components/TimingStrip.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { recentTimings } from '../lib/timings.js'
 
 const FEATURES = ['upload', 'confidence', 'account']
+const ON_HOME = 5
+
+/**
+ * The latest timings people published (W5.1), a few of them, with the way to
+ * the whole list. Nothing is shown until there is one: an empty box on the
+ * front page says nothing useful, and a failed read says nothing at all.
+ */
+function RecentTimings() {
+  const { t } = useTranslation()
+  const [timings, setTimings] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    recentTimings({}, { limit: ON_HOME })
+      .then((data) => alive && setTimings(data.timings))
+      .catch(() => alive && setTimings([]))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (!timings?.length) return null
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="label">{t('timings.home.title')}</h2>
+        <Link to="/recent" className="text-label text-accent hover:underline">
+          {t('timings.home.all')} →
+        </Link>
+      </div>
+      <TimingList timings={timings} />
+    </section>
+  )
+}
 
 export default function Home() {
   const { t } = useTranslation()
@@ -43,6 +80,8 @@ export default function Home() {
           </article>
         ))}
       </section>
+
+      <RecentTimings />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
         <span className="chip-amber shrink-0">{t('home.checkByEar')}</span>

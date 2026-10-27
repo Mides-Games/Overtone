@@ -18,6 +18,7 @@ import { checkSpans } from '../lib/check-spans.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
 import { tracker, useAnalysis } from '../lib/tracking.js'
+import { publishAnalysis, timingPath, unpublishAnalysis } from '../lib/timings.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
@@ -83,8 +84,103 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
+      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setAnalysis((a) => ({ ...a, ...next }))} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
     </div>
+  )
+}
+
+/**
+ * Sharing the timing (W3.27): off until its uploader presses Publish, and
+ * undone by Unpublish. A private upload asks first, since publishing makes
+ * it public; the API refuses it otherwise (409 PRIVATE).
+ */
+function Publish({ analysis, onChange }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState({ kind: 'idle' }) // idle | confirm | busy | error | copied
+  const link = typeof window === 'undefined' ? timingPath(analysis.id) : `${window.location.origin}${timingPath(analysis.id)}`
+
+  async function publish(makePublic = false) {
+    if (analysis.private && !makePublic) return setState({ kind: 'confirm' })
+    setState({ kind: 'busy' })
+    try {
+      const done = await publishAnalysis(analysis.id, { makePublic })
+      onChange({ published: true, publishedAt: done.publishedAt, private: false })
+      setState({ kind: 'idle' })
+    } catch (error) {
+      if (error.code === 'PRIVATE') return setState({ kind: 'confirm' })
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function unpublish() {
+    setState({ kind: 'busy' })
+    try {
+      await unpublishAnalysis(analysis.id)
+      onChange({ published: false, publishedAt: undefined })
+      setState({ kind: 'idle' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link)
+      setState({ kind: 'copied' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+    setTimeout(() => setState((s) => (s.kind === 'copied' ? { kind: 'idle' } : s)), 2500)
+  }
+
+  const busy = state.kind === 'busy'
+  return (
+    <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <h2 className="label">{t('timings.publish.title')}</h2>
+        {analysis.published ? (
+          <p className="text-label text-text">
+            {t('timings.publish.isPublic')}{' '}
+            <Link to={timingPath(analysis.id)} className="readout break-all text-accent hover:underline">
+              {timingPath(analysis.id)}
+            </Link>
+          </p>
+        ) : (
+          <p className="text-label text-muted">{state.kind === 'confirm' ? t('timings.publish.privateWarning') : t('timings.publish.note')}</p>
+        )}
+        {state.kind === 'error' && (
+          <p role="alert" className="text-caption text-red">
+            {t('timings.publish.failed')}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {analysis.published ? (
+          <>
+            <button type="button" className="btn-ghost" onClick={copy} disabled={busy}>
+              {state.kind === 'copied' ? t('timings.publish.copied') : t('timings.publish.copyLink')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={unpublish} disabled={busy}>
+              {t('timings.publish.unpublish')}
+            </button>
+          </>
+        ) : state.kind === 'confirm' ? (
+          <>
+            <button type="button" className="btn-primary" onClick={() => publish(true)}>
+              {t('timings.publish.makePublic')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setState({ kind: 'idle' })}>
+              {t('timings.publish.keepPrivate')}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn-primary" onClick={() => publish(false)} disabled={busy}>
+            {busy ? t('timings.publish.busy') : t('timings.publish.publish')}
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -143,14 +239,18 @@ function Refused({ result }) {
  * The timing, to be checked by ear: the readouts, the tempo map with the song
  * and its clicks, the reader's adjustments and the exports, the red lines.
  * The song is the reader's own file, decoded here (ADR-W4).
+ *
+ * A published timing's page (W3.27) shows the same view to anyone: it has no
+ * `sha1` to check a file against, so it passes `verify`, which asks the
+ * server, and `csvHref`, the public CSV.
  */
-function Result({ id, analysis }) {
+export function Result({ id, analysis, verify = null, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
   const [selected, setSelected] = useState(null)
   const [hovered, setHovered] = useState(null)
-  const audio = useSongAudio(id, analysis.sha1)
+  const audio = useSongAudio(id, analysis.sha1, verify)
   const [player] = useState(() => new Player())
   const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
   const clockRef = useRef(null)
@@ -278,7 +378,7 @@ function Result({ id, analysis }) {
         clockRef={clockRef}
         focus={focus}
       >
-        <AudioSource audio={audio} filename={analysis.filename} />
+        <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
       </TempoMap>
 
@@ -305,6 +405,7 @@ function Result({ id, analysis }) {
           songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
           player={player}
           checks={checks}
+          csvHref={csvHref}
         />
       </AdjustExport>
 

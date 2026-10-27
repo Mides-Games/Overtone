@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -162,6 +163,69 @@ test('robots.txt, the sitemap and the manifest are served as themselves, with th
 
   // A missing file with an extension is a 404, never the app shell.
   assert.equal((await get(port, '/sitemap-2.xml')).status, 404);
+});
+
+/** A WEB_ROOT holding an index.html shaped like the built one. */
+const webRoot = () => {
+  const root = mkdtempSync(join(tmpdir(), 'overtone-serve-'));
+  writeFileSync(
+    join(root, 'index.html'),
+    '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n' +
+      '    <meta name="description" content="Overtone: automatic timing for osu! maps, by Mides Projects." />\n' +
+      '    <title>Overtone · Mides Projects</title>\n  </head>\n  <body><div id="root"></div></body>\n</html>\n',
+  );
+  return root;
+};
+
+test('a published timing\'s page carries its own title and Open Graph tags, escaped', async () => {
+  const id = 'a'.repeat(32);
+  const seen = [];
+  const api = await upstream((req, res) => {
+    seen.push({ url: req.url, secret: req.headers['x-overtone-proxy'] });
+    if (req.url !== `/api/v1/timings/${id}/card`) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      return res.end('{"error":{"status":404}}');
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({
+      id, title: 'Song "</title><script>alert(1)</script>', artist: "Band & Friends'‮", bpm: 174.004, redLines: 3,
+      uploader: { username: '<img src=x onerror=alert(1)>' }, anonymous: false,
+    }));
+  });
+  const port = await serve(api, { WEB_ROOT: webRoot(), PROXY_SECRET: 's'.repeat(32) });
+
+  const { status, body, headers } = await get(port, `/t/${id}`);
+  assert.equal(status, 200);
+  assert.equal(headers['cache-control'], 'no-store');
+  assert.equal(seen[0].secret, 's'.repeat(32));
+  assert.match(body, /<title>Band &amp; Friends&#39; - Song &quot;&lt;\/title&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt; · Overtone<\/title>/);
+  assert.match(body, /<meta property="og:title" content="Band &amp; Friends&#39; - Song &quot;&lt;\/title&gt;/);
+  assert.match(body, /<meta property="og:description" content="174 BPM · 3 red lines · timed by &lt;img src=x onerror=alert\(1\)&gt;" \/>/);
+  assert.match(body, /<meta name="description" content="174 BPM/);
+  // Nothing the uploader wrote reaches the page as markup.
+  assert.equal(body.includes('<script>'), false);
+  assert.equal(body.includes('<img'), false);
+  assert.equal(body.includes('‮'), false);
+  assert.equal((body.match(/<title>/g) ?? []).length, 1);
+
+  // Not published (the API's 404), or not a timing's id: the plain page.
+  const other = await get(port, `/t/${'b'.repeat(32)}`);
+  assert.equal(other.status, 200);
+  assert.match(other.body, /<title>Overtone · Mides Projects<\/title>/);
+  assert.equal(other.body.includes('og:title'), false);
+  const odd = await get(port, '/t/not-an-id');
+  assert.equal(odd.body.includes('og:title'), false);
+  assert.equal(seen.length, 2);
+});
+
+test('an API that does not answer a card leaves the page plain, in time', async () => {
+  const api = await upstream(() => {}); // never answers
+  const port = await serve(api, { WEB_ROOT: webRoot() });
+  const started = Date.now();
+  const { status, body } = await get(port, `/t/${'c'.repeat(32)}`);
+  assert.equal(status, 200);
+  assert.equal(body.includes('og:title'), false);
+  assert.ok(Date.now() - started < 5_000);
 });
 
 test('an API that answers is forwarded as before', async () => {

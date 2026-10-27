@@ -70,7 +70,11 @@ export const exchangeCode = async (code) => {
 /**
  * The Mides user in this server's shape: an explicit allow-list of public
  * profile fields. Mides sends this app only its minimal profile (no email,
- * phone, Discord or global role); `is_moderator` becomes the one role kept.
+ * phone or global role); `is_moderator` becomes the one role kept.
+ *
+ * `discord_id` (W9.1) is read when Mides sends it: the linked Discord user's
+ * id, a snowflake. Mides did not send it on 2026-10-27; docs/bot.md says what
+ * it must add. Anything that is not a snowflake is dropped.
  */
 export const toUser = (u) => ({
   midesUserId: String(u.id),
@@ -78,9 +82,31 @@ export const toUser = (u) => ({
   displayName: u.full_name || u.nickname || null,
   avatarUrl: absolute(u.photo_url),
   bannerUrl: absolute(u.banner_url),
-  discordId: null,
+  discordId: snowflake(u.discord_id),
   role: u.is_moderator === true ? 'moderator' : null,
 });
+
+/** A Discord id as a string of 17 to 20 digits, or `null`. */
+export const snowflake = (value) => {
+  const raw = typeof value === 'number' ? String(value) : value;
+  return typeof raw === 'string' && /^\d{17,20}$/.test(raw.trim()) ? raw.trim() : null;
+};
+
+/**
+ * Where to send someone who wants to link Discord (W9.1): a page on Mides
+ * that links it to their Mides account and sends them back to `return_to`.
+ * Overtone runs no Discord OAuth of its own. `return_to` is built here, from
+ * SITE_URL, like the SSO's redirect_uri: never from the request.
+ */
+export const discordLinkUrl = () => {
+  if (!env.midesWebUrl) {
+    throw new HttpError(503, 'Linking Discord through Mides is not configured on this server.', 'MIDES_LINK_OFF');
+  }
+  const url = new URL(`${env.midesWebUrl}${env.midesDiscordLinkPath}`);
+  url.searchParams.set('app', env.midesApp);
+  url.searchParams.set('return_to', `${env.siteUrl}/profile?linked=discord`);
+  return url.toString();
+};
 
 /**
  * A Mides image URL, absolute, or `null`. Mides stores them relative

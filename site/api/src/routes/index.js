@@ -4,6 +4,7 @@ import analyses from './analyses.routes.js';
 import auth from './auth.routes.js';
 import community from './community.routes.js';
 import health from './health.routes.js';
+import links from './links.routes.js';
 import me from './me.routes.js';
 import timings from './timings.routes.js';
 
@@ -16,5 +17,6 @@ router.use(me);
 router.use(analyses);
 router.use(community);
 router.use(timings);
+router.use(links);
 
 export default router;

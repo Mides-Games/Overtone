@@ -158,7 +158,48 @@ export const env = {
   // API answers 404 (middlewares/shared-secret.js). Optional in development,
   // where the browser reaches the API through Vite's proxy.
   proxySecret: text('PROXY_SECRET'),
+  // W9.3: the Discord bot's bearer for /api/internal/bot, separate from
+  // WORKER_TOKEN so a leak of one opens nothing of the other. Optional: unset,
+  // the bot's routes answer 503 BOT_OFF and the site works as before.
+  botToken: text('BOT_TOKEN'),
+  // W9.1: the Mides page that links a Discord account to the signed-in Mides
+  // user and sends the browser back to `return_to` (docs/bot.md lists what
+  // Mides must offer). A path on MIDES_WEB_URL.
+  midesDiscordLinkPath: text('MIDES_DISCORD_LINK_PATH', '/connections/discord/link'),
+  // W9.2: the osu! OAuth app (osu.ppy.sh/home/account/edit#oauth). All three
+  // or none: with any missing, linking osu! is off and the profile says so.
+  osuClientId: text('OSU_CLIENT_ID'),
+  osuClientSecret: text('OSU_CLIENT_SECRET'),
+  osuRedirectUri: text('OSU_REDIRECT_URI'),
+  // osu!'s own origin; the tests point it at a stand-in.
+  osuUrl: origin('OSU_URL', 'https://osu.ppy.sh'),
 };
+
+if (env.botToken) {
+  if (env.botToken.length < 32) problems.push('BOT_TOKEN must be at least 32 characters.');
+  if (env.botToken === env.workerToken) problems.push('BOT_TOKEN must not be WORKER_TOKEN: each door has its own key.');
+} else {
+  console.warn('[env] BOT_TOKEN is not set: the Discord bot\'s routes are off (503 BOT_OFF).');
+}
+
+const osuSet = [env.osuClientId, env.osuClientSecret, env.osuRedirectUri].filter(Boolean).length;
+if (osuSet && osuSet < 3) {
+  problems.push('OSU_CLIENT_ID, OSU_CLIENT_SECRET and OSU_REDIRECT_URI go together: set all three, or none.');
+}
+if (env.osuClientId && !/^\d{1,12}$/.test(env.osuClientId)) problems.push('OSU_CLIENT_ID is the number osu! shows for the app.');
+if (env.osuRedirectUri) {
+  try {
+    const url = new URL(env.osuRedirectUri);
+    // The code osu! sends back lands on this site's own page, nowhere else.
+    if (url.origin !== new URL(env.siteUrl).origin) problems.push('OSU_REDIRECT_URI must be on SITE_URL (e.g. SITE_URL/link/osu).');
+  } catch {
+    problems.push(`OSU_REDIRECT_URI must be a URL (got "${env.osuRedirectUri}").`);
+  }
+}
+if (!osuSet) console.warn('[env] OSU_CLIENT_ID is not set: linking an osu! account is off.');
+if (!/^\/[A-Za-z0-9/_-]{0,120}$/.test(env.midesDiscordLinkPath)) {
+  problems.push('MIDES_DISCORD_LINK_PATH is a path on MIDES_WEB_URL, like /connections/discord/link.');
+}
 
 if (env.proxySecret && env.proxySecret.length < 32) problems.push('PROXY_SECRET must be at least 32 characters.');
 if (isProduction && !env.proxySecret) problems.push('PROXY_SECRET is required in production: every allocation port is public.');
@@ -184,3 +225,9 @@ export const secureCookies = () => env.siteUrl.startsWith('https://');
 
 /** Whether the real Mides SSO can be used (both URLs known). */
 export const ssoConfigured = () => Boolean(env.midesAuthUrl && env.midesWebUrl);
+
+/** Whether linking osu! can be offered (W9.2): the app's three values are set. */
+export const osuConfigured = () => Boolean(env.osuClientId && env.osuClientSecret && env.osuRedirectUri);
+
+/** Whether the Discord bot may call in (W9.3). */
+export const botConfigured = () => Boolean(env.botToken);

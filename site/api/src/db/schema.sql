@@ -34,6 +34,42 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- refresh tokens goes, and takes any old ones with it.
 DROP TABLE IF EXISTS mides_tokens;
 
+-- W9.1 and W9.2, the linked accounts (docs/bot.md). `discord_id` (above) is
+-- the Discord user id, from the Mides profile when Mides sends one, or from
+-- the bot's /link code; one Discord user names one account at most.
+-- `discord_notify` is the opt-in to a DM from the bot when an analysis ends
+-- (W9.4). The osu! columns are what /me of the osu! API said at link time,
+-- read once with the `identify` scope; the osu! token itself is never kept.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS discord_notify   boolean NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_user_id      bigint CHECK (osu_user_id > 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_username     text CHECK (char_length(osu_username) <= 32);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_avatar_url   text CHECK (char_length(osu_avatar_url) <= 300);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_ranked_count integer CHECK (osu_ranked_count >= 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_linked_at    timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_discord_idx ON accounts (discord_id) WHERE discord_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_osu_idx ON accounts (osu_user_id) WHERE osu_user_id IS NOT NULL;
+
+-- W9.1's fallback while Mides sends no Discord id: the profile shows a code,
+-- the person types `/link <code>` to the bot, and the bot names the Discord
+-- user. Only the code's HMAC is kept; it lives ten minutes, one per account.
+CREATE TABLE IF NOT EXISTS discord_link_codes (
+  code_hash       text PRIMARY KEY CHECK (char_length(code_hash) <= 64),
+  account_id      uuid NOT NULL UNIQUE REFERENCES accounts (id) ON DELETE CASCADE,
+  expires_at      timestamptz NOT NULL
+);
+
+-- W9.4, the bot's outbox: one row per finished analysis of an account that
+-- asked for DMs. The bot claims rows (sent_at set in the same statement), so a
+-- notice goes at most once; a lost one is cheaper than a doubled one.
+CREATE TABLE IF NOT EXISTS discord_dms (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  public_id       char(32) NOT NULL UNIQUE,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  sent_at         timestamptz
+);
+CREATE INDEX IF NOT EXISTS discord_dms_pending_idx ON discord_dms (id) WHERE sent_at IS NULL;
+
 -- ── Songs, analyses and the queue ───────────────────────────────────────────
 
 -- A song is its audio's SHA-1, the same hash a .osz carries. The audio itself

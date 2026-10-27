@@ -97,7 +97,10 @@ def _line(meta: dict) -> str:
                      if k not in ("tool", "stage") and v not in (None, "", False))
     took = f"{meta['seconds']:.0f} s" if meta.get("seconds") is not None else ""
     commit = (meta.get("commit") or "")[:8]
-    return f"{meta['id']}  {meta['state']:<11} {what:<16} {extra:<40} {commit}  {took}"
+    peak = f"  peak {meta['peak_mb']} MB" if meta.get("peak_mb") else ""
+    why = f"
+  {meta['why']}" if meta.get("why") else ""
+    return f"{meta['id']}  {meta['state']:<11} {what:<16} {extra:<40} {commit}  {took}{peak}{why}"
 
 
 def _summary(summary: dict | None) -> None:

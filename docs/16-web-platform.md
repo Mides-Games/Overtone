@@ -473,8 +473,10 @@ con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
   Inicio, Analizar, Resultado y Login (más Cola y Perfil). Los colores y la tipografía
   son los de la app de escritorio ("Console"), no los de midesprojects.com: su fuente
   Horizon no tiene licencia conocida y el repo es público (`docs/site.md`, "Look").
-  El nav son pestañas subrayadas, no una píldora. Si se quiere la píldora, es un
-  cambio de estilo aparte que decide el dueño.
+  El nav son pestañas subrayadas, no una píldora, y se queda así (decidido el
+  2026-10-27 con la delegación del dueño): las pestañas son parte del look de la app
+  que el sitio ya adoptó, funcionan en móvil y con teclado, y cambiarlas sería solo
+  estética sin ganancia de uso.
 - **W3.6 hecha.** Las cuotas separan anónimo y cuenta (`ANON_DAILY_LIMIT`,
   `USER_DAILY_LIMIT`), con la dirección guardada como HMAC del día. El rate limit
   contaba por la dirección en memoria; W3.17 (rama `feature/shared-rate-limit`) lo

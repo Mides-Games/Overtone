@@ -34,6 +34,12 @@ version is `v0.2.0-alpha`.
   licence), and the navigation is underlined tabs, not a pill. The rate limit's
   key becomes a hash with W3.17.
 
+### Rejected / tried and dropped
+
+- A pill navigation, as W3.5's row words it. Decided under the owner's delegation:
+  the tabs belong to the app's look the site already adopted, work on a phone and
+  with a keyboard, and a pill would change only the style, not what anyone can do.
+
 ### Hardening
 
 - `site/web/test/i18n.test.js` holds W3.7 in place: it fails when a key exists in

@@ -1,0 +1,20 @@
+{
+  "name": "overtone-bot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The Overtone Discord bot: /time-song and friends, through site/api's /api/internal/bot (docs/bot.md).",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "register": "node --env-file-if-exists=.env scripts/register.mjs",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "license": "SEE LICENSE IN ../LICENSE",
+  "dependencies": {
+    "discord.js": "14.27.0"
+  }
+}

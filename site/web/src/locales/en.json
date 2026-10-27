@@ -80,9 +80,10 @@
     "outputsTitle": "What you will download",
     "outputs": {
       "osz": ".osz to open in osu!",
+      "osuPatch": "Your own .osu with the red lines put in",
       "timingPoints": "[TimingPoints] block",
-      "csv": "CSV of red lines",
-      "click": "Click track"
+      "click": "Click track (WAV)",
+      "csv": "CSV, JSON and a summary"
     },
     "ready": "ready",
     "soon": "soon",
@@ -330,5 +331,65 @@
     "busy": "Cancelling…",
     "notQueued": "It is already being analysed and can no longer be cancelled.",
     "failed": "It could not be cancelled. Try again."
+  },
+  "check": {
+    "title": "Check here",
+    "note": "Sorted by time. Listen to these first.",
+    "empty": "Nothing flagged: every section is graded high, its attacks sit close to the grid, and the engine found no half- or double-time or swing. Still give it a listen before you rank.",
+    "show": "Show",
+    "play": "Loop this span with the clicks",
+    "how": "Show marks the span on the map; ⟲ loops it with the clicks. Each item is evidence the engine already reported, not a new reading.",
+    "needsAudio": "Show marks the span on the map. Pick the song above to loop it with the clicks.",
+    "line": "red line {{n}}",
+    "lines": "red lines {{from}}–{{to}}",
+    "drift": "p90 drift {{ms}} ms",
+    "pulse": "half or double time?",
+    "triplets": "triplets",
+    "reason": {
+      "check": "Check",
+      "medium": "Medium",
+      "drift": "Drift",
+      "hint": "Pulse",
+      "swing": "Swing"
+    },
+    "why": {
+      "check": "The engine is not sure of this section: low confidence, a loose fit, or a warning.",
+      "medium": "Medium confidence: probably right, worth a listen.",
+      "drift": "One attack in ten sits more than {{ms}} ms from this grid.",
+      "hint": "The onsets thin out to every other beat here: possible half- or double-time.",
+      "swing": "The off-beat eighth lands late here: swing."
+    }
+  },
+  "exports": {
+    "more": "More downloads",
+    "patchTitle": "Put the timing in your .osu",
+    "patchPick": "Pick your .osu…",
+    "patchNote": "Its red lines are replaced with these (as you have adjusted them); green lines, hit objects and every other line stay as they were, byte for byte. It is patched here: the file is not uploaded. Keep your original until you have checked the new one in osu!.",
+    "patched": "Downloaded with {{added}} red lines in place of {{removed}}; {{kept}} green lines kept as they were.",
+    "greensBefore_one": "{{count}} green line now sits before the first red line. It is kept: osu! reads it against the first red line.",
+    "greensBefore_other": "{{count}} green lines now sit before the first red line. They are kept: osu! reads them against the first red line.",
+    "carried_one": "{{count}} green line was added where a removed red line set the hitsounds, kiai or slider velocity, so the map sounds and slides as before.",
+    "carried_other": "{{count}} green lines were added where removed red lines set the hitsounds, kiai or slider velocity, so the map sounds and slides as before.",
+    "objects_one": "{{count}} hit object was not moved: it may no longer sit on the new grid. Check it in the editor.",
+    "objects_other": "{{count}} hit objects were not moved: they may no longer sit on the new grid. Check them in the editor.",
+    "patchError": {
+      "notOsu": "That is not an osu! beatmap (.osu): its first line is not \"osu file format\".",
+      "noTimingPoints": "That .osu has no [TimingPoints] section to put the red lines in.",
+      "noLines": "There are no red lines to put in.",
+      "tooBig": "That file is too big to be an .osu.",
+      "failed": "The .osu could not be read."
+    },
+    "clickTitle": "Click track (WAV)",
+    "clicksOnly": "Clicks only",
+    "clicksMix": "Clicks over the song",
+    "rendering": "Rendering…",
+    "clickNote": "The clicks you hear, the bar's first beat accented, at the song's length (up to {{minutes}} minutes). Over the song, at your volumes. Rendered here; nothing is uploaded.",
+    "clickNeedsAudio": "The clicks you hear, the bar's first beat accented, at the song's length (up to {{minutes}} minutes). Pick the song above to mix them over it.",
+    "clickCapped": "The song is longer than {{minutes}} minutes: the track stops there.",
+    "clickFailed": "The click track could not be rendered in this browser.",
+    "filesTitle": "Files",
+    "json": "Result (JSON)",
+    "summary": "Summary (TXT)",
+    "filesNote": "The CSV and the summary follow your adjustments; the JSON is the engine's result as the server sent it."
   }
 }

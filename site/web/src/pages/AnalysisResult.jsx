@@ -6,12 +6,15 @@ import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
+import CheckHere from '../components/result/CheckHere.jsx'
+import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { api } from '../lib/api.js'
+import { checkSpans } from '../lib/check-spans.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
@@ -168,6 +171,9 @@ function Result({ id, analysis }) {
   const [player] = useState(() => new Player())
   const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
   const clockRef = useRef(null)
+  const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
+  const [checking, setChecking] = useState(null)
+  const [focus, setFocus] = useState(null)
 
   const durationS = result.duration_s ?? 0
   const sections = useMemo(() => result.sections ?? [], [result])
@@ -228,6 +234,21 @@ function Result({ id, analysis }) {
     player.play(spans[i].a, { range: spans[i], loopOn: true })
   }
 
+  // "Check here": a span shown is the map's loop band (no audio needed), brought into view; played, it loops with the clicks.
+  const spanOf = (item) => ({ a: item.startMs / 1000, b: Math.min(item.endMs / 1000, durationS || item.endMs / 1000) })
+  const showSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.setRange(spanOf(item))
+    setFocus({ ...spanOf(item), key: item.key, scroll: true })
+  }
+  const playSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.play(spanOf(item).a, { range: spanOf(item), loopOn: true })
+    setFocus({ ...spanOf(item), key: item.key, scroll: false })
+  }
+
   const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
     { label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
@@ -272,19 +293,37 @@ function Result({ id, analysis }) {
         onSelect={setSelected}
         onHover={setHovered}
         clockRef={clockRef}
+        focus={focus}
       >
         <AudioSource audio={audio} filename={analysis.filename} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
       </TempoMap>
 
+      <CheckHere
+        spans={checks}
+        // Lit while its band is the map's loop: drawing another loop unlights it.
+        active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
+        canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
+
       <AdjustExport
-        id={id}
         analysis={analysis}
         lines={lines}
         adjustment={adjustment}
         onAdjust={setAdjustment}
         audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
-      />
+      >
+        <MoreDownloads
+          id={id}
+          analysis={analysis}
+          lines={lines}
+          adjustment={adjustment}
+          grid={grid}
+          durationS={durationS}
+          songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+          player={player}
+          checks={checks}
+        />
+      </AdjustExport>
 
       <RedLinesTable
         lines={lines}

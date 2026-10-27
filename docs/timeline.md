@@ -20,6 +20,52 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.8: the queue in sight
+
+### Changed
+
+- W3.8 of [the web platform](16-web-platform.md): `/queue` shows every analysis
+  waiting or running and the ones that finished in the last hour: position, uploader
+  (Mides avatar and @, or "anonymous"), song, status with the running stage and its
+  progress, and how long it has taken. The page polls `GET /api/v1/analyses/queue`
+  every 3 s while something is in the queue, every 10 s when it is empty, and not at
+  all from a hidden tab. Polling rather than SSE: the answer is one snapshot shared by
+  every viewer for a second, and the reverse proxy needs nothing new.
+- The song is "Artist - Title" from the audio's own tags, read in the browser
+  (`site/web/src/lib/tags.js`: ID3v2.3/2.4 for MP3, Vorbis comments for OGG, Opus
+  and FLAC, from the first 256 kB) and sent as `X-Title`/`X-Artist`. Without tags it
+  is the file name without its extension. The server parses no audio and gains no
+  dependency.
+- The upload form has "keep it off the public queue". A private row shows only its
+  status, position and timing: no song, no file name, no uploader, not even whether
+  it was signed in.
+- `analyses` gains `private`, `tag_title` and `tag_artist` (`ADD COLUMN IF NOT
+  EXISTS`), and two partial indexes for the queue's two reads.
+
+### Hardening
+
+- The queue never carries an analysis id except on the caller's own rows, so it
+  cannot be walked into other people's results; it never carries the file's path,
+  the account id, the anonymous hash or the audio hash. The route sits under
+  `/api/v1/analyses` so the anonymous cookie, scoped to that path, still reaches it.
+
+### Measured
+
+- `node --test` in `site/api`: 19/19 (7 new, for the queue entry, the song label,
+  the tag cleaning and the in-memory queue order). `vite build`: 373 kB JS, 118 kB gzip.
+- By hand with `pnpm dev` (in-memory store, no worker: this machine had no `.venv`)
+  and a fake worker over `/api/internal`: three uploads, one tagged, one private, one
+  untagged, showed as "Camellia - Ghost" running at 40 %, a private upload at #1 and
+  "my cool track" at #2; only the uploading cookie got ids. In the browser at desktop
+  width and at 375 px. The tag reader returned title and artist for a hand-built
+  ID3v2.3 and Vorbis head, and nothing for a file without tags.
+- Not checked: a real PostgreSQL server (the window query was not run against one),
+  a real Mides account's avatar on the page, and a real worker. The Python suite and
+  the engine gates were not run (no `.venv` here); nothing under `python/`,
+  `worker/` or `crates/` changed.
+
+---
+
 ## Unreleased — 2026-10-26 · W2 + W3.4: the site analyses a song
 
 ### Changed

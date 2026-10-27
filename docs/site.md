@@ -235,3 +235,21 @@ vote on):
   (12), `pnpm build` (363 kB JS, 115 kB gzip).
 - The worker leaves with the API: stopping the dev process left no Python
   behind.
+
+### The public queue (W3.8, 2026-10-27)
+
+`/queue` polls `GET /api/v1/analyses/queue`: the running and queued rows (at most
+100, `more` counts the rest) and those finished in the last hour (at most 20), from
+a one-second snapshot shared by every viewer. Each row is shaped by
+`site/api/src/utils/queue.js`:
+
+- the song is "Artist - Title" from the tags the browser read (`X-Title`,
+  `X-Artist`; `site/web/src/lib/tags.js`), else the file name without extension;
+- the uploader is the public Mides profile (username, display name, avatar) or
+  "anonymous";
+- a row uploaded with "keep it off the public queue" (`X-Private: 1`) shows neither,
+  nor whether it was signed in;
+- the analysis id is only on the caller's own rows (session or anonymous cookie),
+  which link to their result; for anybody else an id would only lead to a 404.
+
+Checked by hand with `pnpm dev` and a fake worker; not against a real PostgreSQL.

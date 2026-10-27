@@ -122,7 +122,10 @@ const TYPES = {
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  // robots.txt, sitemap.xml and the web app manifest (W10.3): crawlers and
+  // browsers read these by type, and nosniff forbids them guessing.
   '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
 };
 

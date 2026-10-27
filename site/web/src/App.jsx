@@ -9,6 +9,7 @@ import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Profile from './pages/Profile.jsx'
 import Queue from './pages/Queue.jsx'
+import Status from './pages/Status.jsx'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         {/* The SSO's redirect_uri: SITE_URL + /login/callback, registered with Mides. */}
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="status" element={<Status />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

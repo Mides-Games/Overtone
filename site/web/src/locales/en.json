@@ -330,5 +330,37 @@
     "busy": "Cancelling…",
     "notQueued": "It is already being analysed and can no longer be cancelled.",
     "failed": "It could not be cancelled. Try again."
+  },
+  "status": {
+    "title": "Service status",
+    "description": "Whether the Overtone API, its database and the analysis worker are up right now.",
+    "intro": "What the site's own health check says right now. It asks again every 30 seconds while this page is open, and less often while the service does not answer.",
+    "api": "API",
+    "database": "Database",
+    "worker": "Analysis worker",
+    "states": {
+      "ok": "Working",
+      "down": "Not answering",
+      "none": "In memory (development)",
+      "unknown": "Not seen yet",
+      "unreachable": "Unreachable"
+    },
+    "notes": {
+      "api": "Answers the site's requests.",
+      "database": "Keeps the queue, the results and the accounts.",
+      "worker": "Runs the analyses. While it is down, uploads wait in the queue.",
+      "workerSeen": "Last heard from {{seconds}} s ago.",
+      "workerUnknown": "No worker has called since the API last started.",
+      "unreachable": "The API did not answer, so the rest cannot be checked."
+    },
+    "checked": "Checked at {{time}}",
+    "retry": "Check now",
+    "checking": "Checking…"
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "body": "This page hit an error and stopped. Reloading usually fixes it; your uploads and results on the server are not affected.",
+    "reload": "Reload the page",
+    "home": "Go to the home page"
   }
 }

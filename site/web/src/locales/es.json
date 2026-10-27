@@ -330,5 +330,37 @@
     "busy": "Cancelando…",
     "notQueued": "Ya se está analizando y no se puede cancelar.",
     "failed": "No se pudo cancelar. Probá de nuevo."
+  },
+  "status": {
+    "title": "Estado del servicio",
+    "description": "Si la API de Overtone, su base de datos y el worker de análisis están funcionando ahora.",
+    "intro": "Lo que dice ahora el chequeo de salud del propio sitio. Vuelve a preguntar cada 30 segundos mientras esta página está abierta, y más espaciado mientras el servicio no contesta.",
+    "api": "API",
+    "database": "Base de datos",
+    "worker": "Worker de análisis",
+    "states": {
+      "ok": "Funcionando",
+      "down": "No contesta",
+      "none": "En memoria (desarrollo)",
+      "unknown": "Todavía no se vio",
+      "unreachable": "Inalcanzable"
+    },
+    "notes": {
+      "api": "Contesta los pedidos del sitio.",
+      "database": "Guarda la cola, los resultados y las cuentas.",
+      "worker": "Corre los análisis. Mientras no anda, las subidas esperan en la cola.",
+      "workerSeen": "Se supo de él hace {{seconds}} s.",
+      "workerUnknown": "Ningún worker llamó desde que la API arrancó por última vez.",
+      "unreachable": "La API no contestó, así que el resto no se puede chequear."
+    },
+    "checked": "Chequeado a las {{time}}",
+    "retry": "Chequear ahora",
+    "checking": "Chequeando…"
+  },
+  "errorPage": {
+    "title": "Algo salió mal",
+    "body": "Esta página tuvo un error y se detuvo. Recargarla suele arreglarlo; tus subidas y resultados en el servidor no se ven afectados.",
+    "reload": "Recargar la página",
+    "home": "Ir al inicio"
   }
 }

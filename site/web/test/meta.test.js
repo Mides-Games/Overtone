@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
+import { nextDelay } from '../src/lib/backoff.js'
 import { SITE_TITLE, applyPageMeta, pageTitle } from '../src/lib/meta.js'
 
 /** Just enough of a document: a title and the meta tags by selector. */
@@ -38,4 +39,10 @@ test('index.html carries every tag the hook sets, and the link preview', () => {
   }
   assert.match(html, /property="og:image" content="https:\/\/[^"]+\/og-image\.png"/)
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/)
+})
+
+test('the status page waits longer after each failure, up to a ceiling, and resets on success', () => {
+  assert.equal(nextDelay(0), 30_000)
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map((n) => nextDelay(n)), [5_000, 10_000, 20_000, 40_000, 80_000, 120_000])
+  assert.equal(nextDelay(500), 120_000)
 })

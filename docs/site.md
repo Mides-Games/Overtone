@@ -253,3 +253,20 @@ a one-second snapshot shared by every viewer. Each row is shaped by
   which link to their result; for anybody else an id would only lead to a 404.
 
 Checked by hand with `pnpm dev` and a fake worker; not against a real PostgreSQL.
+
+### Many songs at once (W3.9, 2026-10-27)
+
+The Analyze form takes several files or a folder and sends them one after another,
+each its own analysis with its own card. Three limits hold however many are sent:
+the daily quota, `ANON_MAX_PENDING` / `USER_MAX_PENDING` songs of one person waiting
+or running at once (429 `PENDING_LIMIT`), and `QUEUE_MAX` for the whole queue (503
+`QUEUE_FULL`).
+
+The queue's order is round robin between people: every person's 1st song before
+anyone's 2nd, each person's songs in the order sent, and between equal turns
+whoever was served longest ago (`jobs.claimed_at`). A person is the account, or
+without one the hashed address. The claim, the position a result page shows and
+the public queue read the same order.
+
+Checked against PostgreSQL through PGlite (see `timeline.md`) and in the browser;
+not with two real addresses taking turns.

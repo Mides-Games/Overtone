@@ -432,6 +432,12 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
 a todos los que miran). Los tags se leen en el navegador, no en el server. La casilla
 "privado" está en el formulario de subida. Detalle en `docs/site.md` y `timeline.md`.
 
+**W3.9 hecha el 2026-10-27** en la rama `feature/multi-upload`: varios archivos o una
+carpeta, una tarjeta por canción; topes `ANON_MAX_PENDING`/`USER_MAX_PENDING` (3/10) y
+`QUEUE_MAX` (200); orden por turnos entre personas, y a igual turno primero quien hace
+más que no recibe un análisis. Probado contra PostgreSQL (PGlite). Detalle en
+`docs/site.md` y `timeline.md`.
+
 ### Fase W4 — Reviactyl
 
 | # | Tarea |

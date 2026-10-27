@@ -20,6 +20,55 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.9: many songs at once, in fair turns
+
+### Changed
+
+- W3.9 of [the web platform](16-web-platform.md): the Analyze form takes several
+  files, a dropped folder (opened recursively, audio only) or a folder chosen with
+  "Choose a folder". They are sent one after another; each is its own analysis with
+  its own card, which follows its upload, its place in the queue, its stage and its
+  outcome, and links to its result. A single file still goes straight to its result
+  page. A batch stops at the first refusal the rest would get too (quota, pending
+  limit, full queue, rate limit, network).
+- Limits, all set in `site/api/.env`: `ANON_MAX_PENDING` (3) and `USER_MAX_PENDING`
+  (10) songs of one person waiting or running at once, refused with 429
+  `PENDING_LIMIT`; `QUEUE_MAX` (200) for the whole queue, refused with 503
+  `QUEUE_FULL`. Both are checked before the body is read, like the daily quota, which
+  is unchanged. Without an account a person is the hashed address, as for the quota,
+  so clearing the cookie does not reset it. `/health` reports the two pending limits.
+- The queue is fair between people instead of first come, first served: each
+  person's songs are numbered in the order they sent them, the queue takes every
+  person's 1st before anyone's 2nd, and between equal turns whoever was served longest
+  ago goes first (`jobs.claimed_at`, new). The claim, the position on a result page
+  and the public queue all use the one order (`fairOrder` in memory,
+  `FAIR_POSITIONS` in SQL).
+
+### Fixed
+
+- The first version of the fair order gave a batch's next song turn 1 again the
+  moment its first one was taken, and it won the tie against a newcomer's 1st by being
+  older: the batch still went first in full. The new test of claiming in a row caught
+  it; the "served longest ago" tie-break is the fix.
+
+### Measured
+
+- `node --test` in `site/api`: 23/23 (4 new). `vite build`: 378 kB JS, 119 kB gzip.
+- Against PostgreSQL (PGlite 0.3 behind `pglite-socket`, a temporary install outside
+  the repository): `schema.sql` applied twice; three songs from one address, one
+  private from another and one tagged from an account queued as positions 1 to 5 in
+  the order batch, single, account, batch, batch; the claim, finishing each song
+  before the next, took them in that order; `countPending`, the result-page position,
+  the account's username on the queue and the last hour's list were right. That also
+  covers the W3.8 queue query, which had not been run against PostgreSQL.
+- In the browser (`pnpm dev`, in memory, no worker): five files, one of them
+  `.txt`: three queued as positions 1 to 3, the fourth refused with the pending
+  limit, the `.txt` refused before sending; at 375 px with no horizontal scroll.
+- Not checked: two real people from two addresses taking turns in the browser (the
+  dev machine is one address), a real worker, a real Mides account.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.8: the queue in sight
 
 ### Changed

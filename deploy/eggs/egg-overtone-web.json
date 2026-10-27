@@ -109,6 +109,16 @@
             "field_type": "text"
         },
         {
+            "name": "API timeout",
+            "description": "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). Idle, not total: an upload that keeps moving is not cut.",
+            "env_variable": "API_TIMEOUT_S",
+            "default_value": "60",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:1,3600",
+            "field_type": "text"
+        },
+        {
             "name": "HSTS",
             "description": "1 = every page carries Strict-Transport-Security (one year). The site is served over https only; 0 is for a server reached over plain http.",
             "env_variable": "HSTS",

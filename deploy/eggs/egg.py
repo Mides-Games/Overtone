@@ -133,6 +133,10 @@ def web():
              "X-Forwarded-For entries plus the connection's address and drops what a client wrote "
              "before them. The API's TRUST_PROXY is this + 1.",
              default="1", rules="required|integer|between:0,10"),
+         var("API timeout", "API_TIMEOUT_S",
+             "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). "
+             "Idle, not total: an upload that keeps moving is not cut.",
+             default="60", rules="required|integer|between:1,3600"),
          var("HSTS", "HSTS",
              "1 = every page carries Strict-Transport-Security (one year). The site is served over "
              "https only; 0 is for a server reached over plain http.",

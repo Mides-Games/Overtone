@@ -22,6 +22,10 @@
  * client wrote further left is dropped. The API then trusts this process and
  * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
  *
+ * API_TIMEOUT_S (default 60) cuts a forwarded request whose connection to the
+ * API has been idle that long (504), so an API that hangs cannot pin this
+ * process's sockets. Idle, not total: an upload that keeps moving is not cut.
+ *
  * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
  * 0 only when the site is served over plain http, as on a laptop.
  *
@@ -42,6 +46,7 @@ const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
 const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
+const API_TIMEOUT_MS = seconds(process.env.API_TIMEOUT_S, 60) * 1000;
 const PROXY_HEADER = 'x-overtone-proxy';
 const PROXY_SECRET = (process.env.PROXY_SECRET || '').trim();
 if (PROXY_SECRET && PROXY_SECRET.length < 32) {
@@ -54,6 +59,16 @@ function hops(raw) {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0 || n > 10) {
     console.error(`overtone-web: TRUSTED_PROXY_HOPS must be an integer from 0 to 10 (got "${raw}")`);
+    process.exit(1);
+  }
+  return n;
+}
+
+function seconds(raw, fallback) {
+  if (raw === undefined || String(raw).trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 3600) {
+    console.error(`overtone-web: API_TIMEOUT_S must be a number of seconds from 1 to 3600 (got "${raw}")`);
     process.exit(1);
   }
   return n;
@@ -141,14 +156,24 @@ function proxy(req, res) {
       r.pipe(res);
     },
   );
+  // An API that stops answering, or a connection that stops moving, must not
+  // hold this process's sockets forever: idle for API_TIMEOUT_S, it is cut.
+  up.setTimeout(API_TIMEOUT_MS, () => {
+    up.destroy(Object.assign(new Error(`no answer in ${API_TIMEOUT_MS / 1000} s`), { code: 'ETIMEDOUT' }));
+  });
   up.on('error', (err) => {
     console.error(`overtone-web: ${req.method} ${req.url} -> api failed: ${err.code || err.message}`);
     if (!res.headersSent) {
-      res.writeHead(502, { 'content-type': 'application/json' });
-      res.end('{"error":"api_unreachable"}');
+      const timedOut = err.code === 'ETIMEDOUT';
+      res.writeHead(timedOut ? 504 : 502, { 'content-type': 'application/json' });
+      res.end(timedOut ? '{"error":"api_timeout"}' : '{"error":"api_unreachable"}');
     } else {
       res.destroy();
     }
+  });
+  // A client that leaves takes its forwarded request with it.
+  res.on('close', () => {
+    if (!res.writableFinished) up.destroy();
   });
   req.pipe(up);
 }

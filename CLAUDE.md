@@ -102,6 +102,19 @@ cargo run --release -q -p overtone-bench -- map        # no false changes
 ```
 
 Every mode reads the golden vectors, so a new golden fixture must pass all five.
+
+And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
+
+```bash
+pnpm --dir site/api test                               # all pass (31 on 2026-10-27)
+pnpm --dir site/web build                              # the site builds
+```
+
+`bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
+the number stated here to them; when `site/web` has tests, a `pnpm --dir site/web test`
+line with its count belongs beside the API's. Their PostgreSQL paths run against an
+in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
+`DATABASE_URL` is set.
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral
 memory (peak working set, read from outside with the one-liner in the mode's doc) and
 resampling speed, which no 44.1 kHz fixture exercises.

@@ -52,6 +52,16 @@ version is `v0.2.0-alpha`.
 
   W2.3 is done when both print 24/24 there.
 
+### Rejected / tried and dropped
+
+- Queuing the Linux run on the measurement server now (decided 2026-10-27, owner away
+  and decisions delegated). `bench/remote.py run` only queues `stages` and
+  `single_bpm` against the code the server already runs (`feature/library-api`, no
+  `worker/`), so the gate cannot go through that queue. Switching the server's branch
+  or opening an SSH shell beside it would cut into the engine experiment matrix it is
+  running for hours, and the matrix's timings with it. So the run waits for the matrix
+  to finish, then follows the steps above in a separate clone.
+
 ---
 
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token

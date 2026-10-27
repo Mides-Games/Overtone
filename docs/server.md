@@ -43,6 +43,14 @@ corre uno, la respuesta es `409`. El progreso se lee en `status.jobs`.
 
 Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
 
+**Quién ejecuta qué.** El checkout (`/opt/overtone`) es del usuario
+`overtone`, que es quien lo actualiza. root nunca ejecuta nada de ahí: ni
+un script, ni una compilación, ni `git`. Un archivo de una carpeta que otro
+usuario puede escribir, ejecutado por root, es root para quien la escriba;
+y `git` lee la configuración y los hooks del repositorio, que también son de
+`overtone`. Por eso cada paso sobre el checkout va con `sudo -u overtone -H`,
+y nunca hace falta `safe.directory`.
+
 1. Paquetes del sistema (sin escritorio ni ffmpeg: el motor Rust decodifica
    solo):
 
@@ -50,36 +58,39 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
    apt-get install -y --no-install-recommends build-essential curl git ca-certificates libsndfile1
    ```
 
-2. El código. Sube el repositorio sin `.venv/` ni `target/`, o clónalo:
+2. El usuario del servicio y el código, clonado por ese usuario:
 
    ```bash
-   git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
-   ```
-
-3. Python 3.14 con `uv` y las dependencias del motor:
-
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
+   useradd --system --create-home --home-dir /var/lib/overtone --shell /bin/sh overtone && install -d -o overtone -g overtone /opt/overtone
    ```
 
    ```bash
-   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python -r python/requirements.lock
+   sudo -u overtone -H git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
+   ```
+
+3. Python 3.14 con `uv` y las dependencias del motor, como `overtone`:
+
+   ```bash
+   sudo -u overtone -H sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+   ```
+
+   ```bash
+   sudo -u overtone -H sh -c 'cd /opt/overtone && ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python -r python/requirements.lock'
    ```
 
    Las versiones salen de `python/requirements.lock`, las mismas que midió
-   el benchmark.
+   el benchmark. `uv` y el intérprete quedan en la carpeta de `overtone`
+   (`/var/lib/overtone`), donde el servicio los alcanza.
 
-   `UV_PYTHON_INSTALL_DIR` deja el intérprete fuera de `/root`, para que el
-   usuario del servicio (abajo) pueda usarlo.
-
-4. El motor Rust, que es el que hace rápido el análisis:
+4. El motor Rust, que es el que hace rápido el análisis, también como
+   `overtone` (así el actualizador puede recompilarlo):
 
    ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+   sudo -u overtone -H sh -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
    ```
 
    ```bash
-   cd /opt/overtone && ~/.cargo/bin/cargo build --release -p overtone-cli
+   sudo -u overtone -H sh -c 'cd /opt/overtone && ~/.cargo/bin/cargo build --release -p overtone-cli'
    ```
 
    Compilar en release puede pedir más de 1 GB de RAM. Si la VPS tiene poca,
@@ -92,14 +103,14 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
 6. Comprobar que el motor y la API funcionan ahí:
 
    ```bash
-   cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests
+   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests'
    ```
 
-7. Arrancarlo a mano una vez. La primera vez escribe un token en
-   `~/Overtone/api-token`:
+7. Arrancarlo a mano una vez, como `overtone`. La primera vez escribe un
+   token en `/var/lib/overtone/Overtone/api-token`:
 
    ```bash
-   cd /opt/overtone && .venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60
+   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60'
    ```
 
    `--every 60` escanea y analiza lo nuevo cada 60 minutos. `--jobs N` fija
@@ -142,7 +153,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-useradd --system --create-home overtone && chown -R overtone /opt/overtone && systemctl daemon-reload && systemctl enable --now overtone-api
+systemctl daemon-reload && systemctl enable --now overtone-api
 ```
 
 El checkout es de `overtone` y la actualización automática
@@ -151,9 +162,9 @@ como root: root ejecutando código de una carpeta que otro usuario puede
 escribir le daría root a quien la escriba. Su único paso con privilegios,
 reiniciar el servicio, pasa por una regla de sudo solo para ese comando, que
 instala `deploy/setup-deploy-user.sh`. Para que pueda recompilar
-`overtone-cli`, Rust tiene que estar al alcance de `overtone` (instalalo con
-rustup como ese usuario, o apuntá `OVERTONE_CARGO` a un `cargo` que pueda
-ejecutar); si no, el binario anterior sigue y el log lo dice.
+`overtone-cli`, Rust tiene que estar al alcance de `overtone` (el paso 4 lo
+instala como ese usuario; si no, apuntá `OVERTONE_CARGO` a un `cargo` que
+pueda ejecutar); si no, el binario anterior sigue y el log lo dice.
 
 Si un proceso del servicio llega al tope de memoria, systemd para el
 servicio entero salvo que se le diga lo contrario. Para que una medición o
@@ -271,24 +282,30 @@ python bench/remote.py --token-file token.txt suite --wait
 `sbom` y `notices` no corren en el servidor: revisan el venv y los crates
 del build del instalador de Windows. El modelo de Beat This! es un archivo
 de Git LFS; sin git-lfs, la VPS tiene un puntero en su lugar (y `perf` falla
-en esa etapa). Una sola vez, como root:
+en esa etapa). Una sola vez: el paquete como root, y git-lfs, como todo
+`git` sobre el checkout, como `overtone`:
 
 ```bash
-apt-get install -y git-lfs && cd /opt/overtone && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+apt-get install -y git-lfs
+```
+
+```bash
+sudo -u overtone -H git -C /opt/overtone lfs install --local && sudo -u overtone -H git -C /opt/overtone lfs pull && ls -la /opt/overtone/assets/models/beat_this_final0.onnx
 ```
 
 Desde ahí el actualizador baja los archivos LFS en cada versión.
 
 Los gates generan su audio de prueba en `bench/audio`, dentro del código,
-donde el servicio no puede escribir. Una sola vez, como root:
+donde el servicio no puede escribir. Una sola vez, como `overtone` (el
+enlace va dentro de su checkout, que root no toca):
 
 ```bash
-mkdir -p /var/lib/overtone/bench-audio && chown overtone:overtone /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio
+sudo -u overtone -H sh -c 'mkdir -p /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio'
 ```
 
 **Probar otra versión del algoritmo:** en la VPS,
-`cd /opt/overtone && git pull && systemctl restart overtone-api`, y lanza
-la corrida. Cada informe guarda el commit que lo produjo, así que dos
+`sudo -u overtone -H git -C /opt/overtone pull --ff-only && systemctl restart overtone-api`,
+y lanza la corrida. Cada informe guarda el commit que lo produjo, así que dos
 corridas se comparan sabiendo qué código respondió cada una. Las mediciones
 no son gates: lo que decide si un cambio entra siguen siendo los gates
 locales de `CLAUDE.md`.
@@ -312,11 +329,25 @@ la VPS en otra rama a mano, el actualizador la deja en paz y lo dice en el
 log.
 
 Instalarlo, una vez, como root (la llave pública la da quien configura los
-secretos de GitHub):
+secretos de GitHub). root no ejecuta el script desde el checkout, que es de
+`overtone`: primero lo copia a un archivo suyo (git lo lee como `overtone`),
+lo revisa entero, y ejecuta esa copia. El script escribe él mismo las
+unidades de systemd del actualizador; no copia nada del checkout.
 
 ```bash
-sh /opt/overtone/deploy/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+sudo -u overtone -H git -C /opt/overtone show HEAD:deploy/setup-deploy-user.sh > /root/setup-deploy-user.sh
 ```
+
+```bash
+less /root/setup-deploy-user.sh
+```
+
+```bash
+sh /root/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+```
+
+Si el script cambia en el repositorio, se repite igual: copiar, revisar,
+ejecutar la copia.
 
 Qué hizo cada vez:
 

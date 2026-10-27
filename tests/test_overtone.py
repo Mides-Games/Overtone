@@ -5970,6 +5970,29 @@ class LibraryServerTests(unittest.TestCase):
                 self.server_module.load_token(str(path))
 
 
+class DeployScriptTests(unittest.TestCase):
+    """The server's updater and the root-run script that installs it."""
+
+    DEPLOY = Path(__file__).resolve().parent.parent / "deploy"
+
+    def test_the_setup_script_writes_the_committed_units_byte_for_byte(self):
+        import re
+        # Root runs this script from a copy it reviewed; it must not reach
+        # back into the overtone-owned checkout for anything it installs.
+        script = (self.DEPLOY / "setup-deploy-user.sh").read_bytes().decode("utf-8")
+        for name in ("overtone-update.service", "overtone-update.timer"):
+            found = re.search(rf"^cat > /etc/systemd/system/{re.escape(name)} <<'UNIT'\n"
+                              r"(.*?)^UNIT$", script, re.S | re.M)
+            self.assertIsNotNone(found, name)
+            self.assertEqual(found.group(1),
+                             (self.DEPLOY / name).read_bytes().decode("utf-8"), name)
+        outside = re.sub(r"<<'UNIT'\n.*?^UNIT$", "", script, flags=re.S | re.M)
+        code = "\n".join(line for line in outside.splitlines()
+                         if not line.lstrip().startswith("#"))
+        for reach in ("dirname", "/opt/overtone", "cp "):
+            self.assertNotIn(reach, code, reach)
+
+
 class MeasurementRunTests(unittest.TestCase):
     """Server runs of the bench's timing stages: one at a time, each in its
     own process, kept on disk with the code that produced it."""

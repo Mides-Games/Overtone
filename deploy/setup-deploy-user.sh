@@ -1,13 +1,20 @@
 #!/bin/sh
 # One-time, as root: let GitHub Actions start this server's update, and only that.
 #
-#   sh /opt/overtone/deploy/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+# Run it from a copy root owns and you have read, never from the checkout:
+# /opt/overtone belongs to overtone, and root running a file from it is root
+# for whoever can write it. Git reads that checkout as overtone too, since
+# its config and hooks are overtone's to write (docs/server.md):
+#
+#   sudo -u overtone -H git -C /opt/overtone show HEAD:deploy/setup-deploy-user.sh > /root/setup-deploy-user.sh
+#   less /root/setup-deploy-user.sh
+#   sh /root/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
 #
 # Creates overtone-deploy, a user that signs in with that key alone (no
 # password, no shell of its own, no forwarding, no terminal) and whose key
 # runs one forced command whatever it asks: start overtone-update.service.
 # Every other account's sign-in is left exactly as it was. Also installs the
-# update timer (deploy/overtone-update.timer) as the fallback. Safe to run again.
+# update timer as the fallback. Safe to run again.
 set -eu
 
 KEY=${1:?"usage: $0 'ssh-ed25519 AAAA... comment'"}
@@ -16,11 +23,36 @@ case "$KEY" in
     *) echo "That does not look like a public key: $KEY" >&2; exit 2 ;;
 esac
 USER_NAME=overtone-deploy
-HERE=$(cd "$(dirname "$0")" && pwd)
 
-# The update itself, and the timer that runs it when no push does. The
-# script is executable as committed; nothing here changes the checkout.
-cp "$HERE/overtone-update.service" "$HERE/overtone-update.timer" /etc/systemd/system/
+# The update itself, and the timer that runs it when no push does. Written
+# from here, not copied from the checkout: what root installs is what this
+# reviewed file says. They are deploy/overtone-update.service and .timer,
+# byte for byte (tests/test_overtone.py holds the two copies together).
+cat > /etc/systemd/system/overtone-update.service <<'UNIT'
+[Unit]
+Description=Bring Overtone up to its stable branch on GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Never root: see the head of overtone-update.sh.
+User=overtone
+ExecStart=/bin/sh /opt/overtone/deploy/overtone-update.sh
+Nice=15
+UNIT
+cat > /etc/systemd/system/overtone-update.timer <<'UNIT'
+[Unit]
+Description=Look for a new Overtone every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=overtone-update.service
+
+[Install]
+WantedBy=timers.target
+UNIT
 systemctl daemon-reload
 systemctl enable --now overtone-update.timer
 

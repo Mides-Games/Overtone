@@ -816,3 +816,60 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### Comparing timings (W12.10, W12.11, 2026-10-27)
+
+Two timings of one song side by side, all in the browser. Code: `lib/compare.js` (the
+math, pure), `components/compare/` (the report and the map panel), `pages/Compare.jsx`.
+
+- **Grids, not first beats.** A red line a whole number of beats from the other's, at the
+  same tempo, is the same grid: osu! plays the same clicks. Lines are paired in order when
+  within four beats of the slower one (at least 1 s). Per pair: the BPM difference (or
+  ×2 / ×½), the offset as the phase of B's grid against A's at the later of the two lines
+  (the sparser grid's beat, the denser grid's nearest one), the same at their last shared
+  beat (a difference that grows is drift), the meter, and which beat the bar starts on.
+  A line only one side has is listed, saying whether the other grid already agrees there.
+- **The verdict** looks up every beat of the sparser grid, from the later first line to
+  the end, in the other grid, judging each beat by the line its partner belongs to:
+  `same` (every beat within 5 ms and every tempo within 0.05 BPM, the accuracy baseline's
+  tolerances, named on the page), `offset` (one constant shift past 5 ms), `double`,
+  `half`, or `different` with the share on the same grid, the share at half or double and
+  the first beat that parts. Signs read B minus A.
+- **With a map (W12.10)**, on the result page and a published timing's page: the reader
+  picks an `.osu` (16 MB and 2000 red lines at most). It is read with `File.text()` and
+  kept in the page's state only, never uploaded or stored. The map's lines are dashed in
+  `--compare` blue on the tempo plot and the overview, with their BPM along the plot's
+  foot; the tooltip adds the map's BPM; "Clicks from" plays the map's grid instead of the
+  result's (the drawn grid and the loops stay the result's). It compares against the
+  lines as the reader adjusted them, and warns when the map's `AudioFilename` is not the
+  analysed file's name (a hint: maps rename their audio).
+- **Two analyses (W12.11)**, `/compare?a=<id>&b=<id>`, each side optionally `ax`/`bx`
+  (×0.5 or ×2) and `an`/`bn` (a nudge, ±1000 ms). A side is read as the visitor's own
+  (`GET /analyses/:id`) or else as published (`GET /timings/:id`), with one 404 text for
+  both; a missing side is picked from the account's history (this browser's list without
+  an account), as the other side at ×2 or ×0.5, or by pasting a `/t/` link or an id. The
+  song is A's audio from the visitor's file, checked as on the result page; the clicks
+  play A's or B's grid. When both are the visitor's and their SHA-1s differ, the page
+  says the two are different audio. Offered from the history, a public timing and the
+  result page (and "the engine's against your adjusted one" when adjusted). Out of the
+  sitemap and disallowed in robots.txt: the page depends on who asks.
+
+Checked with the dev site (5194/3024, one real worker, Beat This! off), uploads made from
+the page so the browser owned them, `.osu` and audio handed to the inputs as `File`s:
+
+- `change-128-142.wav` against a hand-made map (second line 2 ms late, in 3/4): "same grid
+  within 1.9 ms", the meter change reported; "Clicks from: Map" put the player on the
+  map's 136-click grid. The map's dashed lines and labels drawn, dark theme.
+- `/compare` with that analysis against itself at ×2 +3 ms: "double within 3.0 ms" (this
+  read `different` before the fix in the timeline); at -8 ms by typing in the nudge field:
+  "8.0 ms earlier on every beat"; against `halftime-150-75.wav`: different, the unpaired
+  line listed; B's clicks (269) over the picked song.
+- The picker: this browser's list, then the account's history after the dev sign-in; a
+  pasted `/t/` link used, a bad one refused; an unknown id given the shared 404 text.
+- A published timing's page: "Compare" in the header, the map panel at 375 px in ES, dark
+  (the table scrolls in its own box, the page does not); `/compare` at 375 px in ES, light.
+  The history's "Compare" links (this browser's list).
+
+Not checked: a real ranked map (`.osu` files were made by hand), the published-side
+fallback of `/compare` as a stranger (the browser that published it also owned it; the
+`/timings/:id` read is the one the public page uses), listening, Safari and Firefox.

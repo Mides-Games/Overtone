@@ -8,6 +8,8 @@ import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { readTags } from '../lib/tags.js'
+import { batchFiles } from '../lib/timing.js'
+import { zipStore } from '../lib/zip.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -161,6 +163,18 @@ export default function Analyze() {
   }
   const canNotify = typeof Notification !== 'undefined' && Notification.permission !== 'denied'
 
+  // W3.15: every timing of the batch in one ZIP, from the results the cards
+  // already hold. Built here, so the server sends nothing new.
+  const timings = batchFiles(items)
+  function downloadAll() {
+    const url = URL.createObjectURL(new Blob([zipStore(timings)], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'overtone-timings.zip'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   const perDay = account ? limits?.userDailyLimit : limits?.anonDailyLimit
   const atOnce = account ? limits?.userMaxPending : limits?.anonMaxPending
   const sending = state.kind === 'sending'
@@ -233,7 +247,7 @@ export default function Analyze() {
                   <FileCard
                     key={item.key}
                     item={item}
-                    onStatus={(status) => update(item.key, { status })}
+                    onAnalysis={(analysis) => update(item.key, { status: analysis.status, result: analysis.result ?? null })}
                     problem={item.upload.kind === 'ready' ? problemWith(item) : null}
                     onRemove={sending ? null : () => setItems((list) => list.filter((other) => other.key !== item.key))}
                   />
@@ -248,6 +262,12 @@ export default function Analyze() {
                 <span className="block text-caption text-dim">{t('analyze.privateHint')}</span>
               </span>
             </label>
+
+            {items.length > 1 && timings.length > 0 && (
+              <button type="button" onClick={downloadAll} className="btn-ghost w-full">
+                {t('analyze.batch.download', { count: timings.length })}
+              </button>
+            )}
 
             {items.length > 1 && canNotify && (
               <label className="flex cursor-pointer items-center gap-3 px-1 text-label">
@@ -361,7 +381,7 @@ export function messageFor(t, error, limits) {
 const extensionOf = (file) => file.name.split('.').pop()?.toLowerCase()
 
 /** One file of the list: its name and size, then its upload, then its analysis, polled. */
-function FileCard({ item, problem, onRemove, onStatus }) {
+function FileCard({ item, problem, onRemove, onAnalysis }) {
   const { t } = useTranslation()
   const { file, seconds, upload } = item
   const [analysis, setAnalysis] = useState(null)
@@ -376,7 +396,7 @@ function FileCard({ item, problem, onRemove, onStatus }) {
         const next = await api(`/analyses/${upload.id}`)
         if (stopped) return
         setAnalysis(next)
-        onStatus?.(next.status)
+        onAnalysis?.(next)
         if (next.status === 'queued' || next.status === 'running') timer = setTimeout(poll, 3000)
       } catch {
         if (!stopped) timer = setTimeout(poll, 6000)

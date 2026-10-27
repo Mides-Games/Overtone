@@ -20,6 +20,38 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
+
+### Changed
+
+- The code exchange sends `app` and `MIDES_CLIENT_SECRET`, and Mides (branch
+  `feat/web-sso-scoped` of Mides-Dev-Web) answers Overtone with an access token of
+  audience `app:overtone`, no refresh token and the minimal profile. Overtone stores
+  no Mides token: `keepMidesToken`, `refreshAccess`, `utils/secret-box.js` and
+  `TOKEN_KEY` are gone, and `schema.sql` drops `mides_tokens` with any token in it.
+- The account's role is now only "moderator" (Mides' `is_moderator`) or none; the
+  global Mides role and the Discord id are no longer sent, so they are not kept.
+
+### Hardening
+
+- Before, the exchange took a bare code and Mides answered with the same session
+  tokens as its own website, plus the full profile. A code stolen from a browser
+  was a whole Mides account, and this server held a refresh token worth one for
+  every user. Now a code is useless without this server's secret, and this server
+  holds nothing a breach could use against Mides.
+
+### Measured
+
+- `node --test` in `site/api`: 31/31 (3 new, with `fetch` stubbed: the exchange's
+  body, the profile mapping, a refused secret reported as 503 to the person and by
+  name in the log). The Mides side is tested by its smoke (not run here: no Python).
+- Not checked: a real exchange between the two servers. **Deploy order:** set
+  `SSO_SECRET_OVERTONE` in Mides and `MIDES_CLIENT_SECRET` here to one value, merge
+  Mides' branch, then deploy this one; until both are in, Overtone's sign-in fails
+  closed (503).
+
+---
+
 ## Unreleased — 2026-10-27 · The queue under concurrency
 
 A security and performance review of the site (API, worker, web, deploy) found

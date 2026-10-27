@@ -102,8 +102,8 @@ navegador ──► overtone-web (estático, Vite build)
     - el `redirect_uri` lo arma el servidor;
     - una cookie firmada protege contra CSRF;
     - la sesión es una cookie HMAC propia;
-    - el refresh token se guarda cifrado con AES-GCM.
-  - **El costo de `web`:** el token es una sesión completa de Mides. Puede postear en
+    - ~~el refresh token se guarda cifrado con AES-GCM~~: desde el 2026-10-27 no se guarda ningún token de Mides (ver abajo).
+  - **El costo de `web`** (resuelto el 2026-10-27: Mides-Dev-Web `feat/web-sso-scoped` le da a Overtone un secreto de canje, un access con audiencia `app:overtone`, sin refresh, y el perfil mínimo; Cavernia sigue con el modo viejo): el token era una sesión completa de Mides. Puede postear en
     el muro y ver email y teléfono. Por eso **nunca sale de overtone-api**: el
     navegador solo ve la cookie de Overtone, y de `/me` se guardan solo los campos
     públicos. El tipo `spa` está acotado, pero ignora `provider=` y no deja postear.
@@ -339,7 +339,7 @@ Cloudflare).
 - **Secretos:**
   - viven en las variables del panel, nunca en el repo;
   - `.env.example` lista solo los nombres: `DATABASE_URL`, `SESSION_SECRET`,
-    `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `SITE_URL`, `TOKEN_KEY`,
+    `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `SITE_URL`, `MIDES_CLIENT_SECRET`,
     `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS`, `WORKER_CONCURRENCY`.
 - **Dominio:** un subdominio de midesprojects.com detrás de Cloudflare, como los
   demás. CORS no hace falta, porque web y API comparten origen (`/api/v1` por proxy).

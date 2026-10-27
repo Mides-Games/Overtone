@@ -176,7 +176,7 @@ repo es público, se deja vacío.
 |---|---|
 | `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
 | `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
-| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<bridge-ip>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `OVERTONE_API=http://<bridge-ip>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
 | `overtone-worker-exp` | `OVERTONE_API=http://<bridge-ip>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |

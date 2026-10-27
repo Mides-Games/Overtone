@@ -115,7 +115,6 @@
       "remove": "Quitar {{name}}"
     },
     "batch": {
-      "title": "{{finished}}/{{total}} listas",
       "notify": "Avisarme cuando termine todo el lote",
       "notifyTitle": "Overtone: tu lote terminó",
       "notifyBody": "{{done}} de {{total}} canciones tienen timing.",
@@ -330,5 +329,31 @@
     "busy": "Cancelando…",
     "notQueued": "Ya se está analizando y no se puede cancelar.",
     "failed": "No se pudo cancelar. Probá de nuevo."
+  },
+  "tray": {
+    "label": "Tus análisis",
+    "show": "Análisis",
+    "hide": "Ocultar",
+    "titleCount_one": "{{count}} en curso",
+    "titleCount_other": "{{count}} en curso",
+    "empty": "No hay nada en curso.",
+    "gone": "Ya no está disponible",
+    "dismiss": "Sacar {{name}} de la bandeja",
+    "clearFinished": "Limpiar terminados",
+    "inbox": "Avisos",
+    "noNotices": "Todavía no hay avisos.",
+    "clearInbox": "Limpiar",
+    "sound": "Sonido",
+    "notify": "Notificaciones",
+    "notifyBlocked": "El navegador bloquea las notificaciones de este sitio.",
+    "notifyTitle": "Overtone: terminó una canción",
+    "notice": {
+      "done": "{{name}} ya tiene timing.",
+      "refused": "{{name}} fue rechazada.",
+      "failed": "{{name}} falló.",
+      "batch": "Terminó el lote: {{done}} de {{total}} canciones tienen timing."
+    },
+    "showCount_one": "Tus análisis, {{count}} en curso",
+    "showCount_other": "Tus análisis, {{count}} en curso"
   }
 }

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { cancelAnalysis } from '../lib/api.js'
 import { forgetAnalysis } from '../lib/recent.js'
+import { tracker } from '../lib/tracking.js'
 
 /**
  * Takes one of your own songs out of the queue (W3.12). Shown only while it
@@ -20,6 +21,8 @@ export default function CancelButton({ id, onCancelled, className = '' }) {
     try {
       await cancelAnalysis(id)
       forgetAnalysis(id)
+      // Every page that shows it (the tray, a card, the result) reads it as final at once.
+      tracker.cancelled(id)
       setState({ kind: 'idle' })
       onCancelled?.()
     } catch (error) {

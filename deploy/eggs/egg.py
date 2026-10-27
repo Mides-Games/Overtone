@@ -156,7 +156,8 @@ def api():
         [
             secret("Database URL", "DATABASE_URL", "postgres://user:password@host:port/database"),
             secret("Session secret", "SESSION_SECRET", "Signs session cookies."),
-            secret("Token key", "TOKEN_KEY", "Encrypts stored tokens."),
+            secret("Mides client secret", "MIDES_CLIENT_SECRET",
+                   "This server's secret for the Mides code exchange; the same value as SSO_SECRET_OVERTONE in Mides."),
             var("Mides auth URL", "MIDES_AUTH_URL", "The Mides SSO."),
             var("Mides web URL", "MIDES_WEB_URL", "Mides-Dev-Web, for profiles and the wall."),
             var("Mides app", "MIDES_APP", "This app's name in the Mides SSO."),
@@ -234,7 +235,13 @@ def db():
         # `postgres`; Wings never evaluates this line for it.
         "startup": "postgres",
         "config": {
-            "files": "{}",
+            # Wings mounts the image read-only, so PostgreSQL cannot create its
+            # socket in /var/run/postgresql and stops ("could not create lock
+            # file", seen on NA-01 on 2026-10-27). Before every start Wings
+            # rewrites this line to /tmp, which is writable. The very first start
+            # creates the file and still stops once; the next one runs.
+            "files": json.dumps({"pgdata/postgresql.conf": {"parser": "file", "find": {
+                "unix_socket_directories": "unix_socket_directories = '/tmp'"}}}),
             "startup": json.dumps({"done": "database system is ready to accept connections"}),
             "logs": "{}",
             # SIGINT is PostgreSQL's fast shutdown: open transactions roll back, nothing is lost.

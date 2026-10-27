@@ -88,7 +88,7 @@ Allocation** y la pestaña **Network** de cada server), no en el repo.
 | `overtone-api-exp` | `<bridge-ip>:<api-exp-port>` | `overtone-web-exp` y `overtone-worker-exp`, igual |
 | `overtone-worker` | `<bridge-ip>:<worker-port>` | nadie: no escucha. El panel pide una allocation igual. |
 | `overtone-worker-exp` | `<bridge-ip>:<worker-exp-port>` | nadie |
-| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs (el worker no habla con la base: es cliente HTTP de la API) |
+| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs, cada una con su rol y solo a su base (el worker no habla con la base: es cliente HTTP de la API). El superusuario no entra por la red ([§4](#4-primer-arranque)). |
 
 **Admin → Nodes → NA-01 → Allocation:** crear `<bridge-ip>` con los cinco puertos
 de la API, el worker y la base (los dos entornos). Los de las dos webs van en la IP
@@ -225,7 +225,7 @@ repo es público, se deja vacío.
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4`; con valores por defecto: `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120), `WORKER_TIMEOUT_FACTOR` (3) |
 | `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2`; los mismos valores por defecto |
-| `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
+| `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `DB_ROLE=<rol-prod>` y `DB_ROLE_STAGING=<rol-staging>` (ver §4). `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
 del panel, nunca en el repo. Las variables secretas del egg están marcadas como no
@@ -242,16 +242,48 @@ El orden importa la primera vez: **db → api → worker → web**.
    root. `<uuid>` es el UUID del server (Admin → Servers → overtone-db); Wings
    nombra así su contenedor.
 
+   El socket está en `/tmp` (ver §2), así que todo `psql` y `pg_dump` dentro del
+   contenedor lleva `-h /tmp`.
+
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE <rol-prod> LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE <rol-staging> LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO <rol-prod>" -c "ALTER SCHEMA public OWNER TO <rol-prod>" -c "CREATE DATABASE overtone_experimental OWNER <rol-staging>" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
+   docker exec -i <uuid> psql -h /tmp -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE <rol-prod> LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE <rol-staging> LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO <rol-prod>" -c "ALTER SCHEMA public OWNER TO <rol-prod>" -c "CREATE DATABASE overtone_experimental OWNER <rol-staging>" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
    ```
 
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO <rol-staging>"
+   docker exec -i <uuid> psql -h /tmp -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO <rol-staging>"
    ```
 
    `<rol-prod>` y `<rol-staging>` son los nombres de rol que se elijan; se anotan,
-   como las contraseñas, solo en las variables del panel.
+   como las contraseñas, solo en las variables del panel: en las `DATABASE_URL` de
+   cada API y en `DB_ROLE` / `DB_ROLE_STAGING` de `overtone-db`.
+
+   **Quién se puede conectar (2026-10-27).** La imagen oficial deja que cualquier
+   dirección pruebe la contraseña del superusuario por TCP, y a ese puerto llega
+   cualquier contenedor del nodo. El egg lo cierra con su propio
+   `pg_hba.overtone.conf` (lo escribe `install-db.sh`, al lado de `pgdata`):
+
+   ```text
+   local all all trust
+   host overtone <DB_ROLE> all scram-sha-256
+   host overtone_experimental <DB_ROLE_STAGING> all scram-sha-256
+   host all all all reject
+   ```
+
+   El superusuario entra solo por el socket del contenedor (`docker exec … -h /tmp`),
+   cada rol solo a su base y con su contraseña, y todo lo demás se rechaza. Antes de
+   cada arranque Wings apunta `hba_file` de `postgresql.conf` a ese archivo y reescribe
+   sus líneas por prefijo con los valores de las variables; una línea agregada a mano
+   con otra forma (`hostssl`, `include`, …) queda comentada, y lo que vaya después del
+   `reject` no alcanza a nadie. **Un server creado antes de esto necesita un
+   Reinstall** (el cluster se conserva) con `DB_ROLE` y `DB_ROLE_STAGING` puestas: sin
+   el archivo, postgres no arranca. Para comprobarlo:
+
+   ```bash
+   docker exec -i <uuid> psql -h /tmp -U postgres -c "SELECT type, database, user_name, auth_method FROM pg_hba_file_rules"
+   ```
+
+   y, desde el contenedor de una API, `postgres://postgres:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`
+   tiene que dar `pg_hba.conf rejects connection`.
 
    Así staging no puede leer ni tocar la base de producción. Cada base se puede
    volcar, restaurar o borrar por separado. El plan decía "dos schemas en una

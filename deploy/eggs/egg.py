@@ -243,6 +243,33 @@ def worker():
     )
 
 
+HBA_FILE = "pg_hba.overtone.conf"
+HBA_LINE = f"hba_file = '/home/container/{HBA_FILE}'"
+# Prefix -> the line Wings writes in its place before every start.
+HBA_RULES = {
+    "local": "local all all trust",
+    "host overtone ": "host overtone {{server.build.env.DB_ROLE}} all scram-sha-256",
+    "host overtone_experimental ": "host overtone_experimental {{server.build.env.DB_ROLE_STAGING}} all scram-sha-256",
+    "host all ": "host all all all reject",
+    # Spellings that would open more than the lines above: commented out.
+    "host replication": "# (host replication: removed by the egg)",
+    "hostssl": "# (hostssl: removed by the egg)",
+    "hostnossl": "# (hostnossl: removed by the egg)",
+    "hostgssenc": "# (hostgssenc: removed by the egg)",
+    "hostnogssenc": "# (hostnogssenc: removed by the egg)",
+    "include": "# (include: removed by the egg)",
+}
+
+
+def hba_errors(rules):
+    """No line may match two keys: Wings would write both values on it."""
+    keys = list(rules)
+    return [f"pg_hba keys {a!r} and {b!r} share a prefix" for a in keys for b in keys
+            if a != b and b.startswith(a)] + \
+           [f"pg_hba value for {k!r} does not start with it" for k, v in rules.items()
+            if not v.startswith("#") and not v.startswith(k.rstrip())]
+
+
 def db():
     return {
         "_comment": "Written by deploy/eggs/egg.py. Do not edit: edit deploy/eggs/ and run it again.",
@@ -266,8 +293,24 @@ def db():
             # file", seen on NA-01 on 2026-10-27). Before every start Wings
             # rewrites this line to /tmp, which is writable. The very first start
             # creates the file and still stops once; the next one runs.
-            "files": json.dumps({"pgdata/postgresql.conf": {"parser": "file", "find": {
-                "unix_socket_directories": "unix_socket_directories = '/tmp'"}}}),
+            #
+            # Who may connect is enforced the same way. postgresql.conf is
+            # pointed at pg_hba.overtone.conf (install-db.sh writes it), and each
+            # of that file's lines is rewritten by its prefix: the superuser by
+            # the socket only, each environment's role to its own database, and
+            # every other network connection refused. Wings replaces a line that
+            # starts with a key and appends nothing, so no two keys may share a
+            # prefix (a line matching two would get both values), and each value
+            # starts with its own key so the rewrite is stable. A line someone
+            # adds in another spelling survives until the next reinstall, which
+            # is why the panel's file access stays with the admin (docs/deploy.md).
+            "files": json.dumps({
+                "pgdata/postgresql.conf": {"parser": "file", "find": {
+                    "unix_socket_directories": "unix_socket_directories = '/tmp'",
+                    "#hba_file": HBA_LINE,
+                    "hba_file": HBA_LINE}},
+                HBA_FILE: {"parser": "file", "find": HBA_RULES},
+            }),
             "startup": json.dumps({"done": "database system is ready to accept connections"}),
             "logs": "{}",
             # SIGINT is PostgreSQL's fast shutdown: open transactions roll back, nothing is lost.
@@ -291,7 +334,14 @@ def db():
                    "At least 24 characters. Read on the first start only; change it later with ALTER ROLE.",
                    rules="required|string|min:24"),
             var("First database", "POSTGRES_DB", "Created on the first start: production's.",
-                default="overtone", rules="required|string|alpha_dash"),
+                default="overtone", rules="required|string|in:overtone"),
+            var("Production role", "DB_ROLE",
+                "The role overtone-api connects as, to the overtone database only (docs/deploy.md §4). "
+                "Never the superuser. Changing it takes effect on the next start.",
+                rules="required|string|alpha_dash|max:63"),
+            var("Staging role", "DB_ROLE_STAGING",
+                "The role overtone-api-exp connects as, to overtone_experimental only. Never the superuser.",
+                rules="required|string|alpha_dash|max:63"),
             var("Data directory", "PGDATA",
                 "Under /home/container, or the data is outside the server's disk and its backups.",
                 default="/home/container/pgdata", rules="required|string|in:/home/container/pgdata"),
@@ -341,7 +391,7 @@ def shape_errors(name, egg):
 
 def main(argv):
     check = "--check" in argv
-    failed = []
+    failed = hba_errors(HBA_RULES)
     for name, make in EGGS.items():
         out = HERE / f"egg-{name}.json"
         text = render(make)

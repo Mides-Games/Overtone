@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { audioExtension, cleanFilename, downloadName, timingCsv, timingText } from '../src/utils/upload.js';
+import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../src/utils/upload.js';
 
 test('a filename keeps its last segment and loses path and control characters', () => {
   assert.equal(cleanFilename('song.mp3'), 'song.mp3');
@@ -14,6 +14,19 @@ test('a filename keeps its last segment and loses path and control characters', 
   assert.equal(cleanFilename(''), null);
   assert.equal(cleanFilename('../..'), null);
   assert.equal(cleanFilename(undefined), null);
+});
+
+test('labels lose C1 controls, bidi marks, zero-width characters and the BOM', () => {
+  // An RLO would show "song‮vaw.exe" as "songexe.wav".
+  assert.equal(cleanFilename(encodeURIComponent('song‮vaw.mp3')), 'songvaw.mp3');
+  assert.equal(cleanFilename('a\u0085b\u009f.wav'), 'ab.wav');
+  assert.equal(cleanFilename(encodeURIComponent('﻿zero​width‍⁠.ogg')), 'zerowidth.ogg');
+  assert.equal(cleanFilename(encodeURIComponent('⁦iso⁩‎‏؜.flac')), 'iso.flac');
+  assert.equal(cleanFilename(encodeURIComponent('‮‪')), null);
+  assert.equal(cleanTag(encodeURIComponent('Ar‮tist​')), 'Artist');
+  assert.equal(cleanTag(encodeURIComponent('﻿⁧⁩')), null);
+  // Letters of right-to-left scripts stay: only the invisible controls go.
+  assert.equal(cleanTag(encodeURIComponent('שיר عربي')), 'שיר عربي');
 });
 
 test('a long filename is cut to 200 characters with its extension kept', () => {

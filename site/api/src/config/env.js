@@ -43,6 +43,23 @@ const origin = (name, fallback = '') => {
   return raw;
 };
 
+/** A comma-separated list of http(s) origins (scheme, host, port; no path). */
+const origins = (name) =>
+  text(name)
+    .split(',')
+    .map((raw) => raw.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
+    .filter((raw) => {
+      try {
+        const url = new URL(raw);
+        if (['http:', 'https:'].includes(url.protocol) && url.origin === raw) return true;
+      } catch {
+        // reported below
+      }
+      problems.push(`${name} must list http(s) origins only, like https://cdn.example.com (got "${raw}").`);
+      return false;
+    });
+
 const nodeEnv = text('NODE_ENV', 'development');
 export const isProduction = nodeEnv === 'production';
 
@@ -96,6 +113,10 @@ export const env = {
   midesAuthUrl: origin('MIDES_AUTH_URL'),
   // The Mides website that hosts /authorize, e.g. https://midesprojects.com.
   midesWebUrl: origin('MIDES_WEB_URL'),
+  // Other origins Mides serves profile pictures and banners from, beyond
+  // MIDES_WEB_URL's own (e.g. its CDN). An image anywhere else is not kept,
+  // and overtone-web's img-src allows the same list and nothing more.
+  midesImageOrigins: origins('MIDES_IMAGE_ORIGINS'),
   midesApp: text('MIDES_APP', 'overtone'),
   devLogin: devLogin && !isProduction,
   anonDailyLimit: integer('ANON_DAILY_LIMIT', 5, { min: 0, max: 10_000 }),

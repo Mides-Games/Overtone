@@ -29,6 +29,10 @@
  * API has been idle that long (504), so an API that hangs cannot pin this
  * process's sockets. Idle, not total: an upload that keeps moving is not cut.
  *
+ * MIDES_WEB_URL and MIDES_IMAGE_ORIGINS (the API's own values) are the only
+ * origins besides this one that images load from (img-src). Unset, only this
+ * origin and data: are allowed, and avatars show their initials.
+ *
  * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
  * 0 only when the site is served over plain http, as on a laptop.
  *
@@ -50,6 +54,7 @@ const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
 const TRUSTED = trustedProxies(process.env.TRUSTED_PROXY_ADDRS);
+const IMAGE_ORIGINS = imageOrigins(process.env.MIDES_WEB_URL, process.env.MIDES_IMAGE_ORIGINS);
 const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
 const API_TIMEOUT_MS = seconds(process.env.API_TIMEOUT_S, 60) * 1000;
 const PROXY_HEADER = 'x-overtone-proxy';
@@ -67,6 +72,28 @@ function hops(raw) {
     process.exit(1);
   }
   return n;
+}
+
+// The origins of MIDES_WEB_URL and MIDES_IMAGE_ORIGINS, the same values the
+// API has: where profile pictures may load from.
+function imageOrigins(web, extra) {
+  const out = new Set();
+  for (const raw of [web, ...String(extra ?? '').split(',')]) {
+    const value = String(raw ?? '').trim().replace(/\/+$/, '');
+    if (!value) continue;
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      url = null;
+    }
+    if (!url || !['http:', 'https:'].includes(url.protocol) || (raw !== web && url.origin !== value)) {
+      console.error(`overtone-web: "${value}" in MIDES_WEB_URL / MIDES_IMAGE_ORIGINS is not an http(s) origin`);
+      process.exit(1);
+    }
+    out.add(url.origin);
+  }
+  return [...out];
 }
 
 function seconds(raw, fallback) {
@@ -235,8 +262,9 @@ async function contentSecurityPolicy() {
   const value = [
     "default-src 'self'",
     `script-src 'self'${hashes.length ? ' ' + hashes.join(' ') : ''}`,
-    // Avatars and banners come from Mides, on whatever host it serves them.
-    "img-src 'self' data: https:",
+    // Avatars and banners come from Mides' own origins and nowhere else: the
+    // API keeps no image URL outside them either (site/api mides.service.js).
+    ["img-src 'self' data:", ...IMAGE_ORIGINS].join(' '),
     "font-src 'self' data:",
     "style-src 'self'",
     "connect-src 'self'",

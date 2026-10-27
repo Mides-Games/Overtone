@@ -139,6 +139,16 @@
             "field_type": "text"
         },
         {
+            "name": "Mides image origins",
+            "description": "Other origins Mides serves profile pictures from (comma-separated, e.g. its CDN). A picture anywhere but here and MIDES_WEB_URL is not kept. The same value as overtone-web's.",
+            "env_variable": "MIDES_IMAGE_ORIGINS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
             "name": "Mides app",
             "description": "This app's name in the Mides SSO.",
             "env_variable": "MIDES_APP",

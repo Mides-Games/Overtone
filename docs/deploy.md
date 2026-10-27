@@ -219,9 +219,9 @@ repo es público, se deja vacío.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod), `TRUSTED_PROXY_ADDRS` (los rangos del proxy TLS, [§9](#9-tls-la-pregunta-abierta); vacío hasta que esté) |
-| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging), `TRUSTED_PROXY_ADDRS` |
-| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`), `SPOOL_MAX_MB` (1280: el disco del server es de 2 GB, y `QUEUE_MAX × MAX_UPLOAD_MB` = 30 × 40 entra), `QUEUE_MAX` (30) |
+| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod), `TRUSTED_PROXY_ADDRS` (los rangos del proxy TLS, [§9](#9-tls-la-pregunta-abierta); vacío hasta que esté), `MIDES_WEB_URL` y `MIDES_IMAGE_ORIGINS` (los mismos que su API) |
+| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging), `TRUSTED_PROXY_ADDRS`, `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS` |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS` (si Mides sirve las fotos desde otro origen, p. ej. un CDN), `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`), `SPOOL_MAX_MB` (1280: el disco del server es de 2 GB, y `QUEUE_MAX × MAX_UPLOAD_MB` = 30 × 40 entra), `QUEUE_MAX` (30) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4`; con valores por defecto: `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120), `WORKER_TIMEOUT_FACTOR` (3) |
 | `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2`; los mismos valores por defecto |
@@ -526,7 +526,10 @@ Para la API esto ya no depende del firewall: sin `PROXY_SECRET` responde 404
 ([§2](#el-puerto-de-la-api-se-da-por-público-proxy_secret)).
 
 `serve.mjs` manda en cada página `Content-Security-Policy` (solo el propio origen;
-imágenes también de `https:`, por los avatares y banners de Mides; el script
+imágenes también de `data:` y de los orígenes de Mides, `MIDES_WEB_URL` y
+`MIDES_IMAGE_ORIGINS`, y de ningún otro: la API tampoco guarda una URL de avatar
+fuera de ellos, porque una imagen en otro host le avisa a ese host quién mira la
+cola pública; el script
 inline de `index.html` se permite por su hash, calculado del build),
 `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` y,
 con `HSTS=1` (el default del egg), `Strict-Transport-Security: max-age=31536000`.

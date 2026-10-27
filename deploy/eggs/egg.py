@@ -138,6 +138,14 @@ def web():
              "that many X-Forwarded-For entries plus the connection's address and drops what a client "
              "wrote before them. The API's TRUST_PROXY is this + 1.",
              default="1", rules="required|integer|between:0,10"),
+         var("Mides web URL", "MIDES_WEB_URL",
+             "The same value as this environment's overtone-api MIDES_WEB_URL: profile pictures may load "
+             "from its origin (img-src).",
+             rules="nullable|string|starts_with:http"),
+         var("Mides image origins", "MIDES_IMAGE_ORIGINS",
+             "The same value as overtone-api's: other origins profile pictures may load from. Nothing "
+             "else but this site and data: is allowed.",
+             rules="nullable|string"),
          var("API timeout", "API_TIMEOUT_S",
              "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). "
              "Idle, not total: an upload that keeps moving is not cut.",
@@ -169,6 +177,9 @@ def api():
                    "This server's secret for the Mides code exchange; the same value as SSO_SECRET_OVERTONE in Mides."),
             var("Mides auth URL", "MIDES_AUTH_URL", "The Mides SSO."),
             var("Mides web URL", "MIDES_WEB_URL", "Mides-Dev-Web, for profiles and the wall."),
+            var("Mides image origins", "MIDES_IMAGE_ORIGINS",
+                "Other origins Mides serves profile pictures from (comma-separated, e.g. its CDN). A picture "
+                "anywhere but here and MIDES_WEB_URL is not kept. The same value as overtone-web's."),
             var("Mides app", "MIDES_APP", "This app's name in the Mides SSO."),
             var("Site URL", "SITE_URL", "The public origin of this environment, https, no trailing slash."),
             var("Trust proxy", "TRUST_PROXY",

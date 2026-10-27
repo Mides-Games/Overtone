@@ -83,18 +83,31 @@ export const toUser = (u) => ({
 });
 
 /**
- * A Mides image URL, absolute. Mides stores them relative (`/api/profile/...`)
- * and this site is another origin. Anything that is neither http(s) nor a path
- * (a `javascript:` or `data:` stored over there) becomes `null`, not a `src`.
+ * A Mides image URL, absolute, or `null`. Mides stores them relative
+ * (`/api/profile/...`) and this site is another origin. Only an image on
+ * Mides' own origins is kept: MIDES_WEB_URL's and MIDES_IMAGE_ORIGINS. An
+ * avatar is fetched by every visitor of the public queue, so one on any
+ * other host would tell that host who looks at the page, and when; a
+ * `javascript:` or `data:` value, or a URL with credentials in it, is never
+ * a `src` either. overtone-web's img-src allows the same origins and no more.
  */
-const absolute = (value) => {
-  const url = typeof value === 'string' ? value.trim() : '';
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (!url.startsWith('/')) return null;
-
-  return env.midesWebUrl ? `${env.midesWebUrl}${url}` : null;
+export const absolute = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return null;
+  let url;
+  try {
+    if (/^https?:\/\//i.test(raw)) url = new URL(raw);
+    else if (raw.startsWith('/') && !raw.startsWith('//') && env.midesWebUrl) url = new URL(`${env.midesWebUrl}${raw}`);
+    else return null;
+  } catch {
+    return null;
+  }
+  if (url.username || url.password) return null;
+  return imageOrigins().has(url.origin) ? url.href : null;
 };
+
+const imageOrigins = () =>
+  new Set([env.midesWebUrl, ...env.midesImageOrigins].filter(Boolean).map((origin) => new URL(origin).origin));
 
 /**
  * One call to the identity API. Only transport problems (Mides down or not

@@ -124,6 +124,7 @@ is missing.
 | `MIDES_CLIENT_SECRET` | random per process | This server's secret for Mides' code exchange: the same value as `SSO_SECRET_OVERTONE` in Mides-Dev-Web. Without the right one Mides refuses every code (sign-in answers 503 and the log says which setting). 32+ characters. **Required in production.** |
 | `MIDES_AUTH_URL` | none | The Mides identity API, e.g. `https://midesprojects.com/api`; the service calls `${MIDES_AUTH_URL}/auth/...`. |
 | `MIDES_WEB_URL` | none | The Mides site that serves `/authorize`, e.g. `https://midesprojects.com`. |
+| `MIDES_IMAGE_ORIGINS` | none | Other origins Mides serves profile pictures from (comma-separated). A picture on any origin but these and `MIDES_WEB_URL`'s is not kept (initials instead), and overtone-web's `img-src` allows the same list. |
 | `MIDES_APP` | `overtone` | The app name registered in Mides' `SSO_APPS`. |
 | `MIDES_DEV_LOGIN` | off (`pnpm dev` turns it on) | Fake sign-in without Mides. **Refused when `NODE_ENV=production`.** Set `0` in `.env` to try the real SSO in development. |
 | `ANON_DAILY_LIMIT` | `5` | Analyses a UTC day per client address without an account. |

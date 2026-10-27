@@ -330,5 +330,96 @@
     "busy": "Cancelando…",
     "notQueued": "Ya se está analizando y no se puede cancelar.",
     "failed": "No se pudo cancelar. Probá de nuevo."
+  },
+  "timings": {
+    "nav": {
+      "recent": "Recientes",
+      "history": "Historial"
+    },
+    "untitled": "Sin título",
+    "unknownArtist": "Artista desconocido",
+    "variable": "Variable",
+    "redLines_one": "{{count}} red line",
+    "redLines_other": "{{count}} red lines",
+    "anonymous": "anónimo",
+    "timedBy": "timeado por {{name}}",
+    "timedAnonymously": "timeado de forma anónima",
+    "loadFailed": "No se pudo leer la lista. Probá de nuevo en un momento.",
+    "more": "Ver más",
+    "publish": {
+      "title": "Compartir",
+      "note": "Solo vos podés abrir este resultado. Publicalo para darle una página pública y sumarlo a los recientes; lo podés sacar cuando quieras.",
+      "isPublic": "Público en",
+      "privateWarning": "Esta subida es privada. Publicarla la hace pública: se van a ver la canción y tu nombre.",
+      "publish": "Publicar",
+      "busy": "Publicando…",
+      "makePublic": "Hacerla pública y publicar",
+      "keepPrivate": "Dejarla privada",
+      "unpublish": "Despublicar",
+      "copyLink": "Copiar enlace",
+      "copied": "Enlace copiado",
+      "failed": "No funcionó. Probá de nuevo en un momento."
+    },
+    "page": {
+      "eyebrow": "Timing publicado",
+      "published": "publicado el {{date}}",
+      "yourOwn": "Timeá tu propia canción",
+      "notFoundTitle": "No encontramos el timing",
+      "notFound": "Este timing no existe, o quien lo publicó lo sacó.",
+      "toRecent": "Ver timings recientes"
+    },
+    "audio": {
+      "none": "Elegí tu propia copia de esta canción para escucharla con los clicks, ver su forma de onda y armar el .osz.",
+      "mismatch": "{{name}} no es el audio con el que se hizo este timing: su huella es distinta. Elegí la misma versión de la canción.",
+      "privacy": "Tu archivo se lee acá, en tu dispositivo. Al servidor solo va su SHA-1, y responde si coincide; el archivo nunca se sube."
+    },
+    "recent": {
+      "title": "Timings recientes",
+      "subtitle": "Canciones que la gente timeó y eligió publicar, las más nuevas primero. Cada una abre su mapa de tempo, sus red lines y sus exportaciones.",
+      "empty": "Todavía nadie publicó un timing.",
+      "noMatch": "Ningún timing publicado coincide con estos filtros.",
+      "analyze": "Timeá una canción"
+    },
+    "home": {
+      "title": "Publicados hace poco",
+      "all": "Todos los recientes"
+    },
+    "filters": {
+      "search": "Título o artista",
+      "searchPlaceholder": "Buscar…",
+      "tempo": "Tempo",
+      "any": "Cualquiera",
+      "single": "Tempo único",
+      "variable": "Tempo variable",
+      "bpm": "BPM",
+      "bpmMin": "BPM mínimo",
+      "bpmMax": "BPM máximo",
+      "from": "desde",
+      "to": "hasta",
+      "status": "Estado",
+      "dates": "Analizado entre",
+      "fromDate": "Primer día",
+      "toDate": "Último día",
+      "clear": "Limpiar filtros"
+    },
+    "history": {
+      "title": "Historial",
+      "subtitle": "Todo lo que analizaste con esta cuenta. Publicá, despublicá o borrá cada uno desde acá.",
+      "anonymousSubtitle": "Sin cuenta, solo este navegador recuerda tus últimos análisis.",
+      "signInPrompt": "Entrá para tener todos tus análisis en un lugar, encontrarlos desde cualquier dispositivo y publicarlos con tu nombre.",
+      "browserEmpty": "Este navegador todavía no tiene análisis.",
+      "forget": "Olvidar",
+      "empty": "Todavía no analizaste nada con esta cuenta.",
+      "noMatch": "Ninguno de tus análisis coincide con estos filtros.",
+      "public": "Público",
+      "openPublic": "Abrir página pública",
+      "delete": "Borrar",
+      "deleteConfirm": "¿Lo borrás para siempre?",
+      "deleteYes": "Borrar",
+      "deleteNo": "Cancelar",
+      "deleteNote": "Borrar un análisis borra su resultado y baja su página pública en el momento. Una canción que todavía espera se cancela desde su propia página; una que se está analizando se puede borrar cuando termine.",
+      "failed": "No funcionó. Probá de nuevo en un momento.",
+      "all": "Historial"
+    }
   }
 }

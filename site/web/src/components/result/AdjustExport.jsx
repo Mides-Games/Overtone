@@ -20,7 +20,7 @@ const NUDGE_LIMIT = 500
  * the .osz to open in osu!, built here from `audioFile` (the reader's own
  * file, null until they pick it), the [TimingPoints] block and the CSV.
  */
-export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust, audioFile }) {
+export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust, audioFile, csvHref = null }) {
   const { t } = useTranslation()
   const { account } = useAuth() ?? {}
   const [copied, setCopied] = useState(null)
@@ -123,7 +123,7 @@ export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust
             {t('result.downloadCsv')}
           </button>
         ) : (
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
+          <a className="btn-ghost" href={csvHref ?? `/api/v1/analyses/${id}/timing.csv`} download>
             {t('result.downloadCsv')}
           </a>
         )}

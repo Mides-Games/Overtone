@@ -94,7 +94,7 @@ export default function Status() {
         : t('status.notes.unreachable')
 
   return (
-    <div className="rise mx-auto max-w-[72ch] space-y-6">
+    <div className="rise space-y-6">
       <header className="space-y-3">
         <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('status.title')}</h1>
         <p className="leading-relaxed text-muted">{t('status.intro')}</p>

@@ -87,6 +87,10 @@ EXPERIMENTS = {
     "both": {"CONSTANT_GRID": True, "SONG_OCTAVE_BEAT_THIS": True},
     "constant-grid-loose": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
                             "CONSTANT_GRID_SHARE": 0.8},
+    "piecewise": {"PIECEWISE_GRID": True},
+    "piecewise-strict": {"PIECEWISE_GRID": True, "PIECEWISE_PENALTY": 120.0},
+    "piecewise-cg": {"PIECEWISE_GRID": True, "CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
+                     "CONSTANT_GRID_SHARE": 0.8},
     "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
                              "CONSTANT_GRID_SHARE": 0.7},
 }

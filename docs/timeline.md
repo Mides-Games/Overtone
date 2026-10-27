@@ -61,6 +61,55 @@ version is `v0.2.0-alpha`.
   each one gone.
 
 ---
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
+## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+
+### Changed
+
+- `_load_beat_this` turns off `enable_mem_pattern`. The pattern plans a buffer layout
+  per input shape and keeps it; the vote runs 1500-frame chunks plus a last chunk of
+  another length on every song, so it only adds to the peak.
+
+### Measured
+
+- Beat This! alone over three Corpus B songs (135, 257 and 477 s) in one process,
+  ONNX Runtime 1.31.0, this PC with other sessions' runs in the background: peak
+  working set 1904 MB (twice) -> 1278 MB. CPU seconds 116 / 179 / 392 against
+  120-121 / 238-248 / 422-507 for the default. Every beat of the 1425 within 1 ms
+  of the default's.
+- Gates: see the PR.
+
+### Rejected / tried and dropped
+
+- `enable_cpu_mem_arena = False`: 1045 MB, beats identical, but the CPU cost moved
+  between +23 % and -27 % per song; not a clear win on a contended machine.
+  Both switches off: 991 MB at +40 % CPU.
+- Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
+  and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
+  by more than 20 ms. That is a precision change; it waits for a Corpus B run.
 
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 

@@ -104,11 +104,25 @@ export default function Tray() {
   // The tab's title counts everything still in flight, whichever page is open.
   // The page's own title is whatever the tab shows that this did not write,
   // kept on <html> so a remount (or a hot reload) never counts it twice.
+  // Pages rename the tab as they load (usePageMeta), so a title written by
+  // anyone else is taken as the new base and the count goes back in front.
   useEffect(() => {
     const kept = document.documentElement.dataset
-    if (document.title !== kept.trayTitle) kept.trayBase = document.title
-    kept.trayTitle = trayTitle(count, t('tray.titleCount', { count }), kept.trayBase)
-    document.title = kept.trayTitle
+    const apply = () => {
+      if (document.title === kept.trayTitle) return
+      kept.trayBase = document.title
+      kept.trayTitle = trayTitle(count, t('tray.titleCount', { count }), kept.trayBase)
+      document.title = kept.trayTitle
+    }
+    if (kept.trayBase !== undefined && document.title === kept.trayTitle) {
+      kept.trayTitle = trayTitle(count, t('tray.titleCount', { count }), kept.trayBase)
+      document.title = kept.trayTitle
+    } else apply()
+    const title = document.querySelector('title')
+    if (!title || typeof MutationObserver === 'undefined') return undefined
+    const observer = new MutationObserver(apply)
+    observer.observe(title, { childList: true, characterData: true, subtree: true })
+    return () => observer.disconnect()
   }, [count, t])
 
   // Each new notice: said to a screen reader, and, if the person asked for it, a notification and a chime.

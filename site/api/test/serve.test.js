@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +134,34 @@ test('an API that does not answer is cut after API_TIMEOUT_S with a 504', async 
   assert.equal(status, 504);
   assert.equal(JSON.parse(body).error, 'api_timeout');
   assert.ok(Date.now() - started < 10_000);
+});
+
+test('robots.txt, the sitemap and the manifest are served as themselves, with their types', async () => {
+  // A built site in miniature: the real public/ files, copied as Vite copies them.
+  const root = await mkdtemp(join(tmpdir(), 'overtone-serve-'));
+  running.push(() => rm(root, { recursive: true, force: true }));
+  const pub = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'public');
+  for (const name of ['robots.txt', 'sitemap.xml', 'manifest.webmanifest']) await copyFile(join(pub, name), join(root, name));
+  await writeFile(join(root, 'index.html'), '<!doctype html><title>app</title>');
+  const port = await serve(1, { WEB_ROOT: root });
+
+  const robots = await get(port, '/robots.txt');
+  assert.equal(robots.status, 200);
+  assert.equal(robots.headers['content-type'], 'text/plain; charset=utf-8');
+  assert.match(robots.body, /^Sitemap: https:\/\//m);
+
+  const sitemap = await get(port, '/sitemap.xml');
+  assert.equal(sitemap.headers['content-type'], 'application/xml; charset=utf-8');
+  assert.match(sitemap.body, /<urlset /);
+
+  const manifest = await get(port, '/manifest.webmanifest');
+  assert.equal(manifest.headers['content-type'], 'application/manifest+json');
+  assert.equal(JSON.parse(manifest.body).name, 'Overtone');
+  // The manifest is fetched under default-src 'self': nothing to add to the policy.
+  assert.match(manifest.headers['content-security-policy'], /default-src 'self'/);
+
+  // A missing file with an extension is a 404, never the app shell.
+  assert.equal((await get(port, '/sitemap-2.xml')).status, 404);
 });
 
 test('an API that answers is forwarded as before', async () => {

@@ -517,3 +517,82 @@ running stage and %, "has a timing", a cancel from the tray, a failure, and
 and the light theme; Escape; the sound switch remembered. **Not checked:** a
 real browser notification (the preview browser had them denied, so only the
 rules are tested), hearing the chime, a screen reader, Safari, a real worker run.
+
+### Legal pages, credits, the status page and the site's face (W4.5-W4.8, W10.3, W10.4, 2026-10-27)
+
+- **Pages.** `/terms`, `/privacy`, `/disclaimer`, `/credits` and `/status`, each its own
+  route, EN and ES, linked from a new Legal column in the footer (Status sits under
+  Site). Terms and privacy carry a **draft** note: they are written for the owner's
+  review, and what only the owner can decide (the operator's legal name and address,
+  the jurisdiction, a contact address, how long analyses are kept, which hosting
+  providers keep logs) is a `[[...]]` placeholder that `components/LegalPage.jsx`
+  draws as an amber "To be set" box, never as settled text.
+- **Where the privacy text comes from.** Each line is read from the code, not
+  guessed: `schema.sql` and `analysis.service.js` (SHA-1, duration, size, file name,
+  tags, `private`, the result, status and times, `anon_hash` as the SHA-256 of the
+  anonymous cookie, `ip_hash` as an HMAC of the address and the UTC day keyed with
+  `SESSION_SECRET`); `account.service.js` (the Mides fields kept, no e-mail or token);
+  `session.service.js` (the three cookies, their lifetimes and flags); the spool and
+  ADR-W4 (when the audio is deleted); `rate-limit.js` (windows swept a minute after
+  they end); the web's `localStorage` keys (`mides.theme`, `mides.lang`,
+  `overtone.player.volumes`, `overtone.recentAnalyses`, `overtone.sso`). There is
+  **no expiry job** for analyses, songs, accounts or the moderation log, and the page
+  says so ("no automatic expiry is set yet") instead of naming a period. It also says
+  plainly that the IP hash is keyed, not anonymous. A change to what is stored has to
+  change this text too.
+- **Disclaimer.** Its own page; the result page's "Check by ear" chip and a new
+  "What 'check by ear' means" link go to it instead of repeating it. It quotes only
+  the synthetic benchmark (24/24 within 0.05 BPM and 5 ms) and says real songs are
+  harder; no Corpus B figure is quoted, since none is published on the site yet.
+- **Credits** are generated, never typed: `node site/web/scripts/credits.mjs [--venv
+  <virtualenv>]` writes `src/data/credits.json` from `LICENSE`, the Beat This! card
+  and licence in `assets/models/`, `python/requirements.lock` with each pin's licence
+  from its installed `*.dist-info/METADATA` (License-Expression, else a one-line
+  License, else the classifiers, else "unknown"), and the web's and API's
+  `package.json` with every package the runtime ones pull in, walked through
+  `node_modules`, each with its own `license`. Build tools are listed without their
+  dependencies (they do not ship). `index.css` has no `@font-face`, so the fonts
+  section says the site downloads none. The output has no date, so a re-run on the
+  same install is byte-identical; `test/credits.test.js` fails when a pin or a direct
+  dependency is missing from it. The page is loaded lazily (its own 15 kB chunk).
+- **SEO and icons (W10.3).** `public/robots.txt` (crawlers off `/api/`, `/analyze/`,
+  `/login`, `/profile`), `public/sitemap.xml` (the eight public routes on
+  `https://overtone.midesprojects.com`; `test/seo.test.js` diffs it against
+  `App.jsx`), `public/manifest.webmanifest`, Open Graph and Twitter tags in
+  `index.html`, and `hooks/usePageMeta.js`, which every page calls to set its
+  `<title>` ("Name · Overtone") and description tags (`lib/meta.js`, tested). The PNG
+  icons (`favicon-32`, `apple-touch-icon` 180, `icon-192`, `icon-512`, a maskable 512
+  and a 1200x630 `og-image`) are drawn from `public/favicon.svg` by
+  `node site/web/scripts/icons.mjs`: Node's own zlib and a small rasterizer, no
+  package. It reads the SVG's rect, path, stroke and transform and refuses any shape
+  it does not draw; `test/icons.test.js` decodes the committed PNGs and compares them
+  pixel for pixel with a fresh render.
+- **`deploy/web/serve.mjs`** serves `.xml` as `application/xml` (it fell to
+  `application/octet-stream` before); `.txt` and `.webmanifest` already had their
+  types, and the manifest needs nothing new in the CSP (`default-src 'self'`). A test
+  in `site/api/test/serve.test.js` serves the real `public/` files through it.
+- **Robustness (W10.4).** `components/ErrorBoundary.jsx`: one around the routes in
+  `Layout`, keyed by the path so another page starts clean, and one around the whole
+  app in `main.jsx`. Its page says something went wrong, offers Reload and Home, and
+  shows no message or stack (those go to the console). `/status` reads
+  `GET /api/v1/health`, which now also says whether a worker called `/api/internal`
+  in the last 120 s (`utils/worker-status.js`; `unknown` until one calls after a
+  restart; it does not change the status code). The page reads the body of a 503
+  too, asks again every 30 s, after a failure at 5, 10, 20, 40, 80 then 120 s
+  (`lib/backoff.js`), and not at all while the tab is hidden. The other pages already
+  had their loading and empty states (queue, result, profile); none was added.
+
+How it was checked: `site/api` 73/73, `site/web` 50/50, `pnpm --dir site/web build`,
+`bench/facts.py` ok. In the browser pane (`vite` on 5182, the API on 3012 with
+`OVERTONE_WORKER=0`): `/terms`, `/privacy`, `/credits` and `/status` at 375 px, EN and
+ES, dark and light, no horizontal scroll, the tab title and description tags following
+the page and the language; `/status` showed the API working, the database "in memory
+(development)" and the worker "not seen yet".
+
+Not checked: the error page in a real crash (nothing in the site throws on purpose,
+and no test renders React); the result page's new links with a finished analysis (the
+worker was off); link previews as a social network renders them (they need the
+production URL); the manifest's install prompt; the icons on a real phone. The worker
+status is per API process: with several behind a balancer, each would report only the
+calls it received. Staging serves the same `robots.txt` as production, so it is not
+kept out of search engines by it.

@@ -3,11 +3,13 @@ import { Link } from 'react-router'
 
 import TimingStrip from '../components/TimingStrip.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 
 const FEATURES = ['upload', 'confidence', 'account']
 
 export default function Home() {
   const { t } = useTranslation()
+  usePageMeta('', t('home.subtitle'))
   const { account } = useAuth()
 
   return (

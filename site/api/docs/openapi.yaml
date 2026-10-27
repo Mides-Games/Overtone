@@ -252,6 +252,15 @@ paths:
                 properties:
                   status: { type: string, enum: [ok, degraded] }
                   database: { type: string, enum: [ok, down, none] }
+                  worker:
+                    type: object
+                    description: >-
+                      Whether an analysis worker called /api/internal in the last 120 s, as
+                      this API process saw it. `unknown` until one calls after a restart.
+                      Does not change the status code.
+                    properties:
+                      status: { type: string, enum: [ok, down, unknown] }
+                      seenSecondsAgo: { type: [integer, 'null'] }
                   devLogin: { type: boolean }
                   limits:
                     type: object

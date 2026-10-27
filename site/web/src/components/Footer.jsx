@@ -37,7 +37,7 @@ export default function Footer() {
 
   return (
     <footer id="site-footer" className="border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-6xl gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]" style={gutter}>
+      <div className="mx-auto grid max-w-6xl gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]" style={gutter}>
         <div className="space-y-3">
           <div className="flex items-center gap-2.5">
             <Mark size={20} />
@@ -50,6 +50,7 @@ export default function Footer() {
           links={[
             { label: t('nav.analyze'), to: '/analyze' },
             { label: t('nav.profile'), to: '/profile' },
+            { label: t('legal.footer.status'), to: '/status' },
           ]}
         />
         <Column
@@ -64,6 +65,15 @@ export default function Footer() {
           links={[
             { label: t('footer.source'), href: REPO_URL },
             { label: t('footer.docs'), href: `${REPO_URL}/tree/master/docs` },
+          ]}
+        />
+        <Column
+          title={t('legal.footer.title')}
+          links={[
+            { label: t('legal.footer.terms'), to: '/terms' },
+            { label: t('legal.footer.privacy'), to: '/privacy' },
+            { label: t('legal.footer.disclaimer'), to: '/disclaimer' },
+            { label: t('legal.footer.credits'), to: '/credits' },
           ]}
         />
       </div>

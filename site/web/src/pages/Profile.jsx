@@ -4,6 +4,7 @@ import { Navigate } from 'react-router'
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 
 /**
  * A placeholder. The profile is the one on midesprojects.com (ADR-W3);
@@ -14,6 +15,7 @@ const STATS = ['timings', 'uses', 'rating']
 
 export default function Profile() {
   const { t, i18n } = useTranslation()
+  usePageMeta(t('nav.profile'))
   const { account } = useAuth()
 
   if (account === undefined) return <BrandLoader className="py-16" />

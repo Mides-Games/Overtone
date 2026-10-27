@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 
 import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.js'
@@ -36,6 +37,8 @@ const OUTPUTS = [
 
 export default function Analyze() {
   const { t } = useTranslation()
+  // The page's own title; the tray counts what is in flight in front of it (W3.23).
+  usePageMeta(t('analyze.title'), t('analyze.subtitle'))
   const { account } = useAuth()
   const navigate = useNavigate()
   const [limits, setLimits] = useState(null)

@@ -435,6 +435,14 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
 | W3.17 | **Un rate limit que sobreviva a dos procesos.** `middlewares/rate-limit.js` cuenta en memoria y lo dice: el día que haya dos procesos de API, pasa a Postgres (o a la misma tabla que las cuotas). Hecho cuando dos APIs detrás del proxy comparten el conteo |
 | W3.18 | **La cola, moderada.** Quien tenga rol de staff en Mides ve en `/queue` un botón para sacar un trabajo o devolverlo a la cola, con registro de quién lo hizo. Es la primera pieza del panel de moderación de W6 |
 | W3.19 | **Las pruebas del sitio en la lista de verificación.** `node --test` de `site/api` y `vite build` de `site/web` entran en la sección Verification de `CLAUDE.md`/`AGENTS.md`, con su conteo, y `bench/facts.py` chequea ese conteo como hace con la suite de Python |
+| W3.20 | **Más descargas.** Además de `[TimingPoints]` y CSV:<br>• el `.osu` con el timing inyectado (la persona sube su `.osu`, el navegador lo parchea con el resultado y lo descarga; el server nunca lo guarda; los campos que no se tocan salen byte a byte, regla 5);<br>• un `.osz` mínimo para empezar un mapa;<br>• click track WAV (la canción del navegador más el metrónomo, renderizado con `OfflineAudioContext`);<br>• JSON `timing-result` completo;<br>• formatos de otros juegos que el engine ya exporta (Quaver, StepMania, Etterna);<br>• opciones de exportación: decimales del offset, solo la primera red line, BPM redondeado, ×2/÷2 |
+| W3.21 | **Opciones antes de analizar**, todas opcionales y con un valor por defecto que no hace falta tocar:<br>• modo (W11.1);<br>• "la canción tiene un solo BPM" o "cambia de tempo";<br>• rango de BPM esperado o un BPM aproximado;<br>• compás;<br>• analizar solo un tramo (inicio y fin).<br>Una pista mal puesta no puede empeorar el resultado sin avisar: si el audio la contradice, el resultado lo dice |
+| W3.22 | **La bandeja de análisis.** Un panel fijo (esquina o barra) visible en todas las páginas, con cada canción propia en curso: nombre, estado, % y posición. Se puede navegar el sitio mientras tanto; al recargar, los ids guardados en el navegador la reconstruyen. Al terminar, la tarjeta lleva al resultado |
+| W3.23 | **Avisos** (amplía W3.14): notificación del navegador por canción y por lote, sonido opcional, contador en el título de la pestaña y una bandeja de avisos dentro del sitio. Con cuenta, también por DM de Discord cuando exista el bot (W9.4). Todo opt-in y apagable |
+| W3.24 | **Volver a analizar en otro modo** sin volver a subir (el navegador todavía tiene el archivo, o se lo vuelve a elegir y se compara el SHA-1), y **comparar dos resultados** lado a lado: dónde coinciden y dónde no |
+| W3.25 | **"Revisá acá".** El resultado marca los tramos con baja confianza, o donde dos métodos no coinciden (W11), con un botón que reproduce ese tramo con el metrónomo |
+| W3.26 | **Historial con cuenta:** todo lo que analizaste, buscable y con filtros (fecha, BPM, estado), y borrar lo propio |
+| W3.27 | **Página de cada timing** con URL propia: el resultado completo, el gráfico, quién lo subió y la tarjeta Open Graph (imagen del gráfico) para compartirlo en Discord y redes. Base del posteo que enlaza el bot (W9.3) |
 
 **W3.8 hecha el 2026-10-27** en la rama `feature/queue-page`: `/queue` consulta
 `GET /api/v1/analyses/queue` cada 3 s (polling y no SSE: una foto por segundo sirve
@@ -472,12 +480,26 @@ necesita a otra persona; W3.16 espera la medición de W2.4.
 | W4.2 | Entorno `experimental` levantado; los testers entran con el rol de Mides |
 | W4.3 | Entorno `master` levantado; subdominio, Cloudflare, backups |
 | W4.4 | `deploy/README.md`: cómo se hace un release y un rollback (volver al commit anterior y reiniciar) |
+| W4.5 | **Términos y condiciones** (antes de abrir producción), en EN/ES:<br>• Overtone **no está afiliado** a osu! ni a ppy Pty Ltd; "osu!" es marca de sus dueños;<br>• Overtone forma parte de **Mides Projects** y fue fundado por **githalt**;<br>• el código es open source (MIT) y está en `Mides-Projects/Overtone`;<br>• uso aceptable: solo audio que la persona tiene derecho a usar, sin abuso de la cola;<br>• el audio no se guarda; los resultados sí, y pueden mostrarse en la cola o en Community según lo que elija quien sube;<br>• la cuenta es la de Mides, con sus propios términos;<br>• cambios a los términos, contacto y jurisdicción (a definir con Mides Projects LLC) |
+| W4.6 | **Disclaimer**, visible en el resultado y en una página propia: el análisis es confiable y repetible, pero **no es 100 % preciso**. Es un punto de partida que se revisa a oído; la confianza que muestra es la del engine, no una precisión medida. Los números de Corpus B y de los stages se publican tal cual, sin redondear para arriba. Sin garantías: los mapas que se rankean siguen siendo responsabilidad del mapper |
+| W4.7 | **Privacidad:** qué se guarda (SHA-1, metadatos, resultado, hash de IP con sal, cookies), qué no (el audio), por cuánto tiempo y cómo borrarlo. Aviso de cookies solo esenciales, sin banner de consentimiento porque no hay rastreo |
+| W4.8 | **Créditos y licencias:** Beat This! (MIT), librosa, numpy y las demás dependencias con sus licencias, generadas desde los locks, más el equipo y los contribuidores |
+| W4.9 | **Branches protegidas de verdad:** quien pushea a `master` o `experimental` ejecuta código en los servers. Exigir PR (también a los admins) y, mejor, un segundo par de ojos para `master` |
 
-### Fase W5 — Social v1
+### Fase W5 — Social v1 y Community
 
 Publicar timings, página de canción, estrellas, reacciones, "usar/importar" con su
 contador, comentarios, la pestaña Timings en el perfil, fork con crédito,
-notificaciones.
+notificaciones. Y una sección **Community**:
+
+| # | Tarea |
+|---|---|
+| W5.1 | **Recientes de todos:** las canciones timeadas por cualquiera (salvo las privadas), con portada, título, BPM, quién las subió y cuándo. Filtros (BPM, un solo tempo o variable, fecha), búsqueda por artista o título, y "más usados" o "mejor puntuados" cuando existan las estrellas |
+| W5.2 | **Sugerencias**, con estado visible:<br>• estados: abierta → en revisión → aceptada / planeada → en progreso → hecha, o rechazada (siempre con motivo);<br>• votos (uno por cuenta), comentarios y duplicados que se unen;<br>• **el staff de Mides** (roles de Mides, no una lista propia) las toma, cambia su estado, responde y las enlaza al roadmap o al changelog;<br>• cada cambio de estado avisa a quien la propuso |
+| W5.3 | **Reseñas del sitio:** estrellas de 1 a 5 más texto, con la cuenta de Mides o anónimas (anónimas con rate limit por IP hasheada y una verificación anti-spam; pesan menos en el promedio y lo dicen). Respuesta pública del staff, reporte y moderación, y edición o borrado de la propia |
+| W5.4 | **Moderación común** a sugerencias, reseñas, comentarios y nombres en la cola: reportar, ocultar, registro de quién hizo qué y filtro de palabras. Reusa los roles y sanciones de Mides |
+| W5.5 | **Changelog en el sitio**, generado de `docs/timeline.md`: qué cambió y qué sugerencias cerró cada versión |
+| W5.6 | **Perfiles:** la pestaña Timings en el perfil de Mides (ADR-W3), con estadísticas (canciones timeadas, usos, estrellas) e insignias (primer timing, Ranked-match, sugerencia aceptada) |
 
 ### Fase W6 — Social v2
 
@@ -495,6 +517,44 @@ del navegador del usuario.
 
 Hitsounds primero, con su propia puerta de calidad antes de mostrarse. Después Train
 y Compile, si tienen sentido en web. Rust en el worker cuando Corpus B lo justifique.
+
+### Fase W9 — Discord, osu! y el bot
+
+| # | Tarea |
+|---|---|
+| W9.1 | **Vincular Discord:** si la cuenta de Mides ya tiene Discord vinculado, se usa; si no, el sitio ofrece vincularlo con el flujo de Mides (`connections/discord/link-token` con `return_to` al sitio), sin un OAuth propio |
+| W9.2 | **Vincular osu!:** OAuth de la API v2 de osu! (scope `identify`, nada más), registrada como app de Mides Projects. Muestra el perfil de osu! en el de Overtone y permite, más adelante, relacionar un timing con un beatmapset. Leer y cumplir las reglas de la API de osu! antes de pedir la key |
+| W9.3 | **Bot de Discord** en el monorepo (`bot/`, mismo stack que cavernia-bot), con el comando `/time-song`:<br>• recibe un adjunto de audio y lo encola en la misma cola que el sitio, con los mismos límites; el dueño es la cuenta vinculada (sin vincular: el cupo anónimo, o directamente no, a decidir);<br>• responde con un embed: BPM, offset, red lines y confianza;<br>• adjunta una imagen del gráfico, renderizada en el worker con el mismo diseño que el sitio;<br>• enlaza a la página del timing (W3.27);<br>• el audio sigue la misma regla: se borra después de analizar |
+| W9.4 | **Avisos por DM** del bot cuando termina un análisis (opt-in, W3.23) |
+| W9.5 | **Más comandos:**<br>• `/timing <link>` muestra un timing publicado;<br>• `/queue` muestra el estado de la cola;<br>• `/compare` compara dos timings;<br>• un comando para ver los últimos timings de alguien |
+| W9.6 | **Sin bajar audio de osu!.** Analizar un beatmapset directo desde su link exigiría bajar el `.osz`; no se hace sin confirmar que las reglas de osu! lo permiten. Hasta entonces, la persona sube su archivo |
+
+### Fase W10 — Calidad, rendimiento y profesionalismo
+
+| # | Tarea |
+|---|---|
+| W10.1 | **Presupuestos de rendimiento** medidos con Lighthouse local y Web Vitals: LCP < 2,5 s, CLS < 0,1, JS inicial < 200 kB comprimido. Code splitting por ruta, carga diferida del gráfico y del lector de tags, fuentes del sistema, compresión brotli o gzip y caché larga para los assets con hash. Cada número se mide y se anota (regla 1) |
+| W10.2 | **Accesibilidad WCAG 2.2 AA:** teclado completo, foco visible, contraste, `aria-live` para el progreso y texto alternativo del gráfico (tabla de red lines) |
+| W10.3 | **SEO e imagen:** meta y Open Graph por página, `sitemap.xml`, `robots.txt` y el favicon y manifest de la PWA |
+| W10.4 | **Robustez de la interfaz:** error boundaries, estados vacíos y de carga en todas las vistas, reintento con backoff y página de estado del servicio (se suma a `/status` de Mides) |
+| W10.5 | **Skills del proyecto** en `.claude/skills/`, para que cualquier sesión trabaje igual:<br>• `site-ui-check`: levanta `pnpm dev`, recorre las páginas, saca capturas y revisa consola, EN/ES, oscuro/claro y 375 px;<br>• `perf-audit`: Lighthouse y tamaño del bundle;<br>• `security-review`: las 5 áreas de la revisión del 2026-10-27;<br>• `release`: experimental → master con las puertas |
+| W10.6 | **Pruebas de punta a punta** del sitio (Playwright local, sin CI): subir, cola, resultado, descargas y login de prueba, una sola línea en la sección Verification |
+| W10.7 | **Revisión de seguridad periódica,** con las mismas 5 áreas, antes de cada release a `master` y después de cada feature que toque la API, la subida o el despliegue |
+
+### Fase W11 — Precisión: modos de análisis y un engine que elige
+
+El objetivo es acercarse más a los timings que ponen los mappers. La meta es **+5
+puntos o más** en las métricas held-out de los stages (tempo ok, octava, beats dentro
+de 10 ms, red lines dentro de 5 ms), sin romper ninguna puerta de precisión.
+
+| # | Tarea |
+|---|---|
+| W11.1 | **Modos de análisis**, elegidos por el tiempo que la persona quiere esperar y no por el engine. Tiempos de referencia en esta PC (2026-10-27, canción de 4:36), a medir de nuevo en el server (W2.4):<br>• **Rápido**, unos 10 s: el engine v3 sin el voto de Beat This! ni los jueces de octava (10,6 s medidos);<br>• **Normal**, menos de 2 min: el análisis actual, con el voto de Beat This! y los jueces (49–66 s medidos);<br>• **Estricto**, de 3 a 5 min: el ensamble de W11.3, con revisión por tramos y todo lo que mejore el held-out aunque cueste tiempo.<br>Cada resultado dice con qué modo se hizo; la caché se separa por modo |
+| W11.2 | **Estudio oráculo primero, antes de construir nada.** Correr K configuraciones sobre los stages:<br>• v3 con y sin voto;<br>• Rust;<br>• Beat This! solo;<br>• los variantes de octava (fold, halve, judge);<br>• el tracker local.<br>Después medir, en held-out, cuánto se gana si para cada canción se eligiera la mejor. Si ese techo no supera en 5 puntos a la mejor configuración sola, el ensamble no vale la pena y se dice. Todo con `bench/stages.py` y las corridas del server (`bench/remote.py`) |
+| W11.3 | **El engine que elige (router)**, si el oráculo da margen:<br>• **Rasgos baratos de la canción:** variabilidad del tempo local (tracker), BPM base y su rango, densidad de onsets, fuerza del pulso, acuerdo o desacuerdo entre métodos, confianza y género si se infiere.<br>• **Elección:** con esos rasgos, elige por canción, y mejor por tramo, qué método manda: reglas simples o un árbol chico.<br>• **Entrenamiento y evaluación:** se entrena solo en dev y se juzga solo en held-out, para no sobreajustar a Corpus B (20 canciones).<br>• **Consenso:** donde dos métodos coinciden, se toma su consenso; donde no, el que mejor explica los ataques de la canción (como ya hace el voto) y el tramo queda marcado "revisá acá" (W3.25) |
+| W11.4 | **Pulido de fase en el modo estricto:** re-timing fino de cada red line contra los ataques (la métrica más baja hoy es la fase: S1 37,5 % dentro de 5 ms), con la convención de osu! aplicada al final |
+| W11.5 | **Pistas de la persona como restricción** (W3.21): un solo BPM, un rango o un compás reducen el espacio que el router explora, y se mide cuánto mejora el held-out con pistas correctas |
+| W11.6 | **Aprender de los mappers:** con permiso, los timings que la gente corrige (W7) y publica son datos nuevos para los stages, nunca para entrenar a ciegas; cada uno con su SHA-1 y su licencia clara |
 
 ---
 

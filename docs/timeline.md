@@ -20,6 +20,46 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Other games' formats and export options
+
+### Changed
+
+- "More downloads" offers the red lines for Quaver (`.qua`), StepMania and Etterna
+  (`.sm`), StepMania 5 (`.ssc`) and Clone Hero (`notes.chart`), timing only, built in
+  the browser (W12.7). The Quaver and StepMania timing matches v3's exporters.
+- Export options (W12.8): offset decimals, the BPM rounded (with the drift it causes
+  by the song's end), the first red line only, and an offset added to every line.
+  They shape the `.osz`, the copy, the patched `.osu` and the games' files, never the
+  clicks; remembered in `overtone.exports`, and named under the `.osz` while on.
+- Decided: the added offset is separate from the nudge. The nudge is a correction
+  heard in the clicks and forgotten with the page; the added offset is a target's
+  convention (a game's or a pack's sync), so it must not move the clicks, and it is
+  remembered, which is why the page always says when it is on.
+- Decided: Clone Hero's `[Song] Offset` is written as 0 and a lead-in bar puts the
+  first downbeat on its time, because the field is treated as legacy by Moonscraper
+  as far as we know and its sign has not been read the same way everywhere.
+- Decided: StepMania keeps v3's fractional beats rather than bending BPMs onto its
+  1/48 rows, so the two exporters agree; the page shows how far the game will move
+  each change instead (from 0.5 ms).
+
+### Measured
+
+- The site's Quaver and StepMania text against v3's `quaver_timing_text` and
+  `stepmania_timing_text`: 67 sets of red lines, 536 texts, 0 differ (one-off script,
+  not committed; see `docs/site.md`).
+- On the fixture lines (a change 151.3 ms past beat 75 at 150 BPM), StepMania's rows
+  would move the change 1.3 ms; Clone Hero lands every change within 0.02 ms.
+- Not measured: whether any game opens the files. None was run.
+
+### Rejected / tried and dropped
+
+- Fitting StepMania's BPMs so each change sits on a row: exact in the game, but the
+  file would no longer match v3's, and the BPMs written would not be the reader's.
+- Writing Clone Hero's first line at `Offset` = its time: simpler, but it rests on a
+  field whose meaning we are least sure of.
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

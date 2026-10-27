@@ -45,10 +45,11 @@ export function songNames({ tagTitle, tagArtist, filename }) {
  * The .osu file (format v14): the general and metadata sections a new map
  * gets in the editor, osu!'s default difficulty, the red lines in
  * `[TimingPoints]` and no hit objects. Comment rows are left out: osu! reads
- * the file, a person reads the page.
+ * the file, a person reads the page. `lines` are the export's (after the
+ * export options, `exportLines`) and `options` those options.
  */
-export function osuFile({ title, artist, creator, audioName, lines, result, adjustment }) {
-  const rows = timingText(result, lines, adjustment)
+export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, options = null }) {
+  const rows = timingText(result, lines, adjustment, options)
     .split('\r\n')
     .filter((row) => row && row !== '[TimingPoints]' && !row.startsWith('//'))
   const titleAscii = ascii(title) || 'Untitled'
@@ -110,13 +111,13 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
  * The .osz: the audio as `audio.<ext>` and the .osu named as osu! names its
  * own (`Artist - Title (Creator) [Version].osu`). Returns `{ name, bytes }`.
  */
-export async function buildOsz({ file, analysis, lines, adjustment, creator }) {
+export async function buildOsz({ file, analysis, lines, adjustment, creator, options = null }) {
   const { title, artist } = songNames({ ...analysis, filename: analysis.filename ?? file.name })
   const ext = (/\.[A-Za-z0-9]{1,5}$/.exec(file.name)?.[0] ?? '.mp3').toLowerCase()
   const audioName = `audio${ext}`
   const who = field(creator) || 'Overtone'
   const set = safeName(`${artist} - ${title}`) || 'Overtone'
-  const osu = osuFile({ title, artist, creator: who, audioName, lines, result: analysis.result, adjustment })
+  const osu = osuFile({ title, artist, creator: who, audioName, lines, result: analysis.result, adjustment, options })
   const bytes = zipStore([
     { name: audioName, data: new Uint8Array(await file.arrayBuffer()) },
     { name: `${safeName(`${artist} - ${title} (${who}) [Timing]`) || 'overtone'}.osu`, text: osu },

@@ -1,0 +1,417 @@
+/**
+ * The red lines for other rhythm games (W12.7), built in this browser from the
+ * lines as the page has them (adjusted or not) after the export options.
+ * Timing only: no notes, no charts. Overtone has no notes for these games, and
+ * timing is the part that transfers. The reader opens the file in the game's
+ * editor and charts on it.
+ *
+ * Where the v3 engine has an exporter (python/overtone.py
+ * `quaver_timing_text`, `stepmania_timing_text`), the timing text here is
+ * the same, character for character but the comment line: the same numbers,
+ * the same rounding (Python's half-to-even on exact ties, see `fixed`), the
+ * same separators. Clone Hero has no v3 exporter.
+ *
+ * What each format says, and what it does with a tempo change:
+ *
+ * **Quaver (.qua)** is YAML. Each timing point carries an absolute
+ * `StartTime` in ms (a float) and a `Bpm`, as a red line does, and each one
+ * starts its own grid at its StartTime, as osu! does. So nothing accumulates
+ * and a change off the previous grid costs nothing: the conversion is a
+ * change of spelling. Meter: Quaver's `Signature` is an enum of Quadruple
+ * (4/4, the default, left out) and Triple (3/4), as far as we know it; any
+ * other meter is written as 4/4 and the page says so. Quaver may refuse to
+ * play a map with no notes; the file is for its editor.
+ *
+ * **StepMania (.sm, .ssc)** counts beats, not ms. Beat 0 is the first red
+ * line, and `#OFFSET` is where it sits, in seconds and negated: a first beat
+ * 1.234 s into the audio is `#OFFSET:-1.234000;`. Each later change is a
+ * `beat=bpm` pair in `#BPMS`, its beat ACCUMULATED through the tempi before
+ * it: beat_i = beat_(i-1) + (t_i - t_(i-1)) / (60000 / bpm_(i-1)). A change
+ * 30 s into a 150 BPM song is beat 75, not second 30. A change off the old
+ * grid gives a fractional beat, which is written as it is (6 decimals, as v3
+ * does). But StepMania stores a change on a row, 48 to the beat (its
+ * ROWS_PER_BEAT), so on loading it moves the change to the nearest 1/48 of a
+ * beat, and every beat after it moves with it, accumulating through later
+ * changes. `stepmaniaRowShift` measures that from what the file says and the
+ * page shows it when it reaches half a millisecond; we do not bend the BPMs to
+ * hide it, which would make the file disagree with v3's. (We read this rounding
+ * from StepMania 5's loader as we know it; we have not opened a file in it.)
+ * `.sm` has no time signatures, so a meter other than 4/4 is lost there; `.ssc`
+ * (StepMania 5) has `#TIMESIGNATURES` as `beat=numerator=denominator`, written
+ * at the first line and wherever the bar changes: a new meter, or a line that
+ * does not land on the running bar (osu! starts a bar at every red line;
+ * StepMania counts bars from the last signature).
+ *
+ * **Etterna** reads StepMania's files; it has no timing format of its own that
+ * we know of. The page offers the `.sm` for it rather than inventing one.
+ *
+ * **Clone Hero (.chart)** counts ticks: `Resolution = 192` per beat (a quarter
+ * note), tempo as `tick = B <BPM x 1000>`, an integer (milli-BPM), meter as
+ * `tick = TS <numerator>` (the denominator's log2 would follow; 4 is the
+ * default and left out). Every position is a whole tick, so:
+ * - **The start.** Tick 0 is the audio's start. `[Song] Offset` is written as
+ *   0: Moonscraper (the editor Clone Hero charts are made in) treats that
+ *   field as legacy as far as we know, and the games have not all read it the
+ *   same way, so we do not lean on it. Instead the first line's grid is drawn
+ *   back to its first downbeat at least half a bar in, and one lead-in bar from
+ *   tick 0 takes exactly that long (its own BPM, between 2/3 and 2 times the
+ *   first line's). When a downbeat falls on 0 itself, there is no lead-in.
+ * - **A change off the grid.** Its tick is the accumulated beats x 192,
+ *   rounded. Rounding alone would move the change up to half a tick, and every
+ *   later one with it, so the section before it keeps its own BPM only when
+ *   that lands the change within `CHART_TOLERANCE_MS` of its time; otherwise
+ *   that section's BPM is fitted (to the milli-BPM) so it does. The game's own
+ *   arithmetic is followed throughout, so the error never accumulates.
+ *   `chartSyncTrack` reports how many sections were fitted and the worst miss.
+ * - **Bars**, as in `.ssc`: a `TS` at tick 0 and wherever the bar changes.
+ * The audio is named `song.<ext>` in the file, the name Clone Hero looks for.
+ */
+import { songNames } from './osz.js'
+import { roundHalfEven } from './timing.js'
+
+/** StepMania's decimals for beats and BPMs (v3's STEPMANIA_DECIMALS). */
+export const STEPMANIA_DECIMALS = 6
+/** StepMania's rows per beat: where a tempo change can sit. */
+export const STEPMANIA_ROWS_PER_BEAT = 48
+export const CHART_RESOLUTION = 192
+/** How far a .chart tempo change may land from its time before the BPM before it is fitted. */
+export const CHART_TOLERANCE_MS = 0.5
+
+const COMMENT = 'Generated by the Overtone site: timing only, no notes'
+
+/**
+ * Python's f"{x:.{d}f}": the double's exact value rounded to `d` decimals,
+ * an exact tie to even (JavaScript's toFixed takes it away from zero), and
+ * no "-0".
+ */
+export function fixed(x, d) {
+  let out = x.toFixed(d)
+  const extra = 60
+  const exact = x.toFixed(Math.min(100, d + extra))
+  if (/^50*$/.test(exact.slice(-extra)) && Number(out.replace('.', '').slice(-1)) % 2 === 1) {
+    out = exact.slice(0, -extra).replace(/\.$/, '')
+  }
+  return /^-0(\.0*)?$/.test(out) ? out.slice(1) : out
+}
+
+/** `fixed` with trailing zeros (and a trailing point) dropped, as v3 writes Quaver's Bpm. */
+const trimmed = (x, d) => fixed(x, d).replace(/0+$/, '').replace(/\.$/, '')
+
+/**
+ * The lines a game file is written from: finite, a positive beat, in time
+ * order, BPM as the beat length implies it (the grid osu! plays), meter kept.
+ */
+export function gameLines(lines) {
+  return lines
+    .filter((line) => Number.isFinite(line.timeMs) && line.beatMs > 0 && Number.isFinite(line.beatMs))
+    .map((line) => ({ timeMs: line.timeMs, bpm: 60000 / line.beatMs, meter: Math.max(1, Math.min(16, Math.round(line.meter) || 4)) }))
+    .sort((a, b) => a.timeMs - b.timeMs)
+}
+
+/** One line of text for a file field: no breaks, no control or bidi characters. */
+const field = (text) =>
+  String(text ?? '')
+    .replace(/[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+// ---------------------------------------------------------------------------
+// Quaver
+// ---------------------------------------------------------------------------
+
+/**
+ * The `TimingPoints:` block, v3's `quaver_timing_text` with a meter: whole ms
+ * at 0 decimals (half to even), else that many; the BPM to 6 decimals, trailing
+ * zeros dropped; `Signature: Triple` on a 3/4 line.
+ */
+export function quaverTimingText(lines, { offsetDecimals = 0 } = {}) {
+  const points = gameLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const rows = [`# ${COMMENT}`, 'TimingPoints:']
+  for (const p of points) {
+    rows.push(`- StartTime: ${offsetDecimals > 0 ? fixed(p.timeMs, offsetDecimals) : String(roundHalfEven(p.timeMs) + 0)}`)
+    rows.push(`  Bpm: ${trimmed(p.bpm, 6)}`)
+    if (p.meter === 3) rows.push('  Signature: Triple')
+  }
+  return `${rows.join('\n')}\n`
+}
+
+const yamlString = (text) => `'${field(text).replace(/'/g, "''")}'`
+
+/** A whole .qua: a 4K map's metadata, the timing points, no notes. `{ text, report }`. */
+export function quaFile({ title, artist, creator, audioName, lines, offsetDecimals }) {
+  const timing = quaverTimingText(lines, { offsetDecimals }).split('\n').slice(1).join('\n')
+  const points = gameLines(lines)
+  const text = [
+    `# ${COMMENT}`,
+    `AudioFile: ${yamlString(audioName)}`,
+    'SongPreviewTime: 0',
+    "BackgroundFile: ''",
+    'MapId: -1',
+    'MapSetId: -1',
+    'Mode: Keys4',
+    `Title: ${yamlString(title)}`,
+    `Artist: ${yamlString(artist)}`,
+    "Source: ''",
+    "Tags: 'overtone'",
+    `Creator: ${yamlString(creator)}`,
+    "DifficultyName: 'Timing'",
+    "Description: 'Timing from Overtone: red lines only, no notes. Check it by ear.'",
+    'BPMDoesNotAffectScrollVelocity: true',
+    'InitialScrollVelocity: 1',
+    'EditorLayers: []',
+    'CustomAudioSamples: []',
+    'SoundEffects: []',
+    timing.trimEnd(),
+    'SliderVelocities: []',
+    'HitObjects: []',
+    '',
+  ].join('\n')
+  return { text, report: { meterLost: points.filter((p) => p.meter !== 3 && p.meter !== 4).length } }
+}
+
+// ---------------------------------------------------------------------------
+// StepMania
+// ---------------------------------------------------------------------------
+
+/** Beat 0 at the first line; each later line's beat accumulated through the tempi before it. */
+export function stepmaniaBeats(points) {
+  const beats = [0]
+  for (let i = 1; i < points.length; i++) {
+    beats.push(beats[i - 1] + (points[i].timeMs - points[i - 1].timeMs) / (60000 / points[i - 1].bpm))
+  }
+  return beats
+}
+
+/**
+ * v3's `stepmania_timing_text`: `#OFFSET` (negated, seconds) and `#BPMS`.
+ * `offsetDecimals` are of a ms, so the offset gets 3 more in seconds (3 is
+ * v3's default of 6); beats and BPMs always 6.
+ */
+export function stepmaniaTimingText(lines, { offsetDecimals = 3 } = {}) {
+  const points = gameLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const beats = stepmaniaBeats(points)
+  const pairs = points.map((p, i) => `${fixed(beats[i], STEPMANIA_DECIMALS)}=${fixed(p.bpm, STEPMANIA_DECIMALS)}`)
+  return `// ${COMMENT}\n#OFFSET:${fixed(-points[0].timeMs / 1000, offsetDecimals + 3)};\n#BPMS:${pairs.join('\n,')};\n`
+}
+
+/**
+ * How far StepMania moves the changes when it puts them on its rows: the
+ * file's own beats and BPMs, read back as written, each change's beat rounded
+ * to 1/48, and the times that gives against the lines'. `{ worstMs, moved }`,
+ * `moved` the changes off by more than 0.05 ms.
+ */
+export function stepmaniaRowShift(lines) {
+  const points = gameLines(lines)
+  const beats = stepmaniaBeats(points).map((b) => Number(fixed(b, STEPMANIA_DECIMALS)))
+  const bpms = points.map((p) => Number(fixed(p.bpm, STEPMANIA_DECIMALS)))
+  let time = points[0]?.timeMs ?? 0
+  let worstMs = 0
+  let moved = 0
+  for (let i = 1; i < points.length; i++) {
+    const rows = Math.round(beats[i] * STEPMANIA_ROWS_PER_BEAT) - Math.round(beats[i - 1] * STEPMANIA_ROWS_PER_BEAT)
+    time += (rows / STEPMANIA_ROWS_PER_BEAT) * (60000 / bpms[i - 1])
+    const off = Math.abs(time - points[i].timeMs)
+    worstMs = Math.max(worstMs, off)
+    if (off > 0.05) moved++
+  }
+  return { worstMs, moved }
+}
+
+/** The beats where the bar changes: the first line, a new meter, or a line off the running bar (on rows). */
+function barChanges(points, beats, unitsPerBeat) {
+  const out = []
+  let start = 0
+  let meter = 0
+  points.forEach((p, i) => {
+    const unit = Math.round(beats[i] * unitsPerBeat)
+    if (i === 0 || p.meter !== meter || (unit - start) % (meter * unitsPerBeat) !== 0) {
+      out.push({ index: i, unit, meter: p.meter })
+      start = unit
+      meter = p.meter
+    }
+  })
+  return out
+}
+
+/** Text for a StepMania tag: its separators and escapes taken out. */
+const smField = (text) => field(text).replace(/[#:;\\]/g, '').replace(/\/\//g, '/')
+
+/** A whole .sm (`kind` 'sm') or .ssc ('ssc'): the song's tags and the timing, no #NOTES. `{ text, report }`. */
+export function stepmaniaFile({ kind = 'sm', title, artist, creator, audioName, lines, offsetDecimals }) {
+  const timing = stepmaniaTimingText(lines, { offsetDecimals })
+  const points = gameLines(lines)
+  const tags = timing.split('\n').filter((row) => row.startsWith('#') || row.startsWith(','))
+  const out = [`// ${COMMENT}`]
+  if (kind === 'ssc') out.push('#VERSION:0.83;')
+  out.push(
+    `#TITLE:${smField(title)};`,
+    '#SUBTITLE:;',
+    `#ARTIST:${smField(artist)};`,
+    '#TITLETRANSLIT:;',
+    '#SUBTITLETRANSLIT:;',
+    '#ARTISTTRANSLIT:;',
+    '#GENRE:;',
+    `#CREDIT:${smField(creator)};`,
+    '#BANNER:;',
+    '#BACKGROUND:;',
+    '#CDTITLE:;',
+    `#MUSIC:${smField(audioName)};`,
+    ...tags,
+    '#STOPS:;',
+  )
+  if (kind === 'ssc') {
+    const beats = stepmaniaBeats(points)
+    const changes = barChanges(points, beats, STEPMANIA_ROWS_PER_BEAT)
+    out.push(
+      '#DELAYS:;',
+      '#WARPS:;',
+      `#TIMESIGNATURES:${changes.map((c) => `${fixed(beats[c.index], STEPMANIA_DECIMALS)}=${c.meter}=4`).join('\n,')};`,
+    )
+  }
+  out.push('')
+  const shift = stepmaniaRowShift(lines)
+  return {
+    text: out.join('\n'),
+    report: { ...shift, meterLost: kind === 'sm' && points.some((p) => p.meter !== 4) },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clone Hero
+// ---------------------------------------------------------------------------
+
+const MS_PER_MINUTE_MILLI = 60000 * 1000
+
+/** The time a span of ticks takes at `milliBpm`, in ms. */
+const ticksMs = (ticks, milliBpm) => ((ticks / CHART_RESOLUTION) * MS_PER_MINUTE_MILLI) / milliBpm
+
+/**
+ * The `[SyncTrack]` events: `{ events: [{ tick, kind: 'TS'|'B', value }],
+ * report: { leadIn, fitted, worstMs } }`, `worstMs` the furthest a line's
+ * tempo marker lands from its own time by the game's arithmetic.
+ */
+export function chartSyncTrack(lines) {
+  const points = gameLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const R = CHART_RESOLUTION
+  const first = points[0]
+  const firstBeat = 60000 / first.bpm
+  const barMs = first.meter * firstBeat
+  const events = []
+  const report = { leadIn: false, fitted: 0, worstMs: 0 }
+
+  // The first line's first downbeat at least half a bar in: a lead-in bar from tick 0 reaches it.
+  const phase = (((first.timeMs % barMs) + barMs) % barMs)
+  const onZero = phase < 1e-6 || barMs - phase < 1e-6
+  const target0 = onZero ? 0 : phase >= barMs / 2 ? phase : phase + barMs
+  let tick = 0
+  let at = 0
+  events.push({ tick: 0, kind: 'TS', value: first.meter })
+  if (!onZero) {
+    const lead = Math.round((first.meter * MS_PER_MINUTE_MILLI) / target0)
+    events.push({ tick: 0, kind: 'B', value: lead })
+    tick = first.meter * R
+    at = ticksMs(tick, lead)
+    report.leadIn = true
+  }
+  report.worstMs = Math.abs(at - target0)
+
+  // Each line's marker: its tick from the beats since the last one, at the game's own time for that tick.
+  let tsStart = 0
+  let tsMeter = first.meter
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
+    const own = Math.round(p.bpm * 1000)
+    if (i + 1 === points.length) {
+      events.push({ tick, kind: 'B', value: own })
+      break
+    }
+    const next = points[i + 1]
+    const span = Math.max(1, Math.round(((next.timeMs - at) / (60000 / p.bpm)) * R))
+    let value = own
+    if (Math.abs(at + ticksMs(span, own) - next.timeMs) > CHART_TOLERANCE_MS && next.timeMs > at) {
+      value = Math.round((((span / R) * MS_PER_MINUTE_MILLI) / (next.timeMs - at)))
+      report.fitted++
+    }
+    events.push({ tick, kind: 'B', value })
+    tick += span
+    at += ticksMs(span, value)
+    report.worstMs = Math.max(report.worstMs, Math.abs(at - next.timeMs))
+    // osu! starts a bar at every red line; Clone Hero counts bars from the last TS.
+    if (next.meter !== tsMeter || (tick - tsStart) % (tsMeter * R) !== 0) {
+      events.push({ tick, kind: 'TS', value: next.meter })
+      tsStart = tick
+      tsMeter = next.meter
+    }
+  }
+  // TS before B at the same tick, as Moonscraper writes them.
+  events.sort((a, b) => a.tick - b.tick || (a.kind === b.kind ? 0 : a.kind === 'TS' ? -1 : 1))
+  return { events, report }
+}
+
+const chartString = (text) => `"${field(text).replace(/"/g, "'")}"`
+
+/** A whole notes.chart: `[Song]`, `[SyncTrack]`, an empty `[Events]`, no note tracks. CRLF. `{ text, report }`. */
+export function chartFile({ title, artist, creator, audioName, lines }) {
+  const { events, report } = chartSyncTrack(lines)
+  const text = [
+    '[Song]',
+    '{',
+    `  Name = ${chartString(title)}`,
+    `  Artist = ${chartString(artist)}`,
+    `  Charter = ${chartString(creator)}`,
+    '  Offset = 0',
+    `  Resolution = ${CHART_RESOLUTION}`,
+    '  Player2 = bass',
+    '  Difficulty = 0',
+    '  PreviewStart = 0',
+    '  PreviewEnd = 0',
+    '  MediaType = "cd"',
+    `  MusicStream = ${chartString(audioName)}`,
+    '}',
+    '[SyncTrack]',
+    '{',
+    ...events.map((e) => `  ${e.tick} = ${e.kind} ${e.value}`),
+    '}',
+    '[Events]',
+    '{',
+    '}',
+    '',
+  ].join('\r\n')
+  return { text, report }
+}
+
+// ---------------------------------------------------------------------------
+// The page's entry point
+// ---------------------------------------------------------------------------
+
+/** The formats the page offers, in order. Etterna rides on the .sm. */
+export const GAME_FORMATS = [
+  { id: 'qua', ext: 'qua', game: 'Quaver' },
+  { id: 'sm', ext: 'sm', game: 'StepMania · Etterna' },
+  { id: 'ssc', ext: 'ssc', game: 'StepMania 5' },
+  { id: 'chart', ext: 'chart', game: 'Clone Hero' },
+]
+
+/**
+ * One game's file for the page: `{ name, text, report }`. `lines` are the
+ * export's (after `exportLines`); `analysis` names the song and its audio.
+ */
+export function gameFile(kind, { analysis, lines, offsetDecimals = 3, creator }) {
+  const { title, artist } = songNames({ ...analysis, filename: analysis?.filename })
+  const audio = String(analysis?.filename ?? 'audio.mp3')
+  const ext = (/\.[A-Za-z0-9]{1,5}$/.exec(audio)?.[0] ?? '.mp3').toLowerCase()
+  const who = field(creator) || 'Overtone'
+  const stem = audio
+    .replace(/\.[^.]*$/, '')
+    .replace(/[^A-Za-z0-9._ -]+/g, '')
+    .trim()
+    .slice(0, 80) || 'overtone'
+  const base = { title, artist, creator: who, lines, offsetDecimals }
+  if (kind === 'qua') return { name: `${stem}.qua`, ...quaFile({ ...base, audioName: audio }) }
+  if (kind === 'sm' || kind === 'ssc') return { name: `${stem}.${kind}`, ...stepmaniaFile({ ...base, kind, audioName: audio }) }
+  if (kind === 'chart') return { name: 'notes.chart', ...chartFile({ ...base, audioName: `song${ext}` }) }
+  throw new Error(`Unknown format: ${kind}`)
+}

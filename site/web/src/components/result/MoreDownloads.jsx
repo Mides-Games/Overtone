@@ -1,20 +1,28 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MAX_TRACK_SECONDS, renderClickTrack } from '../../lib/click-track.js'
+import { exportLines } from '../../lib/export-options.js'
 import { patchOsuFile } from '../../lib/osu-patch.js'
 import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
+import ExportOptions, { useExportOptions } from './ExportOptions.jsx'
+import GameFormats from './GameFormats.jsx'
 
 /**
  * The downloads after the .osz (W3.20), folded away so the export row stays
  * one button: the reader's own .osu with the red lines put in, the click
- * track as a WAV, the CSV, the result as JSON and a plain-text summary. All
- * of it is built in this browser; the .osu and the song never leave it.
+ * track as a WAV, the other games' files (W12.7), the CSV, the result as
+ * JSON and a plain-text summary. All of it is built in this browser; the .osu
+ * and the song never leave it. On top, the export options (W12.8), which the
+ * .osz above, the copy, the .osu and the games' files follow; the clicks, the
+ * CSV, the summary and the JSON do not (they are the timing as the page has it).
  */
 export default function MoreDownloads({ id, analysis, lines, adjustment, grid, durationS, songBuffer, player, checks, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const options = useExportOptions()
+  const written = useMemo(() => exportLines(lines, options), [lines, options])
   const osuInput = useRef(null)
   const [patch, setPatch] = useState(null) // { report } | { error } | 'busy'
   const [track, setTrack] = useState(null) // { busy, progress } | { error } | { capped }
@@ -23,7 +31,7 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
     if (!file) return
     setPatch('busy')
     try {
-      const out = await patchOsuFile(file, lines)
+      const out = await patchOsuFile(file, written)
       if (out.error) return setPatch({ error: out.error })
       saveText(out.bytes, out.name, 'application/octet-stream')
       setPatch({ report: out.report })
@@ -62,6 +70,8 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
         </span>
         {t('exports.more')}
       </summary>
+
+      <ExportOptions lines={lines} durationS={durationS} />
 
       <div className="grid gap-px bg-line md:grid-cols-2">
         <div className="space-y-2 bg-surface px-4 py-3">
@@ -123,6 +133,8 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, d
           </p>
         </div>
       </div>
+
+      <GameFormats analysis={analysis} lines={written} offsetDecimals={options.offsetDecimals} />
 
       <div className="space-y-2 border-t border-line px-4 py-3">
         <h3 className="label">{t('exports.filesTitle')}</h3>

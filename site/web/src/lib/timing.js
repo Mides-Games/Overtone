@@ -7,6 +7,7 @@
  * Nothing here is a new estimate. An adjustment is the reader's, to be checked
  * by ear; the engine's own reading is the result as it came.
  */
+import { changesLines, optionsNote } from './export-options.js'
 
 /** Click levels, as the engine's `click_schedule`: 2 the bar's first beat, 1 a beat. */
 export const BAR = 2
@@ -185,17 +186,20 @@ const isAdjusted = ({ factor, nudgeMs }) => factor !== 1 || nudgeMs !== 0
  * The `[TimingPoints]` block, CRLF, as the API's timing.txt sends it. Not
  * adjusted, it is the engine's own rows; adjusted, the same rows rebuilt from
  * the adjusted lines, with a comment line saying so (osu! reads comments on
- * their own lines only, which is where it goes).
+ * their own lines only, which is where it goes). `options` are the export
+ * options (W12.8) the `lines` were already put through (`exportLines`): when
+ * they change the lines, the rows are rebuilt too and the comment names them.
  */
-export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs: 0 }) {
+export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs: 0 }, options = null) {
   let rows = String(result?.osu_timing ?? '')
     .split(/\r?\n/)
     .filter(Boolean)
-  if (isAdjusted(adjustment)) {
+  if (isAdjusted(adjustment) || changesLines(options)) {
     const header = rows.filter((row) => row.startsWith('//'))
+    const notes = [adjustmentNote(adjustment), optionsNote(options)].filter(Boolean).join(', ')
     rows = [
       ...header,
-      `// Adjusted on the Overtone site (${adjustmentNote(adjustment)}): check it by ear`,
+      `// ${isAdjusted(adjustment) ? 'Adjusted' : 'Exported'} on the Overtone site (${notes}): check it by ear`,
       ...lines.map((line) => `${roundHalfEven(line.timeMs)},${line.beatMs.toFixed(12)},${line.meter},1,0,100,1,0`),
     ]
   }

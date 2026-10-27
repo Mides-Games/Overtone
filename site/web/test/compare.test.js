@@ -81,6 +81,13 @@ test('half and double the tempo on the same beats are named, not called differen
   const off = compareTimings(A, [line(408, 240)], { durationMs: MINUTE })
   assert.equal(off.verdict, 'different')
   assert.equal(off.agreeShare, 0)
+  assert.equal(off.relatedShare, 0)
+
+  // Half for the first half of the song, then another tempo: the half is counted apart from the same grid.
+  const mixed = compareTimings(A, [line(400, 60), line(30400, 97)], { durationMs: MINUTE })
+  assert.equal(mixed.verdict, 'different')
+  assert.equal(mixed.agreeShare, 0)
+  assert.ok(mixed.relatedShare > 0.45 && mixed.relatedShare < 0.55, String(mixed.relatedShare))
 })
 
 test('relation judges half and double on the slower scale', () => {
@@ -155,7 +162,8 @@ test('a tempo change matched across two timings, and the lines a few beats apart
   assert.equal(late.verdict, 'different')
   close(late.pairs[1].offsetMs, -0.127, 1e-6)
   assert.ok(late.agreeShare > 0.95)
-  assert.ok(late.firstApartMs > 30400 && late.firstApartMs < 31300)
+  // B's 128 grid has a beat at 30.400 s, where A has turned to 142: the first that parts.
+  close(late.firstApartMs, 30400, 1e-6)
 })
 
 test('lines too far apart do not pair; the order of lines is kept', () => {
@@ -189,6 +197,16 @@ test('the result against its own adjusted version: x2 is double, a nudge is an o
   const nudged = compareTimings(engine, adjustLines(result, { nudgeMs: 7 }), { durationMs: MINUTE })
   assert.equal(nudged.verdict, 'offset')
   close(nudged.offsetMs, 7)
+})
+
+test('a tempo change a few ms apart in the two timings is judged by the beat that meets it, not the line in force', () => {
+  // x2 and +3 ms on two lines: for 3 ms at 30.4 s A is already at 142 and B still at 256, yet every beat meets.
+  const A = [line(400, 128), line(30400, 142)]
+  const B = [line(403, 256), line(30403, 284)]
+  const cmp = compareTimings(A, B, { durationMs: MINUTE })
+  assert.equal(cmp.verdict, 'double')
+  close(cmp.withinMs, 3, 1e-6)
+  assert.deepEqual(cmp.pairs.map((p) => [p.kind, p.aligned, p.agree]), [['double', true, false], ['double', true, false]])
 })
 
 /** A mapped .osu, CRLF, with a BOM, greens, a duplicate red line and a meter change. */

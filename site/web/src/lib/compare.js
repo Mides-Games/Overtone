@@ -240,7 +240,9 @@ function comparePair(A, B, i, j, endMs) {
     meterA: a.meter,
     meterB: b.meter,
     barShiftBeats,
-    agree: kind === 'same' && bpmOk && within(offsetMs) && within(endOffsetMs) && offsetMs !== null,
+    // On the same beats within the tolerances: `agree` at the same tempo, `aligned` at the same, half or double.
+    aligned: known && bpmOk && within(offsetMs) && within(endOffsetMs),
+    agree: kind === 'same' && bpmOk && within(offsetMs) && within(endOffsetMs),
   }
 }
 
@@ -269,13 +271,18 @@ function sampleBeats(A, B, startMs, endMs) {
       const t = grid[k] * 1000
       if (t > endMs + 1e-6) break
       const x = own[governIndex(own, t)]
-      const y = other[governIndex(other, t)]
+      // The other grid's nearest beat, and the line it belongs to: a few ms either side of two red lines
+      // that change tempo at nearly the same time, the beat that meets this one is already (or still) the
+      // other line's, and its tempo is the one to judge.
+      const at = lowerBound(otherGrid, grid[k])
+      let q = -1
+      for (const c of [at - 1, at]) if (c >= 0 && c < otherGrid.length && (q < 0 || Math.abs(otherGrid[c] - grid[k]) < Math.abs(otherGrid[q] - grid[k]))) q = c
+      if (q < 0) continue
+      const near = otherGrid[q] * 1000 - t
+      const y = other[governIndex(other, otherGrid[q] * 1000)]
       // Only the sparser grid's beats (A's where they are as dense): a denser grid's in-between beats have nothing to meet.
       if (ownIsA ? x.beatMs < y.beatMs - 1e-9 : x.beatMs <= y.beatMs + 1e-9) continue
       const r = ownIsA ? relation(x.bpm, y.bpm) : relation(y.bpm, x.bpm)
-      const at = lowerBound(otherGrid, grid[k])
-      let near = Infinity
-      for (const q of [at - 1, at]) if (q >= 0 && q < otherGrid.length && Math.abs(otherGrid[q] * 1000 - t) < Math.abs(near)) near = otherGrid[q] * 1000 - t
       samples.push({ t, kind: r.kind, bpmOk: r.bpmOk, delta: ownIsA ? near : -near, weight: x.beatMs })
     }
   }
@@ -297,7 +304,8 @@ const median = (values) => {
  * - 'same': every beat within 5 ms and every tempo within 0.05 BPM; `withinMs` the worst beat;
  * - 'offset': the same tempo throughout, B shifted by `offsetMs` (the median) for every beat;
  * - 'double' / 'half': B at twice / half A's tempo, otherwise the same grid within `withinMs`;
- * - 'different': anything else; `agreeShare` of the beats agree, the first that does not at `firstApartMs`;
+ * - 'different': anything else; `agreeShare` of the song (in time) is the same grid and `relatedShare`
+ *   the same pulse at half or double, the first beat that is not the same grid at `firstApartMs`;
  * - 'noOverlap': the later first line is past the end of the song.
  * `null` when either side has no red line.
  */
@@ -313,7 +321,7 @@ export function compareTimings(A, B, { durationMs }) {
   const unmatched = [...onlyA.map((k) => lonely(a, b, k, 'A')), ...onlyB.map((k) => lonely(b, a, k, 'B'))].sort((x, y) => x.timeMs - y.timeMs)
   const meterDiffers = pairs.filter((p) => p.meterA !== p.meterB).length
   const barsShifted = pairs.filter((p) => p.barShiftBeats).length
-  const base = { startMs, endMs, pairs, unmatched, meterDiffers, barsShifted, withinMs: null, offsetMs: null, agreeShare: null, firstApartMs: null, samples: 0 }
+  const base = { startMs, endMs, pairs, unmatched, meterDiffers, barsShifted, withinMs: null, offsetMs: null, agreeShare: null, relatedShare: null, firstApartMs: null, samples: 0 }
   if (startMs > endMs) return { ...base, verdict: 'noOverlap' }
 
   const samples = sampleBeats(a, b, startMs, endMs)
@@ -337,6 +345,8 @@ export function compareTimings(A, B, { durationMs }) {
     verdict: 'different',
     withinMs: worst,
     agreeShare: total ? samples.filter(agrees).reduce((sum, s) => sum + s.weight, 0) / total : 0,
+    // Where the beats meet at half or double the tempo: not the same clicks, but the same pulse.
+    relatedShare: total ? samples.filter((s) => s.kind !== 'same' && s.kind !== 'other' && s.bpmOk && close(s)).reduce((sum, s) => sum + s.weight, 0) / total : 0,
     firstApartMs: apart ? apart.t : null,
   }
 }

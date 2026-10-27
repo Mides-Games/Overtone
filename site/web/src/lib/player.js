@@ -22,6 +22,32 @@ const LEAD_S = 0.06
 const TONES = { 2: [2093, 1], 1: [1568, 0.7], 0: [1318.5, 0.4] }
 
 let shared = null
+/**
+ * The song and click volumes, and whether the clicks are on, kept in this
+ * browser so the next timing opens as the reader left the last one. A
+ * convenience only: storage that is blocked or full falls back to the defaults.
+ */
+const VOLUMES_KEY = 'overtone.player.volumes'
+
+const unit = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined)
+
+function savedVolumes() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(VOLUMES_KEY) ?? '{}') ?? {}
+    return { song: unit(stored.song), click: unit(stored.click), clicksOn: typeof stored.clicksOn === 'boolean' ? stored.clicksOn : undefined }
+  } catch {
+    return {}
+  }
+}
+
+function saveVolumes(volumes) {
+  try {
+    localStorage.setItem(VOLUMES_KEY, JSON.stringify(volumes))
+  } catch {
+    // Private mode or blocked storage: the volume holds for this page only.
+  }
+}
+
 /** The page's one AudioContext, made on first use (decoding needs one; playing resumes it). */
 export function audioContext() {
   if (!shared) {
@@ -47,9 +73,10 @@ export class Player {
     this.range = null // the span the reader drew, seconds
     this.loopOn = false
     this.rate = 1
-    this.songVolume = 0.8
-    this.clickVolume = 0.6
-    this.clicksOn = true
+    const saved = savedVolumes()
+    this.songVolume = saved.song ?? 0.8
+    this.clickVolume = saved.click ?? 0.6
+    this.clicksOn = saved.clicksOn ?? true
     this.listeners = new Set()
     this.snapshot = this.#snap()
   }
@@ -119,6 +146,7 @@ export class Player {
     this.songVolume = song
     this.clickVolume = click
     this.clicksOn = clicksOn
+    saveVolumes({ song, click, clicksOn })
     if (this.songBus) this.#buses()
     this.#emit()
   }

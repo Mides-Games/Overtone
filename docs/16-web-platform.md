@@ -782,6 +782,40 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 
 ---
 
+### Fase W13 — Todavía más (pedido del dueño, 2026-10-27)
+
+Ideas nuevas, todas para quien timea o mapea. Las que tocan el engine dicen cómo se
+miden; ninguna mueve la línea base sin pasar las puertas.
+
+| # | Tarea |
+|---|---|
+| W13.1 | **Mapa de prueba jugable:** un `.osz` con un círculo en cada tiempo (o en cada 1/2) y hitsound en el primer tiempo del compás, para jugar el timing en osu! y sentir si está corrido |
+| W13.2 | **Ajustar los objetos al timing nuevo:** al parchear un `.osu` propio, mover opcionalmente cada hit object al tick más cercano de la grilla nueva (1/1 a 1/16), con un informe de cuántos se movieron y cuánto |
+| W13.3 | **Divisor sugerido:** un histograma de a qué divisor caen los ataques (1/2, 1/3, 1/4, 1/6, 1/8) para elegir `BeatDivisor`, que se escribe en el `.osu` |
+| W13.4 | **Pausas sugeridas:** los silencios largos como `Break` en `[Events]`, opcionales |
+| W13.5 | **Modo y dificultades:** elegir osu!, taiko, catch o mania en el `.osz`, y crear varias dificultades vacías (Easy a Expert) con el mismo timing |
+| W13.6 | **Bandas en el mapa:** graves, medios y agudos (bombo, caja, platillos) como carriles de ataques, para ver qué instrumento marca el pulso |
+| W13.7 | **Espectrograma** opcional bajo la forma de onda, con el mismo zoom |
+| W13.8 | **Modo práctica:** repetir un tramo cada vez más rápido (0,5 → 1,0) con conteo previo, para practicar el ritmo |
+| W13.9 | **Calculadora de timing:** BPM ↔ ms por tiempo, ms ↔ divisor, offset entre dos red lines, y "¿a qué BPM se corre X ms en Y compases?" |
+| W13.10 | **Exportar a DAWs:** un mapa de tempo MIDI (`.mid` con eventos de tempo y compás) y marcadores para Reaper y Ableton |
+| W13.11 | **Más juegos:** Beat Saber (eventos de BPM en `.dat`), A Dance of Fire and Ice (`.adofai`), Friday Night Funkin' (`.json` con `bpm` y `changeBPM`) y Rhythm Doctor, con tests contra archivos de referencia |
+| W13.12 | **Detector de BPM en vivo con el micrófono:** el navegador escucha unos segundos y propone un BPM, sin subir nada, para chequeos rápidos |
+| W13.13 | **Analizar en el navegador** las canciones cortas con el engine de Rust compilado a WebAssembly: sin cola y sin subir el audio. Se mide contra las puertas golden (27/27) antes de ofrecerlo |
+| W13.14 | **Votar los timings públicos:** "está bien" o "está corrido" con un BPM u offset propuesto; los votos con corrección van al staff y, con permiso, a los stages de W11 |
+| W13.15 | **Comentarios con tiempo** en los timings públicos, anclados a un punto de la canción y marcados en el mapa de tempo |
+| W13.16 | **Insignia "verificado por un mapper"** cuando alguien con mapas rankeados (W9.2) confirma un timing |
+| W13.17 | **Campana de avisos en el sitio** para cuentas: sugerencias que cambian de estado, comentarios y votos en tus timings |
+| W13.18 | **Perfil público de cada timer** con sus timings publicados, estadísticas e insignias |
+| W13.19 | **Panel del staff:** la cola, los workers y su memoria, los errores recientes, los reportes y el registro de moderación en una sola página |
+| W13.20 | **Avisos de límite claros:** cuánto falta para volver a subir, con cuenta regresiva, y por qué |
+| W13.21 | **Reconocer el mismo tema en otro formato:** una huella acústica (no el SHA-1) para decir "esta canción ya se timeó" aunque sea otro MP3; se evalúa su costo antes |
+| W13.22 | **Paquete para la comunidad:** un cliente de la API pública (W12.20) en JS y Python, y un ejemplo de bot |
+| W13.23 | **Overlay para streams:** una página para OBS que muestra el BPM y el pulso de la canción que suena |
+| W13.24 | **Acentos de la portada:** el color dominante de la portada tiñe la página del resultado, respetando el contraste |
+
+---
+
 ## 7. Decisiones abiertas (las toma el dueño)
 
 1. **Dominio:** `overtone.midesprojects.com` (recomendado) o uno propio.

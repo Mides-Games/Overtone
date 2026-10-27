@@ -20,6 +20,50 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
+
+### Changed
+
+- `bench/worker_parity.py`: the 24 benchmark cases through `worker/timing_result.py`
+  as a job runs them (the Beat This! vote on), each `timing-result v1` checked against
+  `bench/bpm_snapshot.json` with its own tolerance (0.01 BPM): global BPM, every red
+  line, their count, the meter and the engine path. `gates.py bpm-snapshot` pins the
+  engine; this pins what the worker makes of it -- written-out parameters, snapping,
+  the filter on non-finite points, the rounding into JSON. It imports neither
+  `gates.py` nor the desktop shell, and refuses to run without the vote, since a host
+  missing the model would differ for that reason alone.
+
+### Measured
+
+- Windows (Python 3.14.7, numpy 2.5.3, scipy 1.18.1, libsndfile 1.2.2, worker engine
+  `88089672ec54bf2d`): **24/24** match. Wall time 10.8-37.3 s per case, 129 s for
+  `long-6min`, on a machine shared with other runs.
+- **Linux: not measured.** This machine has no WSL distribution (`wsl.exe` only
+  prints its usage; turning it on needs admin and a reboot) and no Docker; the
+  measurement server tracks `feature/library-api`, which has no `worker/`. On the
+  VPS, in a clone of its own so the running server is untouched:
+
+  ```bash
+  git clone --branch bench/worker-parity https://github.com/Mides-Projects/Overtone.git /opt/overtone-w23
+  cd /opt/overtone-w23 && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+  cd /opt/overtone-w23 && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/w23.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/w23.lock
+  cd /opt/overtone-w23 && .venv/bin/python bench/worker_parity.py && .venv/bin/python bench/gates.py bpm-snapshot
+  ```
+
+  W2.3 is done when both print 24/24 there.
+
+### Rejected / tried and dropped
+
+- Queuing the Linux run on the measurement server now (decided 2026-10-27, owner away
+  and decisions delegated). `bench/remote.py run` only queues `stages` and
+  `single_bpm` against the code the server already runs (`feature/library-api`, no
+  `worker/`), so the gate cannot go through that queue. Switching the server's branch
+  or opening an SSH shell beside it would cut into the engine experiment matrix it is
+  running for hours, and the matrix's timings with it. So the run waits for the matrix
+  to finish, then follows the steps above in a separate clone.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
 
 ### Changed
@@ -214,6 +258,8 @@ version is `v0.2.0-alpha`.
 - Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
   and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
   by more than 20 ms. That is a precision change; it waits for a Corpus B run.
+
+---
 
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
@@ -2134,8 +2180,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -2319,8 +2363,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed
@@ -2348,8 +2390,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -2368,8 +2408,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -2381,8 +2419,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
-
----
 
 ---
 
@@ -8549,9 +8585,6 @@ bpm-snapshot 24/24 · golden.py 27/27 · facts
 UI                              unit-tested bridge only; ids, both languages, no
                                 duplicates cross-checked. Harness pass owed, stated.
 ```
-
----
-
 
 ---
 

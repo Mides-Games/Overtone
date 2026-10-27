@@ -64,6 +64,104 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
+
+### Changed
+
+- W3.14 of [the web platform](16-web-platform.md): while a batch runs, the tab's
+  title carries its count ("2/5 ready · Overtone"), and goes back to the page's
+  own title when the page is left. A checkbox under the list asks the browser for
+  permission to notify; if granted, one notification says "3 of 5 songs have a
+  timing" when the last one finishes.
+- Each card reports the status it polls to the page, which is all the count
+  needs: nothing leaves the browser that did not before.
+- `site/web` gets a `test` script (`node --test`) for its pure modules.
+
+### Hardening
+
+- A file still uploading or waiting to upload counts in the batch's total, so
+  two songs answered at once from the cache do not end a batch of five early.
+- The notification is sent once per batch, only when asked for and granted; a
+  browser that only notifies from a service worker (Android Chrome) gets the
+  title alone instead of an error.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4 (the count, the single-song case, the title,
+  when the notification goes). `site/api` 31/31, untouched. `vite build` passes.
+- In the browser (`pnpm dev` in memory, a fake worker answering one job at a
+  time, `Notification` stubbed to record calls): the title read 0/3, 1/3 and
+  3/3 ready; one notification, "3 of 3 songs have a timing."; the title came back
+  on leaving the page.
+- Not checked: a real system notification (the pane's permission prompt was
+  stubbed).
+
+---
+## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+
+### Changed
+
+- W3.12 of [the web platform](16-web-platform.md): `DELETE /api/v1/analyses/:id`
+  takes back a song that is still waiting. Whoever may read the analysis (the
+  session or the anonymous cookie that created it) may cancel it; anyone else
+  gets the same 404 as for an id that does not exist. The job, the row and the
+  spooled audio are deleted, so the song does not count against the day's quota.
+- A Cancel button on the upload card, on the analysis page while it is queued and
+  on the caller's own queued rows in `/queue`. A cancelled analysis is dropped
+  from the browser's recent list.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` was not YAML since W3.11: a `$'` in that edit's
+  replacement string meant "the text after the match", which pasted a second copy
+  of the queue and analysis paths into the lookup's `sha1` pattern. Two unquoted
+  descriptions did not parse either. It loads again, each path once.
+
+### Hardening
+
+- A song the worker has claimed is not cancelled (409 `NOT_QUEUED`): the worker
+  has no way to hear about it mid-stage. The delete checks `state = 'queued'` in
+  the same statement, so a claim and a cancel arriving together are decided by
+  the job's row lock, not by whichever read first.
+
+### Measured
+
+- `node --test` in `site/api`: 34/34 (3 new, over HTTP against the app: the
+  owner cancels and the row, the audio and the quota count go; a stranger gets
+  404 and a request without the same-origin header 403; a claimed job gets 409).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; a queued analysis
+  cancelled, the day's count went from 2 to 1; a claimed one refused.
+- In the browser (`pnpm dev` in memory, no worker): cancelled from `/queue`, from
+  the analysis page (back to `/analyze`) and from a batch card; the queue showed
+  each one gone.
+
+---
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
 ## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
 
 ### Changed
@@ -2011,8 +2109,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -2196,8 +2292,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed
@@ -2225,8 +2319,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -2245,8 +2337,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -2258,8 +2348,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
-
----
 
 ---
 
@@ -8428,7 +8516,6 @@ UI                              unit-tested bridge only; ids, both languages, no
 ```
 
 ---
-
 
 ---
 

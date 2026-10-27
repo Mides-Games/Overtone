@@ -113,6 +113,12 @@
       "ready": "Ready to send",
       "sent": "Sent",
       "remove": "Remove {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} ready",
+      "notify": "Notify me when the whole batch is done",
+      "notifyTitle": "Overtone: your batch is done",
+      "notifyBody": "{{done}} of {{total}} songs have a timing."
     }
   },
   "result": {
@@ -223,7 +229,14 @@
       "running": "Analysing",
       "done": "Done",
       "refused": "Refused",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     }
+  },
+  "cancel": {
+    "button": "Cancel",
+    "busy": "Cancelling…",
+    "notQueued": "It is already being analysed and can no longer be cancelled.",
+    "failed": "It could not be cancelled. Try again."
   }
 }

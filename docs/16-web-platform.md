@@ -476,6 +476,18 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.14 hecha el 2026-10-27** en la rama `feature/batch-notice`: mientras corre un
+lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso para
+una notificación del navegador que sale una sola vez, al terminar la última. Usa
+los estados que las tarjetas ya consultan: nada nuevo sale del navegador.
+**W3.12 hecha el 2026-10-27** en la rama `feature/cancel-own-analysis`:
+`DELETE /analyses/:id` borra el trabajo, la fila y el audio mientras sigue en cola,
+y la canción no cuenta para la cuota del día. El botón está en la tarjeta, en la
+página del análisis y en `/queue`; una ya tomada por el worker contesta 409.
+**W3.13 hecha el 2026-10-27** en la rama `feature/m4a-wav-tags`: `lib/tags.js` lee
+`©nam`/`©ART` de M4A y `LIST/INFO` (o un chunk `id3 `) de WAV, recorriendo cajas y
+chunks aunque estén después del audio; 13 tests con fixtures armados en el test.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

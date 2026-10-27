@@ -113,6 +113,12 @@
       "ready": "Lista para enviar",
       "sent": "Enviada",
       "remove": "Quitar {{name}}"
+    },
+    "batch": {
+      "title": "{{finished}}/{{total}} listas",
+      "notify": "Avisarme cuando termine todo el lote",
+      "notifyTitle": "Overtone: tu lote terminó",
+      "notifyBody": "{{done}} de {{total}} canciones tienen timing."
     }
   },
   "result": {
@@ -223,7 +229,14 @@
       "running": "Analizando",
       "done": "Listo",
       "refused": "Rechazado",
-      "failed": "Falló"
+      "failed": "Falló",
+      "cancelled": "Cancelada"
     }
+  },
+  "cancel": {
+    "button": "Cancelar",
+    "busy": "Cancelando…",
+    "notQueued": "Ya se está analizando y no se puede cancelar.",
+    "failed": "No se pudo cancelar. Probá de nuevo."
   }
 }

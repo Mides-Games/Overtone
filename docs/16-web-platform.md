@@ -467,6 +467,13 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.17 hecha el 2026-10-27** en la rama `feature/shared-rate-limit`: con base de datos,
+el rate limit cuenta en la tabla `rate_limits` (un upsert por pedido), así que dos
+APIs detrás del proxy comparten la cuenta; sin base sigue en memoria. La clave es un
+HMAC de la dirección, nunca la dirección. Probado con dos procesos contra PostgreSQL
+(PGlite): diez subidas pasaron alternando entre los dos y la undécima recibió 429 en
+cualquiera de ellos.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

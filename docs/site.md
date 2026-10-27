@@ -38,7 +38,10 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
 - **Quota** (ADR-W6): `ANON_DAILY_LIMIT` a UTC day per client address without
   an account, `USER_DAILY_LIMIT` with one. The address is stored as an HMAC of
   the address and the day. A separate limit allows 10 uploads per address per
-  10 minutes.
+  10 minutes. The request limits (`middlewares/rate-limit.js`) count in the
+  `rate_limits` table when there is a database, so every API process behind
+  the proxy shares them (W3.17), and key each address by an HMAC, never the
+  address itself.
 - **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
   queue; the second time it fails. Every worker call names its attempt, so a
   late answer from an abandoned attempt gets a 409.
@@ -279,3 +282,20 @@ not with two real addresses taking turns.
 The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
+
+### A rate limit shared by every process (W3.17, 2026-10-27)
+
+With `DATABASE_URL` set, each request's window is one upsert into `rate_limits`
+(`bucket`, `client`, `count`, `reset_at`): `ON CONFLICT` takes the row's lock, so
+two processes counting the same client are serialised, and the database computes
+the wait, so their clocks need not agree. `client` is the first 32 hex digits of
+an HMAC-SHA256 of the address under `SESSION_SECRET`, which every process already
+shares. Dead windows are swept a minute after they end. If the table cannot be
+reached, the request is counted in the process's memory and passes or fails on
+that, with one warning per outage: the limit never takes the site down. Without
+a database (development) the count stays in memory, as before.
+
+Checked with two API processes on one PostgreSQL (PGlite behind `pglite-socket`):
+twelve uploads sent alternately to both, the first ten passed (415, no body) and
+the last two were refused with 429 and a Retry-After, whichever process got
+them; the table held the HMAC and the count, no address.

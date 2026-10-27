@@ -20,6 +20,39 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
+
+### Changed
+
+- W3.17 of [the web platform](16-web-platform.md): with a database, the request
+  limits (`/api` 300 a minute, uploads 10 and lookups 120 per ten minutes,
+  sign-in 20 per ten minutes) count in a new `rate_limits` table, one upsert per
+  request, so two APIs behind the proxy share every count. Without a database
+  they count in memory, as before.
+
+### Hardening
+
+- The address is no longer the key, even in memory: it is an HMAC under
+  `SESSION_SECRET`, so the table holds no address (the rate-limit half of W3.6).
+- A client alternating between two processes used to get twice every limit.
+- If the table cannot be reached, the request is counted in the process's own
+  memory and the outage is logged once: a limit must not take the site down.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new: the 429 and its Retry-After, two
+  processes apart in memory and together on one counter, the counter seeing only
+  the hash, the fallback when the count fails, a window starting again).
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; two API processes on one
+  database, twelve uploads sent alternately: ten passed, the 11th and 12th got 429
+  (Retry-After 588 s) from whichever process they hit; `rate_limits` held the HMAC
+  and the count, no address.
+- Not measured: the upsert's cost on the server's PostgreSQL. It adds one write to
+  every request; PGlite's timings say nothing about a real server.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

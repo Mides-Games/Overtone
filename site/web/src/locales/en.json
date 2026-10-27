@@ -930,5 +930,127 @@
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
     }
+  },
+  "palette": {
+    "open": "Search pages and commands ({{shortcut}})",
+    "title": "Go to or run",
+    "placeholder": "A page, an analysis or a command…",
+    "results": "Results",
+    "empty": "Nothing matches “{{query}}”.",
+    "footer": "↑ ↓ to move · Enter to open · Esc to close · ? for every shortcut",
+    "inProgress": "Analysing",
+    "waiting": "In the queue",
+    "current": "Current",
+    "groups": {
+      "page": "Page",
+      "analysis": "Analysis",
+      "action": "Action"
+    },
+    "actions": {
+      "theme": {
+        "dark": "Dark theme",
+        "light": "Light theme",
+        "system": "Theme as the system"
+      },
+      "contrastOn": "Turn high contrast on",
+      "contrastOff": "Turn high contrast off",
+      "settings": "Open settings",
+      "shortcuts": "Keyboard shortcuts"
+    },
+    "help": {
+      "title": "Keyboard shortcuts",
+      "close": "Close",
+      "note": "None of these keys acts while you are typing in a field, except Ctrl+K (⌘K), which never types anything.",
+      "global": {
+        "title": "Anywhere",
+        "palette": "Go to a page, an analysis or a command",
+        "help": "This list",
+        "close": "Close a dialog"
+      },
+      "result": {
+        "title": "On a result page",
+        "play": "Play or pause",
+        "beat": "Back or forward a beat",
+        "bar": "Back or forward a bar",
+        "zoom": "Zoom in or out",
+        "fit": "Fit the whole song",
+        "lines": "Previous or next red line",
+        "loop": "Loop the selection on or off",
+        "clicks": "Clicks on or off",
+        "follow": "Follow the playhead on or off"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "How Overtone looks and sounds in this browser: theme, contrast, font size, the map’s colours, motion, volumes and latency.",
+    "subtitle": "How Overtone looks and sounds in this browser. Each choice applies at once and is kept here, on this device: no account needed, nothing sent.",
+    "appearance": {
+      "title": "Appearance",
+      "note": "For this browser only. Another device keeps its own."
+    },
+    "theme": {
+      "label": "Theme",
+      "system": "As the system",
+      "dark": "Dark",
+      "light": "Light",
+      "hint": "“As the system” follows your device’s light or dark mode and changes with it."
+    },
+    "contrast": {
+      "label": "High contrast",
+      "hint": "Darker text and stronger lines in light mode, brighter in dark: every text colour at 7:1 or more against its background (WCAG AAA)."
+    },
+    "font": {
+      "label": "Font size",
+      "hint": "From 90 % to 130 %. Spacing grows with the text, so lines keep their length."
+    },
+    "palette": {
+      "label": "Tempo map colours",
+      "default": "Default",
+      "cb": "Colour-blind safe",
+      "hint": "Moves red lines, “check by ear” and tempo apart for protanopia, deuteranopia and tritanopia, on the map and everywhere they appear.",
+      "preview": "The map’s colours now",
+      "swatch": {
+        "red": "Red lines",
+        "amber": "Check by ear",
+        "lavender": "Tempo",
+        "accent": "High confidence"
+      }
+    },
+    "motion": {
+      "label": "Motion",
+      "system": "As the system",
+      "reduce": "Reduce",
+      "allow": "Allow",
+      "systemReduce": "Your system asks for reduced motion right now.",
+      "systemAllow": "Your system does not ask for reduced motion right now."
+    },
+    "reset": "Reset contrast, size, colours and motion",
+    "language": {
+      "title": "Language",
+      "label": "Language of the site",
+      "en": "English",
+      "es": "Español"
+    },
+    "audio": {
+      "title": "Player",
+      "note": "Where the song and the clicks start on a result page. Moving a slider there changes these too.",
+      "song": "Song volume",
+      "click": "Click volume",
+      "clicksOn": "Clicks on when a result opens"
+    },
+    "latency": {
+      "label": "Device latency",
+      "none": "Not measured",
+      "value": "{{ms}} ms",
+      "hint": "How late this device’s speakers or headphones sound. The player moves only its clicks by it, never an export. Measure it by ear on",
+      "calibrateLatest": "your latest result.",
+      "calibrateRecent": "any result page.",
+      "type": "Or type it",
+      "placeholder": "e.g. 40",
+      "save": "Set",
+      "reset": "Forget it",
+      "invalid": "Type a number of milliseconds between {{min}} and {{max}}."
+    }
   }
 }

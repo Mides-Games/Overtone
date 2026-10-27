@@ -7,5 +7,7 @@ Disallow: /analyze/
 Disallow: /login
 Disallow: /profile
 Disallow: /history
+# This browser's own settings (W12.15): nothing on it is worth a search result.
+Disallow: /settings
 
 Sitemap: https://overtone.midesprojects.com/sitemap.xml

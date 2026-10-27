@@ -930,5 +930,127 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "palette": {
+    "open": "Buscar páginas y comandos ({{shortcut}})",
+    "title": "Ir a o ejecutar",
+    "placeholder": "Una página, un análisis o un comando…",
+    "results": "Resultados",
+    "empty": "Nada coincide con “{{query}}”.",
+    "footer": "↑ ↓ para moverte · Enter para abrir · Esc para cerrar · ? para todos los atajos",
+    "inProgress": "Analizando",
+    "waiting": "En la cola",
+    "current": "Actual",
+    "groups": {
+      "page": "Página",
+      "analysis": "Análisis",
+      "action": "Acción"
+    },
+    "actions": {
+      "theme": {
+        "dark": "Tema oscuro",
+        "light": "Tema claro",
+        "system": "Tema como el sistema"
+      },
+      "contrastOn": "Activar alto contraste",
+      "contrastOff": "Desactivar alto contraste",
+      "settings": "Abrir ajustes",
+      "shortcuts": "Atajos de teclado"
+    },
+    "help": {
+      "title": "Atajos de teclado",
+      "close": "Cerrar",
+      "note": "Ninguna de estas teclas actúa mientras escribís en un campo, salvo Ctrl+K (⌘K), que nunca escribe nada.",
+      "global": {
+        "title": "En cualquier página",
+        "palette": "Ir a una página, un análisis o un comando",
+        "help": "Esta lista",
+        "close": "Cerrar un diálogo"
+      },
+      "result": {
+        "title": "En un resultado",
+        "play": "Reproducir o pausar",
+        "beat": "Un pulso atrás o adelante",
+        "bar": "Un compás atrás o adelante",
+        "zoom": "Acercar o alejar",
+        "fit": "Ver la canción entera",
+        "lines": "Red line anterior o siguiente",
+        "loop": "Activar o desactivar el bucle",
+        "clicks": "Activar o desactivar los clics",
+        "follow": "Seguir o no el cabezal"
+      }
+    }
+  },
+  "settings": {
+    "title": "Ajustes",
+    "description": "Cómo se ve y se escucha Overtone en este navegador: tema, contraste, tamaño de letra, colores del mapa, movimiento, volúmenes y latencia.",
+    "subtitle": "Cómo se ve y se escucha Overtone en este navegador. Cada opción se aplica al instante y queda guardada acá, en este dispositivo: sin cuenta y sin enviar nada.",
+    "appearance": {
+      "title": "Apariencia",
+      "note": "Solo para este navegador. Otro dispositivo guarda los suyos."
+    },
+    "theme": {
+      "label": "Tema",
+      "system": "Como el sistema",
+      "dark": "Oscuro",
+      "light": "Claro",
+      "hint": "“Como el sistema” sigue el modo claro u oscuro de tu dispositivo y cambia con él."
+    },
+    "contrast": {
+      "label": "Alto contraste",
+      "hint": "Texto más oscuro y líneas más marcadas en modo claro, más brillantes en oscuro: cada color de texto a 7:1 o más contra su fondo (WCAG AAA)."
+    },
+    "font": {
+      "label": "Tamaño de letra",
+      "hint": "De 90 % a 130 %. Los espacios crecen con el texto, así las líneas mantienen su largo."
+    },
+    "palette": {
+      "label": "Colores del mapa de tempo",
+      "default": "Predeterminados",
+      "cb": "Aptos para daltonismo",
+      "hint": "Separa las red lines, “revisar de oído” y el tempo para protanopia, deuteranopia y tritanopia, en el mapa y en todo lugar donde aparecen.",
+      "preview": "Los colores del mapa ahora",
+      "swatch": {
+        "red": "Red lines",
+        "amber": "Revisar de oído",
+        "lavender": "Tempo",
+        "accent": "Confianza alta"
+      }
+    },
+    "motion": {
+      "label": "Movimiento",
+      "system": "Como el sistema",
+      "reduce": "Reducir",
+      "allow": "Permitir",
+      "systemReduce": "Tu sistema pide movimiento reducido ahora.",
+      "systemAllow": "Tu sistema no pide movimiento reducido ahora."
+    },
+    "reset": "Restablecer contraste, tamaño, colores y movimiento",
+    "language": {
+      "title": "Idioma",
+      "label": "Idioma del sitio",
+      "en": "English",
+      "es": "Español"
+    },
+    "audio": {
+      "title": "Reproductor",
+      "note": "Dónde arrancan la canción y los clics en un resultado. Mover un control allá también cambia estos.",
+      "song": "Volumen de la canción",
+      "click": "Volumen de los clics",
+      "clicksOn": "Clics activados al abrir un resultado"
+    },
+    "latency": {
+      "label": "Latencia del dispositivo",
+      "none": "Sin medir",
+      "value": "{{ms}} ms",
+      "hint": "Cuánto tardan en sonar los parlantes o auriculares de este dispositivo. El reproductor corre solo sus clics, nunca una exportación. Medila de oído en",
+      "calibrateLatest": "tu último resultado.",
+      "calibrateRecent": "cualquier resultado.",
+      "type": "O escribila",
+      "placeholder": "p. ej. 40",
+      "save": "Fijar",
+      "reset": "Olvidarla",
+      "invalid": "Escribí un número de milisegundos entre {{min}} y {{max}}."
+    }
   }
 }

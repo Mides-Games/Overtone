@@ -102,6 +102,52 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Listening tools: latency, taps, A/B, subdivisions
+
+### Changed
+
+- The result page has a listening panel under the transport (W12.2-W12.6): clicks at
+  1/2, 1/3 or 1/4 between beats with their own quieter tone and volume, also drawn on
+  the zoomed-in map and offered in the click-track WAV; an A/B (A) between the
+  engine's lines' clicks and the reader's adjusted ones at the same playhead; a tap
+  pad (T) that reads a tempo with its spread and compares it with the red line there
+  (matches, about ×2, about ×0.5); while playing, the taps' median offset from the
+  grid proposed as the global nudge, applied only on a press; and a latency test in a
+  dialog, saved in `overtone.player.latencyMs`.
+- `clickGrid` takes `{ subdivision }` and builds the engine's `click_schedule`
+  subdivisions (level 0, counted from the line's offset).
+- A change of clicks (A/B, subdivision, adjustment, latency switch) is heard at once:
+  the scheduled clicks are dropped and rescheduled from the playhead, the song plays on.
+
+### Hardening
+
+- Every stored value (latency, subdivision, its volume, the shift switch) is read
+  inside a try and validated field by field; a broken one falls back alone.
+- The page-wide keys step aside while a modal dialog is open.
+
+### Measured
+
+- Not measured on people. With synthesised taps in the browser pane: 128 BPM ±0.0 read
+  from 12 taps on the grid; taps 20 ms late proposed +20 ms ±2.0; a 35 ms calibration
+  with one stray tap read 35 ms ±1.0 (1 dropped). Figures in `docs/site.md`.
+
+### Rejected / tried and dropped
+
+- **Moving the clicks by the latency by default.** The roadmap row says the latency
+  moves the clicks. The song and the clicks go through the same audio context and the
+  same output, so any device delay reaches both alike: moving the clicks alone puts
+  them off the song by exactly the latency, which is what the reader is trying to
+  judge. Decided (owner away): the latency always corrects the taps, and moving the
+  clicks is a switch, off by default, with the reason in its note. The exports never
+  carry it.
+- **A flash or moving marker in the calibration.** People tap to what they see rather
+  than what they hear; the test is audio only, as osu!'s offset wizard.
+- **Tempo from a least-squares line through the taps.** Slightly more exact on a steady
+  hand, but one missed tap shifts every index after it; the median interval with
+  stray ones dropped survives a missed or doubled tap.
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

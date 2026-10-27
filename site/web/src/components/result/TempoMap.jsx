@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { pageKeyIgnored } from '../../lib/keys.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, paintMap, paintOverview, readPalette } from './draw.js'
 
@@ -402,11 +403,8 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
   // + and - zoom, 0 fits, [ and ] walk the red lines, L loops, C mutes the clicks, F follows.
   useEffect(() => {
     const onKey = (event) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (pageKeyIgnored(event)) return
       const target = event.target
-      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
-        if (!(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio', 'button'].includes(target.type))) return
-      }
       const grid = data.grid
       const step = (dir, bar) => {
         const pos = player.position()
@@ -514,7 +512,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       />
 
       {children}
-      <Legend hints={data.hints} swing={data.swing} />
+      <Legend hints={data.hints} swing={data.swing} subdivision={data.subdivision ?? 1} />
     </section>
   )
 }
@@ -530,13 +528,14 @@ function Row({ k, v }) {
 
 const span = (from, to) => (to === null || from === to ? null : { a: Math.min(from, to), b: Math.max(from, to) })
 
-function Legend({ hints, swing }) {
+function Legend({ hints, swing, subdivision }) {
   const { t } = useTranslation()
   const items = [
     ['var(--red)', t('tempo.legend.lines')],
     ['var(--lavender)', t('tempo.legend.tempo')],
     ['var(--accent)', t('tempo.legend.onsets')],
     ['var(--line-strong)', t('tempo.legend.grid')],
+    ...(subdivision > 1 ? [['var(--line)', t('listening.legendSubs', { n: subdivision })]] : []),
     ['var(--amber)', t('tempo.legend.drift')],
   ]
   return (

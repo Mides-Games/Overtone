@@ -575,6 +575,24 @@ debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, a
 en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
 nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
 
+**W3.27 hecha en parte el 2026-10-27** en la rama `feature/site-public-timings`: un
+análisis terminado se publica solo si quien lo subió aprieta "Publicar" (y se
+despublica igual); uno privado pide confirmación y se hace público en la misma
+acción. `/t/<id>` (el mismo id público del análisis) muestra a cualquiera el resultado
+completo, título y artista, quién lo subió o "anónimo" y cuándo; nunca el SHA-1, el
+nombre del archivo ni los hashes. El visitante elige su propio archivo y el server
+solo contesta si coincide (`POST /timings/:id/check`), así escucha los clicks y arma
+el .osz. `deploy/web/serve.mjs` escribe el título y las etiquetas Open Graph de
+`/t/<id>` del lado del server, escapadas. **Falta:** la imagen Open Graph del gráfico
+(la tarjeta hoy es solo texto). Detalle en `docs/site.md` y `timeline.md`.
+
+**W3.26 hecha el 2026-10-27** en la misma rama: `/history` lista todo lo que analizó
+la cuenta, con búsqueda, estado, rango de BPM y fechas, y publicar, despublicar o
+borrar cada uno. Borrar un análisis terminado borra su resultado, sus nombres y su
+publicación en el momento; la fila marcada queda hasta que termina su día UTC para
+que siga contando en la cuota. Sin cuenta, la página muestra la lista de este
+navegador y pide entrar.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna
@@ -608,6 +626,14 @@ notificaciones. Y una sección **Community**:
 | W5.4 | **Moderación común** a sugerencias, reseñas, comentarios y nombres en la cola: reportar, ocultar, registro de quién hizo qué y filtro de palabras. Reusa los roles y sanciones de Mides |
 | W5.5 | **Changelog en el sitio**, generado de `docs/timeline.md`: qué cambió y qué sugerencias cerró cada versión |
 | W5.6 | **Perfiles:** la pestaña Timings en el perfil de Mides (ADR-W3), con estadísticas (canciones timeadas, usos, estrellas) e insignias (primer timing, Ranked-match, sugerencia aceptada) |
+
+**W5.1 hecha en parte el 2026-10-27** en la rama `feature/site-public-timings`:
+`/recent` y una sección en el inicio listan los timings publicados (no todos los no
+privados: publicar es opt-in, W3.27), con título, artista, BPM principal, cantidad de
+red lines, quién y cuándo. Filtros por rango de BPM y tempo único o variable,
+búsqueda por título o artista, y paginación por cursor. **Falta:** portada (no hay
+ninguna guardada), filtro por fecha en la lista pública, y "más usados" o "mejor
+puntuados", que esperan los usos y las estrellas.
 
 ### Fase W6 — Social v2
 

@@ -20,6 +20,68 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Published timings, recent ones and a history
+
+### Changed
+
+- A finished analysis can be published by its uploader (W3.27): opt-in, one press,
+  undone by Unpublish. It then has a public page at `/t/<id>` with the result, title
+  and artist, who uploaded it (Mides username or "anonymous") and when. A private
+  upload is published only when the same action makes it public, after the page asks.
+- `/recent` and a section on Home list published timings from everyone (W5.1), with
+  search, a BPM range, single or variable tempo and cursor paging.
+- `/history` lists everything a signed-in account analysed (W3.26), searchable and
+  filtered by status, BPM and date, with publish, unpublish and delete per row.
+  Signed out it shows this browser's own list and asks to sign in.
+- `DELETE /analyses/:id` also deletes a finished analysis, not only a queued one.
+- `deploy/web/serve.mjs` writes `/t/<id>`'s title and Open Graph tags into the
+  served HTML, so link previewers that do not run scripts see the song.
+- Schema: `analyses.published_at` and `analyses.deleted_at` (idempotent `ADD COLUMN
+  IF NOT EXISTS`) and a partial index for the recent list.
+
+### Hardening
+
+- The public views never carry the audio's SHA-1, the file name, `anon_hash` or
+  `ip_hash`; they are built field by field, and the tests look for each value in
+  every public body.
+- A visitor's file is checked by `POST /timings/:id/check`, which answers only
+  match or no match (20 per 10 minutes), so the hash never leaves the server.
+- Every new mutating route has the same-origin header and a rate limit; the list
+  reads are rate limited and capped at 50 a page; filters are parsed strictly (a
+  malformed one is a 400, never "everything"); search text loses control and bidi
+  characters; LIKE wildcards in it are taken literally.
+- Deleting a finished analysis keeps the erased, marked row until its UTC day ends,
+  so delete-and-analyse-again cannot get around the daily quota.
+- Open Graph values are stripped of control and bidi characters and escaped for an
+  attribute; the served page is never cached, so an unpublish stops the preview.
+
+### Measured
+
+- `site/api` 84/84 (15 new), `site/web` 36/36 (3 new), `vite build` ok,
+  `bench/facts.py` ok.
+- PostgreSQL 18 through PGlite 0.5.12 (temporary install outside the repository):
+  `check` (15 tables, twice), `db:migrate` twice, and the store's publish, list,
+  history, delete and purge paths in one script: all as on the memory store.
+- No timing or accuracy number moves: the engine is untouched.
+
+### Rejected / tried and dropped
+
+- **A row in `timings` per published analysis.** That table is for timings people
+  edit and fork (W4); a published analysis is the engine's reading as it came, and a
+  column keeps one source of truth for its result.
+- **A second, publish-only id.** It would only matter if the analysis id were a
+  secret, and it is not: reading `/analyses/<id>` still needs the uploader.
+- **No .osz on public pages.** Simpler, but the visitor would get a timing they
+  cannot hear against the song; the match-only check costs one rate-limited route.
+- **Truncating `published_at` to milliseconds** so a JS Date reads it back exactly:
+  the cursor carries microseconds computed in SQL instead, and two publishes in the
+  same millisecond still page correctly.
+- **A hard delete of a finished analysis.** It handed the day's quota back.
+- **Filters in the URL.** Search text in a URL ends up in logs and history; the
+  filters live in the page.
+
+---
+
 ## Unreleased — 2026-10-27 · The result page hands over an .osz
 
 ### Changed

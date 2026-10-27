@@ -202,7 +202,8 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
   "recent" list is this browser's own storage).
 - Profile is a placeholder: counters show a dash, timings come with publishing (W5).
 - The schema holds every table of the plan's data model; `accounts`,
-  `songs`, `analyses` and `jobs` are used. `mides_tokens` was dropped on 2026-10-27.
+  `songs`, `analyses`, `jobs`, `rate_limits`, `moderation_log`, `reports`,
+  `suggestions`, `suggestion_votes` and `reviews` are used. `mides_tokens` was dropped on 2026-10-27.
 - The PostgreSQL store of the queue (`services/analysis.service.js`) has not
   run against a database yet: the end-to-end checks below ran on the in-memory
   store. `pnpm check` should be run on a real server before W4.
@@ -455,3 +456,93 @@ worker's claim and a cancel are decided by the same row lock. Checked over HTTP
 in `test/cancel.test.js` (the owner cancels and gets the quota back; a stranger
 gets 404, a request without the same-origin header 403; a claimed job 409) and
 against PostgreSQL 18 through PGlite.
+
+### Community: suggestions, reviews, moderation and the changelog (W5.2-W5.5, 2026-10-27)
+
+`/community` has three tabs (`?tab=reviews`, `?tab=changelog`), linked from the
+navbar. The routes are in `site/api/src/routes/community.routes.js`, the two
+stores in `services/community.service.js`, the page in `src/pages/Community.jsx`
+and `src/components/community/`.
+
+**Suggestions.** Anyone reads them; posting needs a Mides account, and so does
+voting (one vote per account: `PUT`/`DELETE /community/suggestions/:id/vote`, the
+primary key of `suggestion_votes` is the rule). Anonymous suggestions are not
+taken: a suggestion is a thread its author follows, a state change is the
+answer and a rejection says why, so a post with nobody behind it to read the
+answer invites spam and helps no one; reviews are where an anonymous opinion
+goes. Title 3-120 characters, body 1-4000, counted in code points after
+cleaning; too long is refused (`TOO_LONG`), never cut. Sorted by votes or date,
+filtered by state, 50 a page. States: `open`, `review`, `planned`, `progress`,
+`done`, `rejected`. Only staff (`isStaff`) change one, from any state to any
+other (a rejected one can be reopened), and a rejection needs a reason. Every
+change writes `moderation_log` (who by username, when, from, to, why) in the
+same transaction; `GET /community/suggestions/:id` returns them as the
+suggestion's history, for anyone to read.
+
+**Reviews.** 1-5 stars and 1-2000 characters, with an account (one each,
+`POST` again edits it, `DELETE /community/reviews/mine` removes it) or
+anonymous. An anonymous review needs a form token from `GET
+/community/reviews/form` (the time it was made and an HMAC of it under
+`SESSION_SECRET`; nothing stored) at least 3 s and at most 6 h old, an empty
+`website` honeypot field, and at most 2 a day per address, counted in the
+store by the same daily address HMAC an anonymous upload keeps (`ipHashOf`),
+under an advisory lock so two sent at once cannot both pass. No third-party
+CAPTCHA: the site calls no outside service. The average counts an anonymous
+review at half and the page says so next to it (W5.3's "pesan menos y lo
+dicen"); the distribution counts each review once.
+
+**Moderation (minimal W5.4).** Anyone, signed in or not, can report a
+suggestion or a review with a reason; one open report per reporter and item
+(`reports_once_idx`; an anonymous reporter is the daily address HMAC). Staff
+hide (reason required) or unhide; the action goes to `moderation_log` and
+resolves the item's open reports. A hidden item is not listed and is the same
+404 as a missing one for everyone but staff and, for its own item, its author
+(who sees it marked hidden). An edit of a hidden review keeps it hidden.
+`GET /community/moderation` gives staff the open reports and the last 50
+actions. `moderation_log` is W3.18's table, not a second one: it gained
+`target_kind` (`analysis` by default, so older rows stay the queue's),
+`target_ref`, `from_state` and `to_state`, and its action check now admits
+`hide`, `unhide` and `state`; the queue's log reads its own rows only.
+`reports` gained `ip_hash` and the two new kinds. All text goes through
+`utils/text.js` `cleanText` (control characters, bidi overrides and isolates,
+zero-width characters, the BOM; line breaks only in bodies) and is rendered as
+text. Every mutating route has the same-origin guard and a per-address rate
+limit.
+
+**Changelog (W5.5).** `site/web/scripts/changelog.mjs` reads `docs/timeline.md`:
+the latest 30 entries' version, date, title and "Changed" bullets.
+`vite.config.js` serves them as `virtual:changelog`, read when a build or the
+dev server first asks, so nothing generated is committed and it cannot go
+stale. Inline markdown becomes tokens (text, code, strong, link) that the page
+renders as React elements; only an absolute http(s) link stays a link, and the
+timeline's relative links become their text. The entries stay in English, as
+the timeline is, and the page says so in both languages. The tab is its own
+chunk (31 kB, 10 kB gzipped).
+
+Checked:
+
+- `node --test` in `site/api`: 81/81, 12 new in `test/community.test.js` over
+  HTTP on the memory store with the two dev sign-ins: who may post, vote,
+  change states and hide; one vote and one review per account; validation and
+  caps; text cleaning; hidden items absent for others and present for staff and
+  author; reports once per person, resolved by a hide; the anonymous review's
+  token, honeypot and daily count; the weighted average.
+- The same file and `test/moderation.test.js` against PostgreSQL 18.6 (PGlite
+  0.5.11 behind `pglite-socket`, a temporary install outside the repository):
+  12/12 and 5/5. `check`: the schema applied twice, 18 tables.
+- `node --test` in `site/web`: 36/36, 3 new for the changelog parser (no markup
+  or script link survives it; the real timeline parses newest first).
+- In the browser (dev, memory store): states, history, hide and the staff panel
+  as the Google dev user; an anonymous review through the form; EN and ES, dark
+  and light, 375 px wide without horizontal scroll.
+
+Not checked: a real PostgreSQL server (only PGlite); two API processes at once
+on the anonymous count (the advisory lock is there for it, untested);
+screen readers on the tabs and the star picker; how the honeypot and the 3 s
+fare against a real bot.
+
+Left for later (roadmap W5.2-W5.5): comments on suggestions, merging duplicates,
+linking a suggestion to the roadmap or a changelog entry, notifying its author
+of a state change; the staff's public reply on a review; the word filter and
+Mides' sanctions in moderation, and reports on the queue's names; the changelog
+naming the suggestions each release closed.

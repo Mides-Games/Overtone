@@ -3942,6 +3942,11 @@ def _load_beat_this():
             return None
         options = onnxruntime.SessionOptions()
         options.log_severity_level = 3
+        # The memory pattern plans one buffer layout per input shape, and every
+        # song's last chunk is a new shape. Off, the peak working set over three
+        # songs (135, 257 and 477 s) fell 1904 -> 1278 MB with every beat
+        # within 1 ms and no more CPU (2026-10-27, docs/17-stack-alternatives.md).
+        options.enable_mem_pattern = False
         return onnxruntime.InferenceSession(str(path), options,
                                             providers=["CPUExecutionProvider"])
     except Exception:  # noqa: BLE001 -- no runtime or no model: nothing to ask

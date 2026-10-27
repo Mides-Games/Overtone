@@ -38,7 +38,21 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
 - **Quota** (ADR-W6): `ANON_DAILY_LIMIT` a UTC day per client address without
   an account, `USER_DAILY_LIMIT` with one. The address is stored as an HMAC of
   the address and the day. A separate limit allows 10 uploads per address per
+  10 minutes. The request limits (`middlewares/rate-limit.js`) count in the
+  `rate_limits` table when there is a database, so every API process behind
+  the proxy shares them (W3.17), and key each address by an HMAC, never the
+  address itself.
   10 minutes.
+- **Moderation** (W3.18). A Mides moderator sees, on `/queue`, Remove on every
+  waiting or running row and Back to the queue on a running one. Remove fails
+  the job ("Removed from the queue by a moderator.") and deletes its audio;
+  Back to the queue hands a stuck job to the next worker while its audio is
+  still spooled. Both go to `moderation_log` with who did it and why.
+- **Cancelling** (W3.12). Whoever may read a queued analysis can cancel it
+  (`DELETE /api/v1/analyses/<id>`, from its card, its page or `/queue`): the
+  job, the row and the spooled audio are deleted, so it costs none of the day's
+  quota. Once the worker has claimed it the answer is 409 `NOT_QUEUED`: the
+  worker cannot be told to stop mid-stage.
 - **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
   queue; the second time it fails. Every worker call names its attempt, so a
   late answer from an abandoned attempt gets a 409.
@@ -279,3 +293,70 @@ not with two real addresses taking turns.
 The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
+
+### The queue, moderated (W3.18, 2026-10-27)
+
+Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`
+(`moderator`) and refreshes at every sign-in, so losing the role in Mides takes
+effect here at the next one. `GET /analyses/queue` adds `staff: true` and a `ref`
+on every live row for them; a private row still shows them no song and no
+uploader, since removing or requeueing needs neither.
+`POST /analyses/:id/moderate { action, reason? }` (same-origin, session, staff;
+anyone else 401 or 403 `STAFF_ONLY`):
+
+- `remove`: a waiting or running job fails, its audio goes. A worker already on
+  it finishes its stage and its answer is refused as stale. The uploader's page
+  says a moderator took it off the queue (`removed: true`).
+- `requeue`: a running job goes back to the queue (409 `NOT_RUNNING` otherwise,
+  409 `AUDIO_GONE` without its audio). Its attempt count is kept, so the next
+  claim's attempt is new and the old worker's late answer is refused.
+
+Each one writes `moderation_log` (who by username at the time, the action, the
+analysis, the reason) in the same transaction as the change; `GET
+/analyses/moderation` returns the last 50 for staff. With `MIDES_DEV_LOGIN` the
+Google dev user is a moderator and the Discord one is not, so both sides can be
+tried.
+### A rate limit shared by every process (W3.17, 2026-10-27)
+
+With `DATABASE_URL` set, each request's window is one upsert into `rate_limits`
+(`bucket`, `client`, `count`, `reset_at`): `ON CONFLICT` takes the row's lock, so
+two processes counting the same client are serialised, and the database computes
+the wait, so their clocks need not agree. `client` is the first 32 hex digits of
+an HMAC-SHA256 of the address under `SESSION_SECRET`, which every process already
+shares. Dead windows are swept a minute after they end. If the table cannot be
+reached, the request is counted in the process's memory and passes or fails on
+that, with one warning per outage: the limit never takes the site down. Without
+a database (development) the count stays in memory, as before.
+
+Checked with two API processes on one PostgreSQL (PGlite behind `pglite-socket`):
+twelve uploads sent alternately to both, the first ten passed (415, no body) and
+the last two were refused with 429 and a Retry-After, whichever process got
+them; the table held the HMAC and the count, no address.
+### Knowing when a batch is done (W3.14, 2026-10-27)
+
+While two songs or more are on the upload page, the tab's title reads
+"finished/total ready" (done, refused, failed or cancelled count as finished;
+one still uploading counts in the total, so two cached answers cannot end a
+batch of five). A checkbox, shown only where the browser has notifications and
+they were not denied, asks for permission; the notification goes once, when the
+last song finishes. The counts come from the statuses the cards already poll,
+so nothing new is sent anywhere. `lib/batch.js` holds the rules and
+`site/web/test/batch.test.js` their tests.
+
+### A batch in one download (W3.15, 2026-10-27)
+
+Once a song of a batch has its timing, a button under the cards downloads
+`overtone-timings.zip`: one `<song>-timing.txt` per song that is done, named and
+written exactly as `GET /analyses/:id/timing.txt` would (`lib/timing.js`, tested
+against the API's own `utils/upload.js`). The archive is built in the browser
+from the results the cards already polled (`lib/zip.js`): entries stored, not
+compressed, since a timing is a few kilobytes; UTF-8 names; a name repeated in
+the batch gets " (2)". Refused, failed and unfinished songs are left out.
+### Cancelling a queued song (W3.12, 2026-10-27)
+
+`DELETE /api/v1/analyses/<id>` deletes the analysis while its job is still
+queued, in one statement (`DELETE ... USING jobs WHERE state = 'queued'`), so a
+worker's claim and a cancel are decided by the same row lock. Checked over HTTP
+in `test/cancel.test.js` (the owner cancels and gets the quota back; a stranger
+gets 404, a request without the same-origin header 403; a claimed job 409) and
+against PostgreSQL 18 through PGlite.

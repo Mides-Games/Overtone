@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
+import CancelButton from '../components/CancelButton.jsx'
 import { api } from '../lib/api.js'
 
 /**
@@ -111,6 +112,8 @@ function Rows({ rows, onModerated }) {
 
 function Row({ row, onModerated }) {
   const { t } = useTranslation()
+  const [cancelled, setCancelled] = useState(false)
+  if (cancelled) return null
   const body = (
     <div className={`flex items-center gap-3 px-4 py-3 ${row.mine ? 'bg-accent/5' : ''}`}>
       <span className="readout w-8 shrink-0 text-center text-label text-dim">{row.position ? `#${row.position}` : ''}</span>
@@ -134,11 +137,20 @@ function Row({ row, onModerated }) {
     </div>
   )
   const link = row.id ? <Link to={`/analyze/${row.id}`} className="block hover:bg-surface-2">{body}</Link> : body
-  if (!row.ref) return <li>{link}</li>
+  // Your own waiting song can be taken back (W3.12); the button sits beside
+  // the link, not inside it.
+  const cancellable = row.mine && row.id && row.status === 'queued'
   return (
     <li>
-      {link}
-      <StaffActions row={row} onDone={onModerated} />
+      {cancellable ? (
+        <div className="flex items-center bg-accent/5">
+          <div className="min-w-0 flex-1">{link}</div>
+          <CancelButton id={row.id} onCancelled={() => setCancelled(true)} className="shrink-0 pr-3" />
+        </div>
+      ) : (
+        link
+      )}
+      {row.ref && <StaffActions row={row} onDone={onModerated} />}
     </li>
   )
 }

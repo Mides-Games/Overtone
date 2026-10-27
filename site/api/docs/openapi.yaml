@@ -550,6 +550,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Analysis' }
         '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Cancel an analysis that is still waiting
+      description: |
+        Only by whoever may read it (the session account or the anonymous
+        cookie that created it). The job, the row and the spooled audio are
+        deleted, so the song does not count against the day's quota. A song
+        the worker has already taken is not cancelled.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Cancelled. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_QUEUED`: it is being analysed, or it has finished.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /analyses/{id}/timing.txt:
     parameters:

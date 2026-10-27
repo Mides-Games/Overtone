@@ -415,6 +415,7 @@ timed decoding and attack detection only.
 | [13 · Audit backlog](docs/13-audit-backlog.md) | The audit's findings, every one closed |
 | [14 · Other languages](docs/14-other-languages.md) | Which features another language serves better, and how they stay in step |
 | [16 · Web platform](docs/16-web-platform.md) | The site: architecture decisions and the phases from W1 on |
+| [17 · Stack alternatives](docs/17-stack-alternatives.md) | Models, decoders, ONNX Runtime options and site pieces surveyed, with what was measured and adopted |
 | [Project map](docs/project-map.md) | Architecture, source facts, and links to the code and task/status graphs |
 | [timeline](docs/timeline.md) | Engineering log, with what was tried and dropped |
 | [workflow](docs/workflow.md) | The per-task routine: program, test, measure, commit, audit |

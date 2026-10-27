@@ -1,15 +1,22 @@
+import { Suspense, lazy } from 'react'
 import { Route, Routes } from 'react-router'
 
+import BrandLoader from './components/BrandLoader.jsx'
 import Layout from './components/Layout.jsx'
 import AnalysisResult from './pages/AnalysisResult.jsx'
 import Analyze from './pages/Analyze.jsx'
 import Home from './pages/Home.jsx'
+import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
 import Login from './pages/Login.jsx'
 import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Profile from './pages/Profile.jsx'
 import Queue from './pages/Queue.jsx'
 import Status from './pages/Status.jsx'
+
+// The credits carry the whole dependency list (src/data/credits.json): loaded
+// when someone opens them, not with every page.
+const Credits = lazy(() => import('./pages/Credits.jsx'))
 
 export default function App() {
   return (
@@ -24,6 +31,17 @@ export default function App() {
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
         <Route path="status" element={<Status />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="privacy" element={<Privacy />} />
+        <Route path="disclaimer" element={<Disclaimer />} />
+        <Route
+          path="credits"
+          element={
+            <Suspense fallback={<BrandLoader className="py-16" />}>
+              <Credits />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

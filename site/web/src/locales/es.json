@@ -331,6 +331,275 @@
     "notQueued": "Ya se está analizando y no se puede cancelar.",
     "failed": "No se pudo cancelar. Probá de nuevo."
   },
+  "legal": {
+    "footer": {
+      "title": "Legal",
+      "terms": "Términos",
+      "privacy": "Privacidad",
+      "disclaimer": "Aviso",
+      "credits": "Créditos",
+      "status": "Estado"
+    },
+    "draft": "Borrador: escrito para que lo revise el dueño, todavía no está vigente. El texto en recuadros ámbar falta completarlo.",
+    "updated": "Última actualización: {{date}}",
+    "date": "27 de octubre de 2026",
+    "toBeSet": "A definir",
+    "resultLink": "Qué significa “revisar a oído”",
+    "terms": {
+      "title": "Términos de uso",
+      "description": "Los términos para usar el sitio de Overtone: quién lo hace, qué podés subir y qué no promete.",
+      "intro": "Estos términos cubren el sitio de Overtone y su API. Al usar el sitio los aceptás; si no estás de acuerdo, por favor no lo uses.",
+      "sections": [
+        {
+          "h": "Quién hace Overtone",
+          "p": [
+            "Overtone forma parte de Mides Projects y fue fundado por githalt. Es una herramienta para timear beatmaps de osu!: escucha una canción y propone su BPM, su offset y sus red lines.",
+            "El responsable del sitio es [[el nombre legal y la dirección del responsable]]."
+          ]
+        },
+        {
+          "h": "Sin afiliación con osu!",
+          "p": [
+            "Overtone es un proyecto independiente. No está afiliado, avalado ni vinculado con osu! ni con ppy Pty Ltd. “osu!” es una marca de ppy Pty Ltd, nombrada acá solo para decir para qué sirve la herramienta."
+          ]
+        },
+        {
+          "h": "Código abierto",
+          "p": [
+            "El código de Overtone es público en github.com/Mides-Projects/Overtone bajo la licencia MIT. Esa licencia cubre el código. Estos términos cubren el uso de este sitio, un servicio que corre con ese código. El software sobre el que se apoya Overtone mantiene sus propias licencias, listadas en Créditos."
+          ],
+          "links": [
+            {
+              "label": "Créditos",
+              "to": "/credits"
+            }
+          ]
+        },
+        {
+          "h": "Tu cuenta",
+          "p": [
+            "Podés analizar canciones sin cuenta. Para entrar se usa tu cuenta de Mides Projects (con Discord o Google), que tiene sus propios términos. Overtone guarda solo los campos públicos del perfil que necesita, listados en Privacidad."
+          ],
+          "links": [
+            {
+              "label": "Privacidad",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "h": "Lo que subís",
+          "p": [
+            "Subí solo audio que tengas derecho a usar así: tu propia música, música para la que tenés licencia, o música cuyos titulares lo permiten. Sos responsable de lo que subís y de tener esos derechos. Subir un archivo no le da a Mides Projects ningún derecho sobre el audio, y Overtone no pide ninguno.",
+            "El audio se usa solo para calcular el timing y se borra del servidor cuando el análisis termina, se cancela o se quita. Nunca se publica ni se le sirve a nadie. Queda el resultado y lo que se lista en Privacidad.",
+            "Salvo que marques la subida como privada, el nombre de la canción (de las etiquetas del archivo, o el nombre del archivo) y, si entraste con tu cuenta, tu usuario de Mides se muestran en la cola pública mientras espera y entre los resultados recientes."
+          ]
+        },
+        {
+          "h": "Uso aceptable",
+          "li": [
+            "No subas audio que no tengas derecho a usar, ni archivos que no sean audio.",
+            "No abuses de la cola: nada de subidas masivas automatizadas, ni intentos de saltear los límites diarios, los límites de pedidos o el orden de la cola.",
+            "No intentes abrir análisis ajenos, entrar al servicio sin permiso ni interrumpirlo.",
+            "No pongas información ofensiva o personal en nombres de archivo o etiquetas: pueden aparecer en la cola pública."
+          ],
+          "after": [
+            "Los moderadores pueden quitar subidas de la cola, y el acceso se puede limitar o negar, cuando no se cumplen estas reglas."
+          ]
+        },
+        {
+          "h": "Sin garantías",
+          "p": [
+            "El sitio y sus resultados se ofrecen “tal cual” y “según disponibilidad”, sin ninguna garantía, en la medida en que la ley lo permite. Un timing es una estimación automática: puede estar mal y hay que revisarlo a oído antes de usarlo. El servicio puede andar lento o no estar disponible, y puede cambiar o terminar en cualquier momento. Un beatmap que mandes a rankear sigue siendo tu responsabilidad."
+          ],
+          "links": [
+            {
+              "label": "Aviso",
+              "to": "/disclaimer"
+            }
+          ]
+        },
+        {
+          "h": "Límites de responsabilidad",
+          "p": [
+            "En la medida en que la ley lo permite, ni Mides Projects, ni githalt, ni quienes contribuyen a Overtone responden por daños que surjan del uso del sitio o de sus resultados, incluidos trabajo perdido, datos perdidos o un beatmap rechazado. Nada en estos términos limita una responsabilidad que la ley no permite limitar."
+          ]
+        },
+        {
+          "h": "Cambios a estos términos",
+          "p": [
+            "Estos términos pueden cambiar, por ejemplo cuando lleguen funciones nuevas. La fecha de arriba dice cuándo cambiaron por última vez, y los cambios importantes se van a avisar en el sitio. Seguir usando el sitio después de un cambio es aceptar los términos nuevos."
+          ]
+        },
+        {
+          "h": "Ley aplicable y contacto",
+          "p": [
+            "Estos términos se rigen por las leyes de [[la jurisdicción]].",
+            "Consultas sobre estos términos: [[una dirección de contacto]]."
+          ]
+        }
+      ]
+    },
+    "disclaimer": {
+      "title": "Aviso",
+      "description": "El timing de Overtone es confiable y repetible, pero no 100 % preciso: un buen primer borrador que se revisa a oído.",
+      "intro": "El análisis de Overtone es confiable y repetible, pero no es 100 % preciso. Tomá cada timing como un buen primer borrador y revisalo a oído antes de usarlo.",
+      "sections": [
+        {
+          "h": "Repetible, no perfecto",
+          "p": [
+            "El mismo audio con el mismo engine da el mismo resultado siempre. En el benchmark sintético del proyecto, donde se conoce la respuesta exacta, las 24 secciones quedan a menos de 0,05 BPM y 5 ms. Las canciones reales son más difíciles: música tocada en vivo, cambios de tempo, intros suaves y swing pueden correr una red line, o partir o duplicar un BPM.",
+            "El proyecto publica sus mediciones tal cual, sin redondearlas para arriba. Describen el engine en sus canciones de prueba, no en las tuyas."
+          ]
+        },
+        {
+          "h": "Qué significa la confianza",
+          "p": [
+            "Cada sección muestra un nivel: alta, media o revisar a oído. Es una lectura de la confianza del propio engine y de qué tan bien encajan los beats en la grilla, no una precisión medida. Un nivel alto dice que la evidencia fue consistente, no que la línea esté garantizada."
+          ]
+        },
+        {
+          "h": "Cómo revisar un timing",
+          "li": [
+            "Reproducí la canción con el click en la página del resultado y escuchá cada sección: el comienzo, y alrededor de cada red line.",
+            "Empezá por las secciones marcadas “revisar a oído”.",
+            "Corregí lo que suene mal en el editor de osu! antes de mapear encima."
+          ]
+        },
+        {
+          "h": "Tu beatmap, tu responsabilidad",
+          "p": [
+            "Overtone no da garantías sobre sus resultados. El timing de un beatmap, y que el beatmap se rankee, siguen siendo responsabilidad de quien lo mapea. Overtone no está afiliado a osu! ni a ppy Pty Ltd."
+          ],
+          "links": [
+            {
+              "label": "Términos",
+              "to": "/terms"
+            }
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacidad",
+      "description": "Qué guarda el sitio de Overtone, para qué y por cuánto tiempo, leído de su código. El audio no se guarda nunca.",
+      "intro": "Esta página lista qué guarda el sitio de Overtone, para qué y por cuánto tiempo, tal como lo hace su código. No hay rastreo, ni publicidad, ni analíticas.",
+      "sections": [
+        {
+          "h": "El audio no se guarda",
+          "p": [
+            "El archivo que subís espera en el disco del servidor con un id al azar hasta que se analiza, y se borra cuando el análisis termina, falla, se cancela o lo quita un moderador. Si el mismo audio ya se había analizado, se borra en el acto y se reusa el resultado guardado. Nunca se te vuelve a servir, ni a vos ni a nadie, y nunca se publica.",
+            "Tu navegador guarda su propia copia solo en la pestaña abierta, para reproducirla en la página del resultado. No se guarda ni se vuelve a enviar."
+          ]
+        },
+        {
+          "h": "Qué se guarda de cada análisis",
+          "li": [
+            "La huella SHA-1 del audio, su duración y su tamaño en bytes. La huella reconoce el mismo audio otra vez; no se puede volver a convertir en sonido.",
+            "El nombre del archivo (hasta 200 caracteres), y el título y el artista que tu navegador leyó de las etiquetas del archivo, si tenía.",
+            "Si lo marcaste como privado.",
+            "El resultado: el tempo, el offset, las red lines, los beats, los ataques sobre los que se ajustó la grilla y la confianza del engine, con la versión del engine que lo hizo.",
+            "Su estado y sus horarios: cuándo entró en la cola y cuándo terminó.",
+            "De quién es: tu cuenta si entraste con ella; si no, el hash de tu cookie anónima (abajo), nunca la cookie misma.",
+            "Un hash con clave (HMAC) de tu dirección IP y el día, para los límites diarios. La dirección en sí no se guarda. Pero no es anónimo: quien tenga la clave secreta del servidor podría comprobar si una dirección dada subió algo un día dado."
+          ]
+        },
+        {
+          "h": "Tu cuenta",
+          "p": [
+            "Si entrás con tu cuenta, Overtone guarda tu id de usuario de Mides, tu usuario y tu nombre visible, las direcciones de tu foto de perfil y tu banner, tu id de Discord si tu cuenta de Mides lo tiene, y tu rol en Mides (para saber quién modera). No guarda e-mail, ni teléfono, ni la contraseña o el token de Mides. Estos campos se actualizan cada vez que entrás.",
+            "El ingreso se hace en midesprojects.com, bajo los términos de privacidad de Mides Projects."
+          ]
+        },
+        {
+          "h": "Otros registros",
+          "li": [
+            "Límites de pedidos: por dirección, un hash con clave y un contador, que se borran alrededor de un minuto después de que termina su ventana.",
+            "Moderación: cuando un moderador quita una subida de la cola o la devuelve, se registran su usuario, la acción, el análisis y el motivo."
+          ]
+        },
+        {
+          "h": "Por cuánto tiempo",
+          "li": [
+            "El audio: hasta que termina su análisis, normalmente minutos.",
+            "Una subida cancelada mientras espera: se borra en el acto, registro y audio.",
+            "Los contadores de límites: alrededor de un minuto después de su ventana.",
+            "La cookie de sesión: 30 días (lo que trae el servidor por defecto). Cerrar sesión termina todas las sesiones de tu cuenta.",
+            "Análisis, resultados, registros de cuenta y el registro de moderación: todavía no hay un vencimiento automático. [[cuánto tiempo se guardan]]"
+          ]
+        },
+        {
+          "h": "Cookies",
+          "p": [
+            "Solo las cookies que el sitio necesita para funcionar. Todas son propias, HttpOnly (ningún script las puede leer) y SameSite=Lax. No hay cookies de terceros, y por eso no hay banner de cookies. En el sitio publicado sus nombres llevan el prefijo __Host-."
+          ],
+          "li": [
+            "overtone_session: tu sesión iniciada (el id de tu cuenta, su vencimiento y una versión que cambia al cerrar sesión), por 30 días.",
+            "overtone_anon: un id al azar que le permite a este navegador abrir los análisis que empezó sin cuenta, por un año. El servidor guarda solo su hash.",
+            "overtone_sso: se pone por diez minutos mientras entrás, para que nadie te pueda hacer entrar en otra cuenta."
+          ]
+        },
+        {
+          "h": "Lo que queda en tu navegador",
+          "p": [
+            "Esto queda en el almacenamiento local de tu navegador y nunca se manda al servidor:"
+          ],
+          "li": [
+            "mides.theme y mides.lang: claro u oscuro, inglés o español.",
+            "overtone.player.volumes: el volumen de la canción y del click.",
+            "overtone.recentAnalyses: los ids y nombres de archivo de los últimos 10 análisis que empezó este navegador, para volver a encontrarlos.",
+            "overtone.sso: adónde volver después de entrar; se borra al volver."
+          ],
+          "after": [
+            "Borrar los datos de este sitio en tu navegador los elimina todos. Una notificación del navegador se usa solo si la pedís al final de un lote."
+          ]
+        },
+        {
+          "h": "Sin rastreo",
+          "p": [
+            "Sin analíticas, sin telemetría, sin publicidad y sin scripts ni fuentes de terceros. Aparte de este sitio, tu navegador solo se conecta con midesprojects.com: para entrar y para mostrar las fotos de perfil.",
+            "Los proveedores de hosting y de red del sitio pueden guardar sus propios registros técnicos, como direcciones IP: [[qué proveedores, y qué guardan]]."
+          ]
+        },
+        {
+          "h": "Borrado y consultas",
+          "p": [
+            "Para que se borren tus análisis o el registro de tu cuenta, o para preguntar algo sobre esta página, escribí a [[una dirección de contacto]]. Indicá los análisis (sus links) o tu usuario de Mides.",
+            "Una canción que todavía espera en la cola se puede cancelar desde su página, y eso la borra en el acto."
+          ]
+        }
+      ]
+    }
+  },
+  "credits": {
+    "title": "Créditos",
+    "description": "Quién hace Overtone, y el software libre y el modelo sobre los que está hecho, cada uno con su licencia.",
+    "intro": "Overtone se apoya en el trabajo libre de otras personas. Las listas de abajo se generan desde los metadatos de los propios paquetes instalados (site/web/scripts/credits.mjs), no se escriben a mano.",
+    "team": "Equipo",
+    "founder": "Fundador",
+    "projectOf": "Un proyecto de Mides Projects",
+    "contributors": "Contribuidores",
+    "contributorsBody": "Todas las personas que contribuyeron al código están listadas en GitHub.",
+    "overtone": "Overtone",
+    "overtoneBody": "Overtone es de código abierto bajo la licencia {{licence}}, copyright {{year}} {{holder}}.",
+    "model": "El modelo de beats",
+    "modelBody": "{{what}}, licencia {{licence}}, copyright {{year}} {{holder}}. Overtone corre su checkpoint {{checkpoint}} para votar los beats.",
+    "engine": "El engine de análisis (Python)",
+    "engineBody": "Los paquetes que el engine fija en python/requirements.lock, en esas versiones.",
+    "site": "El sitio (npm)",
+    "siteBody": "Las dependencias de la web y de la API, y cada paquete que traen las que corren. Las herramientas de build se listan sin sus propias dependencias, que no se publican.",
+    "web": "Web, en el navegador",
+    "webBuild": "Web, herramientas de build",
+    "api": "API, en el servidor",
+    "package": "Paquete",
+    "version": "Versión",
+    "licence": "Licencia",
+    "direct": "directa",
+    "fonts": "Fuentes",
+    "noFonts": "Ninguna descargada: el sitio usa las fuentes que ya tiene tu dispositivo (Segoe UI, Bahnschrift, Cascadia Mono o sus equivalentes del sistema).",
+    "count_one": "{{count}} paquete",
+    "count_other": "{{count}} paquetes"
+  },
   "status": {
     "title": "Estado del servicio",
     "description": "Si la API de Overtone, su base de datos y el worker de análisis están funcionando ahora.",

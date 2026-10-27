@@ -303,9 +303,17 @@ function Result({ id, analysis }) {
       />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
-        <span className="chip-amber shrink-0">{t('home.checkByEar')}</span>
+        {/* W4.6: the short version here, the whole disclaimer on its own page. */}
+        <Link to="/disclaimer" className="chip-amber shrink-0 self-start transition hover:bg-amber/20">
+          {t('home.checkByEar')}
+        </Link>
         <div className="space-y-1">
-          <p className="max-w-[72ch] text-label leading-relaxed text-muted">{t('result.honest')}</p>
+          <p className="max-w-[72ch] text-label leading-relaxed text-muted">
+            {t('result.honest')}{' '}
+            <Link to="/disclaimer" className="whitespace-nowrap text-accent hover:underline">
+              {t('legal.resultLink')} →
+            </Link>
+          </p>
           <p className="readout text-caption text-dim">
             {t('result.engine', { hash: result.engine_hash, vote: result.beat_vote ? t('result.voteOn') : t('result.voteOff') })}
             {analysis.cached ? ` · ${t('result.cached')}` : ''}

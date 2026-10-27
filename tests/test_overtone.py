@@ -6081,6 +6081,101 @@ class DeployScriptTests(unittest.TestCase):
         for reach in ("dirname", "/opt/overtone", "cp "):
             self.assertNotIn(reach, code, reach)
 
+    def _update(self, api_state, active: bool = True) -> tuple[bool, str]:
+        """Run overtone-update.sh against a checkout one commit behind its
+        origin, with systemctl and sudo stubbed and the runs API answering
+        ``api_state`` (a queue, or None for no answer). Whether the checkout
+        moved, and what the script said."""
+        import shutil
+        import subprocess
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        for tool in ("sh", "git", "curl"):
+            if shutil.which(tool) is None:
+                self.skipTest(f"{tool} is not on PATH")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        tmp = Path(scratch.name)
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+               "GIT_CONFIG_GLOBAL": str(tmp / "gitconfig"), "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(*args, cwd=tmp):
+            subprocess.run(["git", *args], cwd=cwd, env=env, check=True, capture_output=True)
+
+        upstream, checkout = tmp / "upstream", tmp / "checkout"
+        git("init", "-q", "-b", "experimental", str(upstream))
+        (upstream / "a.txt").write_text("one\n", encoding="utf-8")
+        git("add", "a.txt", cwd=upstream)
+        git("commit", "-q", "-m", "one", cwd=upstream)
+        git("clone", "-q", "-b", "experimental", str(upstream), str(checkout))
+        (upstream / "a.txt").write_text("two\n", encoding="utf-8")
+        git("commit", "-q", "-am", "two", cwd=upstream)
+
+        stubs = tmp / "bin"
+        stubs.mkdir()
+        python = Path(sys.executable).as_posix()
+        for name, body in (("systemctl", f'[ "$1" = is-active ] && exit {0 if active else 3}\n'
+                                         'exit 0\n'),
+                           ("sudo", "exit 0\n"),
+                           ("python3", f'exec "{python}" "$@"\n')):
+            (stubs / name).write_bytes(f"#!/bin/sh\n{body}".encode())
+            (stubs / name).chmod(0o755)
+        token = "t" * 40
+        (tmp / "token").write_text(token + "\n", encoding="utf-8")
+
+        class Runs(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 -- the base class's name
+                ok = self.headers.get("Authorization") == f"Bearer {token}"
+                body = json.dumps({"queue": api_state}).encode()
+                self.send_response(200 if ok else 401)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        api = HTTPServer(("127.0.0.1", 0), Runs)
+        port = api.server_address[1]
+        if api_state is None:
+            api.server_close()  # nothing listens there: no answer
+        else:
+            threading.Thread(target=api.serve_forever, daemon=True).start()
+            self.addCleanup(api.server_close)
+            self.addCleanup(api.shutdown)
+        before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, env=env,
+                                capture_output=True, text=True, check=True).stdout
+        env.update(PATH=str(stubs) + os.pathsep + env.get("PATH", ""),
+                   OVERTONE_REPO=str(checkout), OVERTONE_BRANCH="experimental",
+                   OVERTONE_TOKEN_FILE=str(tmp / "token"), OVERTONE_API=f"http://127.0.0.1:{port}",
+                   OVERTONE_CARGO="false")
+        done = subprocess.run(["sh", str(self.DEPLOY / "overtone-update.sh")], env=env,
+                              capture_output=True, text=True, timeout=120)
+        after = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, env=env,
+                               capture_output=True, text=True, check=True).stdout
+        return before != after, done.stdout + done.stderr
+
+    def test_the_updater_deploys_when_the_server_says_it_is_idle(self):
+        moved, said = self._update({"running": None, "queued": []})
+        self.assertTrue(moved, said)
+
+    def test_the_updater_waits_while_a_run_is_going(self):
+        moved, said = self._update({"running": "r1", "queued": []})
+        self.assertFalse(moved, said)
+        self.assertIn("a run is going", said)
+
+    def test_the_updater_waits_when_the_running_server_does_not_answer(self):
+        # Fails closed: no answer could be a server in the middle of a run.
+        moved, said = self._update(None)
+        self.assertFalse(moved, said)
+        self.assertIn("did not say whether a run is going", said)
+
+    def test_the_updater_deploys_to_a_server_that_is_not_running(self):
+        # A stopped service runs nothing, and may be waiting for this very fix.
+        moved, said = self._update(None, active=False)
+        self.assertTrue(moved, said)
+
 
 class MeasurementRunTests(unittest.TestCase):
     """Server runs of the bench's timing stages: one at a time, each in its

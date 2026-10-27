@@ -328,6 +328,11 @@ Cada push a `experimental` (la rama de staging) llega solo a la VPS:
 2. Ese servicio (`deploy/overtone-update.sh`) baja la rama (solo
    fast-forward), recompila `overtone-cli` si cambió el código Rust y
    reinicia Overtone. Si corre una medición, los gates o la suite, espera.
+   También espera si el servicio está activo pero la API no contesta (o
+   rechaza el token): sin respuesta no se sabe si corre algo, y el log dice
+   por qué esperó. Si el servicio está parado no corre nada, así que
+   despliega igual: un servidor caído puede estar esperando justo ese
+   arreglo.
 3. Un timer hace lo mismo cada 5 minutos, por si GitHub falla o la VPS
    estaba apagada.
 

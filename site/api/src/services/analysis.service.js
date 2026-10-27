@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { hasDatabase, pool, query } from '../config/database.js';
+import { HttpError } from '../utils/http-error.js';
 
 /**
  * Analyses and their queue (ADR-W5): `songs` by audio SHA-1, one `analyses`
@@ -44,6 +45,40 @@ const confidenceOf = (result) => {
 };
 
 const statusOf = (result) => (result?.refused ? 'refused' : 'done');
+
+/**
+ * The limits a new analysis must fit, given its owner's counts (W3.9,
+ * W3.11): `{ quota, maxPending, queueMax, cacheDaily, scope }`. A queued
+ * analysis is held to the daily quota, the owner's pending cap and the
+ * queue's; one answered from the cache only to `cacheDaily`, so a lookup in a
+ * loop cannot fill the tables or the public queue. Returns the refusal, or
+ * null. Both stores call it at insert time, inside their critical section.
+ */
+export const refusal = ({ mine, all, today, cachedToday }, limits, cached) => {
+  const { scope } = limits;
+  if (cached) {
+    return cachedToday >= limits.cacheDaily
+      ? new HttpError(429, `You have opened ${limits.cacheDaily} stored results today. The count resets at 00:00 UTC.`,
+        'CACHE_LIMIT', { limit: limits.cacheDaily, scope })
+      : null;
+  }
+  if (today >= limits.quota) {
+    return new HttpError(
+      429,
+      scope === 'account'
+        ? `You have used today's ${limits.quota} analyses. The count resets at 00:00 UTC.`
+        : `Without an account you can analyse ${limits.quota} songs a day. Sign in for more, or come back after 00:00 UTC.`,
+      'QUOTA_EXCEEDED',
+      { limit: limits.quota, scope },
+    );
+  }
+  if (mine >= limits.maxPending) {
+    return new HttpError(429, `You already have ${limits.maxPending} songs in the queue. Send more when one finishes.`,
+      'PENDING_LIMIT', { limit: limits.maxPending, scope });
+  }
+  if (all >= limits.queueMax) return new HttpError(503, 'The queue is full. Try again in a few minutes.', 'QUEUE_FULL');
+  return null;
+};
 
 /** How long a finished analysis stays on the public queue, and how many of them. */
 export const RECENT_MINUTES = 60;
@@ -98,27 +133,41 @@ const memoryQueued = () => {
   return fairOrder(all.filter((a) => a.job?.state === 'queued'), ownerOf, (o) => served.get(o) ?? 0);
 };
 
-const memoryStore = {
-  async countPending({ accountId, ipHash }) {
-    const owner = accountId ?? `ip:${ipHash}`;
-    let mine = 0;
-    let all = 0;
-    for (const a of memory.analyses.values()) {
-      if (a.job?.state !== 'queued' && a.job?.state !== 'running') continue;
-      all += 1;
-      if (ownerOf(a) === owner) mine += 1;
+// Synchronous on purpose: create() re-checks the limits with these and inserts
+// with no await in between, so two requests cannot both pass and both insert.
+const memoryCounts = ({ accountId, ipHash }) => {
+  const owner = accountId ?? `ip:${ipHash}`;
+  const since = startOfUtcDay();
+  const counts = { mine: 0, all: 0, today: 0, cachedToday: 0 };
+  for (const a of memory.analyses.values()) {
+    if (a.job?.state === 'queued' || a.job?.state === 'running') {
+      counts.all += 1;
+      if (ownerOf(a) === owner) counts.mine += 1;
     }
+    if (a.createdAt < since || ownerOf(a) !== owner) continue;
+    if (a.cachedFrom) counts.cachedToday += 1;
+    else counts.today += 1;
+  }
+  return counts;
+};
+
+const memoryStore = {
+  async countPending(who) {
+    const { mine, all } = memoryCounts(who);
     return { mine, all };
   },
 
-  async countToday({ accountId, ipHash }) {
+  async countToday(who) {
+    return memoryCounts(who).today;
+  },
+
+  async findCopy({ sha1, accountId, anonHash }) {
     const since = startOfUtcDay();
-    let n = 0;
     for (const a of memory.analyses.values()) {
-      if (a.cachedFrom || a.createdAt < since) continue;
-      if (accountId ? a.accountId === accountId : !a.accountId && a.ipHash === ipHash) n += 1;
+      if (!a.cachedFrom || a.sha1 !== sha1 || a.createdAt < since) continue;
+      if (accountId ? a.accountId === accountId : !a.accountId && a.anonHash === anonHash) return a;
     }
-    return n;
+    return null;
   },
 
   async findCached(sha1, hash) {
@@ -133,7 +182,11 @@ const memoryStore = {
   async create({
     publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
     private: hidden = false, tagTitle = null, tagArtist = null, uploader = null,
-  }) {
+  }, { limits = null } = {}) {
+    if (limits) {
+      const error = refusal(memoryCounts({ accountId, ipHash }), limits, Boolean(cachedFrom));
+      if (error) throw error;
+    }
     const row = {
       publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash,
       private: hidden, tagTitle, tagArtist, uploader,
@@ -152,11 +205,11 @@ const memoryStore = {
     return row;
   },
 
-  async get(publicId) {
+  async get(publicId, { position: rank = true } = {}) {
     const a = memory.analyses.get(publicId);
     if (!a) return null;
     let position = null;
-    if (a.job?.state === 'queued') {
+    if (rank && a.job?.state === 'queued') {
       position = 1 + memoryQueued().indexOf(a);
     }
     return { ...a, position };
@@ -196,6 +249,8 @@ const memoryStore = {
   async progress(publicId, attempt, { stage, progress }) {
     const a = this.running(publicId, attempt);
     if (!a) return false;
+    // A heartbeat: a job still reporting is not stuck (requeueStale).
+    a.job.lockedAt = new Date();
     Object.assign(a, { stage, progress });
     return true;
   },
@@ -319,30 +374,44 @@ const FAIR_POSITIONS = `
                 WHERE j.claimed_at > now() - interval '1 day'
                 GROUP BY 1) served ON served.owner = turns.owner`;
 
+/** One owner's counts in one statement, run by `run` (the pool, or a transaction's client). */
+const pgCounts = async (run, { accountId, ipHash }) => {
+  const mine = accountId ? 'a.account_id = $1' : 'a.account_id IS NULL AND a.ip_hash = $1';
+  const { rows: [row] } = await run(
+    `SELECT (SELECT count(*) FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+               WHERE j.state IN ('queued', 'running') AND ${mine})::int AS mine,
+            (SELECT count(*) FROM jobs WHERE state IN ('queued', 'running'))::int AS total,
+            (SELECT count(*) FROM analyses a WHERE ${mine} AND a.created_at >= $2 AND a.cached_from IS NULL)::int AS today,
+            (SELECT count(*) FROM analyses a WHERE ${mine} AND a.created_at >= $2 AND a.cached_from IS NOT NULL)::int AS cached`,
+    [accountId ?? ipHash, startOfUtcDay()],
+  );
+  return { mine: row.mine, all: row.total, today: row.today, cachedToday: row.cached };
+};
+
+// Every insert that is held to a limit takes this lock first, so the counts it
+// reads are still true when it commits: two uploads cannot both pass the last
+// free place. Inserts are a few milliseconds; nothing else waits on it.
+const INSERT_LOCK = 0x0e7701;
+
 const pgStore = {
-  async countPending({ accountId, ipHash }) {
-    const { rows: [row] } = await query(
-      `SELECT count(*) FILTER (WHERE ${accountId ? 'a.account_id = $1' : 'a.account_id IS NULL AND a.ip_hash = $1'})::int AS mine,
-              count(*)::int AS total
-         FROM jobs j JOIN analyses a ON a.id = j.analysis_id
-        WHERE j.state IN ('queued', 'running')`,
-      [accountId ?? ipHash],
-    );
-    return { mine: row.mine, all: row.total };
+  async countPending(who) {
+    const { mine, all } = await pgCounts(query, who);
+    return { mine, all };
   },
 
-  async countToday({ accountId, ipHash }) {
-    const { rows } = accountId
-      ? await query(
-          'SELECT count(*)::int AS n FROM analyses WHERE account_id = $1 AND created_at >= $2 AND cached_from IS NULL',
-          [accountId, startOfUtcDay()],
-        )
-      : await query(
-          `SELECT count(*)::int AS n FROM analyses
-            WHERE account_id IS NULL AND ip_hash = $1 AND created_at >= $2 AND cached_from IS NULL`,
-          [ipHash, startOfUtcDay()],
-        );
-    return rows[0].n;
+  async countToday(who) {
+    return (await pgCounts(query, who)).today;
+  },
+
+  async findCopy({ sha1, accountId, anonHash }) {
+    const { rows } = await query(
+      `${SELECT}
+        WHERE s.audio_sha1 = $1 AND a.cached_from IS NOT NULL AND a.created_at >= $3
+          AND ${accountId ? 'a.account_id = $2' : 'a.account_id IS NULL AND a.anon_hash = $2'}
+        ORDER BY a.id DESC LIMIT 1`,
+      [sha1, accountId ?? anonHash, startOfUtcDay()],
+    );
+    return fromRow(rows[0]);
   },
 
   async findCached(sha1, hash) {
@@ -359,8 +428,13 @@ const pgStore = {
   async create({
     publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
     private: hidden = false, tagTitle = null, tagArtist = null,
-  }) {
+  }, { limits = null } = {}) {
     await transaction(async (client) => {
+      if (limits) {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [INSERT_LOCK]);
+        const error = refusal(await pgCounts((...args) => client.query(...args), { accountId, ipHash }), limits, Boolean(cachedFrom));
+        if (error) throw error;
+      }
       const { rows: [song] } = await client.query(
         `INSERT INTO songs (audio_sha1) VALUES ($1)
          ON CONFLICT (audio_sha1) DO UPDATE SET audio_sha1 = EXCLUDED.audio_sha1
@@ -391,12 +465,13 @@ const pgStore = {
     return this.get(publicId);
   },
 
-  async get(publicId) {
+  /** One analysis; `position: false` skips ranking the whole queue, for callers that do not show it. */
+  async get(publicId, { position: rank = true } = {}) {
     const { rows } = await query(`${SELECT} WHERE a.public_id = $1`, [publicId]);
     const row = fromRow(rows[0]);
     if (!row) return null;
     let position = null;
-    if (row.jobState === 'queued') {
+    if (rank && row.jobState === 'queued') {
       const { rows: [place] } = await query(`SELECT position FROM (${FAIR_POSITIONS}) p WHERE id = $1`, [row.jobId]);
       position = place ? Number(place.position) : null;
     }
@@ -454,10 +529,13 @@ const pgStore = {
     const { rows } = await query(
       `WITH next AS (
          SELECT j.id FROM jobs j JOIN (${FAIR_POSITIONS}) p ON p.id = j.id
+          -- Checked again here, on the locked row: the ranking above read an
+          -- older snapshot, and a job another worker just took is still in it.
+          WHERE j.state = 'queued'
           ORDER BY p.position LIMIT 1 FOR UPDATE OF j SKIP LOCKED
        ), claimed AS (
          UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, locked_at = now(), claimed_at = now(), error = NULL
-           FROM next WHERE j.id = next.id
+           FROM next WHERE j.id = next.id AND j.state = 'queued'
          RETURNING j.analysis_id, j.attempts
        )
        UPDATE analyses a SET status = 'running', stage = NULL, progress = 0
@@ -478,10 +556,16 @@ const pgStore = {
   },
 
   async progress(publicId, attempt, { stage, progress }) {
+    // Also a heartbeat: locked_at moves, so a job still reporting is never
+    // taken for stuck by requeueStale, however long the song.
     const { rowCount } = await query(
-      `UPDATE analyses a SET stage = $3, progress = $4
-         FROM jobs j
-        WHERE a.public_id = $1 AND j.analysis_id = a.id AND j.state = 'running' AND j.attempts = $2`,
+      `WITH beat AS (
+         UPDATE jobs j SET locked_at = now()
+           FROM analyses a
+          WHERE a.public_id = $1 AND j.analysis_id = a.id AND j.state = 'running' AND j.attempts = $2
+         RETURNING j.analysis_id
+       )
+       UPDATE analyses a SET stage = $3, progress = $4 FROM beat WHERE a.id = beat.analysis_id`,
       [publicId, attempt, stage, progress],
     );
     return rowCount > 0;

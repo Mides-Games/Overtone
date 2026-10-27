@@ -22,13 +22,25 @@ set -euo pipefail
 ROLE=@ROLE@
 say() { echo "[overtone-$ROLE] $*"; }
 
-# git-lfs only where the model is pulled (the worker). The installer image's
-# Debian 11 index can point at a git-lfs build the security mirror no longer has
-# (404 on 2026-10-27), which failed every web and api install for nothing.
+# git-lfs is not taken from apt: the installer image's Debian 11 index pointed
+# at a build the security mirror no longer serves (404 on 2026-10-27), which
+# failed every install. Only the worker needs it, and it gets the static
+# binary from git-lfs's own release, pinned and checked against its SHA-256.
 PKGS=(git ca-certificates)
-[ "$ROLE" = worker ] && PKGS+=(git-lfs)
+[ "$ROLE" = worker ] && PKGS+=(curl)
 apt-get update -y >/dev/null
 apt-get install -y --no-install-recommends "${PKGS[@]}" >/dev/null
+
+GIT_LFS_VERSION=3.6.1
+GIT_LFS_SHA256=2138d2e405a12f1a088272e06790b76699b79cb90d0317b77aafaf35de908d76
+if [ "$ROLE" = worker ]; then
+    tarball=/tmp/git-lfs.tar.gz
+    curl -fsSL -o "$tarball" \
+        "https://github.com/git-lfs/git-lfs/releases/download/v$GIT_LFS_VERSION/git-lfs-linux-amd64-v$GIT_LFS_VERSION.tar.gz"
+    echo "$GIT_LFS_SHA256  $tarball" | sha256sum -c --quiet - || { say "ERROR: git-lfs download does not match its SHA-256."; exit 1; }
+    tar -xzf "$tarball" -C /tmp
+    install -m 0755 "/tmp/git-lfs-$GIT_LFS_VERSION/git-lfs" /usr/local/bin/git-lfs
+fi
 
 mkdir -p /mnt/server
 cd /mnt/server

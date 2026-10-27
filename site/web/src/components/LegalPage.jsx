@@ -28,13 +28,26 @@ function Text({ children }) {
   )
 }
 
+/** A heading's anchor: lower-case words joined by hyphens, accents dropped. */
+const anchor = (text) =>
+  String(text)
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
 export default function LegalPage({ page, draft = true, children }) {
   const { t } = useTranslation()
   usePageMeta(t(`legal.${page}.title`), t(`legal.${page}.description`))
   const sections = t(`legal.${page}.sections`, { returnObjects: true })
+  const list = Array.isArray(sections) ? sections : []
 
+  // The page's whole width (owner's call, 2026-10-27: the 72ch column read as
+  // cramped): the text takes it, and on wide screens a contents list stays
+  // beside it, so the lines do not run on for the full row.
   return (
-    <article className="rise mx-auto max-w-[72ch] space-y-8">
+    <article className="rise space-y-8">
       <header className="space-y-3">
         <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t(`legal.${page}.title`)}</h1>
         <p className="readout text-caption text-dim">{t('legal.updated', { date: t('legal.date') })}</p>
@@ -44,42 +57,62 @@ export default function LegalPage({ page, draft = true, children }) {
         <p className="text-body leading-relaxed text-muted">{t(`legal.${page}.intro`)}</p>
       </header>
 
-      {children}
-
-      {Array.isArray(sections) &&
-        sections.map((section) => (
-          <section key={section.h} className="space-y-3">
-            <h2 className="font-display text-title font-bold">{section.h}</h2>
-            {section.p?.map((text) => (
-              <p key={text} className="leading-relaxed text-muted">
-                <Text>{text}</Text>
-              </p>
-            ))}
-            {section.li && (
-              <ul className="list-disc space-y-1.5 pl-5 leading-relaxed text-muted marker:text-dim">
-                {section.li.map((text) => (
-                  <li key={text}>
-                    <Text>{text}</Text>
+      <div className="gap-10 lg:grid lg:grid-cols-[minmax(12rem,15rem)_1fr]">
+        {list.length > 1 && (
+          <nav aria-label={t('legal.contents')} className="hidden lg:block">
+            <div className="sticky top-28 space-y-2">
+              <p className="label">{t('legal.contents')}</p>
+              <ol className="space-y-1.5 border-l border-line pl-3 text-label">
+                {list.map((section) => (
+                  <li key={section.h}>
+                    <a href={`#${anchor(section.h)}`} className="text-muted transition hover:text-accent">
+                      {section.h}
+                    </a>
                   </li>
                 ))}
-              </ul>
-            )}
-            {section.after?.map((text) => (
-              <p key={text} className="leading-relaxed text-muted">
-                <Text>{text}</Text>
-              </p>
-            ))}
-            {section.links && (
-              <p className="flex flex-wrap gap-4 text-label">
-                {section.links.map((link) => (
-                  <Link key={link.to} to={link.to} className="text-accent hover:underline">
-                    {link.label} →
-                  </Link>
-                ))}
-              </p>
-            )}
-          </section>
-        ))}
+              </ol>
+            </div>
+          </nav>
+        )}
+
+        <div className="min-w-0 space-y-8 lg:col-start-2">
+          {children}
+
+          {list.map((section) => (
+            <section key={section.h} id={anchor(section.h)} className="scroll-mt-28 space-y-3">
+              <h2 className="font-display text-title font-bold">{section.h}</h2>
+              {section.p?.map((text) => (
+                <p key={text} className="leading-relaxed text-muted">
+                  <Text>{text}</Text>
+                </p>
+              ))}
+              {section.li && (
+                <ul className="list-disc space-y-1.5 pl-5 leading-relaxed text-muted marker:text-dim">
+                  {section.li.map((text) => (
+                    <li key={text}>
+                      <Text>{text}</Text>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {section.after?.map((text) => (
+                <p key={text} className="leading-relaxed text-muted">
+                  <Text>{text}</Text>
+                </p>
+              ))}
+              {section.links && (
+                <p className="flex flex-wrap gap-4 text-label">
+                  {section.links.map((link) => (
+                    <Link key={link.to} to={link.to} className="text-accent hover:underline">
+                      {link.label} →
+                    </Link>
+                  ))}
+                </p>
+              )}
+            </section>
+          ))}
+        </div>
+      </div>
     </article>
   )
 }

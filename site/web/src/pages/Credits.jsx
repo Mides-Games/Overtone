@@ -55,7 +55,7 @@ export default function Credits() {
   const npm = (part, role) => credits.npm.filter((p) => p.part === part && p.role === role)
 
   return (
-    <div className="rise mx-auto max-w-[72ch] space-y-10">
+    <div className="rise space-y-10">
       <header className="space-y-3">
         <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('credits.title')}</h1>
         <p className="leading-relaxed text-muted">{t('credits.intro')}</p>

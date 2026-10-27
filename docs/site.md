@@ -279,3 +279,14 @@ not with two real addresses taking turns.
 The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
 first. A hit is a new analysis from the stored result (no quota, no queue, no
 upload); a miss, or a browser that cannot hash, uploads as before.
+
+### Knowing when a batch is done (W3.14, 2026-10-27)
+
+While two songs or more are on the upload page, the tab's title reads
+"finished/total ready" (done, refused, failed or cancelled count as finished;
+one still uploading counts in the total, so two cached answers cannot end a
+batch of five). A checkbox, shown only where the browser has notifications and
+they were not denied, asks for permission; the notification goes once, when the
+last song finishes. The counts come from the statuses the cards already poll,
+so nothing new is sent anywhere. `lib/batch.js` holds the rules and
+`site/web/test/batch.test.js` their tests.

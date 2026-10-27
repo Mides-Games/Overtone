@@ -20,6 +20,39 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
+
+### Changed
+
+- W3.14 of [the web platform](16-web-platform.md): while a batch runs, the tab's
+  title carries its count ("2/5 ready · Overtone"), and goes back to the page's
+  own title when the page is left. A checkbox under the list asks the browser for
+  permission to notify; if granted, one notification says "3 of 5 songs have a
+  timing" when the last one finishes.
+- Each card reports the status it polls to the page, which is all the count
+  needs: nothing leaves the browser that did not before.
+- `site/web` gets a `test` script (`node --test`) for its pure modules.
+
+### Hardening
+
+- A file still uploading or waiting to upload counts in the batch's total, so
+  two songs answered at once from the cache do not end a batch of five early.
+- The notification is sent once per batch, only when asked for and granted; a
+  browser that only notifies from a service worker (Android Chrome) gets the
+  title alone instead of an error.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4 (the count, the single-song case, the title,
+  when the notification goes). `site/api` 31/31, untouched. `vite build` passes.
+- In the browser (`pnpm dev` in memory, a fake worker answering one job at a
+  time, `Notification` stubbed to record calls): the title read 0/3, 1/3 and
+  3/3 ready; one notification, "3 of 3 songs have a timing."; the title came back
+  on leaving the page.
+- Not checked: a real system notification (the pane's permission prompt was
+  stubbed).
+
+---
 ## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
 
 ### Changed

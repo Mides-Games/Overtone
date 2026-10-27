@@ -467,6 +467,10 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.14 hecha el 2026-10-27** en la rama `feature/batch-notice`: mientras corre un
+lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso para
+una notificación del navegador que sale una sola vez, al terminar la última. Usa
+los estados que las tarjetas ya consultan: nada nuevo sale del navegador.
 **W3.12 hecha el 2026-10-27** en la rama `feature/cancel-own-analysis`:
 `DELETE /analyses/:id` borra el trabajo, la fila y el audio mientras sigue en cola,
 y la canción no cuenta para la cuota del día. El botón está en la tarjeta, en la

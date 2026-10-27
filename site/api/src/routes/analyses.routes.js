@@ -1,13 +1,15 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 
 import { Router } from 'express';
 
 import { env, secureCookies } from '../config/env.js';
 import { guard } from '../middlewares/rate-limit.js';
-import { optionalSession, requireSameOrigin } from '../middlewares/session.js';
-import { analyses, engineHash, newPublicId } from '../services/analysis.service.js';
+import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
+import { isStaff } from '../services/account.service.js';
+import { analyses, engineHash, newPublicId, REMOVED } from '../services/analysis.service.js';
 import { cookiesOf } from '../services/session.service.js';
-import { commit, discard, discardPart, receive } from '../services/spool.service.js';
+import { audioPath, commit, discard, discardPart, receive } from '../services/spool.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { queueEntry } from '../utils/queue.js';
 import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../utils/upload.js';
@@ -18,6 +20,8 @@ import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timin
  *   POST /analyses/lookup           { sha1, filename, size } -> the stored result, or { cached: false }
  *   POST /analyses                  raw audio body, X-Filename header -> 202 { id, status }
  *   GET  /analyses/queue            the public queue: waiting, running, finished in the last hour
+ *   GET  /analyses/moderation       staff: the latest removals and requeues, and who did them
+ *   POST /analyses/:id/moderate     staff: { action: remove | requeue, reason? }
  *   GET  /analyses/:id              status, queue position, progress, result
  *   DELETE /analyses/:id            cancel it while it is still queued
  *   GET  /analyses/:id/timing.txt   the [TimingPoints] block
@@ -303,9 +307,65 @@ router.get('/analyses/queue', optionalSession, async (req, res) => {
   const { live, more, recent } = await queueRows();
   const anonHash = anonHashOf(req);
   const now = Date.now();
-  const view = (row) => queueEntry(row, { mine: isMine(req, row, anonHash), now });
+  const staff = isStaff(req.account);
+  const view = (row) => queueEntry(row, { mine: isMine(req, row, anonHash), staff, now });
   res.set('Cache-Control', 'no-store');
-  res.json({ live: live.map(view), more, recent: recent.map(view), at: new Date(now).toISOString() });
+  res.json({
+    live: live.map(view), more, recent: recent.map(view), at: new Date(now).toISOString(), ...(staff ? { staff: true } : {}),
+  });
+});
+
+/** Staff only (W3.18): Mides moderators. Everyone else gets a 403 that says so. */
+const requireStaff = (req, _res, next) => {
+  if (!isStaff(req.account)) return next(new HttpError(403, 'Only staff can do this.', 'STAFF_ONLY'));
+  return next();
+};
+
+/** GET /analyses/moderation: the latest removals and requeues, newest first, with who did each. */
+router.get('/analyses/moderation', requireSession, requireStaff, async (_req, res) => {
+  const log = await analyses().moderationLog();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    log: log.map((e) => ({
+      action: e.action, moderator: e.moderator, ref: e.publicId, reason: e.reason, at: new Date(e.createdAt).toISOString(),
+    })),
+  });
+});
+
+const ACTIONS = ['remove', 'requeue'];
+
+/**
+ * POST /analyses/:id/moderate (W3.18), staff only. `remove` takes a waiting
+ * or running job off the queue: it fails with a message that says a
+ * moderator removed it, and its audio goes. A worker already on it finishes
+ * its stage and its answer is refused as stale. `requeue` hands a running
+ * job (a stuck one, typically) back to the queue, while its audio is still
+ * spooled. Each is recorded in `moderation_log` with who did it, in the
+ * same transaction as the change.
+ */
+router.post('/analyses/:id/moderate', requireSameOrigin, requireSession, requireStaff, async (req, res) => {
+  const { id } = req.params;
+  if (!ID.test(id)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
+  const action = req.body?.action;
+  if (!ACTIONS.includes(action)) throw new HttpError(400, 'action is remove or requeue.', 'BAD_ACTION');
+  const reason = typeof req.body.reason === 'string'
+    ? req.body.reason.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 500) || null
+    : null;
+  const by = { accountId: req.account.id, moderator: req.account.username, reason };
+
+  const store = analyses();
+  if (!(await store.get(id, { position: false }))) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
+  if (action === 'remove') {
+    if (!(await store.remove(id, by))) throw new HttpError(409, 'It is not waiting or running any more.', 'NOT_LIVE');
+    await discard(id);
+  } else {
+    if (!(await stat(audioPath(id)).catch(() => null))) {
+      throw new HttpError(409, 'Its audio is gone: it cannot be analysed again.', 'AUDIO_GONE');
+    }
+    if (!(await store.requeue(id, by))) throw new HttpError(409, 'Only a running job can be handed back.', 'NOT_RUNNING');
+  }
+  queueSnapshot = { at: 0, read: null };
+  res.status(204).end();
 });
 
 /** The analysis `:id` if this request may read it, else a 404. */
@@ -338,7 +398,7 @@ const publicView = (row) => ({
   ...(row.status === 'queued' && row.position ? { position: row.position } : {}),
   ...(row.status === 'running' ? { progress: row.progress ?? 0, stage: row.stage ?? null } : {}),
   ...(row.status === 'done' || row.status === 'refused' ? { result: row.result } : {}),
-  ...(row.status === 'failed' ? { error: row.error ?? 'The analysis failed.' } : {}),
+  ...(row.status === 'failed' ? { error: row.error ?? 'The analysis failed.', ...(row.error === REMOVED ? { removed: true } : {}) } : {}),
 });
 
 router.get('/analyses/:id', optionalSession, async (req, res) => {

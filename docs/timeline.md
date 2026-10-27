@@ -69,6 +69,103 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.19: the site's checks in the verification list
+
+### Changed
+
+- W3.19 of [the web platform](16-web-platform.md): the Verification section of
+  `CLAUDE.md` and `AGENTS.md` lists `pnpm --dir site/api test`, with its count, and
+  `pnpm --dir site/web build`, to run before any commit that touches `site/`.
+- `bench/facts.py` counts the top-level `test(` calls in `site/api/test` and
+  `site/web/test`, as `node --test` runs them, and fails when the stated count
+  differs. `site/web` has no tests on `master` yet: its line is required from its
+  first test on, and refused once it has none.
+
+### Measured
+
+- `facts.py`: ok, with 31 `site/api` tests read from the source, the same number
+  `node --test` reports. With the stated count set to 30 it named the mismatch;
+  with one `site/web` test added and no line for it, it said so.
+- `node --test` in `site/api`: 31/31. `vite build` passes.
+## Unreleased — 2026-10-27 · W3.5–W3.7 checked against the code
+
+### Changed
+
+- W3.5, W3.6 and W3.7 of [the web platform](16-web-platform.md) were open in the
+  roadmap although the site had shipped them. Read against the code, they are done:
+  the ticker, the user menu and the Home, Analyze, Result and Login pages (W3.5);
+  separate anonymous and account quotas, the address stored as a daily HMAC (W3.6);
+  every string in English and Spanish (W3.7).
+- Recorded as deviations, not changed: the palette and type are the desktop app's
+  "Console" look rather than midesprojects.com's (whose Horizon font has no known
+  licence), and the navigation is underlined tabs, not a pill. The rate limit's
+  key becomes a hash with W3.17.
+
+### Rejected / tried and dropped
+
+- A pill navigation, as W3.5's row words it. Decided under the owner's delegation:
+  the tabs belong to the app's look the site already adopted, work on a phone and
+  with a keyboard, and a pill would change only the style, not what anyone can do.
+
+### Hardening
+
+- `site/web/test/i18n.test.js` holds W3.7 in place: it fails when a key exists in
+  one language only, when a string's `{{placeholders}}` differ between the two,
+  when a plural lacks its `_one` or `_other`, or when the code asks for a key that
+  does not exist. `site/web` gets a `test` script for it.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4; with one Spanish placeholder removed on
+  purpose it failed on that key, as it should. `site/api` 31/31, untouched.
+  `vite build` passes.
+## Unreleased — 2026-10-27 · W3.18: the queue, moderated
+
+### Changed
+
+- W3.18 of [the web platform](16-web-platform.md), the first piece of W6's
+  moderation panel: a Mides moderator sees on `/queue` a Remove button on every
+  waiting or running job and Back to the queue on a running one, each asking for
+  an optional reason, and the moderation log under the queue.
+- `POST /api/v1/analyses/:id/moderate` and `GET /api/v1/analyses/moderation`,
+  staff only; the new `moderation_log` table records who did what, when and why,
+  in the same transaction as the change.
+- A removed song's page says a moderator took it off the queue instead of
+  suggesting the file was damaged.
+- The dev login's Google user is a moderator, so the buttons can be tried without
+  Mides.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` did not parse on this branch either (see W3.12);
+  the same fix is carried here so the new paths could be added.
+
+### Hardening
+
+- Staff get an opaque `ref` on live rows, not the `id` that opens a result, and a
+  private row still shows them no song and no uploader.
+- A requeue keeps the attempt count, so the worker that had the job cannot
+  overwrite the next attempt's answer; it is refused without its spooled audio.
+- The log keeps the moderator's username at the time, so it still says who after
+  the account is gone.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new, over HTTP with dev sign-ins: only
+  staff may act or read the log; staff see a `ref` and a private row stays
+  private; a removal fails the job, deletes its audio, tells the uploader and is
+  logged with reason and username; a requeued job waits again, the old attempt is
+  refused and the next claim's attempt is higher; no requeue without audio).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; remove, a second remove
+  refused, requeue of a running job, its stale answer refused, a new claim at
+  attempt 2, the log read back newest first.
+- In the browser (`pnpm dev` in memory, signed in as the Google dev user): the
+  staff row showed Remove and Back to the queue; a running job went back to
+  position 1, a queued one was removed, and the log listed both with the reason.
+
+---
 ## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
 
 ### Changed

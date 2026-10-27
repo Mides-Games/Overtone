@@ -9,13 +9,18 @@ import { songLabel } from './upload.js';
  * uploader's public Mides profile. The audio and the spool path are never
  * part of it, and the analysis id only reaches the person who may open it
  * (`mine`): for everybody else an id would be a link to a 404.
+ *
+ * Staff (W3.18) get `ref` on every waiting or running row: the handle the
+ * moderation buttons act on. It opens nothing, and a private row still shows
+ * no song and no uploader: removing or requeueing a job needs neither.
  */
-export const queueEntry = (row, { mine = false, now = Date.now() } = {}) => {
+export const queueEntry = (row, { mine = false, staff = false, now = Date.now() } = {}) => {
   const created = new Date(row.createdAt).getTime();
   const finished = row.finishedAt ? new Date(row.finishedAt).getTime() : null;
   const shown = !row.private;
   return {
     ...(mine ? { id: row.publicId } : {}),
+    ...(staff && (row.status === 'queued' || row.status === 'running') ? { ref: row.publicId } : {}),
     mine,
     status: row.status,
     ...(row.status === 'queued' && row.position ? { position: row.position } : {}),

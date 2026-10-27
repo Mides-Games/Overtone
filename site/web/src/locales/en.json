@@ -165,7 +165,8 @@
     "engine": "Engine v3 {{hash}} · Beat This! vote {{vote}}",
     "voteOn": "on",
     "voteOff": "off",
-    "cached": "same audio analysed before: stored result"
+    "cached": "same audio analysed before: stored result",
+    "removed": "A moderator took this song off the queue, so it was not analysed. Its file has been deleted."
   },
   "login": {
     "title": "Sign in",
@@ -233,6 +234,26 @@
       "refused": "Refused",
       "failed": "Failed",
       "cancelled": "Cancelled"
+    }
+  },
+  "moderation": {
+    "staff": "Staff",
+    "remove": "Remove",
+    "requeue": "Back to the queue",
+    "removePrompt": "Remove this job from the queue? It fails and its audio is deleted. Reason for the log (optional):",
+    "requeuePrompt": "Hand this running job back to the queue? Reason for the log (optional):",
+    "failed": "The action failed.",
+    "errors": {
+      "NOT_LIVE": "It is not waiting or running any more.",
+      "NOT_RUNNING": "Only a running job can be handed back.",
+      "AUDIO_GONE": "Its audio is gone: it cannot be analysed again.",
+      "STAFF_ONLY": "Only staff can do this."
+    },
+    "logTitle": "Moderation log",
+    "logEmpty": "Nothing moderated yet.",
+    "did": {
+      "remove": "@{{moderator}} removed a job",
+      "requeue": "@{{moderator}} handed a job back to the queue"
     }
   },
   "cancel": {

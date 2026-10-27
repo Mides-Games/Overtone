@@ -82,6 +82,13 @@ export const signOut = async (accountId) => {
 
 
 /**
+ * Whether this account may moderate (W3.18): Mides' `is_moderator`, which the
+ * sign-in keeps as `mides_role` and refreshes at every sign-in. Losing the role
+ * in Mides takes effect here at the next sign-in.
+ */
+export const isStaff = (row) => row?.mides_role === 'moderator';
+
+/**
  * What `/me` and a profile may show: public fields only, camelCase, and never
  * a token or the session version.
  */

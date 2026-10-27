@@ -20,6 +20,55 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W2.4: what one worker job costs
+
+### Changed
+
+- `bench/worker_perf.py`: each job in a fresh process, as a worker runs it (engine and
+  model loaded, then `timing_result.analyse`), threads capped as `deploy/eggs/start.sh`
+  caps them from `WORKER_THREADS` (4, prod). Prints load time, job time, seconds per
+  minute of audio and peak memory, vote on and off, for 1, 6 and 10 minutes (the API's
+  `MAX_AUDIO_SECONDS`). Fails past 45 s per audio minute (a 600 s track in half of
+  `JOB_TIMEOUT_S`) or past the container's memory.
+
+### Fixed
+
+- The worker's thread-capped Beat This! loader (`limit_onnx_threads`, used by every
+  deployed worker) built its own ONNX Runtime session without the
+  `enable_mem_pattern = False` the engine's loader got in #20, so the deployed path kept
+  the old peak. It sets it now: 1824 -> 1200 MB with the vote at 10 minutes.
+- `docs/deploy.md` said a worker without the vote fits in 512 MB. Never measured: a
+  10-minute track peaks at 565 MB. It now says 768 MB, and the gate holds that.
+
+### Measured
+
+- Windows, 12 cores, 4 threads, one pass per case. First run: machine loaded by other
+  sessions, before the loader fix. Second run: quiet machine, with #20 and the fix.
+
+  | audio | vote | s/min loaded | peak MB before | s/min quiet | peak MB fixed |
+  |---|---|---|---|---|---|
+  | 60 s | on | 34.1 | 1628 | 8.2 | 1002 |
+  | 60 s | off | 10.6 | 291 | 2.1 | 292 |
+  | 360 s | on | 15.5 | 1738 | 5.4 | 1113 |
+  | 360 s | off | 3.3 | 445 | 0.9 | 444 |
+  | 600 s | on | 20.7 | 1824 | 5.4 | 1200 |
+  | 600 s | off | 4.7 | 565 | 0.9 | 566 |
+
+  Load (engine + model, once per worker start): 7-38 s loaded, 1.5-4.8 s quiet. The
+  machine's load moved the times by four, more than any code did; the peak moved only
+  with the fix. The cost has a fixed part, so short tracks are the worst per minute.
+  W3.16 can quote 35 s per audio minute with the vote (the loaded figure), marked as
+  an estimate, until the container is measured.
+- Not measured: the Linux container (same blocker as W2.3); Windows' peak working set
+  is not Linux's peak RSS, so the margin is to be re-read there.
+
+### Rejected / tried and dropped
+
+- Keeping 512 MB as the no-vote budget: the gate would be red for a figure nobody
+  measured. The first run's peak (565 MB) rounded up is the budget instead.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.19: the site's checks in the verification list
 
 ### Changed
@@ -115,6 +164,8 @@ version is `v0.2.0-alpha`.
 - In the browser (`pnpm dev` in memory, signed in as the Google dev user): the
   staff row showed Remove and Back to the queue; a running job went back to
   position 1, a queued one was removed, and the log listed both with the reason.
+
+---
 ## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
 
 ### Changed

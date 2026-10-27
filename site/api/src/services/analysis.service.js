@@ -18,6 +18,8 @@ import { HttpError } from '../utils/http-error.js';
  *
  * Status: queued -> running -> done | refused | failed. A refusal is a
  * result (the engine found no pulse it would stand behind), not a failure.
+ * A queued analysis its uploader cancels (W3.12) is deleted outright, job
+ * and row: it was never analysed, so it leaves no trace in the quota.
  */
 
 export const MAX_ATTEMPTS = 2;
@@ -226,6 +228,13 @@ const memoryStore = {
       .slice(0, RECENT_LIMIT);
     const live = [...running.map((a) => ({ ...a, position: null })), ...queued.map((a, i) => ({ ...a, position: i + 1 }))];
     return { live: live.slice(0, LIVE_LIMIT), more: Math.max(0, live.length - LIVE_LIMIT), recent };
+  },
+
+  async cancel(publicId) {
+    const a = memory.analyses.get(publicId);
+    if (a?.job?.state !== 'queued') return false;
+    memory.analyses.delete(publicId);
+    return true;
   },
 
   async claim() {
@@ -523,6 +532,18 @@ const pgStore = {
     });
     const total = live.length ? Number(live[0].total) : 0;
     return { live: live.map(shape), more: Math.max(0, total - live.length), recent: recent.map(shape) };
+  },
+
+  async cancel(publicId) {
+    // One statement: a claim that took the job first holds its row lock, and
+    // once it commits the state is re-checked here and nothing is deleted.
+    // The job goes with the analysis (ON DELETE CASCADE).
+    const { rowCount } = await query(
+      `DELETE FROM analyses a USING jobs j
+        WHERE j.analysis_id = a.id AND a.public_id = $1 AND j.state = 'queued'`,
+      [publicId],
+    );
+    return rowCount > 0;
   },
 
   async claim() {

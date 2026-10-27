@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
 
 /**
@@ -21,6 +22,7 @@ const IDLE_POLL_MS = 10_000
 
 export default function Queue() {
   const { t } = useTranslation()
+  usePageMeta(t('queue.title'), t('queue.subtitle'))
   const [data, setData] = useState(null)
   const [offline, setOffline] = useState(false)
   // Bumped after a moderation, to read the queue and the log again at once.

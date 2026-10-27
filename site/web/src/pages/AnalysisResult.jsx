@@ -10,6 +10,7 @@ import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { api } from '../lib/api.js'
 import { Player } from '../lib/player.js'
@@ -29,6 +30,8 @@ export default function AnalysisResult() {
   const { id } = useParams()
   const [analysis, setAnalysis] = useState(null)
   const [error, setError] = useState(null)
+  // The file's name names the tab: it never leaves this browser that way.
+  usePageMeta(analysis?.filename || t('result.eyebrow'))
 
   useEffect(() => {
     let alive = true

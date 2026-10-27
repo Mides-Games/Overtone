@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 
 import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
@@ -36,6 +37,8 @@ const OUTPUTS = [
 
 export default function Analyze() {
   const { t } = useTranslation()
+  // The page's own title; a batch counts itself in front of it (W3.14).
+  const baseTitle = usePageMeta(t('analyze.title'), t('analyze.subtitle'))
   const { account } = useAuth()
   const navigate = useNavigate()
   const [limits, setLimits] = useState(null)
@@ -137,7 +140,6 @@ export default function Analyze() {
     (item) => item.upload.kind === 'sent' || item.upload.kind === 'sending' || (state.kind === 'sending' && item.upload.kind === 'ready'),
   )
   const progress = batchProgress(batch.map((item) => (item.upload.kind === 'sent' ? (item.status ?? 'queued') : 'sending')))
-  const [baseTitle] = useState(() => document.title)
   useEffect(() => {
     document.title = batchTitle(progress, t('analyze.batch.title', { finished: progress.finished, total: progress.total }), baseTitle)
   }, [progress.finished, progress.total, baseTitle, t])

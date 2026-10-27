@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
 import { takeSignInNote } from '../lib/sso-guard.js'
 
@@ -40,6 +41,7 @@ function exchangeOnce() {
 
 export default function LoginCallback() {
   const { t } = useTranslation()
+  usePageMeta(t('nav.signIn'))
   const { refresh } = useAuth()
   const navigate = useNavigate()
   const [failure, setFailure] = useState(null)

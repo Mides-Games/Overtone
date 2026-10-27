@@ -20,6 +20,24 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
+
+### Changed
+
+- The song and the clicks start at 20 % (were 80 % and 60 %), at the owner's request:
+  most people keep the browser and the system at full volume. A volume the reader
+  set is still remembered and wins.
+- `docs/16-web-platform.md` gains phase W12, 24 tools for timers (latency calibration,
+  tap tempo and tap offset, A/B clicks, subdivisions, other games' formats, export
+  options, a fuller .osz, comparing with an existing map or another timing, how-it-works,
+  FAQ and glossary, site stats, a command palette, settings and accessibility, and more).
+
+### Measured
+
+- Not measured: a default.
+
+---
+
 ## Unreleased — 2026-10-27 · The analysis tray and its notices
 
 ### Changed

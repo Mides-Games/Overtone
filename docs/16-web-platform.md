@@ -748,6 +748,40 @@ de 10 ms, red lines dentro de 5 ms), sin romper ninguna puerta de precisión.
 
 ---
 
+### Fase W12 — Más herramientas para quien timea (pedido del dueño, 2026-10-27)
+
+Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que dice
+"(2.ª tanda)" se construye en la tanda del 2026-10-27; el resto queda en la lista.
+
+| # | Tarea |
+|---|---|
+| W12.1 | **Volumen por defecto en 20 %** para la canción y los clicks (hecho, 2026-10-27): casi todos tienen el navegador y el sistema al máximo, y 80 % / 60 % sonaba fuerte |
+| W12.2 | **Calibrar la latencia del dispositivo** (2.ª tanda): una prueba de clicks como la de osu!, la persona toca al ritmo y el sitio mide el retraso de su audio; se guarda en el navegador y corre los clicks, nunca el timing exportado |
+| W12.3 | **Tap tempo** (2.ª tanda): tocar una tecla al ritmo da un BPM a mano, comparado con el del resultado (¿es el doble? ¿la mitad?) |
+| W12.4 | **Corregir el offset tocando** (2.ª tanda): tocar sobre los tiempos durante unos compases propone un ajuste global (el nudge) con su dispersión, para revisar de oído |
+| W12.5 | **A/B de los clicks** (2.ª tanda): alternar con una tecla entre el timing del engine y el ajustado, en el mismo punto de la canción |
+| W12.6 | **Subdivisiones audibles** (2.ª tanda): clicks en 1/2, 1/3 o 1/4 además de los tiempos, con su propio volumen, y la misma grilla dibujada en el mapa |
+| W12.7 | **Exportar a otros juegos** (2.ª tanda): Quaver (`.qua`), StepMania (`.sm`/`.ssc`), Etterna y Clone Hero (`.chart`), armados en el navegador desde las red lines, con su propia convención de offset y compás, y tests contra archivos de referencia |
+| W12.8 | **Opciones de exportación** (2.ª tanda): decimales del offset, BPM redondeado (con aviso de cuánto se corre al final de la canción), solo la primera red line, offset global sumado |
+| W12.9 | **Un .osz más completo** (2.ª tanda): la portada de los tags del archivo (ID3 `APIC`, MP4 `covr`, FLAC `PICTURE`) como fondo, `PreviewTime` en el tramo más fuerte, `AudioLeadIn` si la canción arranca sin silencio, y green lines de kiai sugeridas, todo opcional y marcado como sugerencia |
+| W12.10 | **Comparar con un mapa que ya existe** (2.ª tanda): la persona elige un `.osu` del mismo audio y la página muestra, red line por red line, cuánto difiere del resultado (BPM, offset en ms, compás), y lo dibuja en el mapa de tempo |
+| W12.11 | **Comparar dos timings** (2.ª tanda): dos análisis (o un análisis y su versión ajustada) lado a lado, con la diferencia por red line y los clicks de uno u otro |
+| W12.12 | **Cómo funciona, preguntas y glosario** (2.ª tanda): `/how-it-works` (el pipeline explicado: onsets, tempo, octava, Beat This!, secciones, sin prometer de más), `/faq` y un glosario (red line, green line, offset, BPM, compás, kiai, drift) enlazado desde los términos del resultado |
+| W12.13 | **Estadísticas del sitio** (2.ª tanda): `/stats` con canciones timeadas, distribución de BPM, porcentaje de tempo único vs. variable, tiempo medio de análisis y estado de la cola; agregados sin datos de nadie |
+| W12.14 | **Paleta de comandos y atajos** (2.ª tanda): Ctrl+K para ir a cualquier página, abrir un análisis reciente o cambiar idioma y tema; `?` muestra todos los atajos |
+| W12.15 | **Ajustes y accesibilidad** (2.ª tanda): `/settings` con tema, alto contraste, tamaño de letra, paleta del mapa apta para daltonismo, movimiento reducido, volúmenes por defecto y la latencia de W12.2; todo en el navegador |
+| W12.16 | **Más idiomas**: pt-BR, fr, de, ja, ko, con un flujo para que la comunidad traduzca (un JSON por idioma y la prueba de claves de i18n) |
+| W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 |
+| W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord |
+| W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota) |
+| W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad |
+| W12.21 | **Historial de versiones** de un timing: cada reanálisis o ajuste guardado como versión, con la diferencia entre ellas |
+| W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos |
+| W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) |
+| W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor |
+
+---
+
 ## 7. Decisiones abiertas (las toma el dueño)
 
 1. **Dominio:** `overtone.midesprojects.com` (recomendado) o uno propio.

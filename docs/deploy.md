@@ -190,7 +190,9 @@ workers). Swap en 0 en todos.
 - **RAM del worker:** un worker analiza de a un trabajo, y pide 1,5 GB + 0,5 GB =
   2 GB. Más análisis simultáneos son más servers worker (cada uno 2 GB y su CPU),
   no una variable: `WORKER_CONCURRENCY` se retiró con el worker real (2026-10-26). Si se arranca sin el voto (decisión abierta 3 del plan), alcanza
-  con 512 MB, pero las red lines pueden diferir de la app.
+  con 768 MB, pero las red lines pueden diferir de la app. Los números salen de
+  `bench/worker_perf.py` (2026-10-27, Windows, 4 hilos): un tema de 10 minutos pica
+  1824 MB con el voto y 565 MB sin él; antes decía 512 MB sin medir.
 - **El CPU limit no alcanza solo.** Con el límite, el worker no pasa de cuatro
   núcleos de cuota, pero esa cuota la toma de cualquier núcleo, incluidos los que
   usan los servers de Minecraft en ese momento. El **pinning** (el campo

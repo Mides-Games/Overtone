@@ -20,6 +20,49 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W2.4: what one worker job costs
+
+### Changed
+
+- `bench/worker_perf.py`: each job in a fresh process, as a worker runs it (engine and
+  model loaded, then `timing_result.analyse`), threads capped as `deploy/eggs/start.sh`
+  caps them from `WORKER_THREADS` (4, prod). Prints load time, job time, seconds per
+  minute of audio and peak memory, vote on and off, for 1, 6 and 10 minutes (the API's
+  `MAX_AUDIO_SECONDS`). Fails past 45 s per audio minute (a 600 s track in half of
+  `JOB_TIMEOUT_S`) or past the container's memory.
+
+### Fixed
+
+- `docs/deploy.md` said a worker without the vote fits in 512 MB. Never measured: a
+  10-minute track peaks at 565 MB. It now says 768 MB, and the gate holds that.
+
+### Measured
+
+- Windows, 12 cores, 4 threads, one pass per case on a machine shared with other runs
+  (timings here move by a third between runs):
+
+  | audio | vote | load s | job s | s/min | peak MB |
+  |---|---|---|---|---|---|
+  | 60 s | on | 20.5 | 34.1 | 34.1 | 1628 |
+  | 60 s | off | 21.0 | 10.6 | 10.6 | 291 |
+  | 360 s | on | 38.3 | 93.3 | 15.5 | 1738 |
+  | 360 s | off | 6.7 | 19.9 | 3.3 | 445 |
+  | 600 s | on | 15.6 | 206.6 | 20.7 | 1824 |
+  | 600 s | off | 32.6 | 46.8 | 4.7 | 565 |
+
+  The cost has a fixed part, so short tracks are the worst per minute. W3.16 can quote
+  35 s per audio minute with the vote, marked as an estimate. With the vote, a
+  10-minute track leaves 224 MB of the 2048 MB container.
+- Not measured: the Linux container (same blocker as W2.3); Windows' peak working set
+  is not Linux's peak RSS, so the margin is to be re-read there.
+
+### Rejected / tried and dropped
+
+- Keeping 512 MB as the no-vote budget: the gate would be red for a figure nobody
+  measured. The first run's peak (565 MB) rounded up is the budget instead.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

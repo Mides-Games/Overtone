@@ -412,6 +412,29 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
   vez son más servers worker.
 - `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
 
+**W2.4 medido el 2026-10-27** (rama `bench/worker-perf`, `bench/worker_perf.py`): cada
+trabajo en un proceso nuevo, con 4 hilos como el worker de prod, en Windows (12 núcleos,
+compartida con otras corridas, una pasada por caso):
+
+| Audio | Voto | Trabajo | s por minuto de audio | Pico |
+|---|---|---|---|---|
+| 1 min | sí | 34,1 s | 34,1 | 1628 MB |
+| 1 min | no | 10,6 s | 10,6 | 291 MB |
+| 6 min | sí | 93,3 s | 15,5 | 1738 MB |
+| 6 min | no | 19,9 s | 3,3 | 445 MB |
+| 10 min | sí | 206,6 s | 20,7 | 1824 MB |
+| 10 min | no | 46,8 s | 4,7 | 565 MB |
+
+La carga del engine y del modelo (7-38 s) se paga una vez al arrancar, no por trabajo.
+El costo no es lineal: un tema corto paga una parte fija, y por eso el peor caso por
+minuto es el de 1 minuto. Para W3.16, la estimación conservadora es **35 s por minuto
+de audio con el voto** (11 sin él). La puerta exige menos de 45 s por minuto (un tema de
+600 s en la mitad de `JOB_TIMEOUT_S`) y el pico dentro del contenedor (2048 MB con voto,
+768 sin): pasa. Con el voto, a 10 minutos quedan 224 MB de margen. `WORKER_CONCURRENCY`
+sigue sin existir (un worker, un trabajo); el número que fija W2.4 es cuántos workers
+hacen falta, no cuántos hilos. Falta repetirlo en el contenedor Linux, con los mismos
+pasos que W2.3.
+
 ### Fase W3 — El sitio, mínimo usable (MVP)
 
 | # | Tarea |

@@ -112,6 +112,22 @@ CREATE INDEX IF NOT EXISTS jobs_claimed_idx ON jobs (claimed_at) WHERE claimed_a
 -- The sweep that hands a stuck job back (JOB_TIMEOUT_S) reads running rows by age.
 CREATE INDEX IF NOT EXISTS jobs_running_idx ON jobs (locked_at) WHERE state = 'running';
 
+-- ── Rate limits ─────────────────────────────────────────────────────────────
+
+-- W3.17: the per-address request limits (middlewares/rate-limit.js), here so
+-- that every API process behind the proxy counts together. One row per bucket
+-- and client; `client` is an HMAC of the address, never the address. A row is
+-- one fixed window: the upsert that counts a request also starts a new window
+-- once reset_at has passed, and dead windows are swept a minute later.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket          text NOT NULL CHECK (char_length(bucket) <= 32),
+  client          text NOT NULL CHECK (char_length(client) <= 64),
+  count           integer NOT NULL CHECK (count >= 1),
+  reset_at        timestamptz NOT NULL,
+  PRIMARY KEY (bucket, client)
+);
+CREATE INDEX IF NOT EXISTS rate_limits_reset_idx ON rate_limits (reset_at);
+
 -- ── Timings and the social layer ────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS timings (

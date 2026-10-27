@@ -10,13 +10,18 @@ import { readTags } from '../lib/tags.js'
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
  * then the analysis's own page (`/analyze/:id`), which follows the queue and
- * shows the result.
+ * shows the result. Several files, or a folder, are sent one after another
+ * (W3.9): each is its own analysis, and its card here follows it.
  *
  * The size, the format and the length are checked here first, so a file the
  * server would refuse is refused before a single byte is uploaded. The server
  * checks all of it again.
  */
 const EXTENSIONS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus']
+/** The most files one list holds; past it the oldest drop off. */
+const MAX_FILES = 50
+/** Refusals that the next file of a batch would get too. */
+const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'NETWORK', 'RATE_LIMITED']
 const OUTPUTS = [
   { key: 'timingPoints', ready: true },
   { key: 'csv', ready: true },
@@ -29,9 +34,7 @@ export default function Analyze() {
   const { account } = useAuth()
   const navigate = useNavigate()
   const [limits, setLimits] = useState(null)
-  const [audio, setAudio] = useState(null)
-  const [seconds, setSeconds] = useState(null)
-  const [tags, setTags] = useState({ title: null, artist: null })
+  const [items, setItems] = useState([])
   const [hidden, setHidden] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [state, setState] = useState({ kind: 'idle' })
@@ -43,20 +46,28 @@ export default function Analyze() {
       .catch(() => setLimits(null))
   }, [])
 
-  async function pickAudio(file) {
-    setAudio(file)
-    setSeconds(null)
-    setTags({ title: null, artist: null })
+  const update = (key, patch) => setItems((list) => list.map((item) => (item.key === key ? { ...item, ...patch } : item)))
+
+  /** Adds files (several, or a whole folder's audio) to the list, reading each one's length and tags. */
+  function pickAudio(files) {
+    const picked = [...(files ?? [])].filter((file) => file.size > 0)
+    if (!picked.length) return
     setState({ kind: 'idle' })
-    if (!file) return
-    const [length, read] = await Promise.all([durationOf(file), readTags(file)])
-    setSeconds(length)
-    setTags(read)
+    const added = picked.map((file, i) => ({
+      key: `${Date.now()}-${i}-${file.name}`,
+      file,
+      seconds: null,
+      tags: {},
+      upload: { kind: 'ready' },
+    }))
+    setItems((list) => [...list, ...added].slice(-MAX_FILES))
+    for (const item of added) {
+      Promise.all([durationOf(item.file), readTags(item.file)]).then(([seconds, tags]) => update(item.key, { seconds, tags }))
+    }
   }
 
-  function problemWith(file) {
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!EXTENSIONS.includes(ext)) return t('analyze.errors.UNSUPPORTED_FORMAT')
+  function problemWith({ file, seconds }) {
+    if (!EXTENSIONS.includes(extensionOf(file))) return t('analyze.errors.UNSUPPORTED_FORMAT')
     if (limits && file.size > limits.maxUploadMb * 1_048_576) {
       return t('analyze.errors.TOO_LARGE', { limit: limits.maxUploadMb })
     }
@@ -66,23 +77,50 @@ export default function Analyze() {
     return null
   }
 
+  /**
+   * Sends the list one file at a time: each upload is its own analysis and
+   * its own card. A single file goes straight to its result page, as before.
+   */
   async function submit(event) {
     event.preventDefault()
-    if (!audio) return setState({ kind: 'error', message: t('analyze.pickAudio') })
-    const problem = problemWith(audio)
-    if (problem) return setState({ kind: 'error', message: problem })
-
-    setState({ kind: 'sending', sent: 0 })
-    try {
-      const created = await uploadAudio(audio, (sent) => setState({ kind: 'sending', sent }), { private: hidden, ...tags })
-      rememberAnalysis(created.id, audio.name)
-      navigate(`/analyze/${created.id}`)
-    } catch (error) {
-      setState({ kind: 'error', message: messageFor(t, error, limits) })
+    const waiting = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error')
+    if (!waiting.length) return setState({ kind: 'error', message: t('analyze.pickAudio') })
+    const alone = items.length === 1
+    if (alone) {
+      const problem = problemWith(waiting[0])
+      if (problem) return setState({ kind: 'error', message: problem })
     }
+
+    setState({ kind: 'sending' })
+    for (const item of waiting) {
+      const problem = problemWith(item)
+      if (problem) {
+        update(item.key, { upload: { kind: 'error', message: problem } })
+        continue
+      }
+      update(item.key, { upload: { kind: 'sending', sent: 0 } })
+      try {
+        const created = await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), {
+          private: hidden,
+          ...item.tags,
+        })
+        rememberAnalysis(created.id, item.file.name)
+        if (alone) return navigate(`/analyze/${created.id}`)
+        update(item.key, { upload: { kind: 'sent', id: created.id } })
+      } catch (error) {
+        if (alone) return setState({ kind: 'error', message: messageFor(t, error, limits) })
+        update(item.key, { upload: { kind: 'error', message: messageFor(t, error, limits) } })
+        // Nothing after this one would get through either.
+        if (STOPS_THE_BATCH.includes(error.code)) break
+      }
+    }
+    setState({ kind: 'idle' })
   }
 
   const perDay = account ? limits?.userDailyLimit : limits?.anonDailyLimit
+  const atOnce = account ? limits?.userMaxPending : limits?.anonMaxPending
+  const sending = state.kind === 'sending'
+  const toSend = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error').length
 
   return (
     <div className="space-y-8">
@@ -101,10 +139,10 @@ export default function Analyze() {
                 setDragging(true)
               }}
               onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
+              onDrop={async (e) => {
                 e.preventDefault()
                 setDragging(false)
-                pickAudio(e.dataTransfer.files?.[0] ?? null)
+                pickAudio(await droppedFiles(e.dataTransfer))
               }}
               className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-panel border border-dashed px-4 py-10 text-center transition ${
                 dragging ? 'border-accent bg-accent/5' : 'border-line-strong bg-surface-2 hover:border-line-hover'
@@ -118,20 +156,44 @@ export default function Analyze() {
               <input
                 id="audio"
                 type="file"
+                multiple
                 accept="audio/*,.mp3,.ogg,.wav,.flac,.m4a,.opus"
                 className="sr-only"
-                onChange={(e) => pickAudio(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  pickAudio(e.target.files)
+                  e.target.value = ''
+                }}
               />
             </label>
 
-            {audio && (
-              <div className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface-2 px-3 py-2">
-                <span className="min-w-0 truncate text-label">{audio.name}</span>
-                <span className="readout shrink-0 text-caption text-dim">
-                  {formatSize(audio.size)}
-                  {seconds ? ` · ${formatTime(seconds)}` : ''}
-                </span>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="btn-ghost h-8 cursor-pointer px-3 text-caption">
+                {t('analyze.folder')}
+                <input
+                  type="file"
+                  multiple
+                  webkitdirectory=""
+                  className="sr-only"
+                  onChange={(e) => {
+                    pickAudio([...(e.target.files ?? [])].filter((file) => EXTENSIONS.includes(extensionOf(file))))
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {atOnce ? <span className="text-caption text-dim">{t('analyze.atOnce', { count: atOnce })}</span> : null}
+            </div>
+
+            {items.length > 0 && (
+              <ul className="space-y-2">
+                {items.map((item) => (
+                  <FileCard
+                    key={item.key}
+                    item={item}
+                    problem={item.upload.kind === 'ready' ? problemWith(item) : null}
+                    onRemove={sending ? null : () => setItems((list) => list.filter((other) => other.key !== item.key))}
+                  />
+                ))}
+              </ul>
             )}
 
             <label className="flex cursor-pointer items-start gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
@@ -142,15 +204,9 @@ export default function Analyze() {
               </span>
             </label>
 
-            <button type="submit" className="btn-primary w-full" disabled={state.kind === 'sending'}>
-              {state.kind === 'sending' ? t('analyze.sending', { percent: Math.round(state.sent * 100) }) : t('analyze.submit')}
+            <button type="submit" className="btn-primary w-full" disabled={sending || (items.length > 0 && toSend === 0)}>
+              {sending ? t('analyze.sendingMany') : toSend > 1 ? t('analyze.submitMany', { count: toSend }) : t('analyze.submit')}
             </button>
-
-            {state.kind === 'sending' && (
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.sent * 100)}>
-                <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round(state.sent * 100)}%` }} />
-              </div>
-            )}
 
             {state.kind === 'error' && (
               <p role="alert" className="rounded-control border border-red/40 bg-red/10 p-4 text-label text-text">
@@ -237,11 +293,125 @@ export function messageFor(t, error, limits) {
       return t('analyze.errors.EMPTY_UPLOAD')
     case 'RATE_LIMITED':
       return t('analyze.errors.RATE_LIMITED')
+    case 'PENDING_LIMIT':
+      return t('analyze.errors.PENDING_LIMIT', { count: error.details?.limit ?? '' })
+    case 'QUEUE_FULL':
+      return t('analyze.errors.QUEUE_FULL')
     case 'NETWORK':
       return t('analyze.errors.NETWORK')
     default:
       return t('analyze.failed', { message: error.message })
   }
+}
+
+const extensionOf = (file) => file.name.split('.').pop()?.toLowerCase()
+
+/** One file of the list: its name and size, then its upload, then its analysis, polled. */
+function FileCard({ item, problem, onRemove }) {
+  const { t } = useTranslation()
+  const { file, seconds, upload } = item
+  const [analysis, setAnalysis] = useState(null)
+
+  useEffect(() => {
+    if (upload.kind !== 'sent') return undefined
+    let timer
+    let stopped = false
+    async function poll() {
+      try {
+        const next = await api(`/analyses/${upload.id}`)
+        if (stopped) return
+        setAnalysis(next)
+        if (next.status === 'queued' || next.status === 'running') timer = setTimeout(poll, 3000)
+      } catch {
+        if (!stopped) timer = setTimeout(poll, 6000)
+      }
+    }
+    poll()
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }, [upload.kind, upload.id])
+
+  const percent =
+    upload.kind === 'sending'
+      ? Math.round(upload.sent * 100)
+      : analysis?.status === 'running'
+        ? Math.round((analysis.progress ?? 0) * 100)
+        : null
+  let status
+  if (problem || upload.kind === 'error') status = <span className="text-red">{problem ?? upload.message}</span>
+  else if (upload.kind === 'ready') status = t('analyze.card.ready')
+  else if (upload.kind === 'sending') status = t('analyze.sending', { percent })
+  else if (!analysis) status = t('analyze.card.sent')
+  else if (analysis.status === 'queued') status = t('result.queued', { position: analysis.position ?? 1 })
+  else if (analysis.status === 'running') {
+    status = analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.running')
+  } else {
+    const tone = analysis.status === 'done' ? 'text-accent' : analysis.status === 'refused' ? 'text-amber' : 'text-red'
+    status = <span className={tone}>{t(`queue.status.${analysis.status}`)}</span>
+  }
+
+  return (
+    <li className="space-y-1.5 rounded-control border border-line bg-surface-2 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        {upload.kind === 'sent' ? (
+          <Link to={`/analyze/${upload.id}`} className="min-w-0 truncate text-label text-accent hover:underline">
+            {file.name}
+          </Link>
+        ) : (
+          <span className="min-w-0 truncate text-label">{file.name}</span>
+        )}
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="readout text-caption text-dim">
+            {formatSize(file.size)}
+            {seconds ? ` · ${formatTime(seconds)}` : ''}
+          </span>
+          {onRemove && (upload.kind === 'ready' || upload.kind === 'error') && (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={t('analyze.card.remove', { name: file.name })}
+              className="px-1 text-dim hover:text-text"
+            >
+              ×
+            </button>
+          )}
+        </span>
+      </div>
+      <p className="text-caption text-dim" aria-live="polite">
+        {status}
+      </p>
+      {percent !== null && (
+        <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+          <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+        </div>
+      )}
+    </li>
+  )
+}
+
+/** Every file dropped, folders opened recursively where the browser lets it. */
+async function droppedFiles(transfer) {
+  const entries = [...(transfer.items ?? [])].map((item) => item.webkitGetAsEntry?.()).filter(Boolean)
+  if (!entries.some((entry) => entry.isDirectory)) return [...(transfer.files ?? [])]
+  const files = []
+  async function walk(entry) {
+    if (files.length >= MAX_FILES) return
+    if (entry.isFile) {
+      const file = await new Promise((resolve) => entry.file(resolve, () => resolve(null)))
+      if (file && EXTENSIONS.includes(extensionOf(file))) files.push(file)
+      return
+    }
+    const reader = entry.createReader()
+    for (;;) {
+      const batch = await new Promise((resolve) => reader.readEntries(resolve, () => resolve([])))
+      if (!batch.length) break
+      for (const child of batch) await walk(child)
+    }
+  }
+  for (const entry of entries) await walk(entry)
+  return files
 }
 
 const formatSize = (bytes) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`)

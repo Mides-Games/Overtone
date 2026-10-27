@@ -69,7 +69,7 @@
     "pickAudio": "Choose an audio file first.",
     "tooLong": "This song is {{minutes}} minutes long; the limit is {{limit}}.",
     "failed": "The upload failed: {{message}}",
-    "drop": "Drop the audio here or choose a file",
+    "drop": "Drop songs or a folder here, or choose files",
     "privacy": "No account needed. Your file is deleted as soon as it is analysed; the same audio uploaded again gets the stored result at once.",
     "limitsTitle": "Without an account",
     "limitsTitleAccount": "With your account",
@@ -95,10 +95,24 @@
       "QUOTA_ANON": "Without an account you can analyse {{limit}} songs a day. Sign in for more, or come back after 00:00 UTC.",
       "QUOTA_ACCOUNT": "You have used today's {{limit}} analyses. The count resets at 00:00 UTC.",
       "RATE_LIMITED": "Too many uploads in a short time. Wait a few minutes and try again.",
-      "NETWORK": "The server could not be reached. Check your connection and try again."
+      "NETWORK": "The server could not be reached. Check your connection and try again.",
+      "PENDING_LIMIT_one": "You already have {{count}} song in the queue. Send more when it finishes.",
+      "PENDING_LIMIT_other": "You already have {{count}} songs in the queue. Send more when one finishes.",
+      "QUEUE_FULL": "The queue is full right now. Try again in a few minutes."
     },
     "private": "Keep it off the public queue",
-    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader."
+    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader.",
+    "folder": "Choose a folder",
+    "atOnce_one": "Up to {{count}} song in the queue at once",
+    "atOnce_other": "Up to {{count}} songs in the queue at once",
+    "submitMany_one": "Analyze {{count}} song",
+    "submitMany_other": "Analyze {{count}} songs",
+    "sendingMany": "Sending…",
+    "card": {
+      "ready": "Ready to send",
+      "sent": "Sent",
+      "remove": "Remove {{name}}"
+    }
   },
   "result": {
     "eyebrow": "Analysis",

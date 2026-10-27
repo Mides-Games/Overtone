@@ -12,7 +12,11 @@ export const MONO = "11px 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas,
 export const DRIFT_RANGE_MS = 30
 const CHIP_H = 19
 
-/** The theme's tokens (index.css), read when the theme changes. */
+/**
+ * The theme's tokens (index.css), read when the root's classes change: the
+ * theme, and the settings' high contrast and colour-blind palette (W12.15).
+ * Every colour the map paints comes from here.
+ */
 export function readPalette() {
   const css = getComputedStyle(document.documentElement)
   const v = (name) => css.getPropertyValue(name).trim()
@@ -30,7 +34,8 @@ export function readPalette() {
     dim: v('--dim'),
     accent: v('--accent'),
     red: v('--red'),
-    redInk: dark ? '#22070b' : '#ffffff',
+    // The ink on a red chip: a token too, so a palette that moves the red can move its ink.
+    redInk: v('--red-ink') || (dark ? '#22070b' : '#ffffff'),
     amber: v('--amber'),
     lavender: v('--lavender'),
     compare: v('--compare'),

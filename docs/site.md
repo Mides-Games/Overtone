@@ -1099,3 +1099,101 @@ the page so the browser owned them, `.osu` and audio handed to the inputs as `Fi
 Not checked: a real ranked map (`.osu` files were made by hand), the published-side
 fallback of `/compare` as a stranger (the browser that published it also owned it; the
 `/timings/:id` read is the one the public page uses), listening, Safari and Firefox.
+
+### Command palette, shortcuts and settings (W12.14, W12.15, 2026-10-27)
+
+**The palette** (`components/CommandPalette.jsx`). Ctrl+K (⌘K on a Mac) or the
+search button in the bar opens it on every page; on a phone the button leads the
+places' row, because the top row has no room left at a large font size. It lists
+the tray's in-flight analyses first, then this browser's recent ones
+(`lib/recent.js`), the pages, and the actions: switch language, the three themes,
+high contrast on or off, open settings, the shortcut help, sign in or out. Each
+page and action also matches its name in the other language ("inicio" finds Home).
+
+- The ranking is `lib/commands.js`, a subsequence match that favours word starts
+  and runs and ignores case and accents, falling back to a plain left-to-right walk
+  when jumping to a word start would strand a later character. Ties keep the
+  palette's own order.
+- Both dialogs are native modal `<dialog>`s: the page behind is inert, Tab stays
+  inside, Escape closes, and the focus goes back where it was. The palette is the
+  ARIA combobox pattern: the field (`role=combobox`) owns a `listbox`, the arrows,
+  Home, End and the page keys move `aria-activedescendant`, Enter runs the option,
+  and the inside is remounted on every open, so it starts empty.
+- `?` opens the shortcut help: the global keys and the result page's
+  (`components/result/TempoMap.jsx`, which now uses the same `isTyping` and
+  ignores keys from inside an open dialog). `?` never fires in a text field;
+  Ctrl+K does, as in editors, because it never types anything.
+
+**`/settings`** (`pages/Settings.jsx`, `context/SettingsContext.jsx`,
+`lib/settings.js`). Everything is stored in this browser and applies at once:
+
+- **Theme**: system, dark or light, in the existing `mides.theme` key (shared with
+  midesprojects.com), which gains the value `system`; `ThemeContext` follows the
+  OS's switch while it is chosen. Not duplicated in `overtone.settings`.
+- `overtone.settings` = `{ contrast, fontScale, palette, reducedMotion }`, each
+  read defensively; they reach `<html>` as the classes `contrast-more`,
+  `palette-cb`, `motion-reduce` / `motion-allow` and the property `--font-scale`.
+- **High contrast**: one more token set in `src/index.css` per theme. Every text
+  token is at 7:1 or more on every surface down to `--surface-3`, and the strong
+  line at 3:1 on the page; `test/settings.test.js` computes each ratio from the CSS.
+- **Font size**, 90 to 130 % in fives: it scales the root size (so rem spacing
+  grows with the text) and the px text tokens. The few arbitrary `text-[Npx]`
+  sizes (the wordmark, some headings) and the tempo map's 11 px canvas labels
+  do not scale.
+- **Colour-blind-safe palette**: the map already drew only with tokens; the one
+  colour it hard-coded, the ink on a red chip, is now `--red-ink`. The palette
+  moves `--red`, `--amber` and `--lavender` on the whole site, so the map, the
+  table and the chips keep agreeing; the accent stays. The values came from a
+  random search over hues near each meaning, scored by the smallest CIELAB distance
+  between the map's four colours under Machado et al.'s (2009) simulation of
+  protanopia, deuteranopia and tritanopia. The test recomputes that distance.
+- **Motion**: the reduced-motion rule now runs under the media query unless
+  `motion-allow` is set, and always under `motion-reduce`.
+- **Player**: the default volumes write `overtone.player.volumes` through the
+  player's own `savedVolumes` / `saveVolumes` (now exported). The device latency
+  (`overtone.player.latencyMs`, written by W12.2's calibration) is shown, can be
+  typed (-250 to 1000 ms, a comma or "ms" allowed) or forgotten, and links to the
+  visitor's latest result, or to `/recent` when there is none.
+- **Language**: the same `mides.lang` as the bar's toggle.
+
+**Before the first frame.** `index.html`'s one inline script already set the theme
+and the language; it now also applies `overtone.settings` and the `system` theme.
+`deploy/web/serve.mjs` allows that script by its hash, computed from the built
+file, so no CSP change was needed; a new test in `site/api/test/serve.test.js`
+serves the real `index.html` and checks `script-src` names exactly its hash and
+that nothing says `unsafe-inline`. `test/settings.test.js` runs the inline script
+in a `vm` against stored values (valid, invalid and broken) and checks it leaves
+`<html>` exactly as `lib/settings.js` does, so the page never jumps when the app
+starts. Setting a style through the CSSOM is allowed under `style-src 'self'`.
+
+`/settings` is not in the sitemap and `robots.txt` disallows it (a browser's own
+settings have nothing to find); it is linked from the account menu and the footer.
+
+Checked:
+
+- `site/web` 113/113: 13 new in `test/commands.test.js` (matching, ranking,
+  keywords, ties, positions, typing targets, the global keys) and 10 in
+  `test/settings.test.js` (reading, writing, applying, latency parsing, the early
+  script against the library, the contrast ratios and the colour-blind distances);
+  `test/seo.test.js` now lists `/settings` as private. `vite build`.
+- `site/api` 101/101 (1 new in `test/serve.test.js`).
+- In the browser at 800 px and 375 px, EN and ES, dark, light and "as the system"
+  with the OS scheme emulated both ways (it follows a live switch): each setting
+  reaches `<html>` and storage; the stored ones apply on a reload before the app
+  (contrast, palette, motion with the ticker stopped, 120 % font); the latency
+  field refuses "abc" and takes "42,5 ms"; the palette opens from the keyboard,
+  from a field and from the phone's button, ranks, matches Spanish names, runs a
+  page and a theme, closes on Escape and gives the focus back; the help lists
+  every key; the account menu and the footer link to `/settings`. At 130 % the
+  bar's places pushed the sign-in button off at 800 px and the top row overflowed
+  at 375 px: the places now scroll and the phone's search button moved to the
+  second row. No horizontal overflow at 375 px at 100 % or 130 % on `/settings`.
+
+Not checked: the tempo map's canvas repainting under high contrast and the
+colour-blind palette (no finished analysis without the worker; the map re-reads
+the tokens on every class change of `<html>`, which is how the theme already
+worked), a real `?` key press (the browser tool's key events did not produce `?`,
+so it was dispatched as a `KeyboardEvent`), a screen reader, a real colour-blind
+reader, every other page at 130 % (only `/settings`, the home page and the bar
+were looked at; the home page's example offset wraps at 130 % on 800 px), and the
+latency written by W12.2's real calibration, which is on another branch.

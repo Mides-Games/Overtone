@@ -199,6 +199,70 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Command palette and settings
+
+### Changed
+
+- **Command palette (W12.14).** Ctrl+K (⌘K) or the bar's search button: pages, this
+  browser's analyses (the tray's in-flight ones first), and actions (language, theme,
+  high contrast, settings, sign in or out, the shortcuts), ranked by a subsequence
+  match in `lib/commands.js`. `?` lists every shortcut, the result page's included.
+- **`/settings` (W12.15).** Theme (system, dark, light), high contrast, font size 90 to
+  130 %, a colour-blind-safe palette, motion (system, reduce, allow), the default
+  volumes, the device latency of W12.2 (shown, typed or forgotten) and the language,
+  all in this browser. Linked from the account menu and the footer; kept out of the
+  sitemap and disallowed in `robots.txt`, since a browser's own settings have nothing
+  to find.
+- The theme stays in `mides.theme`, shared with midesprojects.com, which gains the
+  value `system`; a reader there that knows only `light` falls back to its dark
+  default, as for a missing key. The other settings are `overtone.settings`.
+- The colour-blind palette moves red lines, "check by ear" and tempo on the whole
+  site, not only on the map, so the map, the table and the chips keep meaning the same.
+- The result page's keys ignore key presses from inside an open dialog.
+
+### Fixed
+
+- The tempo map hard-coded the ink of its red chips: it is a token now (`--red-ink`),
+  so a palette that moves the red can move its ink.
+
+### Hardening
+
+- `index.html`'s inline script applies the stored settings before the first frame. It
+  is still the only inline script and `serve.mjs` still allows it by its hash; a new
+  serve test checks the policy names exactly the real script's hash and no
+  `unsafe-inline`, and a web test runs the script in a `vm` and checks it leaves
+  `<html>` as the library does, so the page never jumps when the app starts.
+- Every stored value is read defensively: a font scale out of range is ignored (not
+  clamped) by both the early script and the library, so the two agree.
+
+### Measured
+
+- High contrast: every text token at 7:1 or more against every surface, down to the
+  darkest panel, in both themes; the strong line at 3:1 against the page. Computed
+  from `index.css` by `test/settings.test.js`.
+- Colour-blind palette: the smallest CIELAB distance between the map's four colours,
+  over normal vision and Machado et al.'s (2009) protanopia, deuteranopia and
+  tritanopia at full severity, goes from 14.1 to 33.7 in light and from 30.4 to 42.1
+  in dark (the default's weakest pair in light was amber and red under deuteranopia).
+  Every new colour is at 5.5:1 or more against the panel.
+- Tests: `site/web` 90 to 113, `site/api` 100 to 101.
+
+### Rejected / tried and dropped
+
+- **Okabe-Ito colours by hand** (vermillion, yellow, reddish purple): scored worse than
+  the default in light (5.8 against 14.1, vermillion and dark yellow collapse under
+  deuteranopia once darkened to 4.5:1 on white). The search, with the contrast floor
+  as a constraint, replaced them.
+- **Clamping a stored font scale** into range: the early script cannot share the
+  library's code, and a clamp in one and a refusal in the other made the text jump
+  when the app started. Both now ignore an out-of-range value.
+- **The palette's search button in the phone's top row:** at 130 % the row overflowed
+  375 px by 29 px; it leads the places' row instead.
+- **Ctrl+K blocked inside fields**, like `?`: it never types a character, and editors
+  open their palettes from anywhere, so it fires from a field too.
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

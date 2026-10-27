@@ -54,7 +54,7 @@ export const DEFAULT_VOLUME = 0.2
 
 const unit = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined)
 
-function savedVolumes() {
+export function savedVolumes() {
   try {
     const stored = JSON.parse(localStorage.getItem(VOLUMES_KEY) ?? '{}') ?? {}
     return { song: unit(stored.song), click: unit(stored.click), clicksOn: typeof stored.clicksOn === 'boolean' ? stored.clicksOn : undefined }
@@ -63,7 +63,7 @@ function savedVolumes() {
   }
 }
 
-function saveVolumes(volumes) {
+export function saveVolumes(volumes) {
   try {
     localStorage.setItem(VOLUMES_KEY, JSON.stringify(volumes))
   } catch {

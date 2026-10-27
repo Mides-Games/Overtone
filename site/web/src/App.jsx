@@ -15,6 +15,7 @@ import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Profile from './pages/Profile.jsx'
 import Queue from './pages/Queue.jsx'
+import Settings from './pages/Settings.jsx'
 import Status from './pages/Status.jsx'
 
 // The credits carry the whole dependency list (src/data/credits.json): loaded
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
         <Route path="status" element={<Status />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="disclaimer" element={<Disclaimer />} />

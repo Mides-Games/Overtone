@@ -402,6 +402,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
 
   // Keys, anywhere on the page but in a field: Space plays, arrows step a beat (Shift: a bar),
   // + and - zoom, 0 fits, [ and ] walk the red lines, L loops, C mutes the clicks, F follows.
+  // The shortcut help (components/CommandPalette.jsx) lists the same keys: change both together.
   useEffect(() => {
     const onKey = (event) => {
       if (pageKeyIgnored(event)) return

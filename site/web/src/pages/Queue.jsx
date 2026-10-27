@@ -127,7 +127,11 @@ function Row({ row, onModerated }) {
         </p>
         <p className="truncate text-caption text-dim">{who(t, row)}</p>
         {row.status === 'running' && (
-          <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((row.progress ?? 0) * 100)}>
+          <div
+            className="h-1 overflow-hidden rounded-full bg-surface-3"
+            role="progressbar"
+            aria-label={row.song ?? t('queue.privateSong')}
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((row.progress ?? 0) * 100)}>
             <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round((row.progress ?? 0) * 100)}%` }} />
           </div>
         )}

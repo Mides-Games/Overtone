@@ -30,11 +30,14 @@
   --text: #1a1724;
   --muted: #58526a;
   --dim: #686279;
-  --accent: #0a737f;
-  --accent-hover: #075c66;
+  /* Accent and amber are one step darker than they were (2026-10-27, W10.2):
+     on their own 10-15 % tints (a pressed tool button, a chip, a "to be set"
+     box) the old ones read 4.15-4.45:1, under AA's 4.5. Now 4.6-5:1. */
+  --accent: #076672;
+  --accent-hover: #05545d;
   --accent-ink: #ffffff;
   --red: #c42e3b;
-  --amber: #8f5e08;
+  --amber: #835606;
   --lavender: #5b45d6;
   --onset: #bdb6cc;
   --grid: rgba(26, 23, 36, 0.09);
@@ -123,6 +126,14 @@ h1,
 h2,
 h3 {
   text-wrap: balance;
+}
+
+/* A link inside a sentence is told from its words by more than colour
+   (WCAG 1.4.1): the accent sits within 1.04-1.33:1 of the muted text around
+   it. Links that stand alone (navigation, buttons, list rows) keep their look. */
+:where(p, dd) a:not([class*='btn']) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
 }
 
 :focus-visible {

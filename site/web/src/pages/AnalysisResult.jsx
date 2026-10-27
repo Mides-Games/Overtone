@@ -199,7 +199,7 @@ function Waiting({ analysis }) {
         {running && <span className="readout text-label text-dim">{percent}%</span>}
       </div>
       {running && (
-        <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={t('result.running')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
           <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${Math.max(3, percent)}%` }} />
         </div>
       )}

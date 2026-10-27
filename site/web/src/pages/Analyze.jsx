@@ -440,7 +440,7 @@ function FileCard({ item, problem, onRemove }) {
         {analysis?.status === 'queued' && <CancelButton id={upload.id} />}
       </div>
       {percent !== null && (
-        <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={file.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
           <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
         </div>
       )}

@@ -421,12 +421,40 @@ dependencias se reconstruyen. Solo importa `overtone-db`.
    versión de Reviactyl rota el más viejo cuando se llega al límite: si no lo hace,
    la tarea falla y hay que borrarlo a mano.
 2. **`pg_dump` lógico, diario, desde el host.** El panel no puede programarlo: sus
-   tareas solo mandan comandos a la consola, y postgres no la lee. Va en el crontab
-   de root en NA-01:
+   tareas solo mandan comandos a la consola, y postgres no la lee. Va en un script
+   de root en NA-01, `/usr/local/sbin/overtone-backup` (`chmod 700`):
 
-   ```bash
-   30 4 * * * mkdir -p /var/backups/overtone && docker exec <uuid> pg_dump -U postgres -Fc overtone > /var/backups/overtone/overtone-$(date +\%F).dump && find /var/backups/overtone -name '*.dump' -mtime +14 -delete
+   ```sh
+   #!/bin/sh
+   # One logical dump of production, kept 14 days (docs/deploy.md §7).
+   set -eu
+   umask 077                       # the dumps hold every account: root only
+   dir=/var/backups/overtone
+   mkdir -p "$dir"
+   out="$dir/overtone-$(date -u +%F).dump"
+   tmp="$out.partial"
+   trap 'rm -f "$tmp"' EXIT        # a failed dump never takes a good one's name
+   docker exec <uuid> pg_dump -h /tmp -U postgres -Fc overtone >"$tmp"
+   docker exec -i <uuid> pg_restore --list <"$tmp" >/dev/null   # readable to the end
+   mv "$tmp" "$out"
+   find "$dir" -name 'overtone-*.dump' -mtime +14 -delete
    ```
+
+   y en el crontab de root, a las 04:00 UTC, antes del backup del panel de las 04:30
+   (que para postgres):
+
+   ```text
+   0 4 * * * /usr/local/sbin/overtone-backup
+   ```
+
+   - `-h /tmp`: el socket de PostgreSQL se movió a `/tmp` (§2). Sin eso, `pg_dump`
+     busca `/var/run/postgresql` y falla, y la línea vieja del crontab dejaba un
+     dump vacío con fecha de hoy.
+   - `umask 077`: los dumps quedan `0600` y la carpeta `0700`.
+   - El dump se escribe a `.partial` y se renombra solo si `pg_dump` y la lectura
+     de prueba terminaron bien; si no, se borra.
+   - **Correrlo una vez a mano** antes de confiarle el cron, y mirar el resultado:
+     `/usr/local/sbin/overtone-backup && ls -l /var/backups/overtone`.
 
    Staging no se respalda: se puede recrear. Los dumps tienen que salir del nodo
    (a un bucket o a otra máquina). Un backup que vive en el mismo disco no
@@ -434,7 +462,7 @@ dependencias se reconstruyen. Solo importa `overtone-db`.
 3. **Probar la restauración** una vez, y después de cada cambio grande de schema:
 
    ```bash
-   docker exec -i <uuid> sh -c 'createdb -U postgres restore_test && pg_restore -U postgres -d restore_test' < /var/backups/overtone/overtone-<fecha>.dump
+   docker exec -i <uuid> sh -c 'createdb -h /tmp -U postgres restore_test && pg_restore -h /tmp -U postgres -d restore_test' < /var/backups/overtone/overtone-<fecha>.dump
    ```
 
 ## 8. Actualizar PostgreSQL

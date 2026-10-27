@@ -20,6 +20,101 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Security hardening of the site and its servers
+
+A security review of the site once every Reviactyl allocation port turned out to be
+public (overtone-web on a public port, soon behind Cloudflare; the API and Postgres
+reachable from every container on the node) found thirteen things to fix. One commit
+each on `fix/security-hardening`.
+
+### Changed
+
+- `QUEUE_MAX` defaults to 30 (was 200), so `QUEUE_MAX × MAX_UPLOAD_MB` fits the new
+  spool budget on the API server's 2 GB disk.
+- New variables: worker `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120),
+  `WORKER_TIMEOUT_FACTOR` (3); API `SPOOL_MAX_MB` (1280), `SPOOL_MIN_FREE_MB` (256),
+  `MIDES_IMAGE_ORIGINS`; web `TRUSTED_PROXY_ADDRS`, `API_TIMEOUT_S` (60),
+  `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS`; db `DB_ROLE`, `DB_ROLE_STAGING` (required).
+- Over https the session and anonymous cookies are `__Host-overtone_session` and
+  `__Host-overtone_anon`. Deploying this signs everyone out once, and anonymous
+  uploads from before it are no longer readable by their uploader.
+- The worker no longer imports the engine: a warm child process does.
+
+### Hardening
+
+- **Decompression bombs (high).** A header claiming more than 192 kHz, 8 channels or
+  `max_seconds × 192000` frames is refused (`too_heavy`) before decoding. Each
+  analysis runs in a spawned child kept warm between jobs, with a wall-clock limit of
+  `max(120 s, 3 × length)` and, on Linux, `RLIMIT_AS` of `WORKER_MEMORY_MB`; a job
+  that runs out of time or memory, or whose child is killed, fails alone (`timeout`,
+  `too_heavy`) and the next job gets a fresh child. The child proves itself on 8 s of
+  clicks before the worker says ready. The worker re-sends the last progress every
+  60 s, so the API's `JOB_TIMEOUT_S` sweep never takes a long live job for a dead one.
+- **Spool exhaustion (medium-high).** Uploads reserve their size against
+  `SPOOL_MAX_MB` (and the disk's free space less `SPOOL_MIN_FREE_MB`) before a byte is
+  read and release it in a `finally`; past it, 503 `SPOOL_FULL`. Uploads in flight
+  count toward the person's pending cap and the queue's. serve.mjs cuts a forwarded
+  request whose API connection is idle for `API_TIMEOUT_S` (504).
+- **Forged X-Forwarded-For (medium).** serve.mjs reads the header only from a peer
+  inside `TRUSTED_PROXY_ADDRS` (Cloudflare's ranges are in docs/deploy.md §9); from
+  anyone else it discards it, and `-Proto`/`-Host`, and forwards the socket address.
+  With `TRUST_PROXY=2`, `req.ip` is the real client either way.
+- **IPv6 rotation (medium).** Rate limits, the anonymous quota and the queue's turns
+  count IPv6 clients by their /64, and `::ffff:a.b.c.d` as `a.b.c.d`.
+- **Postgres open to every container (medium).** The db egg's own
+  `pg_hba.overtone.conf`: the superuser by the container's socket only, each
+  environment's role to its own database with scram, everything else rejected;
+  Wings points `hba_file` at it and rewrites its lines on every start. Existing
+  servers need one Reinstall with `DB_ROLE`/`DB_ROLE_STAGING` set.
+- **Backups (medium).** The nightly `pg_dump` uses `-h /tmp` (the old line failed
+  since the socket moved, and left an empty dump named for the day), `umask 077`, a
+  `.partial` file renamed only after a successful dump and a `pg_restore --list`
+  read, and runs at 04:00, before the panel's 04:30 stop. To be run once by hand.
+- **Cookies (low).** `__Host-` names over https (Secure, Path=/, no Domain), so no
+  sibling `*.midesprojects.com` host can plant an anonymous cookie and read a
+  visitor's uploads; a cookie name sent twice counts as absent.
+- **Labels (low).** File names and tags lose C1 controls, bidi marks, overrides and
+  isolates, zero-width characters and the BOM.
+- **Result validation (low).** Every red-line and section number must be finite and
+  in range, `level` one of high/medium/check, arrays capped at 2000 and strings at
+  fixed sizes; unknown fields still pass. CSV text cells starting with `= + - @` get
+  a leading apostrophe.
+- **Avatars (low).** A profile picture is kept only on `MIDES_WEB_URL`'s origin or
+  `MIDES_IMAGE_ORIGINS`; serve.mjs's `img-src` is `'self' data:` and those origins
+  (was any `https:`), so no uploader's chosen host learns who views the queue.
+- **Return path (low).** The sign-in return path is resolved and kept only when it
+  stays on this origin (`/\evil.example` read as `//evil.example` before).
+- **Deploy (low).** `start.sh` unsets `GIT_TOKEN` after the checkout; `package.json`
+  pins `pnpm@11.25.0` by its sha512 for corepack. docs/deploy.md: panel subusers on
+  these servers get no file, SFTP, startup or backup permission, since anyone who can
+  edit files can read every secret.
+
+### Measured
+
+- Python suite: 794 tests, all pass (8 skipped), up from 784: 10 new worker tests.
+  Worker tests 19/19. `pnpm --dir site/api test`: 56/56, up from 31 (25 new, among
+  them serve.mjs run in front of stand-in APIs and the upload route against a real
+  server). `pnpm --dir site/web build` passes. `egg.py --check`, `node --check
+  deploy/web/serve.mjs`, `sh -n`/`bash -n` on the scripts pass.
+- Worker, 120 s bench track with the vote, Windows: warm-up 24.9 s in process
+  (no self-test) against 42.8–55.5 s in the child (with it); per analysis the same
+  within this machine's noise: child medians 45.4 and 59.3 s, in process 46.8 s
+  (and 26–84 s in other in-process runs the same morning).
+- Not measured or not run: `RLIMIT_AS` on Linux (the start-up log prints the
+  child's peak address space after the self-test: the number to size
+  `WORKER_MEMORY_MB` by), pg_hba against real PostgreSQL and Wings, corepack with the
+  pin, anything on NA-01.
+
+### Not fixed here
+
+- Python dependencies are pinned but not hash-checked (`pip --require-hashes` needs a
+  hashed lock of the worker's manylinux wheels; a W-item).
+- The refusal code `too_heavy` has no sentence of its own in the site's two languages
+  yet: the result page falls back to "could not time this audio" plus the engine's
+  English message (left for the result-view branch, which is rewriting that page).
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

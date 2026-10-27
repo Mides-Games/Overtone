@@ -235,6 +235,25 @@ Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
 del panel, nunca en el repo. Las variables secretas del egg están marcadas como no
 visibles para el dueño del server: solo un admin las lee.
 
+### Subusuarios del panel
+
+Ocultar una variable no alcanza: **quien puede tocar los archivos de un server lee sus
+secretos igual.** El proceso los tiene en su entorno, y el código que corre sale de
+archivos que esa persona puede editar (un `console.log(process.env)` en `site/api`, o
+`start.sh` mismo), y en `overtone-db` puede reescribir `pg_hba.overtone.conf` antes
+del próximo arranque. Por eso, en estos siete servers:
+
+- **Ningún subusuario tiene permisos de archivos** (`file.*`: leer, crear, editar,
+  borrar, archivar, descargar), **ni de SFTP** (`file.sftp`), **ni de startup**
+  (`startup.*`: ver o cambiar variables y la imagen), **ni de backups**
+  (`backup.*`: un backup es una copia de todos los archivos, `pgdata` incluido).
+- Lo que sí puede tener alguien que no es admin: consola en solo lectura y
+  start/stop/restart (`control.*`), para reiniciar un release.
+- El dueño de los servers es una cuenta de admin, no una personal.
+- Si alguna vez alguien necesitó esos permisos, se rotan los secretos de ese entorno
+  (`SESSION_SECRET`, `PROXY_SECRET`, `WORKER_TOKEN`, la contraseña del rol de la base,
+  `MIDES_CLIENT_SECRET` con su par en Mides) cuando se le quitan.
+
 ## 4. Primer arranque
 
 El orden importa la primera vez: **db → api → worker → web**.
@@ -588,3 +607,17 @@ Agregado el 2026-10-26, con el worker y el flujo de análisis (Node 24.22, Windo
 - `pnpm --dir site/api test`: los guardias de `PROXY_SECRET` y de `WORKER_TOKEN`.
 - `worker/main.py` imprime `overtone-worker: ready` y analizó de punta a punta;
   el `^C` en dos tiempos y `WORKER_THREADS` no se probaron en Linux.
+
+Agregado el 2026-10-27, con el endurecimiento de seguridad (rama
+`fix/security-hardening`, Windows):
+
+- Se probó: el worker con su proceso hijo (tiempo, muerte, `MemoryError`, el motor
+  real) y los headers rechazados; el presupuesto del spool contra un server real;
+  `serve.mjs` delante de una API de prueba con `trust proxy` 2 (directo, detrás de un
+  proxy confiable, fuera de los rangos); `install-db.sh` en Git Bash y la reescritura
+  de Wings simulada sobre `pg_hba.overtone.conf`; el script de backup con un `docker`
+  falso.
+- No se probó: `RLIMIT_AS` y `MALLOC_ARENA_MAX` en Linux (Windows no tiene rlimit),
+  `pg_hba.overtone.conf` contra un PostgreSQL y un Wings reales (que Wings reemplace
+  `{{server.build.env.DB_ROLE}}` en un archivo de texto y que `hba_file` se aplique),
+  corepack con el `packageManager` fijado, y nada en NA-01.

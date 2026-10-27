@@ -25,3 +25,12 @@ export function rememberAnalysis(id, filename) {
     // Storage blocked: the analysis is still at its own URL.
   }
 }
+
+/** A cancelled analysis no longer exists: its link would only lead to a 404. */
+export function forgetAnalysis(id) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(recentAnalyses().filter((item) => item.id !== id)))
+  } catch {
+    // Storage blocked: there was no list to clean.
+  }
+}

@@ -1,23 +1,36 @@
 /**
  * The title and artist an audio file names itself by, read in the browser so
  * the public queue can show "Artist - Title" (W3.8) without the server
- * parsing anything. Only the head of the file is read: ID3v2 for MP3, Vorbis
- * comments for OGG, Opus and FLAC. Anything else, or a tag this does not
- * understand, is `{ title: null, artist: null }`, and the queue falls back to
- * the file name. Never throws.
+ * parsing anything. Read: ID3v2 for MP3, Vorbis comments for OGG, Opus and
+ * FLAC (both from the head of the file), the `©nam`/`©ART` atoms of MP4/M4A
+ * and the `LIST/INFO` (or `id3 `) chunk of WAV (both found by walking the
+ * file's boxes or chunks, since they often sit after the audio). Anything
+ * else, or a tag this does not understand, is `{ title: null, artist: null }`,
+ * and the queue falls back to the file name. Never throws.
  */
 const HEAD_BYTES = 256 * 1024
+// A `moov` or a tag chunk bigger than this is skipped rather than read whole.
+const MOOV_MAX = 8 * 1024 * 1024
+const CHUNK_MAX = 1024 * 1024
+// A garbage file of tiny boxes must not turn into thousands of reads.
+const MAX_STEPS = 512
 
 export async function readTags(file) {
   const none = { title: null, artist: null }
   try {
     const bytes = new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer())
     if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return id3(bytes) ?? none
+    if (ascii(bytes, 4, 8) === 'ftyp') return (await mp4(file)) ?? none
+    if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WAVE') return (await wav(file)) ?? none
     return vorbis(bytes) ?? none
   } catch {
     return none
   }
 }
+
+const ascii = (bytes, start, end) => String.fromCharCode(...bytes.subarray(start, end))
+const read = async (file, start, end) => new Uint8Array(await file.slice(start, end).arrayBuffer())
+const view = (bytes) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 
 const clean = (value) => {
   const text = (value ?? '').replace(/\u0000+$/g, '').replace(/[\u0000-\u001f]/g, '').trim()
@@ -78,4 +91,122 @@ function vorbis(bytes) {
   const title = field('TITLE')
   const artist = field('ARTIST')
   return title || artist ? { title, artist } : null
+}
+
+/**
+ * MP4/M4A: `moov > udta > meta > ilst > ©nam | ©ART > data`. The top-level
+ * boxes are walked by their headers alone, because an encoder that writes
+ * `moov` last puts it behind the whole `mdat`, far past the head.
+ */
+async function mp4(file) {
+  let offset = 0
+  for (let step = 0; step < MAX_STEPS && offset + 8 <= file.size; step++) {
+    const head = await read(file, offset, offset + 16)
+    const box = header(head, 0, file.size - offset)
+    if (!box) return null
+    if (box.type === 'moov') {
+      if (box.size > MOOV_MAX) return null
+      return ilst(await read(file, offset + box.header, offset + box.size))
+    }
+    offset += box.size
+  }
+  return null
+}
+
+/** A box header: 32-bit size, or 1 for a 64-bit size after the type, or 0 for "to the end". */
+function header(bytes, i, room) {
+  if (i + 8 > bytes.length) return null
+  let size = view(bytes).getUint32(i)
+  let length = 8
+  if (size === 1) {
+    if (i + 16 > bytes.length) return null
+    size = Number(view(bytes).getBigUint64(i + 8))
+    length = 16
+  } else if (size === 0) {
+    size = room
+  }
+  if (size < length) return null
+  return { type: ascii(bytes, i + 4, i + 8), size, header: length }
+}
+
+function child(bytes, type) {
+  let i = 0
+  while (i + 8 <= bytes.length) {
+    const box = header(bytes, i, bytes.length - i)
+    if (!box || i + box.size > bytes.length) return null
+    if (box.type === type) return bytes.subarray(i + box.header, i + box.size)
+    i += box.size
+  }
+  return null
+}
+
+function ilst(moov) {
+  const udta = child(moov, 'udta')
+  const meta = udta && child(udta, 'meta')
+  if (!meta || meta.length < 4) return null
+  // `meta` is a full box (4 bytes of version and flags) in ISO files, a plain one in old QuickTime.
+  const list = child(meta.subarray(4), 'ilst') ?? child(meta, 'ilst')
+  if (!list) return null
+  const value = (type) => {
+    const item = child(list, type)
+    const data = item && child(item, 'data')
+    if (!data || data.length < 8) return null
+    // 4 bytes of type (1 is UTF-8, 2 UTF-16) and 4 of locale, then the value.
+    const kind = view(data).getUint32(0) & 0xffffff
+    return clean(new TextDecoder(kind === 2 ? 'utf-16be' : 'utf-8').decode(data.subarray(8)))
+  }
+  const title = value('©nam')
+  const artist = value('©ART')
+  return title || artist ? { title, artist } : null
+}
+
+/**
+ * WAV: a `LIST` chunk of type `INFO` (`INAM` title, `IART` artist) or an
+ * `id3 ` chunk holding an ID3v2 tag. The chunks are walked by their headers,
+ * because tagging tools usually append them after `data`.
+ */
+async function wav(file) {
+  const found = { title: null, artist: null }
+  let offset = 12
+  for (let step = 0; step < MAX_STEPS && offset + 8 <= file.size; step++) {
+    const head = await read(file, offset, offset + 8)
+    const id = ascii(head, 0, 4)
+    const size = view(head).getUint32(4, true)
+    const body = offset + 8
+    if ((id === 'LIST' || id === 'id3 ' || id === 'ID3 ') && size <= CHUNK_MAX) {
+      const bytes = await read(file, body, body + size)
+      let tags = null
+      if (id === 'LIST' && ascii(bytes, 0, 4) === 'INFO') tags = info(bytes.subarray(4))
+      else if (id !== 'LIST' && ascii(bytes, 0, 3) === 'ID3') tags = id3(bytes)
+      found.title ??= tags?.title ?? null
+      found.artist ??= tags?.artist ?? null
+    }
+    // Chunks are padded to an even length.
+    offset = body + size + (size & 1)
+  }
+  return found.title || found.artist ? found : null
+}
+
+function info(bytes) {
+  const found = {}
+  let i = 0
+  while (i + 8 <= bytes.length) {
+    const id = ascii(bytes, i, i + 4)
+    const size = view(bytes).getUint32(i + 4, true)
+    const body = bytes.subarray(i + 8, Math.min(bytes.length, i + 8 + size))
+    if (id === 'INAM' || id === 'IART') found[id] = clean(riffText(body))
+    i += 8 + size + (size & 1)
+  }
+  return { title: found.INAM ?? null, artist: found.IART ?? null }
+}
+
+/** INFO strings have no declared encoding: UTF-8 when they are valid UTF-8, else Latin-1. */
+function riffText(body) {
+  const end = body.indexOf(0)
+  const data = end < 0 ? body : body.subarray(0, end)
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(data)
+  } catch {
+    return new TextDecoder('latin1').decode(data)
+  }
 }

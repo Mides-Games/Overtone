@@ -20,6 +20,25 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The site shows Overtone's own logo
+
+### Fixed
+
+- The site's mark was a redrawn ring with a bar, and its favicon and icons the Mides
+  mark: the owner called it an imitation of the app's logo. `assets/logo.py`, which
+  drew the desktop app's icon, now also writes `assets/logo.svg` (the same geometry as
+  vectors) and the site's icons from the same renderer; `Mark.jsx` shows that SVG in
+  the navbar, footer and sign-in. The Mides mark stays where Mides Projects is named.
+  `site/web/scripts/icons.mjs`, which rasterised the old favicon, is gone.
+
+### Measured
+
+- `assets/logo.png` and `logo.ico` come out byte-identical (md5 unchanged); the new
+  files take 2 min 24 s to render on this machine (the 512-px ones, in pure Python).
+- site/web 88/88 (`icons.test.js`, 4 tests, replaced by `logo.test.js`, 2).
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

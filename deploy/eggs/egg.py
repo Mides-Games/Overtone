@@ -234,7 +234,13 @@ def db():
         # `postgres`; Wings never evaluates this line for it.
         "startup": "postgres",
         "config": {
-            "files": "{}",
+            # Wings mounts the image read-only, so PostgreSQL cannot create its
+            # socket in /var/run/postgresql and stops ("could not create lock
+            # file", seen on NA-01 on 2026-10-27). Before every start Wings
+            # rewrites this line to /tmp, which is writable. The very first start
+            # creates the file and still stops once; the next one runs.
+            "files": json.dumps({"pgdata/postgresql.conf": {"parser": "file", "find": {
+                "unix_socket_directories": "unix_socket_directories = '/tmp'"}}}),
             "startup": json.dumps({"done": "database system is ready to accept connections"}),
             "logs": "{}",
             # SIGINT is PostgreSQL's fast shutdown: open transactions roll back, nothing is lost.

@@ -436,7 +436,9 @@ batch of five). A checkbox, shown only where the browser has notifications and
 they were not denied, asks for permission; the notification goes once, when the
 last song finishes. The counts come from the statuses the cards already poll,
 so nothing new is sent anywhere. `lib/batch.js` holds the rules and
-`site/web/test/batch.test.js` their tests.
+`site/web/test/batch.test.js` their tests. Since W3.22/W3.23 (below) the title
+and the notification belong to the tray, on every page; the checkbox is the
+tray's notification setting.
 
 ### A batch in one download (W3.15, 2026-10-27)
 
@@ -455,3 +457,63 @@ worker's claim and a cancel are decided by the same row lock. Checked over HTTP
 in `test/cancel.test.js` (the owner cancels and gets the quota back; a stranger
 gets 404, a request without the same-origin header 403; a claimed job 409) and
 against PostgreSQL 18 through PGlite.
+
+### The analysis tray and its notices (W3.22, W3.23, 2026-10-27)
+
+Every song this tab sends is followed on every page, not only on `/analyze`.
+
+- **One store.** `lib/tracker.js` keeps the ids being followed and reads
+  `GET /analyses/:id` for each one still queued or running; `lib/tracking.js`
+  builds the site's one instance. The Analyze page's cards, the result page and
+  the tray all read it (`useTracker`, `useAnalysis`), so an id is polled once
+  however many of them show it. Checked in the browser: a queued song on its
+  result page, with the tray following it too, made 6 requests in 6 s. The
+  result page also starts following a song of yours that is still in flight
+  (only its uploader can read it at all), so a song opened from the recent list
+  joins the tray.
+- **Polite polling** (`pollDelay`): every 1 s for the first 20 s, every 2 s up
+  to a minute, then every 3 s; one more second per place past third in the
+  queue (up to 10 s); with N songs in flight each waits at least N × 0.5 s, so
+  the tab stays near two requests a second against the API's 300 a minute; a
+  failed read backs off 3, 6, 12, 24, 30 s; a hidden tab reads every 15 s and
+  catches up the moment it is shown. Finished songs are not read again.
+- **Survives a reload.** The ids, names, last status, batches and the inbox go
+  to `sessionStorage` (`overtone.tray`), read back field by field (ids must be
+  32 hex, statuses known, names stripped of control and bidi characters). Per
+  tab on purpose: a second tab does not poll and notify the same songs twice.
+  The API did not change: `GET /analyses/:id` was already readable by the
+  uploader's cookie.
+- **The tray** (`components/Tray.jsx`): name (a link to the result), state,
+  queue place, stage and %, Cancel for a queued one (`CancelButton`, which now
+  also tells the store), × to drop a finished one, "Clear finished", and the
+  inbox of the last 20 notices with its own Clear. From md (768 px) up it is a
+  corner button, open by default, with a spacer under the footer. Narrower, its
+  button sits in the navbar's top row and the panel opens as a bottom sheet
+  only when asked: a floating button on a phone sat on top of the Analyze
+  page's full-width button (seen at 375 px, so it moved). Escape closes it from
+  anywhere and gives focus back to the button that opened it; state changes are
+  read out by a polite live region. Nothing is drawn until there is something.
+- **Notices** (`songFinished`, `batchEnded`, `alertFor`): a song is announced
+  when it goes from queued/running to done, refused or failed (cancelled and
+  gone are not news); a batch (two or more songs sent together) once, when the
+  upload loop is over and every song is finished. A browser notification goes
+  only if the person turned them on, the browser granted it and the tab is not
+  the one in focus; a song of a batch replaces the batch's notification (same
+  `tag`) instead of stacking. The chime (`lib/chime.js`: two sine notes from
+  Web Audio, no file) is off by default, is not played for songs inside a
+  batch, and plays only after a click unlocked audio. The tab title reads
+  "3 in progress · Overtone" while anything is, unsent songs of a running batch
+  included. Sound and notifications are remembered in `localStorage`
+  (`overtone.traySettings`).
+
+Checked: `site/web/test/tracker.test.js` (16 tests: the schedule, the notice
+rules, defensive reads, a reload, blocked storage, one poll per id, batches,
+cancelling) with a fake clock and a fake API. In the browser (API on its own
+port without the worker, and a scripted fake worker on `/api/internal` moving
+jobs through progress, result and fail): a batch of three sent from
+`/analyze`, followed from `/queue` and `/` with a reload in between; the
+running stage and %, "has a timing", a cancel from the tray, a failure, and
+"Batch finished: 1 of 3"; a single song on its result page at 375 px in Spanish
+and the light theme; Escape; the sound switch remembered. **Not checked:** a
+real browser notification (the preview browser had them denied, so only the
+rules are tested), hearing the chime, a screen reader, Safari, a real worker run.

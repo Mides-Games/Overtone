@@ -558,6 +558,19 @@ APIs detrás del proxy comparten la cuenta; sin base sigue en memoria. La clave 
 HMAC de la dirección, nunca la dirección. Probado con dos procesos contra PostgreSQL
 (PGlite): diez subidas pasaron alternando entre los dos y la undécima recibió 429 en
 cualquiera de ellos.
+**W3.22 hecha el 2026-10-27** en la rama `feature/site-tray`: una bandeja en todas las
+páginas con cada canción propia en curso (nombre, estado, posición, etapa y %, enlace al
+resultado, cancelar mientras espera). El seguimiento pasó a un solo store
+(`site/web/src/lib/tracker.js`) que leen la página de subida, la del resultado y la
+bandeja, así que cada id se consulta una vez; se frena con la antigüedad, la posición,
+la cantidad en curso, los errores y la pestaña oculta. Los ids viven en
+`sessionStorage` y una recarga la reconstruye. En el celular el botón va en la barra de
+arriba y el panel se abre como hoja inferior solo si se pide.
+**W3.23 hecha en parte el 2026-10-27** en la misma rama: notificación del navegador por
+canción y por lote (opt-in, solo con la pestaña sin foco), sonido opcional hecho con Web
+Audio (apagado por defecto), contador en el título en cualquier página y bandeja de
+avisos que la persona limpia; las dos opciones quedan en `localStorage`. Falta el aviso
+por DM de Discord, que espera al bot (W9.4).
 **W3.14 hecha el 2026-10-27** en la rama `feature/batch-notice`: mientras corre un
 lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso para
 una notificación del navegador que sale una sola vez, al terminar la última. Usa

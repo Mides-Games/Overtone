@@ -20,6 +20,59 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The analysis tray and its notices
+
+### Changed
+
+- W3.22: a tray on every page lists the songs this tab sent — name, state, queue
+  place, stage and %, a link to the result, Cancel while queued — so the person
+  can browse while they wait. Wide screens get a corner button, open by default;
+  phones get a button in the navbar and a bottom sheet, closed by default.
+- The polling moved out of the Analyze page's cards and the result page into one
+  store (`site/web/src/lib/tracker.js`): every view reads it and each id is read
+  once. It slows with age, queue place, the number in flight, failures and a
+  hidden tab, and stops when a song is final.
+- The ids, statuses, batches and inbox survive a reload in `sessionStorage`
+  (per tab, so two tabs do not notify twice); sound and notifications are
+  remembered in `localStorage`.
+- W3.23: a browser notification per finished song and per finished batch (opt-in,
+  only after the browser grants it, only when the tab is not in focus), an
+  optional two-note chime made with Web Audio (off by default), the tab title
+  counting everything in flight on any page ("3 in progress"), and an inbox of
+  the last 20 notices, cleared by the person.
+- W3.14's "2/5 ready" title and its once-per-batch notification are replaced by
+  the above; its checkbox on the Analyze page is now the tray's setting.
+
+### Hardening
+
+- Saved state is read field by field: 32-hex ids, known statuses, short batch ids,
+  names stripped of control and bidi characters; anything else is dropped, and
+  blocked storage means a tray that forgets on reload rather than one that breaks.
+- With N songs in flight each id waits at least N × 0.5 s, so a batch stays near two
+  requests a second, well inside the API's 300 a minute per address.
+
+### Measured
+
+- site/web tests: 33 → 47 (16 new in `tracker.test.js`; W3.14's two title and
+  notification tests moved there as `trayTitle` and `alertFor`).
+- A queued song on its result page, with the tray following it: 6 requests in 6 s
+  (one per id per second), not two streams.
+- Build: 459 kB JS (147 kB gzip), up from 457 kB.
+
+### Rejected / tried and dropped
+
+- **A floating corner button on phones.** At 375 px it sat on top of the Analyze
+  page's full-width button; the phone button moved into the navbar's top row.
+- **localStorage for the ids.** Every open tab would poll the same songs and send
+  the same notification; sessionStorage keeps the work with the tab that started it
+  and still survives a reload.
+- **A notification even while the person looks at the page.** The tray, the title
+  and the live region already say it there; a system notification on top was noise.
+- **A chime per song of a batch.** Ten songs, ten chimes: a batch's songs only
+  update its one notification (same `tag`), and the batch's end chimes once.
+- **An API change** (a batch endpoint, server-sent events): not needed; the
+  per-id GET is cheap and the API stays as it was.
+
 ## Unreleased — 2026-10-27 · The result page hands over an .osz
 
 ### Changed

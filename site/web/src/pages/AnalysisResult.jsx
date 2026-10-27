@@ -34,7 +34,10 @@ export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
   const reading = useAnalysis(id)
-  const analysis = reading?.data ?? null
+  // What publishing changed (W3.27): a finished analysis is not read again,
+  // so the page keeps the change itself, for this id only.
+  const [changed, setChanged] = useState({ id: null })
+  const analysis = reading?.data ? { ...reading.data, ...(changed.id === id ? changed.fields : {}) } : null
   const error = reading?.error ?? null
   // The file's name names the tab: it never leaves this browser that way.
   usePageMeta(analysis?.filename || t('result.eyebrow'))
@@ -84,7 +87,7 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
-      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setAnalysis((a) => ({ ...a, ...next }))} />}
+      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setChanged((c) => ({ id, fields: { ...(c.id === id ? c.fields : {}), ...next } }))} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
     </div>
   )

@@ -816,3 +816,90 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### How it works, questions, the glossary and the statistics (W12.12, W12.13, 2026-10-27)
+
+**Pages.** `/how-it-works`, `/faq`, `/glossary` and `/stats`, each with `usePageMeta`, in
+the sitemap and in a new Learn column of the footer. Their text is in the locale files
+under `learn` and `siteStats`.
+
+- **How it works** (`pages/HowItWorks.jsx`): six steps, each written from and citing the
+  file that specifies it (`docs/05-dsp-pipeline.md` A.1-A.11, `docs/site.md`,
+  `python/overtone.py` `analyze_audio`, `_beat_this_vote`, `_follow_drift`,
+  `worker/timing_result.py` `HIGH`, `MEDIUM`, `LOOSE_RESIDUAL_MS`, `STAGES`), linked on
+  GitHub through `lib/repo.js`, which accepts only a plain relative path. The only
+  accuracy figures are the synthetic benchmark's, as on the disclaimer; Corpus B is
+  described (20 hand-timed ranked maps, red lines within 5 ms) without a number, since
+  the site publishes none. The time an analysis takes is the figure from "Run it on
+  another machine" above (about 10 s for 60 s with the vote, on the development
+  machine), and the page points to `/stats` for this site's own. The diagram
+  (`components/learn/PipelineDiagram.jsx`) is inline SVG with Tailwind's fill and stroke
+  utilities over the theme tokens; each box links to its step.
+- **FAQ** (`pages/Faq.jsx`): the limits are read from `GET /api/v1/health`, never
+  written in the text; if the API does not answer, the page says so and links `/status`.
+  The formats are `utils/upload.js` `AUDIO_EXTENSIONS`; what is kept of the audio is the
+  privacy page's reading of the code.
+- **Glossary** (`pages/Glossary.jsx`, `lib/glossary.js`): twelve terms. An entry's
+  anchor is its id (`/glossary#drift`); the router does not scroll to a hash, so the
+  page does, and outlines the entry. Spanish uses the site's "deriva" for drift.
+- **`<Term id>`** (`components/Term.jsx`): a dotted underline (`.term` in `index.css`)
+  that is a button. It opens a non-modal popover with the short definition and a link to
+  the entry; Enter or Space opens it and moves the focus into it, Escape, Close or
+  tabbing past either end closes it and returns the focus to the word; a click outside,
+  a scroll or a resize closes it. The popover is portalled to `<body>` and `fixed` from
+  the word's box, because the red lines table scrolls and its header is sticky. It sits
+  on the result page's readouts (BPM, offset, meter, red lines), the confidence legend
+  and the table's BPM, meter, confidence, drift and fit headers, so the public `/t/<id>`
+  page has it too.
+
+**Statistics.** `GET /api/v1/stats` (`routes/stats.routes.js`, `utils/stats.js`, a
+`stats()` on both stores in `services/analysis.service.js`):
+
+- Totals of the engine's own runs (done, refused, failed), published timings and
+  distinct songs; cache hits are their own total; a deleted analysis counts nowhere.
+- The main BPM of done analyses in 20-BPM buckets from 80 to 260, open at both ends. The
+  memory store buckets as PostgreSQL's `width_bucket(bpm, edges)` does, with the same
+  edges array, and its percentile is `percentile_cont`'s, so the two stores agree.
+- One tempo against tempo changes, read as `utils/timings.js` `isVariable` reads it (red
+  lines at more than one BPM).
+- The median and 90th percentile of `finished_at - created_at` for done runs of the last
+  30 days: upload to result, queue wait included, said so on the page. Null below five.
+- Queued and running jobs.
+
+The pg store reads it all in one statement. The answer is built field by field by
+`shapeStats`, cached for a minute per process (concurrent requests share one
+computation), served with `Cache-Control: public, max-age` for what is left of the
+minute, and limited to 60 requests per address per 10 minutes. No schema change.
+
+The page (`pages/Stats.jsx`, `lib/stats.js`) draws the histogram as horizontal bars and
+the tempo share as one split bar, inline SVG at the box's pixel width (ResizeObserver),
+each an image with a summary, every bar with its count as text, and the histogram's
+numbers as a table behind "Show as a table". The accent and lavender pass the dataviz
+validator on colour-blind separation and contrast in both themes; it flags their
+lightness and chroma bands, which the labels and the table cover.
+
+Checked:
+
+- `site/api` 107/107: 7 new in `test/stats.test.js` (bucket edges and percentiles against
+  the PostgreSQL definitions; the totals, histogram, tempo share, median 30 s and p90
+  46 s and the queue over HTTP; a cache hit and a deletion not counted; the minute's
+  cache; the whole body searched for every id, SHA-1, hash, file name, tag and username
+  the rows carried, and every key checked against the ones `shapeStats` writes; the rate
+  limit).
+- The pg store's `stats()` against PostgreSQL through PGlite 0.5.11 behind
+  `pglite-socket` (a scratch install outside the repository), schema applied twice, the
+  same rows: every figure as on the memory store.
+- `site/web` 96/96: `test/learn.test.js` (every glossary term in both languages, every
+  underlined id a term, the same steps and questions in both languages, every cited file
+  present in the repository, every FAQ link a route) and `test/stats.test.js`; `vite
+  build`; `bench/facts.py` ok.
+- In the browser pane (web on 5195, the API on 3025 with `OVERTONE_WORKER=0`, results
+  posted by a stand-in worker): the four pages at 375 px and desktop, EN and ES, dark and
+  light, no horizontal scroll; the result page's popovers by keyboard (focus in, Escape
+  back to the word) and by click; the glossary link landing on its entry below the
+  sticky header; the FAQ's limits as `/health` stated them.
+
+Not checked: a screen reader on the popover and the charts; touch on a real phone; the
+`/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
+cache across several API processes (each keeps its own minute); the text against a
+mapper's reading, which only a mapper can give.

@@ -20,6 +20,53 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · How it works, a glossary, and the site's statistics
+
+### Changed
+
+- `/how-it-works` explains the pipeline for a mapper (decode, attacks, tempo sweep and
+  grid fit, octave and the Beat This! vote, sections and red lines, confidence levels),
+  what "check by ear" means, why an analysis takes the time it does, and what the
+  synthetic benchmark measures against what Corpus B is still measuring. Each step cites
+  the file it was written from. W12.12.
+- `/faq` answers the ten questions of the roadmap row; its limits are read from
+  `GET /api/v1/health`. `/glossary` holds twelve terms, and `components/Term.jsx` puts
+  them on the result page: a dotted underline on the readouts, the confidence legend and
+  the red lines table's headers that opens the short definition. W12.12.
+- `GET /api/v1/stats` and `/stats`: totals, the BPM histogram, one tempo against tempo
+  changes, the median and 90th-percentile time from upload to result over 30 days, and
+  the queue. Aggregates only, cached a minute per process, rate limited. W12.13.
+- A Learn column in the footer; the GitHub docs link there is now "Documentation".
+
+### Hardening
+
+- The statistics are built field by field (`utils/stats.js` `shapeStats`) from counts the
+  stores make; a test reads the whole body for every id, hash, file name, title and
+  username the rows carried, and for any field `shapeStats` does not write.
+- The analysis times are withheld below five finished analyses in the window: a median
+  of two jobs looks measured and is not (CLAUDE.md rule 2).
+- `lib/repo.js` links only plain relative paths, so a locale string cannot become a link
+  elsewhere.
+
+### Measured
+
+- Not measured: these pages state the engine's existing numbers (the synthetic
+  benchmark's 24/24 within 0.05 BPM and 5 ms, median 0.16 ms; about 10 s for a 60 s song
+  with the vote, from docs/site.md) and measure nothing new. The pg store's `stats()` gave
+  the same answer as the memory store's on the same rows through PGlite 0.5.11.
+
+### Rejected / tried and dropped
+
+- Counting cache hits as analyses: one song looked up ten times would count ten. They
+  are their own total; the BPM histogram and the times read only the engine's runs.
+- A vertical BPM histogram: at 375 px its eleven bucket names shrink below reading size.
+  Horizontal rows, drawn at the box's own pixel width, keep them at 12 px.
+- A chart library: two charts did not justify a dependency.
+- Keeping the table headers' `title` hints next to the popovers: they said what the
+  glossary's short definitions say.
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed

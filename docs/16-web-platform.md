@@ -412,6 +412,15 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
   vez son más servers worker.
 - `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
 
+**W2.3, a medias (2026-10-27, rama `bench/worker-parity`).** La puerta existe y pasa en
+Windows; en Linux no se corrió. `bench/worker_parity.py` pasa los 24 casos por
+`worker/timing_result.py` con el voto, como un trabajo, y compara cada `timing-result v1`
+con `bench/bpm_snapshot.json` (0.01 BPM, mismas red lines, compás y camino del engine):
+**24/24 en Windows**. No hay Linux donde correrla: esta máquina no tiene distro de WSL (y
+activarla pide admin y reiniciar) ni Docker, y el server de medición sigue en
+`feature/library-api`, sin `worker/`. Los pasos para el VPS, en un clon aparte que no toca
+al server, están en `timeline.md`. W2.3 se cierra cuando esa corrida diga 24/24.
+
 ### Fase W3 — El sitio, mínimo usable (MVP)
 
 | # | Tarea |

@@ -42,6 +42,37 @@ components:
       description: 128 random bits in hex.
       schema: { type: string, pattern: '^[0-9a-f]{32}$' }
   schemas:
+    QueueEntry:
+      type: object
+      required: [mine, status, private, song, uploader, anonymous, cached, createdAt, elapsedS]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{32}$", description: Only on the caller's own rows. }
+        mine: { type: boolean }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        position: { type: integer, minimum: 1 }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        stage: { type: [string, "null"] }
+        private: { type: boolean }
+        song: { type: [string, "null"], description: "Artist - Title from the tags, or the cleaned file name; null when private." }
+        uploader:
+          type: [object, "null"]
+          properties:
+            username: { type: string }
+            displayName: { type: [string, "null"] }
+            avatarUrl: { type: [string, "null"] }
+        anonymous: { type: [boolean, "null"], description: null when private. }
+        cached: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        elapsedS: { type: integer, description: Seconds from upload to finish, or to now. }
+    Queue:
+      type: object
+      required: [live, more, recent, at]
+      properties:
+        live: { type: array, items: { $ref: '#/components/schemas/QueueEntry' } }
+        more: { type: integer, minimum: 0 }
+        recent: { type: array, items: { $ref: '#/components/schemas/QueueEntry' } }
+        at: { type: string, format: date-time }
     AnalysisCreated:
       type: object
       required: [id, status, cached]
@@ -310,6 +341,21 @@ paths:
           required: true
           description: The file's name, percent-encoded. Shown back to the uploader; never used as a path.
           schema: { type: string, maxLength: 1024 }
+        - name: X-Private
+          in: header
+          required: false
+          description: "`1` keeps the song, the file name and the uploader off the public queue (W3.8)."
+          schema: { type: string, enum: ["1"] }
+        - name: X-Title
+          in: header
+          required: false
+          description: The title tag the browser read from the audio, percent-encoded; at most 200 characters are kept.
+          schema: { type: string, maxLength: 1024 }
+        - name: X-Artist
+          in: header
+          required: false
+          description: The artist tag, as X-Title.
+          schema: { type: string, maxLength: 1024 }
       requestBody:
         required: true
         content:
@@ -347,6 +393,23 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/queue:
+    get:
+      summary: The public queue
+      description: |
+        Every analysis waiting or running (running first, then queued in the
+        order the worker takes them, at most 100; `more` counts the rest) and
+        those finished in the last hour (at most 20). A private upload shows
+        its status and timing only. `id` appears on the caller's own rows,
+        recognised by the session or the anonymous cookie. Polled by the page;
+        served from a one-second snapshot.
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Queue' }
 
   /analyses/{id}:
     parameters:

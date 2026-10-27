@@ -9,12 +9,14 @@ import { analyses, engineHash, newPublicId } from '../services/analysis.service.
 import { cookiesOf } from '../services/session.service.js';
 import { commit, discard, discardPart, receive } from '../services/spool.service.js';
 import { HttpError } from '../utils/http-error.js';
-import { audioExtension, cleanFilename, downloadName, timingCsv, timingText } from '../utils/upload.js';
+import { queueEntry } from '../utils/queue.js';
+import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../utils/upload.js';
 
 /**
  * Uploading a song and reading its analysis back (W3.4).
  *
  *   POST /analyses                  raw audio body, X-Filename header -> 202 { id, status }
+ *   GET  /analyses/queue            the public queue: waiting, running, finished in the last hour
  *   GET  /analyses/:id              status, queue position, progress, result
  *   GET  /analyses/:id/timing.txt   the [TimingPoints] block
  *   GET  /analyses/:id/timing.csv   the red lines as CSV
@@ -131,7 +133,17 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   }
 
   const store = analyses();
-  const row = { publicId: id, sha1: received.sha1, filename, sizeBytes: received.bytes, accountId, anonHash, ipHash };
+  const row = {
+    publicId: id, sha1: received.sha1, filename, sizeBytes: received.bytes, accountId, anonHash, ipHash,
+    // The public queue's privacy switch: anything but "1" is public, as the form's default is.
+    private: req.get('X-Private') === '1',
+    tagTitle: cleanTag(req.get('X-Title')),
+    tagArtist: cleanTag(req.get('X-Artist')),
+    // Only the memory store keeps this; PostgreSQL joins `accounts` instead.
+    uploader: req.account
+      ? { username: req.account.username, displayName: req.account.display_name, avatarUrl: req.account.avatar_url }
+      : null,
+  };
 
   // The same audio through the same engine has been analysed before: answer
   // with that result, and the upload is not needed at all.
@@ -152,15 +164,41 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   return res.status(202).json({ id, status: 'queued', cached: false });
 });
 
+/** Whether this request is the one that created `row`: its session account or its anonymous cookie. */
+const isMine = (req, row, anonHash = anonHashOf(req)) =>
+  Boolean((req.account && row.accountId === req.account.id) || (row.anonHash && row.anonHash === anonHash));
+
+// Every open queue page polls; one read of the tables serves all of them for a second.
+const QUEUE_TTL_MS = 1000;
+let queueSnapshot = { at: 0, data: null };
+const queueRows = async () => {
+  if (!queueSnapshot.data || Date.now() - queueSnapshot.at > QUEUE_TTL_MS) {
+    queueSnapshot = { at: Date.now(), data: await analyses().queue() };
+  }
+  return queueSnapshot.data;
+};
+
+/**
+ * GET /analyses/queue: what is waiting, what is being analysed and what
+ * finished in the last hour, for anyone (W3.8). Under /analyses so the
+ * anonymous cookie, whose path is ANON_PATH, reaches it and marks the
+ * caller's own rows. Polled by the page every few seconds.
+ */
+router.get('/analyses/queue', optionalSession, async (req, res) => {
+  const { live, more, recent } = await queueRows();
+  const anonHash = anonHashOf(req);
+  const now = Date.now();
+  const view = (row) => queueEntry(row, { mine: isMine(req, row, anonHash), now });
+  res.set('Cache-Control', 'no-store');
+  res.json({ live: live.map(view), more, recent: recent.map(view), at: new Date(now).toISOString() });
+});
+
 /** The analysis `:id` if this request may read it, else a 404. */
 const readable = async (req) => {
   const { id } = req.params;
   if (!ID.test(id)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
   const row = await analyses().get(id);
-  const mine =
-    row &&
-    ((req.account && row.accountId === req.account.id) || (row.anonHash && row.anonHash === anonHashOf(req)));
-  if (!mine) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
+  if (!row || !isMine(req, row)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
   return row;
 };
 

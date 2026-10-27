@@ -79,7 +79,17 @@ ALTER TABLE analyses ADD COLUMN IF NOT EXISTS progress    real CHECK (progress B
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error       text;
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS finished_at timestamptz;
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS cached_from bigint REFERENCES analyses (id) ON DELETE SET NULL;
+-- W3.8, the public queue. `private` hides the file name, the song and the
+-- uploader there. tag_title and tag_artist are what the browser read from the
+-- audio's own tags at upload, cleaned like the file name; the queue names a
+-- song by them, or by the file name when the file had none.
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS private     boolean NOT NULL DEFAULT false;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_title   text CHECK (char_length(tag_title) <= 200);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_artist  text CHECK (char_length(tag_artist) <= 200);
 CREATE INDEX IF NOT EXISTS analyses_song_idx ON analyses (song_id);
+-- The queue page reads the unfinished rows and the latest finished ones.
+CREATE INDEX IF NOT EXISTS analyses_live_idx ON analyses (status, created_at) WHERE status IN ('queued', 'running');
+CREATE INDEX IF NOT EXISTS analyses_finished_idx ON analyses (finished_at DESC) WHERE finished_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_cache_idx ON analyses (song_id, engine_hash) WHERE result IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_account_idx ON analyses (account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS analyses_ip_day_idx ON analyses (ip_hash, created_at) WHERE account_id IS NULL;

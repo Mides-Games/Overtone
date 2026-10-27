@@ -45,6 +45,12 @@ const confidenceOf = (result) => {
 
 const statusOf = (result) => (result?.refused ? 'refused' : 'done');
 
+/** How long a finished analysis stays on the public queue, and how many of them. */
+export const RECENT_MINUTES = 60;
+export const RECENT_LIMIT = 20;
+/** The most unfinished rows the queue page lists; past it, it says how many more. */
+export const LIVE_LIMIT = 100;
+
 // ── Memory ──────────────────────────────────────────────────────────────────
 
 const memory = { analyses: new Map(), seq: 0 };
@@ -69,9 +75,13 @@ const memoryStore = {
     return best;
   },
 
-  async create({ publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null }) {
+  async create({
+    publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
+    private: hidden = false, tagTitle = null, tagArtist = null, uploader = null,
+  }) {
     const row = {
       publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash,
+      private: hidden, tagTitle, tagArtist, uploader,
       createdAt: new Date(), finishedAt: null,
       status: 'queued', stage: null, progress: 0, error: null,
       result: null, engineHash: currentEngineHash, cachedFrom: null,
@@ -95,6 +105,20 @@ const memoryStore = {
       position = 1 + [...memory.analyses.values()].filter((b) => b.job?.state === 'queued' && b.job.seq < a.job.seq).length;
     }
     return { ...a, position };
+  },
+
+  async queue() {
+    const all = [...memory.analyses.values()];
+    const bySeq = (x, y) => x.job.seq - y.job.seq;
+    const queued = all.filter((a) => a.job?.state === 'queued').sort(bySeq);
+    const running = all.filter((a) => a.job?.state === 'running').sort(bySeq);
+    const since = Date.now() - RECENT_MINUTES * 60_000;
+    const recent = all
+      .filter((a) => a.finishedAt && a.finishedAt.getTime() >= since)
+      .sort((x, y) => y.finishedAt - x.finishedAt)
+      .slice(0, RECENT_LIMIT);
+    const live = [...running.map((a) => ({ ...a, position: null })), ...queued.map((a, i) => ({ ...a, position: i + 1 }))];
+    return { live: live.slice(0, LIVE_LIMIT), more: Math.max(0, live.length - LIVE_LIMIT), recent };
   },
 
   async claim() {
@@ -166,6 +190,7 @@ const memoryStore = {
 const SELECT = `
   SELECT a.public_id, a.account_id, a.anon_hash, a.ip_hash, a.filename, a.size_bytes, a.status, a.stage,
          a.progress, a.error, a.result, a.engine_hash, a.created_at, a.finished_at,
+         a.private, a.tag_title, a.tag_artist,
          c.public_id AS cached_from, s.audio_sha1, j.id AS job_id, j.state AS job_state
     FROM analyses a
     JOIN songs s ON s.id = a.song_id
@@ -192,6 +217,9 @@ const fromRow = (r) =>
     sha1: r.audio_sha1,
     jobId: r.job_id,
     jobState: r.job_state,
+    private: r.private,
+    tagTitle: r.tag_title,
+    tagArtist: r.tag_artist,
   };
 
 const transaction = async (work) => {
@@ -247,7 +275,10 @@ const pgStore = {
     return fromRow(rows[0]);
   },
 
-  async create({ publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null }) {
+  async create({
+    publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
+    private: hidden = false, tagTitle = null, tagArtist = null,
+  }) {
     await transaction(async (client) => {
       const { rows: [song] } = await client.query(
         `INSERT INTO songs (audio_sha1) VALUES ($1)
@@ -258,18 +289,21 @@ const pgStore = {
       if (cachedFrom) {
         await client.query(
           `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine,
-                                 engine_hash, result, confidence, status, progress, finished_at, cached_from)
-           SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id
+                                 engine_hash, result, confidence, status, progress, finished_at, cached_from,
+                                 private, tag_title, tag_artist)
+           SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id,
+                  $9, $10, $11
              FROM analyses c WHERE c.public_id = $8`,
-          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId],
+          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId, hidden, tagTitle, tagArtist],
         );
         return;
       }
       const { rows: [analysis] } = await client.query(
-        `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine, engine_hash)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8)
+        `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine, engine_hash,
+                               private, tag_title, tag_artist)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8, $9, $10, $11)
            RETURNING id`,
-        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, currentEngineHash ?? 'pending'],
+        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, currentEngineHash ?? 'pending', hidden, tagTitle, tagArtist],
       );
       await client.query('INSERT INTO jobs (analysis_id) VALUES ($1)', [analysis.id]);
     });
@@ -289,6 +323,56 @@ const pgStore = {
       position = ahead.n + 1;
     }
     return { ...row, position };
+  },
+
+  async queue() {
+    const COLS = `a.public_id, a.account_id, a.anon_hash, a.filename, a.status, a.stage, a.progress,
+                  a.created_at, a.finished_at, a.private, a.tag_title, a.tag_artist,
+                  a.cached_from IS NOT NULL AS cached,
+                  u.username, u.display_name, u.avatar_url`;
+    // Running first, then queued in the order the claim takes them; the
+    // position is the row's place among the queued ones.
+    const { rows: live } = await query(
+      `SELECT ${COLS},
+              CASE WHEN j.state = 'queued'
+                   THEN row_number() OVER (PARTITION BY j.state ORDER BY j.priority DESC, j.id) END AS position,
+              count(*) OVER () AS total
+         FROM jobs j
+         JOIN analyses a ON a.id = j.analysis_id
+         LEFT JOIN accounts u ON u.id = a.account_id
+        WHERE j.state IN ('queued', 'running')
+        ORDER BY j.state = 'queued', j.priority DESC, j.id
+        LIMIT $1`,
+      [LIVE_LIMIT],
+    );
+    const { rows: recent } = await query(
+      `SELECT ${COLS}
+         FROM analyses a
+         LEFT JOIN accounts u ON u.id = a.account_id
+        WHERE a.finished_at >= now() - make_interval(mins => $1)
+        ORDER BY a.finished_at DESC
+        LIMIT $2`,
+      [RECENT_MINUTES, RECENT_LIMIT],
+    );
+    const shape = (r) => ({
+      publicId: r.public_id,
+      accountId: r.account_id,
+      anonHash: r.anon_hash,
+      filename: r.filename,
+      status: r.status,
+      stage: r.stage,
+      progress: r.progress,
+      createdAt: r.created_at,
+      finishedAt: r.finished_at,
+      private: r.private,
+      tagTitle: r.tag_title,
+      tagArtist: r.tag_artist,
+      cachedFrom: r.cached || null,
+      position: r.position == null ? null : Number(r.position),
+      uploader: r.username ? { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url } : null,
+    });
+    const total = live.length ? Number(live[0].total) : 0;
+    return { live: live.map(shape), more: Math.max(0, total - live.length), recent: recent.map(shape) };
   },
 
   async claim() {

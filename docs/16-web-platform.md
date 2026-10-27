@@ -467,6 +467,23 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.5, W3.6 y W3.7 revisadas contra el código el 2026-10-27** (rama
+`feature/site-checks-w3-5-7`):
+- **W3.5 hecha, con dos desvíos.** Están la cinta, el menú de usuario y las páginas
+  Inicio, Analizar, Resultado y Login (más Cola y Perfil). Los colores y la tipografía
+  son los de la app de escritorio ("Console"), no los de midesprojects.com: su fuente
+  Horizon no tiene licencia conocida y el repo es público (`docs/site.md`, "Look").
+  El nav son pestañas subrayadas, no una píldora. Si se quiere la píldora, es un
+  cambio de estilo aparte que decide el dueño.
+- **W3.6 hecha.** Las cuotas separan anónimo y cuenta (`ANON_DAILY_LIMIT`,
+  `USER_DAILY_LIMIT`), con la dirección guardada como HMAC del día. El rate limit
+  contaba por la dirección en memoria; W3.17 (rama `feature/shared-rate-limit`) lo
+  pasa a un HMAC.
+- **W3.7 hecha.** Le faltaba algo que la sostenga: `site/web/test/i18n.test.js`
+  falla si una clave está en un idioma y no en el otro, si los `{{placeholders}}`
+  no coinciden, si un plural queda sin su par o si el código pide una clave que no
+  existe.
+
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede
 corregir, los tags que faltan, los límites que hoy viven en un solo proceso). Ninguna

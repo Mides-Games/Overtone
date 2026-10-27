@@ -13,7 +13,7 @@ const sitemap = read('../public/sitemap.xml')
 const robots = read('../public/robots.txt')
 
 /** Pages nobody should land on from a search: a result is its uploader's, sign-in is a step. */
-const PRIVATE = ['analyze/:id', 'history', 't/:id', 'login', 'login/callback', 'profile', '*']
+const PRIVATE = ['analyze/:id', 'history', 't/:id', 'login', 'login/callback', 'profile', 'settings/tokens', 'embed/:id', '*']
 
 const routes = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
 const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+(\/[^<]*)<\/loc>/g)].map((m) => m[1])

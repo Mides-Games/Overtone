@@ -22,6 +22,13 @@ const Credits = lazy(() => import('./pages/Credits.jsx'))
 import Recent from './pages/Recent.jsx'
 import TimingPage from './pages/TimingPage.jsx'
 
+// W12.20: the API's reference carries the whole OpenAPI document, and the
+// tokens page is for the few who script: both loaded when opened.
+const Developers = lazy(() => import('./pages/Developers.jsx'))
+const Tokens = lazy(() => import('./pages/Tokens.jsx'))
+
+const later = (page) => <Suspense fallback={<BrandLoader className="py-16" />}>{page}</Suspense>
+
 export default function App() {
   return (
     <Routes>
@@ -40,6 +47,9 @@ export default function App() {
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
         <Route path="status" element={<Status />} />
+        <Route path="developers" element={later(<Developers />)} />
+        {/* Self-contained, so the settings page (W12.15) can link to it as it is. */}
+        <Route path="settings/tokens" element={later(<Tokens />)} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="disclaimer" element={<Disclaimer />} />

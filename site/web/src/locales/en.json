@@ -931,5 +931,83 @@
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
     }
+  },
+  "platform": {
+    "tokens": {
+      "eyebrow": "Settings",
+      "title": "API tokens",
+      "intro": "A personal token lets a script, a bot or a community tool call the Overtone API as you, without a browser. Give each tool its own, with only the scopes it needs, and revoke it when you stop using it.",
+      "docs": "How to use the API",
+      "fromProfile": "Personal API tokens",
+      "yours": "Your tokens",
+      "count_one": "{{count}} of {{max}}",
+      "count_other": "{{count}} of {{max}}",
+      "none": "No tokens yet.",
+      "loadFailed": "Your tokens could not be loaded. Try again in a moment.",
+      "never": "never",
+      "created": "made {{when}}",
+      "lastUsed": "last used {{when}}",
+      "revoke": "Revoke",
+      "revokeConfirm": "Revoke it now",
+      "keep": "Keep it",
+      "revokeFailed": "It could not be revoked. Try again.",
+      "newTitle": "New token",
+      "name": "Name",
+      "namePlaceholder": "e.g. my Discord bot",
+      "scopes": "What it may do",
+      "scope": {
+        "read_analyses": "Read your own analyses, their [TimingPoints], CSV and versions.",
+        "upload": "Send songs to be analysed as your account, within its daily quota.",
+        "read_timings": "Read published timings, with the token's own rate limit."
+      },
+      "make": "Make token",
+      "making": "Making…",
+      "note": "The token is shown once and Overtone keeps only a hash of it. It never manages tokens, publishes, deletes or posts: those stay on the website. Signing out does not revoke it.",
+      "problems": {
+        "name": "Give it a name, so you know later what uses it.",
+        "long": "A name is at most {{max}} characters.",
+        "scopes": "Choose at least one thing it may do.",
+        "limit": "You have the most tokens an account can have. Revoke one first.",
+        "failed": "The token could not be made. Try again in a moment."
+      },
+      "madeTitle": "“{{name}}” is ready",
+      "madeOnce": "Copy it now: it will not be shown again. Anyone who has it can act as you within its scopes, so keep it out of public code.",
+      "copy": "Copy token",
+      "copied": "Copied",
+      "copyFailed": "Could not copy: select it by hand",
+      "done": "I have copied it",
+      "tryIt": "Try it from a terminal:"
+    },
+    "developers": {
+      "eyebrow": "For developers",
+      "title": "The Overtone API",
+      "intro": "Everything the website does goes through this API. With a personal token, your own scripts and bots can read your analyses, send songs and read the published timings.",
+      "footer": "API for developers",
+      "startTitle": "Getting started",
+      "step1": "Sign in and make a personal token with the scopes your tool needs.",
+      "step2": "Send it in the Authorization header as \"Bearer <token>\" from your script, bot or server.",
+      "step3": "Call the operations marked with a scope below. The rest are the website's own.",
+      "tokensLink": "Your tokens",
+      "ruleScopes": "A token reaches only the operations of its scopes; anything else answers 403. A revoked token answers 401.",
+      "ruleLimit": "Each token has its own rate limit: 120 requests a minute, and the uploads and reads have their own limits counted per token. A 429 says how long to wait in Retry-After.",
+      "ruleBrowser": "The API answers no cross-origin browser requests, so a token is for scripts and servers, not for another website's page. Never put one in public code.",
+      "ruleAudio": "Uploaded audio is deleted as soon as it is analysed and is never served back.",
+      "base": "Base path",
+      "englishNote": "the reference is in English, as the API's own document is.",
+      "filter": "Show operations",
+      "show": {
+        "all": "All",
+        "token": "With a token"
+      },
+      "overview": "About this API",
+      "tokenHint": "The token scope this operation needs",
+      "anyToken": "any token",
+      "browserOnly": "Website only: not reachable with a token.",
+      "params": "Parameters",
+      "required": "required",
+      "body": "Body",
+      "responses": "Responses",
+      "schemas": "Schemas"
+    }
   }
 }

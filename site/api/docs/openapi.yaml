@@ -107,7 +107,7 @@ components:
         cached: { type: boolean }
         createdAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
-        elapsedS: { type: integer, description: Seconds from upload to finish, or to now. }
+        elapsedS: { type: integer, description: 'Seconds from upload to finish, or to now.' }
     Queue:
       type: object
       required: [live, more, recent, at]
@@ -616,7 +616,7 @@ paths:
         '202':
           description: Queued.
           headers:
-            Set-Cookie: { schema: { type: string }, description: overtone_anon, without an account }
+            Set-Cookie: { schema: { type: string }, description: 'overtone_anon, without an account' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnalysisCreated' }

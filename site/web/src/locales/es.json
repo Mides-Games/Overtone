@@ -931,5 +931,83 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "platform": {
+    "tokens": {
+      "eyebrow": "Ajustes",
+      "title": "Tokens de la API",
+      "intro": "Un token personal deja que un script, un bot o una herramienta de la comunidad use la API de Overtone en tu nombre, sin navegador. Dale a cada herramienta el suyo, solo con los permisos que necesita, y revocalo cuando la dejes de usar.",
+      "docs": "Cómo usar la API",
+      "fromProfile": "Tokens personales de la API",
+      "yours": "Tus tokens",
+      "count_one": "{{count}} de {{max}}",
+      "count_other": "{{count}} de {{max}}",
+      "none": "Todavía no tenés tokens.",
+      "loadFailed": "No se pudieron cargar tus tokens. Probá de nuevo en un rato.",
+      "never": "nunca",
+      "created": "creado {{when}}",
+      "lastUsed": "último uso {{when}}",
+      "revoke": "Revocar",
+      "revokeConfirm": "Revocarlo ahora",
+      "keep": "Dejarlo",
+      "revokeFailed": "No se pudo revocar. Probá de nuevo.",
+      "newTitle": "Token nuevo",
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. mi bot de Discord",
+      "scopes": "Qué puede hacer",
+      "scope": {
+        "read_analyses": "Leer tus propios análisis, su [TimingPoints], el CSV y las versiones.",
+        "upload": "Mandar canciones a analizar con tu cuenta, dentro de su cupo diario.",
+        "read_timings": "Leer los timings publicados, con el límite propio del token."
+      },
+      "make": "Crear token",
+      "making": "Creando…",
+      "note": "El token se muestra una sola vez y Overtone guarda solo un hash. Nunca maneja tokens, ni publica, borra o postea: eso queda en el sitio. Cerrar sesión no lo revoca.",
+      "problems": {
+        "name": "Ponele un nombre, así después sabés qué lo usa.",
+        "long": "El nombre tiene como máximo {{max}} caracteres.",
+        "scopes": "Elegí al menos una cosa que pueda hacer.",
+        "limit": "Ya tenés la cantidad máxima de tokens por cuenta. Revocá uno primero.",
+        "failed": "No se pudo crear el token. Probá de nuevo en un rato."
+      },
+      "madeTitle": "“{{name}}” está listo",
+      "madeOnce": "Copialo ahora: no se va a mostrar de nuevo. Quien lo tenga puede actuar en tu nombre dentro de sus permisos, así que no lo pongas en código público.",
+      "copy": "Copiar token",
+      "copied": "Copiado",
+      "copyFailed": "No se pudo copiar: seleccionalo a mano",
+      "done": "Ya lo copié",
+      "tryIt": "Probalo desde una terminal:"
+    },
+    "developers": {
+      "eyebrow": "Para desarrolladores",
+      "title": "La API de Overtone",
+      "intro": "Todo lo que hace el sitio pasa por esta API. Con un token personal, tus scripts y bots pueden leer tus análisis, mandar canciones y leer los timings publicados.",
+      "footer": "API para desarrolladores",
+      "startTitle": "Para empezar",
+      "step1": "Iniciá sesión y creá un token personal con los permisos que necesita tu herramienta.",
+      "step2": "Mandalo en el encabezado Authorization como \"Bearer <token>\" desde tu script, bot o servidor.",
+      "step3": "Usá las operaciones marcadas con un permiso más abajo. Las demás son del propio sitio.",
+      "tokensLink": "Tus tokens",
+      "ruleScopes": "Un token llega solo a las operaciones de sus permisos; cualquier otra responde 403. Un token revocado responde 401.",
+      "ruleLimit": "Cada token tiene su propio límite: 120 pedidos por minuto, y las subidas y lecturas tienen sus propios límites contados por token. Un 429 dice cuánto esperar en Retry-After.",
+      "ruleBrowser": "La API no responde pedidos de navegador desde otro origen, así que un token es para scripts y servidores, no para la página de otro sitio. Nunca lo pongas en código público.",
+      "ruleAudio": "El audio subido se borra apenas se analiza y nunca se vuelve a servir.",
+      "base": "Ruta base",
+      "englishNote": "la referencia está en inglés, como el documento de la API.",
+      "filter": "Mostrar operaciones",
+      "show": {
+        "all": "Todas",
+        "token": "Con token"
+      },
+      "overview": "Sobre esta API",
+      "tokenHint": "El permiso de token que necesita esta operación",
+      "anyToken": "cualquier token",
+      "browserOnly": "Solo desde el sitio: no se llega con un token.",
+      "params": "Parámetros",
+      "required": "obligatorio",
+      "body": "Cuerpo",
+      "responses": "Respuestas",
+      "schemas": "Esquemas"
+    }
   }
 }

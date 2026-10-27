@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Navigate } from 'react-router'
+import { Link, Navigate } from 'react-router'
 
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
@@ -61,6 +61,9 @@ export default function Profile() {
           <p className="mx-auto max-w-[52ch] text-label text-muted">{t('profile.timingsSoon')}</p>
         </div>
         <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>
+        <Link to="/settings/tokens" className="inline-block text-caption text-accent hover:underline">
+          {t('platform.tokens.fromProfile')} →
+        </Link>
       </section>
     </div>
   )

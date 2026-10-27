@@ -63,6 +63,7 @@ export default function Footer() {
         <Column
           title={t('footer.project')}
           links={[
+            { label: t('platform.developers.footer'), to: '/developers' },
             { label: t('footer.source'), href: REPO_URL },
             { label: t('footer.docs'), href: `${REPO_URL}/tree/master/docs` },
           ]}

@@ -8,6 +8,7 @@ import { optionalSession, requireSameOrigin } from '../middlewares/session.js';
 import { analyses, engineHash, newPublicId } from '../services/analysis.service.js';
 import { cookiesOf } from '../services/session.service.js';
 import { commit, discard, discardPart, receive, reserve } from '../services/spool.service.js';
+import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
 import { queueEntry } from '../utils/queue.js';
 import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../utils/upload.js';
@@ -63,13 +64,14 @@ const ensureAnon = (req, res) => {
 };
 
 /**
- * The client address as the quota counts it: an HMAC of the address and the
- * UTC day, so the stored value cannot be turned back into an address and does
- * not link one day's uploads to the next.
+ * The client address as the quota counts it: an HMAC of the address (an IPv6
+ * client's /64, utils/client-ip.js) and the UTC day, so the stored value
+ * cannot be turned back into an address and does not link one day's uploads
+ * to the next. The queue's turns count by it too.
  */
-const ipHashOf = (req) => {
+export const ipHashOf = (req) => {
   const day = new Date().toISOString().slice(0, 10);
-  return createHmac('sha256', env.sessionSecret).update(`ip:${day}:${req.ip ?? 'unknown'}`).digest('hex');
+  return createHmac('sha256', env.sessionSecret).update(`ip:${day}:${clientKey(req.ip)}`).digest('hex');
 };
 
 /** What the public queue may show of a new analysis (W3.8): its privacy, its tags and its uploader. */

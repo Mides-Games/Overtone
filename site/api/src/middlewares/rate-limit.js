@@ -1,7 +1,9 @@
+import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
 
 /**
- * A fixed-window limit per client IP, kept in this process's memory.
+ * A fixed-window limit per client IP (an IPv6 client's /64,
+ * utils/client-ip.js), kept in this process's memory.
  *
  * A fixed window lets up to twice the limit through at a window boundary. That
  * is accepted: the goal is that nobody uses this server as an amplifier, not a
@@ -26,7 +28,7 @@ export const guard = (bucket, max, windowMs) => (req, _res, next) => {
 
   const now = Date.now();
   sweep(now);
-  const key = `${bucket}:${req.ip ?? 'unknown'}`;
+  const key = `${bucket}:${clientKey(req.ip)}`;
   const hit = hits.get(key);
 
   if (!hit || hit.resetAt <= now) {

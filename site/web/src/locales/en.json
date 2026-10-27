@@ -207,7 +207,7 @@
     "ecosystem": "Mides Projects",
     "project": "Project",
     "source": "Source code",
-    "docs": "How it works",
+    "docs": "Documentation",
     "rights": "© {{year}} Mides Projects"
   },
   "notFound": {
@@ -929,6 +929,369 @@
       "deleteNote": "Deleting an analysis erases its result and takes down its public page at once. A song still waiting can be cancelled from its own page; one being analysed can be deleted once it ends.",
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
+    }
+  },
+  "learn": {
+    "footer": {
+      "title": "Learn",
+      "how": "How it works",
+      "faq": "FAQ",
+      "glossary": "Glossary",
+      "stats": "Statistics"
+    },
+    "source": "Where it is written",
+    "term": {
+      "open": "What is “{{term}}”?",
+      "more": "More in the glossary",
+      "close": "Close"
+    },
+    "how": {
+      "title": "How it works",
+      "description": "What happens between your upload and the red lines: decoding, attacks, the tempo sweep, the octave, sections and confidence, step by step.",
+      "intro": "What happens between your upload and the red lines. Every step below is the v3 engine (python/overtone.py) as the site's worker runs it, with the defaults a fresh desktop install had. Each one names the document where it is specified, so this page can be checked against the code.",
+      "diagram": {
+        "title": "The pipeline",
+        "desc": "Six steps from the audio file to the timing: decode, attacks, tempo sweep and grid fit, octave with the Beat This! vote, sections and red lines, confidence levels."
+      },
+      "steps": [
+        {
+          "id": "decode",
+          "label": "Decode",
+          "h": "1. Decode",
+          "p": [
+            "The file is decoded to one mono channel at 44.1 kHz and its peak is normalised. A file shorter than 2 s is refused, and the site caps the length too (see the FAQ for the current limits).",
+            "The audio waits on the server only until the analysis ends, under the analysis's id and no name, and is then deleted (ADR-W4)."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.1",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "docs/site.md, How an analysis goes",
+              "path": "docs/site.md"
+            }
+          ]
+        },
+        {
+          "id": "attacks",
+          "label": "Attacks",
+          "h": "2. The onset envelope and the attacks",
+          "p": [
+            "A mel spectrogram (128 bands up to 11 kHz, one frame every 2.9 ms) becomes an onset envelope: how much louder each band got from one frame to the next, the median across bands. Its peaks are the attacks: drum hits, plucks, the starts of notes.",
+            "Each attack is then re-timed on the raw waveform, at sample resolution: the moment the energy in a 1.5 ms window starts to rise. A peak that does not stand out from its surroundings keeps its envelope time rather than snapping to noise. On the synthetic benchmark this step is the difference between about 8 ms and 0.16 ms."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.2-A.4",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "tempo",
+          "label": "Tempo and grid",
+          "h": "3. The tempo sweep and the grid fit",
+          "p": [
+            "Every beat period from 55 ms to 1.35 s (about 44 to 1090 BPM) is scored by how well the attacks line up with it (circular coherence). The strongest candidates, and their multiples, are tried as seeds.",
+            "A seed is fitted as a straight grid, beat k at offset + k × period, by iteratively reweighted least squares: attacks that fall between beats are set aside, and the tolerance narrows pass by pass. Seeds start from 30 s windows and shrink until a grid locks; the grid then widens to the whole stretch it explains."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.5-A.7",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "octave",
+          "label": "Octave + Beat This!",
+          "h": "4. The octave and the Beat This! vote",
+          "p": [
+            "A grid that fits at 120 BPM also fits at 60 and 240. The engine scores each beat level on the accent pattern, the coverage and a tempo prior, then reads the result at the octave osu! maps are usually timed at, 120 to 240 BPM, and at the whole BPM next to it when the attacks agree.",
+            "Beat This!, a neural beat tracker, then votes. Its beats become candidate red lines, and they replace the engine's only where they explain the song's own attacks clearly better. It also judges octaves: a red line an octave off the rest of its song is read back at the song's octave when Beat This! hears it there. Without the model the vote is skipped, and the result page says “vote off”."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.8",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, analyze_audio and _beat_this_vote",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "sections",
+          "label": "Sections",
+          "h": "5. Sections and red lines",
+          "p": [
+            "The grid grows forward through the song while each new chunk still fits it. Where one stops fitting, a new section starts with its own tempo scan. Neighbours too close in tempo are merged, boundaries are settled where the two grids cross, and every section is refitted on its own attacks.",
+            "Each section becomes a red line. The first is put on a downbeat only when the accents prove the bar; otherwise the meter is a guess and the table marks it with “?”. Drift following adds a red line where a steady song's tempo wanders off its fixed grid, and only when the new lines fit the attacks at least 10 % better."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.9-A.10",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, _follow_drift",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "confidence",
+          "label": "Confidence",
+          "h": "6. Confidence levels",
+          "p": [
+            "Each section gets a confidence from how tight its fit is, how many of its beats have an attack, and how long it is. The site shows it as three levels: high from 0.90 (and only for a grid fit), medium from 0.75, and check by ear below that, past a 30 ms fit residual, or when the engine's own checks flagged it.",
+            "These levels are readings of the engine's evidence, not a measured accuracy. 0.90 is where a section stops needing a second look on the synthetic tracks, where every section scores 0.99 or more.",
+            "When no steady grid fits at all (rubato, free time, no percussion) the engine falls back to a beat tracker, and those sections never reach high. White noise gets no BPM: it is refused, with the reason."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.10-A.11",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "worker/timing_result.py, HIGH, MEDIUM and LOOSE_RESIDUAL_MS",
+              "path": "worker/timing_result.py"
+            }
+          ]
+        }
+      ],
+      "ear": {
+        "h": "What “check by ear” means",
+        "p": [
+          "Every timing is a strong first draft. Checking it by ear means listening to it against the song before you map on it:"
+        ],
+        "li": [
+          "play the song with the click track on the result page, and listen at the start and around every red line;",
+          "start with the sections marked check by ear (amber), and look at the drift column;",
+          "if the clicks sound early or late everywhere, try the global offset; if they come twice or half as often as the beat you feel, try half or double;",
+          "fix anything that still sounds off in the osu! editor."
+        ],
+        "after": [
+          "A high level says the evidence was consistent, not that the line is right."
+        ]
+      },
+      "time": {
+        "h": "Why an analysis takes the time it does",
+        "p": [
+          "A 60 s song took about 10 s on the development machine with the vote on, plus any wait in the queue. Most of it goes into two places: detecting the attacks (the spectrogram, then the waveform around every attack) and Beat This!, a neural network that reads the whole song's spectrogram on the CPU, 50 frames a second, in 30 s chunks.",
+          "The octave judges ask Beat This! only when a red line looks an octave off, and keep its answer for the rest of the song. The first analysis after the worker starts also loads the model, a few seconds more. The statistics page shows the median and 90th-percentile time from upload to result on this site."
+        ],
+        "src": [
+          {
+            "label": "docs/site.md, Run it on another machine",
+            "path": "docs/site.md"
+          },
+          {
+            "label": "worker/timing_result.py, STAGES",
+            "path": "worker/timing_result.py"
+          }
+        ]
+      },
+      "bench": {
+        "h": "What is measured, and what is not yet",
+        "p": [
+          "The synthetic benchmark (bench/benchmark.py) times 24 generated tracks whose exact answer is known: steady tempos from slow to 300 BPM, tempo and meter changes, a decimal BPM, swing and shuffle, jitter and noise, a silent intro, drops and a six-minute track. All 24 sections land within 0.05 BPM and 5 ms; the median error is 0.0000 BPM and 0.16 ms. Gates beside it pin what the benchmark cannot see, such as the octave, which it normalises away.",
+          "What it does not say is how the engine does on your song. Real music is measured on Corpus B, 20 hand-timed ranked maps whose red lines the engine should match within 5 ms, and on larger samples of ranked maps on the owner's server. Those are research: the numbers move with every engine change and are not published on the site yet."
+        ],
+        "src": [
+          {
+            "label": "CLAUDE.md, Verification",
+            "path": "CLAUDE.md"
+          },
+          {
+            "label": "docs/timeline.md",
+            "path": "docs/timeline.md"
+          }
+        ]
+      }
+    },
+    "faq": {
+      "title": "Questions",
+      "description": "Why is my BPM doubled, why two red lines, offsets, drift, what is kept of your audio, limits, formats, the .osz and accounts.",
+      "intro": "The questions a mapper asks about a result. For the words, see the glossary; for the steps, how it works.",
+      "items": [
+        {
+          "id": "doubled",
+          "q": "Why is my BPM doubled (or halved)?",
+          "a": [
+            "A pulse that fits at 90 BPM also fits at 180 and 45: the attacks agree with all three. Which one a map uses is partly a convention. Overtone reads its result between 120 and 240 BPM, where osu! maps are usually timed, unless the attacks or Beat This! clearly say otherwise.",
+            "If yours is the other one, use Half or double on the result page: the map, the clicks and every download change with it, and the engine's own reading stays as it was."
+          ],
+          "links": [
+            {
+              "label": "Octave",
+              "to": "/glossary#octave"
+            }
+          ]
+        },
+        {
+          "id": "two-lines",
+          "q": "Why are there two red lines (or more)?",
+          "a": [
+            "A red line starts a new grid. Overtone writes one where the tempo changes, where the meter changes (a new red line at the same BPM), and where a steady song's tempo drifted far enough off its grid that a new start fits the attacks at least 10 % better.",
+            "If you think one line is enough, play from the second one and listen: the drift and fit columns say how well each line sits on the attacks under it."
+          ]
+        },
+        {
+          "id": "offset",
+          "q": "The offset is off by a few ms. Why?",
+          "a": [
+            "Overtone places a beat where the attack's energy starts to rise, measured on the waveform. Soft attacks, reverb and a busy mix make that moment less sharp than on the benchmark's click tracks, so a few ms either way can happen on real songs.",
+            "If every click sounds early or late by the same amount, use Global offset on the result page and check it again by ear. osu!'s own universal offset is your device's audio latency, not the map's: leave it out of the map."
+          ]
+        },
+        {
+          "id": "drift",
+          "q": "What is drift?",
+          "a": [
+            "How far the attacks under a red line sit from its grid: the weighted median distance to the nearest 1/1, 1/2, 1/3 or 1/4 tick, in ms. Up to 5 ms is green in the table, 5-15 ms amber, more red. High drift means the grid and what you hear disagree there: a tempo change it missed, a live drummer, or swing."
+          ],
+          "links": [
+            {
+              "label": "Drift",
+              "to": "/glossary#drift"
+            }
+          ]
+        },
+        {
+          "id": "audio",
+          "q": "Is my audio kept?",
+          "a": [
+            "No. The upload waits on the server under the analysis's id only until the result or a failure arrives, and is then deleted; a song answered from the cache is deleted at once. That is a rule of the project (ADR-W4), not a setting.",
+            "What stays is the audio's SHA-1 (so the same file is answered from the cache), the result, the file name and its tags, until you delete the analysis. The result page plays the song from your own browser; the server never sends audio back."
+          ],
+          "links": [
+            {
+              "label": "Privacy",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "id": "limits",
+          "q": "What are the limits?",
+          "a": [
+            "A song answered from the cache (the same file through the same engine) does not count. The counts reset at 00:00 UTC."
+          ]
+        },
+        {
+          "id": "formats",
+          "q": "Which formats work?",
+          "a": [
+            "MP3, OGG, WAV, FLAC, M4A and Opus. The file is checked by its extension when it arrives and decoded by the engine; a file that is not audio, or that it cannot decode, fails with a message and costs nothing else."
+          ]
+        },
+        {
+          "id": "osz",
+          "q": "How do I use the .osz?",
+          "a": [
+            "The .osz is built in your browser from your own file and the timing as you adjusted it: a beatmap set with one difficulty that holds the red lines and nothing else. Double-click it and osu!stable imports it; open it in the editor and map on it.",
+            "It needs the audio you uploaded, picked again on the result page and checked against the analysis by its fingerprint, since the server keeps no audio to put in it."
+          ]
+        },
+        {
+          "id": "accounts",
+          "q": "Do I need an account?",
+          "a": [
+            "No: anyone can time a song (ADR-W6). A Mides account, through Discord or Google, raises the daily limit, keeps your analyses readable from any browser and lists them in your history, and lets you publish a timing under your name.",
+            "Overtone keeps your Mides username, names and avatar, never your e-mail or a Mides token."
+          ]
+        },
+        {
+          "id": "privacy",
+          "q": "Where is the privacy policy?",
+          "a": [
+            "On its own page, which says what is stored, for how long and why, read from the code."
+          ],
+          "links": [
+            {
+              "label": "Privacy",
+              "to": "/privacy"
+            }
+          ]
+        }
+      ],
+      "limits": {
+        "anon": "Without an account: {{daily}} songs a day, {{pending}} waiting at a time.",
+        "user": "With a Mides account: {{daily}} songs a day, {{pending}} waiting at a time.",
+        "size": "Each song up to {{minutes}} min and {{mb}} MB.",
+        "loading": "Reading the current limits…",
+        "unreachable": "The limits could not be read right now. The status page says whether the API is up."
+      }
+    },
+    "glossary": {
+      "title": "Glossary",
+      "description": "Red line, green line, offset, BPM, meter, kiai, drift, fit, onset, confidence, octave and Beat This!, as Overtone uses them.",
+      "intro": "The words on the result page, as Overtone uses them. Each one is also a link on the result page: a dotted underline opens its short version.",
+      "terms": {
+        "redLine": {
+          "term": "Red line",
+          "short": "A timing point that sets the BPM, the start of beat 1 and the meter from its time on, until the next red line.",
+          "long": "In osu! a red line is an uninherited timing point: it starts a new grid of beats at its own time, with its own BPM and meter, and everything a mapper snaps to follows the red line before it. Overtone writes one where the tempo or the meter changes, and where a steady tempo drifted far enough off its grid to need a new start."
+        },
+        "greenLine": {
+          "term": "Green line (inherited point)",
+          "short": "A timing point that keeps the red line's grid and changes only slider velocity, hitsound volume and sampleset, or kiai.",
+          "long": "Green lines are decisions of the map, not of the song's timing, so Overtone's timing has none. They inherit the BPM and the offset of the red line before them."
+        },
+        "offset": {
+          "term": "Offset",
+          "short": "The time, in ms from the start of the audio, of a red line's first beat.",
+          "long": "The first red line's offset is the one people mean by “the offset”. Overtone puts it where the attack's energy starts to rise, measured on the waveform, and writes whole milliseconds, which is what osu!stable reads."
+        },
+        "bpm": {
+          "term": "BPM",
+          "short": "Beats per minute: how fast the grid's beats come. One beat lasts 60 000 ÷ BPM ms, the number osu! stores.",
+          "long": "The main BPM on the result page is the median of the sections' BPMs, each weighted by how long it lasts. A BPM is one reading of a pulse that also fits at half and double: see octave."
+        },
+        "meter": {
+          "term": "Meter",
+          "short": "How many beats a bar has: 4/4, 3/4, 7/4. osu! stores only the top number.",
+          "long": "Overtone puts bar 1 on a downbeat only when the accents prove the bar. Otherwise the meter is a guess, and the table marks it with “?”."
+        },
+        "kiai": {
+          "term": "Kiai",
+          "short": "A highlighted stretch of a map, usually the chorus, switched on and off by green lines.",
+          "long": "Kiai is a choice of the mapper, not part of the song's timing: Overtone's timing does not set it."
+        },
+        "drift": {
+          "term": "Drift",
+          "short": "How far the attacks under a red line sit from its grid: the weighted median distance to the nearest 1/1, 1/2, 1/3 or 1/4 tick, in ms.",
+          "long": "Low drift means the grid sits on what you hear. The table colours it, up to 5 ms green, 5-15 ms amber and more in red, and adds the 90th percentile and which way the attacks lean (+ after the grid). A song played live drifts; a timing follows it only with more red lines, which Overtone adds when they fit at least 10 % better."
+        },
+        "fit": {
+          "term": "Fit",
+          "short": "The engine's own residual of a section's grid fit, in ms: how far the attacks it kept sit from the fitted beats.",
+          "long": "Past 30 ms a section is marked check by ear, however confident the rest of its reading is: a mapper would reject a grid that loose."
+        },
+        "onset": {
+          "term": "Onset (attack)",
+          "short": "The start of a sound: a drum hit, a pluck, a note. The grid is fitted to the onsets the engine detects.",
+          "long": "They are the peaks of the onset envelope (how fast the spectrum gets louder), re-timed on the waveform to where the energy starts to rise. The tempo map draws them as ticks under the waveform."
+        },
+        "confidence": {
+          "term": "Confidence level",
+          "short": "High, medium or check by ear: a reading of the engine's own evidence for a section, not a measured accuracy.",
+          "long": "It weighs how tight the fit is, how many beats have an attack and how long the section is. High from 0.90, and only for a grid fit; medium from 0.75; check by ear below that, past a 30 ms fit residual, or when the engine's own checks flag the section."
+        },
+        "octave": {
+          "term": "Octave",
+          "short": "The same pulse read at half or double the speed: 87.5, 175 and 350 BPM all fit the same song.",
+          "long": "Which one is right is partly a convention. osu! maps are usually timed between 120 and 240 BPM, and Overtone reads its result there unless the attacks or Beat This! say otherwise. Half or double on the result page changes it for the map, the clicks and the downloads."
+        },
+        "beatThis": {
+          "term": "Beat This!",
+          "short": "A neural network that marks the beats in a song's spectrogram. Overtone uses it as a second opinion, never alone.",
+          "long": "Beat This! (Foscarin, Schlüter and Widmer, ISMIR 2024; MIT licence) reads the song at 50 frames a second. Its beats replace the engine's red lines only where they explain the song's attacks clearly better, and it judges red lines that look an octave off. Alone it is less precise at 10 ms, since its beats sit on a 20 ms grid."
+        }
+      }
     }
   },
   "siteStats": {

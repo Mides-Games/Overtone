@@ -6,8 +6,11 @@ import Layout from './components/Layout.jsx'
 import AnalysisResult from './pages/AnalysisResult.jsx'
 import Analyze from './pages/Analyze.jsx'
 import Community from './pages/Community.jsx'
+import Faq from './pages/Faq.jsx'
+import Glossary from './pages/Glossary.jsx'
 import History from './pages/History.jsx'
 import Home from './pages/Home.jsx'
+import HowItWorks from './pages/HowItWorks.jsx'
 import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
 import Login from './pages/Login.jsx'
 import LoginCallback from './pages/LoginCallback.jsx'
@@ -42,6 +45,9 @@ export default function App() {
         <Route path="profile" element={<Profile />} />
         <Route path="status" element={<Status />} />
         <Route path="stats" element={<Stats />} />
+        <Route path="how-it-works" element={<HowItWorks />} />
+        <Route path="faq" element={<Faq />} />
+        <Route path="glossary" element={<Glossary />} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="disclaimer" element={<Disclaimer />} />

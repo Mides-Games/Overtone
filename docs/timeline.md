@@ -20,6 +20,68 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The queue under concurrency
+
+A security and performance review of the site (API, worker, web, deploy) found
+five problems that show up only with parallel requests or a second worker. All
+five are fixed here.
+
+### Fixed
+
+- **Two workers could take the same job.** The claim ranked queued jobs in a
+  subquery and locked one with `SKIP LOCKED`, but neither the lock nor the
+  `UPDATE` checked the job's state again. A worker whose snapshot predated
+  another's commit got the same job once the lock was free: two analyses, and
+  the first one's answer refused as stale. Both now check `state = 'queued'`.
+  One worker never hit it; W3.10 would have.
+- **A long analysis was timed out while it ran.** Only the claim set
+  `jobs.locked_at`, so any song past `JOB_TIMEOUT_S` (900 s) went back to the
+  queue however well its worker was doing. Each progress report now moves
+  `locked_at` (a heartbeat); a worker that stops reporting is still swept.
+- **Parallel uploads passed the quota and the pending cap.** The counts were read
+  before the body and the row inserted after it, so K uploads at once all passed.
+  The store now re-checks every limit inside the insert: PostgreSQL under a
+  transaction advisory lock, the memory store with no await between check and
+  insert. The early checks stay, to spare reading a body that would be refused.
+- **`/lookup` could flood the public queue without any quota** (from W3.11).
+  Each call made a finished row with the caller's tags, held only to the rate
+  limit (about 17 000 a day from one address). Asking again for audio one already
+  has today now returns that same analysis, and new stored-result copies have a
+  daily cap of their own, `CACHE_DAILY_LIMIT` (100), refused with 429
+  `CACHE_LIMIT`. The upload's cached path has the same rules.
+- **Every poll of a queued analysis ranked the whole queue.** `GET /analyses/:id`
+  now reads the position from the one-second queue snapshot that `/queue`
+  already shares; only a row past its first 100 is ranked on its own. The
+  snapshot keeps its promise, so requests arriving during a slow read wait for it
+  instead of each starting one.
+
+### Measured
+
+- `node --test` in `site/api`: 28/28 (5 new: the refusal order, the cap on
+  stored results, four parallel inserts against a cap of two, the heartbeat
+  against the sweep, the reused copy). `vite build` passes.
+- Against PostgreSQL (PGlite 0.3 through `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; four inserts against a
+  pending cap of two gave ok, ok, `PENDING_LIMIT`, `PENDING_LIMIT`; after an hour
+  without reports the job that sent progress stayed running and the other went
+  back to the queue; a second stored-result copy over a cap of one gave
+  `CACHE_LIMIT`, and the same person's copy was found again. The claim's new SQL
+  ran.
+- Not checked: true parallel connections. PGlite serves one connection, so the
+  advisory lock and the double-claim fix were run in sequence, not interleaved.
+  The real check is two workers and parallel uploads on the server's PostgreSQL.
+- By hand with `pnpm dev`: two uploads read positions 1 and 2 from the snapshot.
+
+### Not fixed here
+
+- The browser reads each whole file to hash it (one at a time, so one file's
+  size in memory).
+- If the web's port can be reached without the TLS proxy, `X-Forwarded-For` can
+  be forged (`deploy/web/serve.mjs`); that depends on the panel's ports and is
+  for the Reviactyl admin to confirm.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.11: ask before uploading
 
 ### Changed

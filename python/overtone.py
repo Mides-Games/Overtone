@@ -3209,7 +3209,6 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y, sr))
-            analysis = _piecewise_grid(analysis, lambda: _beat_this_judge_beats(y, sr), split_only=True)
             return _snap_whole_points(_fold_lines_to_song_octave(
                 analysis, lambda: _beat_this_judge_beats(y, sr)))
         if engine == "precision":
@@ -3818,15 +3817,13 @@ def _piecewise_segments(beats_ms: np.ndarray) -> list[tuple[int, int, float, flo
     return out
 
 
-def _piecewise_grid(analysis: Analysis, heard, split_only: bool = False) -> Analysis:
+def _piecewise_grid(analysis: Analysis, heard) -> Analysis:
     """Red lines from the steady stretches of Beat This!'s beats
-    (PIECEWISE_GRID), each at the octave of the song's own tempo. With
-    ``split_only`` (the precision grid) a one-line song is split only where
-    the stretches really change tempo, and anything else is left as it was."""
+    (PIECEWISE_GRID), each at the octave of the song's own tempo. The tracker
+    path only: splitting the precision grid's one line this way lost 119
+    bands dev maps (2026-10-27), Beat This!'s jitter read as tempo changes."""
     points = list(getattr(analysis, "points", None) or [])
     if not PIECEWISE_GRID or not points or any(getattr(p, "manual", False) for p in points):
-        return analysis
-    if split_only and len(points) != 1:
         return analysis
     found = heard()
     if found is None:
@@ -3842,16 +3839,14 @@ def _piecewise_grid(analysis: Analysis, heard, split_only: bool = False) -> Anal
         if abs(np.log2(bpm * fold / song)) < 0.25:
             bpm *= fold
         lines.append((start, bpm, first))
-    if split_only:
-        tempos = [bpm for _, bpm, _ in lines]
-        if len(lines) < 2 or max(tempos) / min(tempos) < 1.015:
-            return analysis
     out = []
     for n, (start, bpm, first) in enumerate(lines):
         if n == 0:
             # The first line keeps the bar the analysis found, on this grid.
             period = 60000.0 / bpm
             start += round((points[0].offset_ms - start) / period) * period
+            while len(lines) > 1 and start >= lines[1][0]:
+                start -= period
         out.append(replace(points[0], bpm=float(bpm), offset_ms=float(start), beat_index=int(first)))
     return replace(analysis, points=out)
 

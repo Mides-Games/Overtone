@@ -816,3 +816,68 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### Other games' formats and the export options (W12.7, W12.8, 2026-10-27)
+
+Both live in the result page's "More downloads" group; the `.osz` stays the one
+primary button above it.
+
+**Other games** (`lib/game-formats.js`, `components/result/GameFormats.jsx`): Quaver
+`.qua`, StepMania `.sm` (which Etterna reads: it has no timing format of its own, so
+the page says so rather than inventing one), StepMania 5 `.ssc` and Clone Hero
+`notes.chart`, built in the browser from the red lines as the page has them (×2/÷2
+and the nudge included) after the export options. Timing only, no notes, and the
+group's title says so. The module's comment holds each format's rules:
+
+- Quaver: absolute `StartTime` (ms, float) and `Bpm` per point, each point its own
+  grid, so nothing accumulates. `Signature: Triple` on a 3/4 line; Quaver knows 4/4
+  and 3/4 only, so another meter is written as 4/4 and the page counts them.
+- StepMania: beat 0 is the first red line, `#OFFSET` its time in seconds, negated;
+  every later change is `beat=bpm`, its beat accumulated through the tempi before
+  it. A change off the grid is a fractional beat, written as is (6 decimals, as v3).
+  StepMania stores a change on a row (48 per beat), so it moves such a change when
+  it loads the file; `stepmaniaRowShift` measures that from the written numbers and
+  the page shows it from 0.5 ms. `.sm` has no time signatures (the page says the
+  meter is lost there); `.ssc` writes `#TIMESIGNATURES` at the first line, at a new
+  meter and at a line off the running bar (osu! starts a bar at every red line).
+- Clone Hero: `Resolution = 192`, `B` in milli-BPM, `TS` for the meter, `Offset = 0`.
+  Tick 0 is the audio's start; a lead-in bar from tick 0 reaches the first line's
+  first downbeat at least half a bar in. A change between ticks gets the nearest
+  tick, and the BPM before it is fitted (to the milli-BPM) only when keeping it would
+  land the change more than 0.5 ms off; the game's own arithmetic is followed, so the
+  error does not accumulate. The page counts the fitted sections and their worst miss.
+
+v3's exporters (`quaver_timing_text`, `stepmania_timing_text` in `python/overtone.py`)
+are matched character for character but the comment line, including Python's
+half-to-even on exact decimal ties (`fixed`). Checked with a one-off script (not
+committed) on 67 sets of red lines (7 by hand, 60 random: 1-8 lines, 60-280 BPM at
+0-9 decimals, meters 3-7, offsets from -200 ms): 536 texts compared, 0 differ. Two
+deliberate differences: the site adds `Signature: Triple` (v3 writes no meter) and
+writes an offset of exactly 0 as `0.000000` where v3 writes `-0.000000`.
+
+**Export options** (`lib/export-options.js`, `components/result/ExportOptions.jsx`),
+remembered in this browser under `overtone.exports` and read defensively: offset
+decimals 0-3 (Quaver's StartTime and StepMania's #OFFSET; osu! always gets whole ms,
+Clone Hero ticks), the BPM rounded to 0-3 decimals with the drift that causes by the
+end of the worst line (the song's end for the last one), the first red line only,
+and a whole-ms offset added to every line. That offset is not the nudge: the nudge
+is a correction the reader hears in the clicks; this one is a target's convention
+and moves only what is written, so it stays out of the clicks, and since it is
+remembered across songs the line under the `.osz` names every option in force.
+They apply to the `.osz`, the copied `[TimingPoints]` (which then carries a comment
+naming them), the patched `.osu` and the games' files; not to the clicks, the CSV,
+the summary or the JSON.
+
+Checked in the browser pane (5192/3022, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the group at desktop width
+and at 375 px in ES, dark and light, nothing past the edge; BPM to 2 decimals and
++9 ms set, the drift line (1.15 ms by the end of line 1) and the amber "options on"
+line shown, both kept after a reload; the four files caught in the page and read
+back, their caveats listed (StepMania's rows, the .sm meter, one Clone Hero section
+fitted). `site/web` tests: `game-formats.test.js` (fixture lines with a change on a
+non-whole beat and a meter change, each format read back by its own rules) and
+`export-options.test.js`.
+
+Not checked: opening any of the files in Quaver, StepMania, Etterna or Clone Hero
+(no game was run; the rows rule and Clone Hero's Offset handling are from what we
+know of those games' loaders, not from a test), Safari and Firefox.

@@ -1680,8 +1680,8 @@ the navbar, `/settings`, the command palette and the tests read.
   Escape and Tab close, and focus goes back to the button. On a phone the list is
   pinned to the bar's right edge: the button sits too far left for a list anchored to it.
 - **Flags** (`components/Flag.jsx`) are inline SVG on one 3:2 box: no emoji (Windows
-  draws none) and no image files. Spanish is Argentina's flag, as the site's Spanish is
-  rioplatense; English the Union Jack, its saltire simplified; Portuguese Brazil's,
+  draws none) and no image files. Spanish is Spain's flag (the owner's
+  choice, 2026-10-28); English the Union Jack, its saltire simplified; Portuguese Brazil's,
   without the stars; South Korea keeps the taegeuk and the four trigrams.
 - **Legal pages** say in every language but English that the translation is for
   convenience and the English version prevails, with a button to switch.

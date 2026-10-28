@@ -173,6 +173,10 @@ export const env = {
   osuRedirectUri: text('OSU_REDIRECT_URI'),
   // osu!'s own origin; the tests point it at a stand-in.
   osuUrl: origin('OSU_URL', 'https://osu.ppy.sh'),
+  // PKCE on the osu! link. osu!'s docs do not mention it; its OAuth server
+  // (Laravel Passport, league/oauth2-server) checks a code_challenge when one is
+  // sent. 0 turns it off if a real link ever fails on it (docs/bot.md).
+  osuPkce: !['0', 'false', 'no'].includes(text('OSU_PKCE').toLowerCase()),
 };
 
 if (env.botToken) {

@@ -18,8 +18,10 @@ import { HttpError } from '../utils/http-error.js';
  *
  * The PKCE verifier never leaves this server, not even inside the cookie: it
  * is an HMAC of the state under SESSION_SECRET, so the cookie (which the
- * browser holds) carries the state alone. osu-web's OAuth server is Laravel
- * Passport, which checks `code_challenge` (S256) on any client that sends one.
+ * browser holds) carries the state alone. osu!'s API docs do not mention
+ * PKCE; osu-web's OAuth server is Laravel Passport (league/oauth2-server),
+ * which checks a `code_challenge` (S256) whenever a client sends one. OSU_PKCE=0
+ * leaves it out, should a real link ever fail on it; the state stays.
  *
  * The osu! API's terms (docs/bot.md): a registered app, its secret kept
  * secret, no more calls than the work needs (one /me per link), nothing
@@ -49,8 +51,10 @@ export const startLink = (accountId) => {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'identify');
   url.searchParams.set('state', state);
-  url.searchParams.set('code_challenge', challengeOf(verifierOf(state)));
-  url.searchParams.set('code_challenge_method', 'S256');
+  if (env.osuPkce) {
+    url.searchParams.set('code_challenge', challengeOf(verifierOf(state)));
+    url.searchParams.set('code_challenge_method', 'S256');
+  }
   return { url: url.toString(), cookie: `${payload}.${sign(payload)}` };
 };
 
@@ -121,7 +125,7 @@ export const exchange = async (code, state) => {
       code,
       grant_type: 'authorization_code',
       redirect_uri: env.osuRedirectUri,
-      code_verifier: verifierOf(state),
+      ...(env.osuPkce ? { code_verifier: verifierOf(state) } : {}),
     }),
   });
   const grant = await token.json().catch(() => ({}));

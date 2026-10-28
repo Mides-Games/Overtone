@@ -143,7 +143,15 @@ async function main() {
   await waitFor(base)
 
   const browser = await chromium.launch()
-  const context = await browser.newContext({ viewport: { width: 412, height: 823 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+  // No service worker (W12.23 installs one): it would answer the later runs
+  // from its own cache, and every visit is measured as a first one.
+  const context = await browser.newContext({
+    viewport: { width: 412, height: 823 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    serviceWorkers: 'block',
+  })
 
   // A finished analysis of this context's own, for the result page.
   const setup = await context.newPage()

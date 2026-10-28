@@ -24,7 +24,14 @@ commit messages are English; only the website's own UI strings stay bilingual
 - Body explains **why**, not what. The diff already says what. A `perf` or
   accuracy claim names its measurement; a gate change names the gates run
   and their result.
-- One logical change per commit. A DSP change and a UI change are two commits.
+- **Few commits** (owner's decision, 2026-10-28: the history had become spam).
+  A PR lands on `master` as **one squashed commit** (the only merge method the
+  repo allows): its title is the commit subject and its description the body.
+  On a branch, keep one commit per task and amend it instead of adding
+  "fix"/"counts"/"review" commits; bring `master` in with `git rebase`, never a
+  merge commit. Group small related changes (a count, a doc line) into the PR
+  that caused them. A DSP change and a UI change are still two PRs.
+  `docs/workflow.md` §4 has the routine.
 - **`master` is the only long-lived branch** (owner's decision, 2026-10-28: `experimental`
   and the `parked/` branches were merged and deleted; the parked desktop app lives on as
   the tags `v3-desktop-app` and `v3-desktop-full`). Work happens on a short branch, lands

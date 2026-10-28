@@ -21,27 +21,20 @@ export const RECENT_ON_HOME = 5
 
 const count = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : null)
 
-/** The first field among `paths` that holds a count, or null. */
-const pick = (data, paths) => {
-  for (const path of paths) {
-    const value = path.split('.').reduce((node, key) => (node && typeof node === 'object' ? node[key] : undefined), data)
-    if (count(value) !== null) return value
-  }
-  return null
-}
-
 /**
- * The two numbers the front page shows, from `GET /api/v1/stats`: analyses
- * done and songs waiting. That route is W12.13's and its shape was not fixed
- * when this was written, so the names it is likely to use are all read, and
- * anything that is not a whole non-negative number is left out. Null when
- * neither number is there: the block is then not drawn, rather than drawn
- * with dashes.
+ * The two numbers the front page shows, from `GET /api/v1/stats` (W12.13,
+ * site/api/src/utils/stats.js `shapeStats`): analyses done (`totals.done`)
+ * and the songs in the queue now, waiting or running (`queue.queued` +
+ * `queue.running`). Anything that is not a whole non-negative number is left
+ * out. Null when neither number is there: the block is then not drawn, rather
+ * than drawn with dashes.
  */
 export function readStats(data) {
   if (!data || typeof data !== 'object') return null
-  const analyses = pick(data, ['analyses.done', 'analyses.total', 'totals.analyses', 'analysesDone', 'analyses', 'songsTimed', 'timed'])
-  const queue = pick(data, ['queue.waiting', 'queue.queued', 'queue.length', 'queueLength', 'queued', 'waiting'])
+  const analyses = count(data.totals?.done)
+  const queued = count(data.queue?.queued)
+  const running = count(data.queue?.running)
+  const queue = queued === null && running === null ? null : (queued ?? 0) + (running ?? 0)
   if (analyses === null && queue === null) return null
   return { analyses, queue }
 }

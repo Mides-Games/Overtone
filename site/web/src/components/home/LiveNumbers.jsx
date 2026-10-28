@@ -22,9 +22,10 @@ export default function LiveNumbers() {
     }
   }, [])
 
-  if (!stats) return null
+  // "0 analyses done" on a new site says the wrong thing: the block waits for the first one.
+  if (!stats?.analyses) return null
   const items = [
-    stats.analyses !== null && { key: 'analyses', value: stats.analyses },
+    { key: 'analyses', value: stats.analyses, to: '/stats' },
     stats.queue !== null && { key: 'queue', value: stats.queue, to: '/queue' },
   ].filter(Boolean)
 

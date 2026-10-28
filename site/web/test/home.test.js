@@ -30,13 +30,13 @@ test('the formats the FAQ names are the ones the API accepts', () => {
   }
 })
 
-test('the live numbers read the names a stats route is likely to use, and nothing else', () => {
-  assert.deepEqual(readStats({ analyses: { done: 1234 }, queue: { waiting: 3 } }), { analyses: 1234, queue: 3 })
-  assert.deepEqual(readStats({ totals: { analyses: 10 } }), { analyses: 10, queue: null })
-  assert.deepEqual(readStats({ songsTimed: 7, queueLength: 0 }), { analyses: 7, queue: 0 })
+test('the live numbers read what GET /stats answers, and nothing else', () => {
+  assert.deepEqual(readStats({ totals: { done: 1234, refused: 3 }, queue: { queued: 3, running: 1 } }), { analyses: 1234, queue: 4 })
+  assert.deepEqual(readStats({ totals: { done: 10 } }), { analyses: 10, queue: null })
+  assert.deepEqual(readStats({ totals: { done: 7 }, queue: { queued: 0, running: 0 } }), { analyses: 7, queue: 0 })
   // A total that is not a count is left out, never shown as NaN or a fraction.
-  assert.deepEqual(readStats({ analyses: -1, queue: { waiting: 2 } }), { analyses: null, queue: 2 })
-  assert.equal(readStats({ analyses: '12', queue: 1.5 }), null)
+  assert.deepEqual(readStats({ totals: { done: -1 }, queue: { queued: 2 } }), { analyses: null, queue: 2 })
+  assert.equal(readStats({ totals: { done: '12' }, queue: { queued: 1.5 } }), null)
   assert.equal(readStats({}), null)
   assert.equal(readStats(null), null)
   assert.equal(readStats('nope'), null)
@@ -55,7 +55,7 @@ test('a stats route that is missing or broken hides the block instead of failing
   let asked = null
   const live = async (path) => {
     asked = path
-    return { analyses: { done: 5 }, queue: { waiting: 1 } }
+    return { totals: { done: 5 }, queue: { queued: 1, running: 0 } }
   }
   assert.deepEqual(await loadStats(live), { analyses: 5, queue: 1 })
   assert.equal(asked, '/stats')

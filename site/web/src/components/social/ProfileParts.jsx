@@ -27,9 +27,14 @@ const seedOf = (name = '') => [...name].reduce((sum, c) => (sum * 31 + c.codePoi
  * part below its own section.
  */
 
-/** The header: banner, avatar, names, the totals, and whatever the page adds beside the name. */
-export function ProfileCard({ user, totals, children }) {
-  const { t } = useTranslation()
+/**
+ * The header: banner, avatar, names, the totals, and whatever the page adds
+ * beside the name. `visits` ({ total, recent }, from the API; null for a
+ * private profile) is a quiet line under the username, not a fifth readout:
+ * it says who looked, not what the person did.
+ */
+export function ProfileCard({ user, totals, visits = null, children }) {
+  const { t, i18n } = useTranslation()
   const cells = [
     { key: 'published', value: totals ? String(totals.published) : '–' },
     { key: 'timed', value: totals ? String(totals.timed) : '–' },
@@ -57,6 +62,17 @@ export function ProfileCard({ user, totals, children }) {
           <div className="min-w-0 flex-1 basis-56 space-y-1 pt-2">
             <h1 className="heading-headline break-words">{user.displayName || user.username}</h1>
             <p className="readout text-label text-muted">@{user.username}</p>
+            {visits && (
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 text-caption text-dim" title={t('social.profile.visits.note')}>
+                <Icon name="eye" size={14} />
+                <span>{t('social.profile.visits.title')}</span>
+                <span className="readout font-medium text-text">{visits.total.toLocaleString(i18n.language)}</span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {t('social.profile.visits.recent')} <span className="readout text-muted">{visits.recent.toLocaleString(i18n.language)}</span>
+                </span>
+              </p>
+            )}
           </div>
           {children && <div className="flex flex-wrap gap-2 pb-1">{children}</div>}
         </div>

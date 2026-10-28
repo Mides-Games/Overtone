@@ -60,10 +60,22 @@ const seconds = (ms) => (ms === null || ms === undefined || !Number.isFinite(Num
  *   tempo    { single, variable }
  *   times    { count, medianMs, p90Ms }
  *   queue    { queued, running }
+ *   timed    { last7Days, last30Days }
+ *   visits   the site-wide count of profile visits (services/visit.service.js)
+ *
+ * `timed` is the songs timed: analyses the engine ran to a timing, the same
+ * rows `totals.done` counts over the whole life of the site. A refusal (no
+ * BPM given), a failure, a cache hit (a result already counted, served
+ * again) and a deleted analysis are not one. The windows are rolling, by
+ * when the analysis finished: the last 7 and the last 30 days up to now, not
+ * a calendar week or month, and the page names them so.
  *
  * Anything else a store might add is dropped here.
  */
-export const shapeStats = ({ counts = {}, buckets = [], tempo = {}, times = {}, queue = {} }, { days = STATS_DAYS, now = new Date() } = {}) => {
+export const shapeStats = (
+  { counts = {}, buckets = [], tempo = {}, times = {}, queue = {}, timed: recent = {}, visits = 0 },
+  { days = STATS_DAYS, now = new Date() } = {},
+) => {
   const timed = whole(times.count);
   const enough = timed >= MIN_TIMED;
   return {
@@ -93,5 +105,7 @@ export const shapeStats = ({ counts = {}, buckets = [], tempo = {}, times = {}, 
       p90S: enough ? seconds(times.p90Ms) : null,
     },
     queue: { queued: whole(queue.queued), running: whole(queue.running) },
+    timed: { total: whole(counts.done), last7Days: whole(recent.last7Days), last30Days: whole(recent.last30Days) },
+    profileVisits: { total: whole(visits) },
   };
 };

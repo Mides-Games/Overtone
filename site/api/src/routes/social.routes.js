@@ -1,5 +1,8 @@
+import { createHmac } from 'node:crypto';
+
 import { Router } from 'express';
 
+import { env } from '../config/env.js';
 import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import {
@@ -16,6 +19,8 @@ import { newPublicId } from '../services/community.service.js';
 import { midesSettingsUrl } from '../services/mides.service.js';
 import { ACTIVITY_PAGE, activity, profileExtras } from '../services/profile.service.js';
 import { social } from '../services/social.service.js';
+import { utcDay, VISIT_DAYS, visits } from '../services/visit.service.js';
+import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
 import { profileEdit } from '../utils/profile.js';
 import {
@@ -61,6 +66,7 @@ import { listPage } from './timings.routes.js';
  *   GET    /users/:username/timings            their published timings   ?sort=&cursor=
  *   GET    /users/:username/activity           their public activity     ?cursor=
  *   GET    /users/:username/card               a link preview's fields   (no session: private is a 404)
+ *   POST   /users/:username/visit              the page counts a visit   (see "Profile visits" below)
  *   GET    /me/profile                         yours, private or not, with what you edit
  *   PUT    /me/profile                         { private?, about?, displayName?, links?, accent?, showcase? }
  *   GET    /timers                             ?by=uses|stars             the ranking of timers
@@ -96,6 +102,7 @@ const useLimit = guard('use', 60, 10 * 60_000);
 const commentLimit = guard('comment', 20, 10 * 60_000);
 const collectionLimit = guard('collection', 120, 10 * 60_000);
 const profileLimit = guard('profile', 30, 10 * 60_000);
+const visitLimit = guard('visit', 120, 10 * 60_000);
 
 const notFound = (what = 'Not found.') => new HttpError(404, what, 'NOT_FOUND');
 const iso = (date) => new Date(date).toISOString();
@@ -345,6 +352,7 @@ const profileOf = async (account, req) => {
     listPage({ ...listFilters({ sort: 'used' }), accountId: account.id, limit: 1 }).then((page) => page.timings[0] ?? null),
   ]);
   const mine = Boolean(req.account && req.account.id === account.id);
+  const visited = account.profile_private ? null : await visitsOf(account);
   const badges = badgesOf({ ...stats, rankedCount: Number(account.osu_ranked_count ?? 0) });
   const extras = await profileExtras(account, badges);
   return {
@@ -369,6 +377,8 @@ const profileOf = async (account, req) => {
     showcase,
     osu: osuCard(account),
     collections: collections.map((c) => collectionView(c, req)),
+    // A private profile counts no visits and shows none, not even to its owner.
+    visits: visited,
     mine,
     // The owner's own view adds what they edit: the switch, their own text
     // as written (the name before the fallback), and where Mides edits the rest.
@@ -466,6 +476,49 @@ router.get('/users/:username/card', readLimit, async (req, res) => {
     about: about ? [...about.replace(/\s+/g, ' ')].slice(0, 160).join('') : null,
     published: stats.published,
   });
+});
+
+// ── Profile visits (2026-10-28) ─────────────────────────────────────────────
+
+/**
+ * What counts as a visit, in one place (services/visit.service.js stores it):
+ *
+ * - One visitor on one public profile on one UTC day. The visitor is the
+ *   signed-in account or, without one, the client address (an IPv6 client's
+ *   /64), each only as an HMAC under SESSION_SECRET salted with the day: the
+ *   same person reloading is one visit, and the stored value cannot be turned
+ *   back into an account or an address, nor linked to the next day's.
+ * - The page asks for it with a POST once it has drawn the profile, never a
+ *   GET: a link preview (deploy/web/serve.mjs reads /card), a crawler or a
+ *   prefetch does not run the page, and a POST without the same-origin header
+ *   is refused like every other write. A user agent that says it is a bot is
+ *   not counted either.
+ * - The owner looking at their own profile is not a visit, and a private
+ *   profile counts nothing (it is the 404 of a missing one to everybody else).
+ */
+const BOT = /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|headless/i;
+
+const visitorOf = (req, day) =>
+  createHmac('sha256', env.sessionSecret)
+    .update(`visit:${day}:${req.account ? `account:${req.account.id}` : `ip:${clientKey(req.ip)}`}`)
+    .digest('hex');
+
+/** The profile's visits as the page shows them: ever, and over the last VISIT_DAYS days. */
+const visitsOf = async (account) => {
+  const { total, recent } = await visits().of(account.id);
+  return { total, recent, days: VISIT_DAYS };
+};
+
+router.post('/users/:username/visit', visitLimit, requireSameOrigin, optionalSession, async (req, res) => {
+  const account = await visibleProfile(req);
+  const mine = Boolean(req.account && req.account.id === account.id);
+  let counted = false;
+  if (!mine && !account.profile_private && !BOT.test(req.get('User-Agent') ?? '')) {
+    const day = utcDay();
+    counted = await visits().record(account.id, visitorOf(req, day), day);
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ counted, visits: account.profile_private ? null : await visitsOf(account) });
 });
 
 router.get('/me/profile', readLimit, requireSession, async (req, res) => {

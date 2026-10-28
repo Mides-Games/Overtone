@@ -20,6 +20,46 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## v1.0.0-stable — 2026-10-28 · Songs timed on the front page, visits on a profile
+
+### Changed
+
+- **Songs timed, ever and lately.** `GET /stats` adds `timed { total, last7Days,
+  last30Days }`: done analyses the engine ran (the rows `totals.done` counts), by when
+  they finished. A refusal, a failure, a cache hit and a deleted analysis are not one.
+  The windows are rolling, so the pages say "last 7 days" and "last 30 days", not
+  "this week" or "this month". The front page's live numbers show the three beside the
+  queue (two to a row on a phone); `/stats` has them in their own row, with the
+  site-wide count of profile visits.
+- **Profile visits.** A public profile shows its visits, ever and over the last 30
+  days, under the username. One visit is one visitor on one profile on one UTC day: the
+  signed-in account, or the address when signed out, each kept only as an HMAC salted
+  with the day. The page counts it with `POST /users/<name>/visit` once it has drawn
+  the profile, so a link preview or a crawler (which never runs the page) counts
+  nothing; the owner's own visit and a private profile count nothing, and a private
+  profile shows no count, to its owner either.
+
+### Hardening
+
+- The visitor hashes are kept only for today and yesterday (`profile_visitors`, swept
+  once a minute per process); after that only the per-day counts stay
+  (`profile_visits`). Nothing links one day's visitor to the next. The POST takes the
+  same-origin header and its own rate limit (120 per 10 minutes); a user agent that
+  says it is a bot is not counted.
+- `/stats` stays aggregate-only: its test now also allows only the new count fields.
+
+### Measured
+
+- site/api 217 tests (8 new: dedupe per day, the owner, a private profile, the
+  same-origin header and a bot, no hash in the answers, the site-wide total, the 7- and
+  30-day windows over backdated rows) and site/web 335, all passing; `pnpm --dir
+  site/web budget` ok. Checked in the browser on a seeded memory store, in Spanish, at
+  375 px and desktop, dark and light: the front page's numbers, `/stats`, and a profile
+  whose count went up once and not on reload. Not run: the PostgreSQL queries and the
+  schema's double apply (`pnpm --dir site/api check`), no database here.
+
+---
+
 ## v1.0.0-stable — 2026-10-28 · The profile: edited on Overtone, the osu! card, and a sign-in that never strands
 
 ### Changed

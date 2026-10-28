@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "Live numbers",
-      "analyses": "Analyses done",
-      "queue": "In the queue now"
+      "analyses": "Songs timed",
+      "queue": "In the queue now",
+      "week": "Last 7 days",
+      "month": "Last 30 days"
     },
     "gain": {
       "eyebrow": "What you gain",
@@ -1858,6 +1860,14 @@
       "queued": "Waiting",
       "running": "Being analysed",
       "link": "See the queue"
+    },
+    "activity": {
+      "title": "Songs timed and visits",
+      "total": "Timed, ever",
+      "week": "Last 7 days",
+      "month": "Last 30 days",
+      "visits": "Profile visits",
+      "note": "A song timed is an analysis the engine ran to a timing: not a refusal, a failure, an answer from the cache or a deleted one. The 7 and 30 days are rolling, up to now. A profile visit is one person on one public profile on one day; the owner's own visits are not counted."
     }
   },
   "modes": {
@@ -2232,6 +2242,11 @@
         "unpin": "Unpin",
         "none": "You have no published timings to pin yet.",
         "full": "All six places are taken: unpin one first."
+      },
+      "visits": {
+        "title": "Profile visits",
+        "recent": "last 30 days",
+        "note": "One person a day counts once; your own visits do not count."
       }
     },
     "badges": {

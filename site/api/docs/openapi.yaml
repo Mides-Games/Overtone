@@ -637,6 +637,18 @@ components:
           type: array
           items: { type: string, enum: [first-timing, published-10, published-50, suggestion-accepted, used-by-others, ranked-match] }
         collections: { type: array, items: { $ref: '#/components/schemas/Collection' }, description: Their public collections. }
+        visits:
+          type: [object, 'null']
+          description: |
+            Visits of the profile: one per visitor (the account, or the address
+            when signed out, kept only as a day-salted hash) per UTC day,
+            counted by `POST /users/{username}/visit`. `recent` is the last
+            `days` days, today included. Null for a private profile, to its
+            owner too.
+          properties:
+            total: { type: integer }
+            recent: { type: integer }
+            days: { type: integer }
         mine: { type: boolean }
         private: { type: boolean, description: Sent to the profile's owner only. }
 
@@ -1622,7 +1634,11 @@ paths:
         once a minute per API process and shared; rate limited (60 per 10
         minutes). The analysis times are from upload to result, queue wait
         included, over done analyses of the last `days` days, and null while
-        fewer than `minCount` finished in that window.
+        fewer than `minCount` finished in that window. `timed` is the songs
+        timed: done analyses the engine ran (`totals.done`), ever and over the
+        rolling last 7 and 30 days by when they finished; a refusal, a
+        failure, a cache hit or a deleted analysis is not one.
+        `profileVisits.total` adds up every profile's visits.
       responses:
         '200':
           description: The statistics.
@@ -1673,6 +1689,16 @@ paths:
                     properties:
                       queued: { type: integer }
                       running: { type: integer }
+                  timed:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      last7Days: { type: integer }
+                      last30Days: { type: integer }
+                  profileVisits:
+                    type: object
+                    properties:
+                      total: { type: integer }
         '429': { $ref: '#/components/responses/Error' }
 
   /timings:
@@ -2176,6 +2202,27 @@ paths:
       responses:
         '200': { description: '`{ username, displayName, about, published }`.' }
         '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}/visit:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    post:
+      summary: Count a visit of a public profile (the page sends it once it has drawn the profile)
+      description: |
+        One visit per visitor per profile per UTC day: the signed-in account,
+        or else the client address, each stored only as an HMAC salted with
+        the day. The owner's own visit, a private profile and a user agent
+        that says it is a bot are not counted. A POST, so a link preview or a
+        crawler reading the page counts nothing. Rate limited (120 per 10
+        minutes). `counted` says whether this one was new; `visits` is the
+        profile's count after it, null for a private profile.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '200': { description: '`{ counted, visits: { total, recent, days } | null }`.' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
 
   /me/profile:
     get:

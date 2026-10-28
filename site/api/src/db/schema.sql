@@ -582,3 +582,28 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_pp           real CHECK (osu_p
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_accuracy     real CHECK (osu_accuracy BETWEEN 0 AND 100);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_play_count   integer CHECK (osu_play_count >= 0);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_refreshed_at timestamptz;
+
+-- ── Profile visits (2026-10-28) ───────────────────────────────────────────────
+
+-- services/visit.service.js: one visit is one visitor on one public profile on
+-- one UTC day; the owner and private profiles are never counted. `visitor` is
+-- an HMAC of the account or the address, salted with the day, so it cannot be
+-- turned back into either nor linked across days; its rows are kept only for
+-- today and yesterday, the days the dedupe needs. The counts are what stays.
+CREATE TABLE IF NOT EXISTS profile_visitors (
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  day             date NOT NULL,
+  visitor         text NOT NULL CHECK (char_length(visitor) = 64),
+  PRIMARY KEY (account_id, day, visitor)
+);
+CREATE INDEX IF NOT EXISTS profile_visitors_day_idx ON profile_visitors (day);
+
+CREATE TABLE IF NOT EXISTS profile_visits (
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  day             date NOT NULL,
+  count           integer NOT NULL CHECK (count >= 1),
+  PRIMARY KEY (account_id, day)
+);
+
+-- /stats counts the songs timed in the last 7 and 30 days by when they finished.
+CREATE INDEX IF NOT EXISTS analyses_finished_idx ON analyses (finished_at) WHERE status = 'done' AND deleted_at IS NULL AND cached_from IS NULL;

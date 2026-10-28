@@ -141,6 +141,8 @@ export const addToCollection = (id, timingId) => api(`/collections/${id}/items/$
 export const removeFromCollection = (id, timingId) => api(`/collections/${id}/items/${timingId}`, { method: 'DELETE' })
 
 export const userProfile = (username) => api(`/users/${encodeURIComponent(username)}`)
+/** Counts this visit of a public profile (one per visitor and day; never the owner's); answers `{ counted, visits }`. */
+export const recordVisit = (username) => api(`/users/${encodeURIComponent(username)}/visit`, { method: 'POST' })
 export const userTimings = (username, filters, options) => api(`/users/${encodeURIComponent(username)}/timings${sortedQuery(filters, options)}`)
 export const myProfile = () => api('/me/profile')
 export const setProfilePrivate = (on) => api('/me/profile', { method: 'PUT', json: { private: Boolean(on) } })

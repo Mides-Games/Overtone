@@ -31,11 +31,18 @@ test('the formats the FAQ names are the ones the API accepts', () => {
 })
 
 test('the live numbers read what GET /stats answers, and nothing else', () => {
-  assert.deepEqual(readStats({ totals: { done: 1234, refused: 3 }, queue: { queued: 3, running: 1 } }), { analyses: 1234, queue: 4 })
-  assert.deepEqual(readStats({ totals: { done: 10 } }), { analyses: 10, queue: null })
-  assert.deepEqual(readStats({ totals: { done: 7 }, queue: { queued: 0, running: 0 } }), { analyses: 7, queue: 0 })
+  const none = { week: null, month: null }
+  assert.deepEqual(readStats({ totals: { done: 1234, refused: 3 }, queue: { queued: 3, running: 1 } }), { analyses: 1234, ...none, queue: 4 })
+  assert.deepEqual(readStats({ totals: { done: 10 } }), { analyses: 10, ...none, queue: null })
+  assert.deepEqual(readStats({ totals: { done: 7 }, queue: { queued: 0, running: 0 } }), { analyses: 7, ...none, queue: 0 })
+  // The songs timed in the rolling windows, beside the total.
+  assert.deepEqual(
+    readStats({ totals: { done: 900 }, timed: { total: 900, last7Days: 12, last30Days: 0 }, queue: { queued: 0, running: 0 } }),
+    { analyses: 900, week: 12, month: 0, queue: 0 },
+  )
   // A total that is not a count is left out, never shown as NaN or a fraction.
-  assert.deepEqual(readStats({ totals: { done: -1 }, queue: { queued: 2 } }), { analyses: null, queue: 2 })
+  assert.deepEqual(readStats({ totals: { done: -1 }, queue: { queued: 2 } }), { analyses: null, ...none, queue: 2 })
+  assert.deepEqual(readStats({ totals: { done: 3 }, timed: { last7Days: 1.5, last30Days: '4' } }), { analyses: 3, ...none, queue: null })
   assert.equal(readStats({ totals: { done: '12' }, queue: { queued: 1.5 } }), null)
   assert.equal(readStats({}), null)
   assert.equal(readStats(null), null)
@@ -57,7 +64,7 @@ test('a stats route that is missing or broken hides the block instead of failing
     asked = path
     return { totals: { done: 5 }, queue: { queued: 1, running: 0 } }
   }
-  assert.deepEqual(await loadStats(live), { analyses: 5, queue: 1 })
+  assert.deepEqual(await loadStats(live), { analyses: 5, week: null, month: null, queue: 1 })
   assert.equal(asked, '/stats')
 })
 

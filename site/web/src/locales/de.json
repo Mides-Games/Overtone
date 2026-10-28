@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "Live-Zahlen",
-      "analyses": "Analysen erledigt",
-      "queue": "Gerade in der Warteschlange"
+      "analyses": "Getimte Songs",
+      "queue": "Gerade in der Warteschlange",
+      "week": "Letzte 7 Tage",
+      "month": "Letzte 30 Tage"
     },
     "gain": {
       "eyebrow": "Was du davon hast",
@@ -1858,6 +1860,14 @@
       "queued": "Wartend",
       "running": "In Analyse",
       "link": "Zur Warteschlange"
+    },
+    "activity": {
+      "title": "Getimte Songs und Besuche",
+      "total": "Getimt, insgesamt",
+      "week": "Letzte 7 Tage",
+      "month": "Letzte 30 Tage",
+      "visits": "Profilbesuche",
+      "note": "Ein getimter Song ist eine Analyse, die die Engine bis zu einem Timing gebracht hat: keine Ablehnung, kein Fehler, keine Antwort aus dem Cache und keine gelöschte. Die 7 und 30 Tage sind gleitend, bis jetzt. Ein Profilbesuch ist eine Person auf einem öffentlichen Profil an einem Tag; Besuche des Inhabers zählen nicht."
     }
   },
   "modes": {
@@ -2232,6 +2242,11 @@
         "unpin": "Lösen",
         "none": "Du hast noch keine veröffentlichten Timings zum Anheften.",
         "full": "Alle sechs Plätze sind belegt: löse zuerst eines."
+      },
+      "visits": {
+        "title": "Profilbesuche",
+        "recent": "letzte 30 Tage",
+        "note": "Jede Person zählt einmal am Tag; deine eigenen Besuche zählen nicht."
       }
     },
     "badges": {

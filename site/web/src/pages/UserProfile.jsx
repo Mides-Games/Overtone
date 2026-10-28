@@ -9,7 +9,7 @@ import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/ui/PageHeader.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { accentProps } from '../lib/accents.js'
-import { userProfile } from '../lib/social.js'
+import { recordVisit, userProfile } from '../lib/social.js'
 
 /**
  * A timer's public profile (W13.18, /u/<username>): what they wrote about
@@ -17,6 +17,11 @@ import { userProfile } from '../lib/social.js'
  * published timings, the tempo stats, their activity, their public
  * collections and their badges, in the accent they picked. Only what they
  * published; a private profile is the same "not found" as a name nobody has.
+ *
+ * Once the profile is drawn the page counts the visit (POST, so a link
+ * preview or a crawler that never runs the page counts nothing); the API
+ * keeps one per visitor and day and never the owner's, and answers the count
+ * after it, which replaces the one the profile came with.
  */
 export default function UserProfile() {
   const { t } = useTranslation()
@@ -30,7 +35,17 @@ export default function UserProfile() {
     setProfile(null)
     setError(null)
     userProfile(username)
-      .then((data) => alive && setProfile(data))
+      .then((data) => {
+        if (!alive) return
+        setProfile(data)
+        if (data.mine || !data.visits) return
+        // Colour, like the live numbers: a visit that is not counted is not an error to show.
+        recordVisit(data.user.username)
+          .then((answer) => {
+            if (alive && answer?.visits) setProfile((shown) => (shown ? { ...shown, visits: answer.visits } : shown))
+          })
+          .catch(() => {})
+      })
       .catch((failure) => alive && setError(failure.status === 404 ? 'notFound' : 'network'))
     return () => {
       alive = false
@@ -67,7 +82,7 @@ export default function UserProfile() {
   const accent = accentProps(profile.user.accent)
   return (
     <div className={`space-y-14 ${accent.className ?? ''}`} style={accent.style}>
-      <ProfileCard user={profile.user} totals={profile.totals}>
+      <ProfileCard user={profile.user} totals={profile.totals} visits={profile.visits ?? null}>
         {!profile.private && <ShareButton username={profile.user.username} />}
         {profile.mine && (
           <Link to="/profile" className="btn-ghost btn-sm">

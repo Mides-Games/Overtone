@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "Liczby na żywo",
-      "analyses": "Wykonane analizy",
-      "queue": "Teraz w kolejce"
+      "analyses": "Zatimingowane utwory",
+      "queue": "Teraz w kolejce",
+      "week": "Ostatnie 7 dni",
+      "month": "Ostatnie 30 dni"
     },
     "gain": {
       "eyebrow": "Co zyskujesz",
@@ -1930,6 +1932,14 @@
       "queued": "Czekające",
       "running": "W analizie",
       "link": "Zobacz kolejkę"
+    },
+    "activity": {
+      "title": "Zatimingowane utwory i odwiedziny",
+      "total": "Zatimingowane łącznie",
+      "week": "Ostatnie 7 dni",
+      "month": "Ostatnie 30 dni",
+      "visits": "Odwiedziny profili",
+      "note": "Zatimingowany utwór to analiza, którą silnik doprowadził do timingu: nie odmowa, nie błąd, nie odpowiedź z pamięci podręcznej ani usunięta analiza. 7 i 30 dni to okna kroczące, do teraz. Odwiedziny profilu to jedna osoba na jednym publicznym profilu w ciągu jednego dnia; wizyty właściciela się nie liczą."
     }
   },
   "modes": {
@@ -2340,6 +2350,11 @@
         "unpin": "Odepnij",
         "none": "Nie masz jeszcze opublikowanych timingów do przypięcia.",
         "full": "Wszystkie sześć miejsc jest zajętych: najpierw odepnij jeden."
+      },
+      "visits": {
+        "title": "Odwiedziny profilu",
+        "recent": "ostatnie 30 dni",
+        "note": "Każda osoba liczy się raz dziennie; twoje własne wizyty się nie liczą."
       }
     },
     "badges": {

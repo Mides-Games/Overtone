@@ -41,7 +41,7 @@ const resultWith = (bpms) => ({
  */
 const secrets = [];
 let counter = 0;
-const song = async ({ bpms = [128], outcome = 'done', tookMs = 0, publish = false } = {}) => {
+const song = async ({ bpms = [128], outcome = 'done', tookMs = 0, publish = false, finishedAgoMs = 0 } = {}) => {
   counter += 1;
   const id = newPublicId();
   const row = {
@@ -69,6 +69,8 @@ const song = async ({ bpms = [128], outcome = 'done', tookMs = 0, publish = fals
     assert.ok(await analyses().finish(id, job.attempt, { ...resultWith([]), refused: true, global_bpm: null }));
   } else {
     assert.ok(await analyses().finish(id, job.attempt, resultWith(bpms)));
+    // Backdated, for the windows: the row's own finish time, as the memory store keeps it.
+    if (finishedAgoMs) stored.finishedAt = new Date(Date.now() - finishedAgoMs);
     if (publish) assert.ok(await analyses().publish(id));
   }
   return id;
@@ -104,7 +106,9 @@ test('shapeStats keeps only its own fields and withholds the times below the min
     queue: { queued: 1, running: 0 },
     rows: [{ publicId: 'leak' }],
   });
-  assert.deepEqual(Object.keys(out).sort(), ['analysisTime', 'bpm', 'generatedAt', 'queue', 'tempo', 'totals']);
+  assert.deepEqual(Object.keys(out).sort(), ['analysisTime', 'bpm', 'generatedAt', 'profileVisits', 'queue', 'tempo', 'timed', 'totals']);
+  assert.deepEqual(out.timed, { total: 3, last7Days: 0, last30Days: 0 });
+  assert.deepEqual(out.profileVisits, { total: 0 });
   assert.equal(out.totals.sha1, undefined);
   assert.equal(out.bpm.buckets.length, BPM_EDGES.length + 1);
   assert.deepEqual(out.bpm.buckets[0], { from: null, to: 80, count: 0 });
@@ -161,6 +165,37 @@ test('a cache hit and a deleted analysis are not counted as engine runs', async 
   assert.equal(now.cached, before.cached + 1);
 });
 
+test('songs timed: ever, the last 7 and the last 30 days by when they finished; not a refusal, a failure, a cache hit or a deleted one', async () => {
+  clearStatsCache();
+  const before = (await stats()).body.timed;
+  assert.equal(before.total, (await stats()).body.totals.done);
+  const DAY = 86_400_000;
+  await song({ bpms: [140] }); // now
+  await song({ bpms: [140], finishedAgoMs: 6 * DAY }); // inside both windows
+  await song({ bpms: [140], finishedAgoMs: 8 * DAY }); // the last 30 days only
+  await song({ bpms: [140], finishedAgoMs: 29 * DAY });
+  await song({ bpms: [140], finishedAgoMs: 31 * DAY }); // ever only
+  await song({ bpms: [140], finishedAgoMs: 400 * DAY });
+  await song({ outcome: 'refused' });
+  await song({ outcome: 'failed' });
+  const gone = await song({ bpms: [140] });
+  assert.ok(await analyses().deleteOwn(gone));
+  const original = await analyses().get(await song({ bpms: [140] }));
+  counter += 1;
+  await analyses().create({
+    publicId: newPublicId(), sha1: original.sha1, filename: 'again.mp3', sizeBytes: 1, accountId: null,
+    anonHash: sha('sha256', `again ${counter}`), ipHash: sha('sha256', `again ip ${counter}`), cachedFrom: original,
+  });
+  clearStatsCache();
+  const { body } = await stats();
+  assert.deepEqual(body.timed, {
+    total: before.total + 7,
+    last7Days: before.last7Days + 3,
+    last30Days: before.last30Days + 5,
+  });
+  assert.equal(body.timed.total, body.totals.done);
+});
+
 test('the answer is the same for a minute: a new analysis waits for the cache to expire', async () => {
   const first = (await stats()).body;
   await song({ bpms: [200] });
@@ -186,7 +221,7 @@ test('nothing that belongs to a person is in the answer: no id, hash, file name,
   const allowed = new Set([
     'generatedAt', 'totals', 'done', 'refused', 'failed', 'cached', 'published', 'songs', 'bpm', 'edges', 'buckets',
     'from', 'to', 'count', 'tempo', 'single', 'variable', 'analysisTime', 'days', 'minCount', 'medianS', 'p90S',
-    'queue', 'queued', 'running',
+    'queue', 'queued', 'running', 'timed', 'total', 'last7Days', 'last30Days', 'profileVisits',
   ]);
   for (const key of keys) assert.ok(allowed.has(key), `unexpected field ${key}`);
 });

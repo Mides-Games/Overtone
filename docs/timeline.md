@@ -70,6 +70,380 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Other games' formats and export options
+
+### Changed
+
+- "More downloads" offers the red lines for Quaver (`.qua`), StepMania and Etterna
+  (`.sm`), StepMania 5 (`.ssc`) and Clone Hero (`notes.chart`), timing only, built in
+  the browser (W12.7). The Quaver and StepMania timing matches v3's exporters.
+- Export options (W12.8): offset decimals, the BPM rounded (with the drift it causes
+  by the song's end), the first red line only, and an offset added to every line.
+  They shape the `.osz`, the copy, the patched `.osu` and the games' files, never the
+  clicks; remembered in `overtone.exports`, and named under the `.osz` while on.
+- Decided: the added offset is separate from the nudge. The nudge is a correction
+  heard in the clicks and forgotten with the page; the added offset is a target's
+  convention (a game's or a pack's sync), so it must not move the clicks, and it is
+  remembered, which is why the page always says when it is on.
+- Decided: Clone Hero's `[Song] Offset` is written as 0 and a lead-in bar puts the
+  first downbeat on its time, because the field is treated as legacy by Moonscraper
+  as far as we know and its sign has not been read the same way everywhere.
+- Decided: StepMania keeps v3's fractional beats rather than bending BPMs onto its
+  1/48 rows, so the two exporters agree; the page shows how far the game will move
+  each change instead (from 0.5 ms).
+
+### Measured
+
+- The site's Quaver and StepMania text against v3's `quaver_timing_text` and
+  `stepmania_timing_text`: 67 sets of red lines, 536 texts, 0 differ (one-off script,
+  not committed; see `docs/site.md`).
+- On the fixture lines (a change 151.3 ms past beat 75 at 150 BPM), StepMania's rows
+  would move the change 1.3 ms; Clone Hero lands every change within 0.02 ms.
+- Not measured: whether any game opens the files. None was run.
+
+### Rejected / tried and dropped
+
+- Fitting StepMania's BPMs so each change sits on a row: exact in the game, but the
+  file would no longer match v3's, and the BPMs written would not be the reader's.
+- Writing Clone Hero's first line at `Offset` = its time: simpler, but it rests on a
+  field whose meaning we are least sure of.
+
+---
+
+## Unreleased — 2026-10-27 · A fuller .osz
+
+### Changed
+
+- W12.9: the site's `.osz` can carry the file's own cover as `bg.jpg`/`bg.png` (ID3 `APIC`,
+  MP4 `covr`, FLAC `PICTURE`, Ogg Vorbis/Opus `METADATA_BLOCK_PICTURE`), a suggested
+  `PreviewTime` (the loudest 15 s, on a bar), a suggested `AudioLeadIn` (first sound under
+  1.5 s → brought to 2 s) and suggested kiai green lines (bars clearly louder than the
+  song, at most three runs). Checkboxes under ".osz options": cover and preview on, lead-in
+  and kiai off, because the first two change nothing a player feels and the last two are
+  mapping decisions a loudness heuristic should not make unasked. The rules and their
+  reasons are in `docs/site.md`.
+- Every `.osu` the site builds is tagged `overtone overtone_timings` (owner's rule), so maps
+  made with it can be found; extra tags are kept after those two.
+- After the `.osz` downloads, a dismissible tip says how to make the browser open `.osz`
+  files in osu! by itself (Chrome/Edge "Always open files of this type", Firefox's Files and
+  Applications) and that osu! must be installed with `.osz` associated.
+
+### Hardening
+
+- The cover reader never throws, skips tags over 16 MB, keeps only images whose first bytes
+  are JPEG or PNG, and bounds every walk (boxes, blocks, Ogg pages) by a step count.
+
+### Measured
+
+- Not measured on real music: the suggestions were checked on two bench-derived FLACs
+  (see `docs/site.md`), where the whole synthetic corpus is flat (-20 dB a bar) and
+  rightly gets no kiai. site/web tests 90 → 114.
+
+### Rejected / tried and dropped
+
+- Opening the `.osz` in osu! straight from the page: a page cannot run a download, and
+  `osu://` (stable and lazer) only reaches online beatmaps, not a local file. Anything
+  more would need the reader's machine configured behind their back.
+- Considered, not built: a fixed-percentile kiai threshold (top quarter of bars), which on
+  a song mastered flat would mark noise as the chorus; the 3 dB spread requirement refuses
+  instead. And the preview at the loudest window's own start, which on a long chorus is an
+  arbitrary tie somewhere inside it; walking back to the earliest start within 5 % finds
+  the top (the 61.3 s chorus test pins it).
+
+---
+
+## Unreleased — 2026-10-27 · Listening tools: latency, taps, A/B, subdivisions
+
+### Changed
+
+- The result page has a listening panel under the transport (W12.2-W12.6): clicks at
+  1/2, 1/3 or 1/4 between beats with their own quieter tone and volume, also drawn on
+  the zoomed-in map and offered in the click-track WAV; an A/B (A) between the
+  engine's lines' clicks and the reader's adjusted ones at the same playhead; a tap
+  pad (T) that reads a tempo with its spread and compares it with the red line there
+  (matches, about ×2, about ×0.5); while playing, the taps' median offset from the
+  grid proposed as the global nudge, applied only on a press; and a latency test in a
+  dialog, saved in `overtone.player.latencyMs`.
+- `clickGrid` takes `{ subdivision }` and builds the engine's `click_schedule`
+  subdivisions (level 0, counted from the line's offset).
+- A change of clicks (A/B, subdivision, adjustment, latency switch) is heard at once:
+  the scheduled clicks are dropped and rescheduled from the playhead, the song plays on.
+
+### Hardening
+
+- Every stored value (latency, subdivision, its volume, the shift switch) is read
+  inside a try and validated field by field; a broken one falls back alone.
+- The page-wide keys step aside while a modal dialog is open.
+
+### Measured
+
+- Not measured on people. With synthesised taps in the browser pane: 128 BPM ±0.0 read
+  from 12 taps on the grid; taps 20 ms late proposed +20 ms ±2.0; a 35 ms calibration
+  with one stray tap read 35 ms ±1.0 (1 dropped). Figures in `docs/site.md`.
+
+### Rejected / tried and dropped
+
+- **Moving the clicks by the latency by default.** The roadmap row says the latency
+  moves the clicks. The song and the clicks go through the same audio context and the
+  same output, so any device delay reaches both alike: moving the clicks alone puts
+  them off the song by exactly the latency, which is what the reader is trying to
+  judge. Decided (owner away): the latency always corrects the taps, and moving the
+  clicks is a switch, off by default, with the reason in its note. The exports never
+  carry it.
+- **A flash or moving marker in the calibration.** People tap to what they see rather
+  than what they hear; the test is audio only, as osu!'s offset wizard.
+- **Tempo from a least-squares line through the taps.** Slightly more exact on a steady
+  hand, but one missed tap shifts every index after it; the median interval with
+  stray ones dropped survives a missed or doubled tap.
+
+---
+
+## Unreleased — 2026-10-27 · Comparing timings
+
+### Changed
+
+- W12.10: the result page (and a published timing's page) compares the result with an
+  `.osu` the reader picks: a verdict in plain words, a table of matched red lines, the
+  lines only one side has, the map's lines dashed in a new blue on the tempo map, and its
+  clicks playable instead of the result's. The `.osu` is read in the browser and kept in
+  the page's state only: never uploaded, never stored.
+- W12.11: `/compare?a=<id>&b=<id>` puts two timings side by side: the visitor's own
+  analyses or published ones, each with its own x0.5 / x2 and nudge in the address, so
+  "an analysis against its adjusted version" is one link. Offered from the history, a
+  public timing and the result page. No API change.
+- The comparison (`site/web/src/lib/compare.js`) compares **grids**, not first-beat
+  times: a red line a whole number of beats from the other's, at the same tempo, is the
+  same grid in osu!. Each pair's offset is the phase of one grid against the other where
+  both lines start, and again at their last shared beat (a growing difference is drift);
+  the verdict checks every beat of the sparser grid from the later first line to the end.
+- Decided (owner away): the tolerances are the accuracy baseline's, 0.05 BPM and 5 ms,
+  and the page names them. Two red lines pair when they are within four beats of the
+  slower one (at least 1 s), in order; a verdict is `same`, `offset` (one constant shift
+  past 5 ms), `double`, `half` or `different` (with the share on the same grid, the share
+  at half or double, and where they first part). `/compare` is private-ish: out of the
+  sitemap and disallowed in robots.txt, since what it shows depends on who asks.
+
+### Fixed
+
+- A tempo change a few ms apart in the two timings (x2 and +3 ms on a two-line song) read
+  as `different`: for those ms the governing lines are an unrelated tempo. Each beat is now
+  judged against the line that owns the other grid's nearest beat. Found in the browser.
+
+### Measured
+
+- `site/web` 107/107 (17 new in `test/compare.test.js`), `vite build`, `bench/facts.py` ok.
+- In the browser, against the dev API with one real worker (Beat This! off):
+  `change-128-142.wav` against a hand-made map with its second line 2 ms late and in 3/4,
+  "same grid within 1.9 ms" with the meter change named; the same analysis at x2 +3 ms,
+  "double within 3.0 ms"; at -8 ms, "8.0 ms earlier on every beat". The map's clicks: 136,
+  including one at 30.400 s that the map's own lines imply 2 ms before its second line.
+- Speed not measured: one comparison is a few thousand beat lookups and an alignment of
+  at most 2000 x 2000 lines, done once per change.
+
+### Rejected / tried and dropped
+
+- Comparing first-beat times (offset = map's time minus the result's): a map whose red line
+  sits one bar later on the same grid would read hundreds of ms off. Phase is what osu! plays.
+- Counting agreeing beats from both grids: where both are as dense every beat was counted
+  twice, so a song half agreeing read 67 %. Only A's beats count there, weighted by length.
+
+---
+
+## Unreleased — 2026-10-27 · Command palette and settings
+
+### Changed
+
+- **Command palette (W12.14).** Ctrl+K (⌘K) or the bar's search button: pages, this
+  browser's analyses (the tray's in-flight ones first), and actions (language, theme,
+  high contrast, settings, sign in or out, the shortcuts), ranked by a subsequence
+  match in `lib/commands.js`. `?` lists every shortcut, the result page's included.
+- **`/settings` (W12.15).** Theme (system, dark, light), high contrast, font size 90 to
+  130 %, a colour-blind-safe palette, motion (system, reduce, allow), the default
+  volumes, the device latency of W12.2 (shown, typed or forgotten) and the language,
+  all in this browser. Linked from the account menu and the footer; kept out of the
+  sitemap and disallowed in `robots.txt`, since a browser's own settings have nothing
+  to find.
+- The theme stays in `mides.theme`, shared with midesprojects.com, which gains the
+  value `system`; a reader there that knows only `light` falls back to its dark
+  default, as for a missing key. The other settings are `overtone.settings`.
+- The colour-blind palette moves red lines, "check by ear" and tempo on the whole
+  site, not only on the map, so the map, the table and the chips keep meaning the same.
+- The result page's keys ignore key presses from inside an open dialog.
+
+### Fixed
+
+- The tempo map hard-coded the ink of its red chips: it is a token now (`--red-ink`),
+  so a palette that moves the red can move its ink.
+
+### Hardening
+
+- `index.html`'s inline script applies the stored settings before the first frame. It
+  is still the only inline script and `serve.mjs` still allows it by its hash; a new
+  serve test checks the policy names exactly the real script's hash and no
+  `unsafe-inline`, and a web test runs the script in a `vm` and checks it leaves
+  `<html>` as the library does, so the page never jumps when the app starts.
+- Every stored value is read defensively: a font scale out of range is ignored (not
+  clamped) by both the early script and the library, so the two agree.
+
+### Measured
+
+- High contrast: every text token at 7:1 or more against every surface, down to the
+  darkest panel, in both themes; the strong line at 3:1 against the page. Computed
+  from `index.css` by `test/settings.test.js`.
+- Colour-blind palette: the smallest CIELAB distance between the map's four colours,
+  over normal vision and Machado et al.'s (2009) protanopia, deuteranopia and
+  tritanopia at full severity, goes from 14.1 to 33.7 in light and from 30.4 to 42.1
+  in dark (the default's weakest pair in light was amber and red under deuteranopia).
+  Every new colour is at 5.5:1 or more against the panel.
+- Tests: `site/web` 90 to 113, `site/api` 100 to 101.
+
+### Rejected / tried and dropped
+
+- **Okabe-Ito colours by hand** (vermillion, yellow, reddish purple): scored worse than
+  the default in light (5.8 against 14.1, vermillion and dark yellow collapse under
+  deuteranopia once darkened to 4.5:1 on white). The search, with the contrast floor
+  as a constraint, replaced them.
+- **Clamping a stored font scale** into range: the early script cannot share the
+  library's code, and a clamp in one and a refusal in the other made the text jump
+  when the app started. Both now ignore an out-of-range value.
+- **The palette's search button in the phone's top row:** at 130 % the row overflowed
+  375 px by 29 px; it leads the places' row instead.
+- **Ctrl+K blocked inside fields**, like `?`: it never types a character, and editors
+  open their palettes from anywhere, so it fires from a field too.
+
+---
+
+## Unreleased — 2026-10-27 · How it works, a glossary, and the site's statistics
+
+### Changed
+
+- `/how-it-works` explains the pipeline for a mapper (decode, attacks, tempo sweep and
+  grid fit, octave and the Beat This! vote, sections and red lines, confidence levels),
+  what "check by ear" means, why an analysis takes the time it does, and what the
+  synthetic benchmark measures against what Corpus B is still measuring. Each step cites
+  the file it was written from. W12.12.
+- `/faq` answers the ten questions of the roadmap row; its limits are read from
+  `GET /api/v1/health`. `/glossary` holds twelve terms, and `components/Term.jsx` puts
+  them on the result page: a dotted underline on the readouts, the confidence legend and
+  the red lines table's headers that opens the short definition. W12.12.
+- `GET /api/v1/stats` and `/stats`: totals, the BPM histogram, one tempo against tempo
+  changes, the median and 90th-percentile time from upload to result over 30 days, and
+  the queue. Aggregates only, cached a minute per process, rate limited. W12.13.
+- A Learn column in the footer; the GitHub docs link there is now "Documentation".
+
+### Hardening
+
+- The statistics are built field by field (`utils/stats.js` `shapeStats`) from counts the
+  stores make; a test reads the whole body for every id, hash, file name, title and
+  username the rows carried, and for any field `shapeStats` does not write.
+- The analysis times are withheld below five finished analyses in the window: a median
+  of two jobs looks measured and is not (CLAUDE.md rule 2).
+- `lib/repo.js` links only plain relative paths, so a locale string cannot become a link
+  elsewhere.
+
+### Measured
+
+- Not measured: these pages state the engine's existing numbers (the synthetic
+  benchmark's 24/24 within 0.05 BPM and 5 ms, median 0.16 ms; about 10 s for a 60 s song
+  with the vote, from docs/site.md) and measure nothing new. The pg store's `stats()` gave
+  the same answer as the memory store's on the same rows through PGlite 0.5.11.
+
+### Rejected / tried and dropped
+
+- Counting cache hits as analyses: one song looked up ten times would count ten. They
+  are their own total; the BPM histogram and the times read only the engine's runs.
+- A vertical BPM histogram: at 375 px its eleven bucket names shrink below reading size.
+  Horizontal rows, drawn at the box's own pixel width, keep them at 12 px.
+- A chart library: two charts did not justify a dependency.
+- Keeping the table headers' `title` hints next to the popovers: they said what the
+  glossary's short definitions say.
+
+---
+
+## Unreleased — 2026-10-27 · One grid where the tracker drifts, and two ideas dropped
+
+### Changed
+
+- `CONSTANT_GRID` is on, at 30 ms and 0.8: where the precision grid gives way to the
+  beat tracker and Beat This!'s beats over the whole song sit on one steady grid, the
+  song is read as that one red line instead of the tracker's dozens. On bands-variable
+  dev every one of the 185 maps that reached the tracker missed the tempo; 72 of them
+  are mapped with a single line, and the tracker gave a median of 78.
+- The piecewise grid (`PIECEWISE_GRID`, still off) now splits only the tracker's lines;
+  the precision grid's one line is never split.
+
+### Fixed
+
+- A stage report keeps an analysis error's message, so a map lost to an error names
+  its cause instead of only the word "error".
+
+### Measured
+
+On the server, ranked maps, engine `app`, tempo ok / octave ×1 (2026-10-27):
+
+| Run | bands dev | bands held out | anime-variable dev | anime-variable held out |
+|---|---|---|---|---|
+| base | 46.7 / 83.5 | 59.9 / 82.4 | 31.5 / 84.8 | 19.5 / 77.6 |
+| constant grid, 20 ms / 0.9 | 50.3 / 83.5 | 59.9 / 82.4 | 31.5 / 85.1 | 20.4 / 77.6 |
+| constant grid, 30 ms / 0.8 | 51.1 / 83.5 | 59.9 / 82.4 | — | — |
+| constant grid, 40 ms / 0.7 | 51.1 / 83.5 | — | — | — |
+
+anime-single (78.8 / 92.8 dev, 81.9 / 94.3 held out) never reaches the tracker, so the
+constant grid cannot move it. The 30 ms setting is on for its dev gain; its anime
+numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 239849c.
+
+### Rejected / tried and dropped
+
+- **The song's octave from Beat This! (`SONG_OCTAVE_BEAT_THIS`).** bands dev 46.7 → 43.7,
+  held out 59.9 (octave ×1 82.4 → 84.9); anime-single dev 78.8 → 73.6 and octave ×1
+  92.8 → 86.7, held out 81.9 → 75.8. On bands it fixed 4 maps and broke 8, and both
+  groups halved to the same 92–115 BPM, so no rule on the tempo tells them apart.
+- **Splitting the precision grid's line into steady stretches** (`_piecewise_grid` on
+  the precision path). bands dev 46.7 → 32.4 (penalty 40), 32.4 (penalty 120), 33.5
+  (with the constant grid); held out 59.9 → 30.1. Map by map, 23 one-line songs split
+  into 2–10 lines lost 119 maps and an error lost 8, against 8 gained. A penalty three
+  times higher changed nothing: Beat This!'s beats wander by more than 1.5 % within a
+  steady song, which no price per line separates from a real change. On the tracker
+  path the same split gained 28 maps and lost none, so it stays there to be measured.
+
+---
+
+## Unreleased — 2026-10-27 · A cleaner logo for the web
+
+### Changed
+
+- The owner found the full logo untidy in a browser tab. `assets/logo.py` gains a web
+  variant of the same mark (`web_svg_text`, `render_web`): the fundamental alone,
+  thicker and inset from the edges, and the red line as a rounded bar inside the
+  panel; no faint harmonics, which turned to noise at 16 px. Every site icon and the
+  favicon use it; `logo.png` and `logo.ico` keep the desktop app's full mark.
+
+### Measured
+
+- `logo.png` and `logo.ico` byte-identical (md5 unchanged). Looked at in the browser
+  pane at 256, 64, 32, 22 and 16 px on the light and dark page colours.
+
+---
+
+## Unreleased — 2026-10-27 · The site shows Overtone's own logo
+
+### Fixed
+
+- The site's mark was a redrawn ring with a bar, and its favicon and icons the Mides
+  mark: the owner called it an imitation of the app's logo. `assets/logo.py`, which
+  drew the desktop app's icon, now also writes `assets/logo.svg` (the same geometry as
+  vectors) and the site's icons from the same renderer; `Mark.jsx` shows that SVG in
+  the navbar, footer and sign-in. The Mides mark stays where Mides Projects is named.
+  `site/web/scripts/icons.mjs`, which rasterised the old favicon, is gone.
+
+### Measured
+
+- `assets/logo.png` and `logo.ico` come out byte-identical (md5 unchanged); the new
+  files take 2 min 24 s to render on this machine (the 512-px ones, in pure Python).
+- site/web 88/88 (`icons.test.js`, 4 tests, replaced by `logo.test.js`, 2).
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed
@@ -397,8 +771,6 @@ version is `v0.2.0-alpha`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · The measurement server, hardened
 
 A security review of the measurement server (`python/overtone_server.py`, the library
@@ -616,8 +988,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
 
 ### Changed
@@ -640,8 +1010,6 @@ each on `fix/security-hardening`.
   and v4 write the same keys and JSON types at every level, red lines 128 and 142
   within 0.01 BPM and 5 ms of each other, the same levels and meter. Not measured: how
   often v4 refuses where v3 falls back, on real music (Corpus B's business).
-
----
 
 ---
 
@@ -691,8 +1059,6 @@ each on `fix/security-hardening`.
 
 - Keeping 512 MB as the no-vote budget: the gate would be red for a figure nobody
   measured. The first run's peak (565 MB) rounded up is the budget instead.
-
----
 
 ---
 
@@ -837,8 +1203,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
 
 ### Changed
@@ -869,8 +1233,6 @@ each on `fix/security-hardening`.
   and the count, no address.
 - Not measured: the upsert's cost on the server's PostgreSQL. It adds one write to
   every request; PGlite's timings say nothing about a real server.
-
----
 
 ---
 
@@ -909,8 +1271,6 @@ each on `fix/security-hardening`.
 - In the browser (`pnpm dev` in memory, a fake worker): a batch of two finished
   songs offered "Download all 2 timings (ZIP)" and produced a 322-byte
   `overtone-timings.zip` whose first entry was `zip one-timing.txt`.
-
----
 
 ---
 
@@ -1040,8 +1400,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed
@@ -1071,8 +1429,6 @@ each on `fix/security-hardening`.
   `SSO_SECRET_OVERTONE` in Mides and `MIDES_CLIENT_SECRET` here to one value, merge
   Mides' branch, then deploy this one; until both are in, Overtone's sign-in fails
   closed (503).
-
----
 
 ---
 
@@ -1138,8 +1494,6 @@ five are fixed here.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.11: ask before uploading
 
 ### Changed
@@ -1169,8 +1523,6 @@ five are fixed here.
   `cached: true` with `done` and new ids, both shown on the queue under the tag sent
   with them; a malformed hash got 400 `BAD_SHA1`. `vite build` passes. `node --test`
   23/23, unchanged: the route has no test of its own yet.
-
----
 
 ---
 
@@ -1223,8 +1575,6 @@ five are fixed here.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.8: the queue in sight
 
 ### Changed
@@ -1268,8 +1618,6 @@ five are fixed here.
   a real Mides account's avatar on the page, and a real worker. The Python suite and
   the engine gates were not run (no `.venv` here); nothing under `python/`,
   `worker/` or `crates/` changed.
-
----
 
 ---
 
@@ -1890,8 +2238,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · the single-key shortcuts move
 
 ### Changed
@@ -1923,8 +2269,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · Ctrl+K finds any action
 
 ### Changed
@@ -1949,8 +2293,6 @@ tool, and none of these had reached the bar it was built against.
 - Not measured: no engine path changes. Checked in the page through the
   UI harness: 23 entries on the empty Library page, "sett" + Enter opens
   Settings, "seccion biblio" finds Biblioteca in Spanish, no console errors.
-
----
 
 ---
 
@@ -1981,8 +2323,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · the command line watches a file
 
 ### Changed
@@ -2005,8 +2345,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Not measured: no engine path changes. The poll is 0.5 s.
-
----
 
 ---
 
@@ -2083,8 +2421,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-24 · score Corpus B as osu! exports it
 
 ### Changed
@@ -2116,8 +2452,6 @@ tool, and none of these had reached the bar it was built against.
 ### Rejected / tried and dropped
 
 - None.
-
----
 
 ---
 
@@ -2948,8 +3282,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-16 · H6/H7 measured disposition for T7
 
 ### Changed
@@ -2984,8 +3316,6 @@ tool, and none of these had reached the bar it was built against.
 - The existing H7 comparison remains its 6-song measurement: median coverage
   0.31, same-sound agreement 0.12, mapper clap F1 0.29 vs the 0.59 P-6 rule.
   No engine code or accuracy baseline changed. No test suite was run.
-
----
 
 ---
 
@@ -3053,8 +3383,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -3103,8 +3431,6 @@ tool, and none of these had reached the bar it was built against.
 - Treating exact timing matches as independent mapper agreement was dropped:
   they can be copied between mapsets and raised the apparent 5 ms agreement
   from 51.4 % on differing pairs to 84.6 % overall.
-
----
 
 ---
 
@@ -3217,8 +3543,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
 
 ### Changed
@@ -3243,8 +3567,6 @@ tool, and none of these had reached the bar it was built against.
   1,280 BPM red line, read sanely.
 - `bench/facts.py` ok. Rust engine through the same slice still owed; no bar
   set, so nothing passes or fails yet.
-
----
 
 ---
 
@@ -3275,8 +3597,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -3295,8 +3615,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -3308,8 +3626,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
-
----
 
 ---
 

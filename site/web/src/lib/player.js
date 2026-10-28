@@ -13,12 +13,13 @@
  * Imperative on purpose: React reads `snapshot` (useSyncExternalStore) for the
  * controls, and the canvas asks `heardPosition()` once a frame.
  */
-import { lowerBound } from './timing.js'
+import { readLatency, readListening, writeLatency, writeListening } from './listening.js'
+import { lowerBound, SUB } from './timing.js'
 
 const LOOKAHEAD_S = 0.15
 const TICK_MS = 25
 const LEAD_S = 0.06
-/** The desktop app's and the WAV export's tones: [Hz, gain] for 2 a bar's first beat, 1 a beat. */
+/** The desktop app's and the WAV export's tones: [Hz, gain] for 2 a bar's first beat, 1 a beat, 0 a subdivision. */
 export const TONES = { 2: [2093, 1], 1: [1568, 0.7], 0: [1318.5, 0.4] }
 
 /**
@@ -53,7 +54,7 @@ export const DEFAULT_VOLUME = 0.2
 
 const unit = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined)
 
-function savedVolumes() {
+export function savedVolumes() {
   try {
     const stored = JSON.parse(localStorage.getItem(VOLUMES_KEY) ?? '{}') ?? {}
     return { song: unit(stored.song), click: unit(stored.click), clicksOn: typeof stored.clicksOn === 'boolean' ? stored.clicksOn : undefined }
@@ -62,12 +63,27 @@ function savedVolumes() {
   }
 }
 
-function saveVolumes(volumes) {
+export function saveVolumes(volumes) {
   try {
     localStorage.setItem(VOLUMES_KEY, JSON.stringify(volumes))
   } catch {
     // Private mode or blocked storage: the volume holds for this page only.
   }
+}
+
+/**
+ * The context time being heard at `perfMs` (a performance timestamp, such as
+ * an event's `timeStamp`): the context's own output timestamp when it has one,
+ * else its clock less the latency it reports. A tap is placed with this, so
+ * what the browser knows of its latency is already taken out; what it does
+ * not know is what the calibration (W12.2) measures.
+ */
+export function heardContextTime(ctx, perfMs = performance.now()) {
+  const stamp = ctx.getOutputTimestamp?.()
+  if (stamp && stamp.contextTime > 0 && stamp.performanceTime > 0) {
+    return stamp.contextTime + (perfMs - stamp.performanceTime) / 1000
+  }
+  return ctx.currentTime - (ctx.outputLatency || 0) - (performance.now() - perfMs) / 1000
 }
 
 /** The page's one AudioContext, made on first use (decoding needs one; playing resumes it). */
@@ -83,6 +99,8 @@ export class Player {
   constructor() {
     this.buffer = null
     this.grid = { t: new Float64Array(0), level: new Uint8Array(0) }
+    this.engineGrid = null // the engine's own lines' clicks, for the A/B (W12.5)
+    this.abEngine = false
     this.sections = []
     this.source = null
     this.playing = false
@@ -101,6 +119,11 @@ export class Player {
     this.songVolume = saved.song ?? DEFAULT_VOLUME
     this.clickVolume = saved.click ?? DEFAULT_VOLUME
     this.clicksOn = saved.clicksOn ?? true
+    const listening = readListening()
+    this.subdivision = listening.subdivision
+    this.subVolume = listening.subVolume
+    this.shiftClicks = listening.shiftClicks
+    this.latencyMs = readLatency()
     this.listeners = new Set()
     this.snapshot = this.#snap()
   }
@@ -115,6 +138,12 @@ export class Player {
       songVolume: this.songVolume,
       clickVolume: this.clickVolume,
       clicksOn: this.clicksOn,
+      subdivision: this.subdivision,
+      subVolume: this.subVolume,
+      shiftClicks: this.shiftClicks,
+      latencyMs: this.latencyMs,
+      abEngine: this.abEngine,
+      hasEngineGrid: Boolean(this.engineGrid),
     }
   }
 
@@ -139,9 +168,13 @@ export class Player {
     if (!this.clickBus) {
       this.clickBus = ctx.createGain()
       this.clickBus.connect(ctx.destination)
+      // The subdivisions go through the clicks' own bus: muting the clicks mutes them too.
+      this.subBus = ctx.createGain()
+      this.subBus.connect(this.clickBus)
     }
     this.songBus.gain.value = this.songVolume
     this.clickBus.gain.value = this.clicksOn ? this.clickVolume : 0
+    this.subBus.gain.value = this.subVolume
     return ctx
   }
 
@@ -156,9 +189,79 @@ export class Player {
     this.#emit()
   }
 
-  /** The clicks to play: `clickGrid`'s output. Takes effect from the next scheduled window. */
-  setGrid(grid) {
+  /**
+   * The clicks to play: `clickGrid`'s output for the reader's lines, and for
+   * the engine's own (`engine`, null when they are the same lines). A change
+   * is heard at once: the clicks already handed to the context are dropped and
+   * scheduled again from the playhead, the song untouched.
+   */
+  setGrid(grid, engine = null) {
     this.grid = grid
+    this.engineGrid = engine
+    if (!engine) this.abEngine = false
+    this.#reschedule()
+    this.#emit()
+  }
+
+  /** A/B (W12.5): the clicks of the engine's lines (true) or of the reader's adjusted ones. */
+  setAbEngine(on) {
+    const next = Boolean(on) && Boolean(this.engineGrid)
+    if (next === this.abEngine) return
+    this.abEngine = next
+    this.#reschedule()
+    this.#emit()
+  }
+
+  #saveListening() {
+    writeListening({ subdivision: this.subdivision, subVolume: this.subVolume, shiftClicks: this.shiftClicks })
+  }
+
+  /** Clicks between the beats (1 is none); the page rebuilds the grid from the snapshot. */
+  setSubdivision(subdivision) {
+    if (![1, 2, 3, 4].includes(subdivision)) return
+    this.subdivision = subdivision
+    this.#saveListening()
+    this.#emit()
+  }
+
+  setSubVolume(volume) {
+    this.subVolume = Math.min(1, Math.max(0, Number(volume) || 0))
+    this.#saveListening()
+    if (this.subBus) this.subBus.gain.value = this.subVolume
+    this.#emit()
+  }
+
+  /** The device's latency from a calibration (W12.2), kept in this browser; 0 forgets it. */
+  setLatency(ms) {
+    writeLatency(ms)
+    this.latencyMs = readLatency()
+    // Storage blocked: keep it for this page anyway.
+    if (!this.latencyMs && ms) this.latencyMs = Math.round(ms)
+    if (this.shiftClicks) this.#reschedule()
+    this.#emit()
+  }
+
+  /** Whether the clicks play `latencyMs` early (W12.2); the song and every export never move. */
+  setShiftClicks(on) {
+    this.shiftClicks = Boolean(on)
+    this.#saveListening()
+    this.#reschedule()
+    this.#emit()
+  }
+
+  /** How far ahead of the song the clicks run, in real seconds. */
+  #clickLead() {
+    return this.shiftClicks ? this.latencyMs / 1000 : 0
+  }
+
+  /** Drops the clicks already scheduled and schedules them again from now, the song playing on. */
+  #reschedule() {
+    if (!this.playing || !this.clickBus) return
+    this.clickBus.disconnect()
+    this.clickBus = null
+    this.#buses()
+    this.sched = Math.max(0, audioContext().currentTime - this.startCtx)
+    this.#tick()
   }
 
   /** The red lines' spans, seconds, for "loop the section under the playhead". */
@@ -226,32 +329,41 @@ export class Player {
   /** Where the song is as it is heard: the context's output timestamp, latency included. */
   heardPosition() {
     if (!this.playing) return this.pos
-    const ctx = audioContext()
-    let now = ctx.currentTime - (ctx.outputLatency || 0)
-    const stamp = ctx.getOutputTimestamp?.()
-    if (stamp && stamp.contextTime > 0 && stamp.performanceTime > 0) {
-      now = stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000
-    }
+    return this.heardPositionAt(performance.now())
+  }
+
+  /**
+   * Where the song was as it was heard at `perfMs` (an event's timeStamp),
+   * `lateMs` earlier: a tap that comes the reader's latency after the beat
+   * it answers is placed on that beat. Null when the song is not playing.
+   */
+  heardPositionAt(perfMs, lateMs = 0) {
+    if (!this.playing) return null
+    const now = heardContextTime(audioContext(), perfMs - lateMs)
     return this.#songAt(Math.max(0, now - this.startCtx))
   }
 
   #click(when, level) {
-    scheduleClick(audioContext(), this.clickBus, when, level)
+    scheduleClick(audioContext(), level === SUB ? this.subBus : this.clickBus, when, level)
   }
 
   #tick = () => {
     if (!this.playing) return
     const ctx = audioContext()
-    const { t, level } = this.grid
+    const { t, level } = this.abEngine && this.engineGrid ? this.engineGrid : this.grid
     const until = ctx.currentTime - this.startCtx + LOOKAHEAD_S
+    // The clicks' own timeline runs `lead` ahead of the song's when they are moved by the latency.
+    const lead = this.#clickLead()
     while (this.sched < until) {
-      const s0 = this.#songAt(this.sched)
+      const s0 = this.#songAt(this.sched + lead)
       // Up to the loop's end at most, so a window never spans the wrap.
       const room = this.loop ? (this.loop.b - s0) / this.rate : Infinity
       const length = Math.min(until - this.sched, room)
       if (this.clicksOn) {
         for (let i = lowerBound(t, s0); i < t.length && t[i] < s0 + length * this.rate; i++) {
-          this.#click(this.startCtx + this.sched + (t[i] - s0) / this.rate, level[i])
+          const when = this.startCtx + this.sched + (t[i] - s0) / this.rate
+          // A click the lead moved before now is not played: its time is gone.
+          if (when >= ctx.currentTime) this.#click(when, level[i])
         }
       }
       this.sched += length > 1e-9 ? length : 1e-6
@@ -337,8 +449,9 @@ export class Player {
   destroy() {
     this.#halt()
     this.listeners.clear()
-    for (const bus of [this.songBus, this.clickBus]) bus?.disconnect()
+    for (const bus of [this.songBus, this.clickBus, this.subBus]) bus?.disconnect()
     this.songBus = null
     this.clickBus = null
+    this.subBus = null
   }
 }

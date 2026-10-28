@@ -12,8 +12,12 @@ const app = read('../src/App.jsx')
 const sitemap = read('../public/sitemap.xml')
 const robots = read('../public/robots.txt')
 
-/** Pages nobody should land on from a search: a result is its uploader's, sign-in is a step. */
-const PRIVATE = ['analyze/:id', 'history', 't/:id', 'login', 'login/callback', 'profile', 'link/osu', '*']
+/**
+ * Pages nobody should land on from a search: a result is its uploader's, sign-in is a step,
+ * and a comparison (W12.11) is two ids in the query, whose page depends on who asks;
+ * the settings are this browser's own, with nothing to find (W12.15).
+ */
+const PRIVATE = ['analyze/:id', 'history', 'compare', 't/:id', 'login', 'login/callback', 'profile', 'link/osu', 'settings', '*']
 
 const routes = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
 const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+(\/[^<]*)<\/loc>/g)].map((m) => m[1])
@@ -24,7 +28,7 @@ test('the sitemap lists the home page and every public route, and nothing else',
 })
 
 test('robots.txt keeps crawlers off the API and the private pages and names the sitemap', () => {
-  for (const path of ['/api/', '/analyze/', '/login', '/profile']) assert.match(robots, new RegExp(`^Disallow: ${path}$`, 'm'))
+  for (const path of ['/api/', '/analyze/', '/login', '/profile', '/compare', '/settings']) assert.match(robots, new RegExp(`^Disallow: ${path}$`, 'm'))
   const origin = /<loc>(https:\/\/[^/]+)\//.exec(sitemap)[1]
   assert.match(robots, new RegExp(`^Sitemap: ${origin}/sitemap\\.xml$`, 'm'))
 })

@@ -7,10 +7,15 @@
  * Nothing here is a new estimate. An adjustment is the reader's, to be checked
  * by ear; the engine's own reading is the result as it came.
  */
+import { changesLines, optionsNote } from './export-options.js'
 
-/** Click levels, as the engine's `click_schedule`: 2 the bar's first beat, 1 a beat. */
+/** Click levels, as the engine's `click_schedule`: 2 the bar's first beat, 1 a beat, 0 a subdivision between beats. */
 export const BAR = 2
 export const BEAT = 1
+export const SUB = 0
+
+/** The subdivisions a click track may add between beats, as the engine's CLICK_SUBDIVISIONS: 1 is none. */
+export const SUBDIVISIONS = [1, 2, 3, 4]
 
 /** The engine's own bound on how long a click track is (MAX_CLICK_SECONDS). */
 const MAX_CLICK_SECONDS = 1800
@@ -70,12 +75,15 @@ export function adjustLines(result, { factor = 1, nudgeMs = 0 } = {}) {
 
 /**
  * Every click the lines imply, as the engine's `click_schedule` builds them
- * (accent on, no subdivision): each line clicks from its offset up to, not
- * onto, the next line; the last one to the end of the audio, inclusive; the
- * first beat of each bar of the line's meter is the accented one. Seconds in
- * a Float64Array, levels in a Uint8Array, sorted.
+ * (accent on): each line clicks from its offset up to, not onto, the next
+ * line; the last one to the end of the audio, inclusive; the first beat of
+ * each bar of the line's meter is the accented one. `subdivision` (2, 3 or 4)
+ * adds that many evenly spaced `SUB` clicks per beat, counted from the line's
+ * offset as the engine does, so a subdivision never crosses into the next
+ * line. Seconds in a Float64Array, levels in a Uint8Array, sorted.
  */
-export function clickGrid(lines, durationS) {
+export function clickGrid(lines, durationS, { subdivision = 1 } = {}) {
+  const sub = SUBDIVISIONS.includes(subdivision) ? subdivision : 1
   const duration = Math.min(Math.max(durationS || 0, 1), MAX_CLICK_SECONDS)
   const times = []
   const levels = []
@@ -84,12 +92,12 @@ export function clickGrid(lines, durationS) {
     const start = line.timeMs / 1000
     const last = i + 1 === lines.length
     const end = last ? duration : lines[i + 1].timeMs / 1000
-    const beat = line.beatMs / 1000
-    for (let k = 0; k < 200_000; k++) {
-      const t = start + k * beat
+    const step = line.beatMs / 1000 / sub
+    for (let k = 0; k < 200_000 * sub; k++) {
+      const t = start + k * step
       if (last ? t > end + 1e-6 : t >= end - 1e-6) break
       times.push(t)
-      levels.push(k % line.meter === 0 ? BAR : BEAT)
+      levels.push(k % sub ? SUB : Math.floor(k / sub) % line.meter === 0 ? BAR : BEAT)
     }
   })
   return { t: Float64Array.from(times), level: Uint8Array.from(levels) }
@@ -185,17 +193,20 @@ const isAdjusted = ({ factor, nudgeMs }) => factor !== 1 || nudgeMs !== 0
  * The `[TimingPoints]` block, CRLF, as the API's timing.txt sends it. Not
  * adjusted, it is the engine's own rows; adjusted, the same rows rebuilt from
  * the adjusted lines, with a comment line saying so (osu! reads comments on
- * their own lines only, which is where it goes).
+ * their own lines only, which is where it goes). `options` are the export
+ * options (W12.8) the `lines` were already put through (`exportLines`): when
+ * they change the lines, the rows are rebuilt too and the comment names them.
  */
-export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs: 0 }) {
+export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs: 0 }, options = null) {
   let rows = String(result?.osu_timing ?? '')
     .split(/\r?\n/)
     .filter(Boolean)
-  if (isAdjusted(adjustment)) {
+  if (isAdjusted(adjustment) || changesLines(options)) {
     const header = rows.filter((row) => row.startsWith('//'))
+    const notes = [adjustmentNote(adjustment), optionsNote(options)].filter(Boolean).join(', ')
     rows = [
       ...header,
-      `// Adjusted on the Overtone site (${adjustmentNote(adjustment)}): check it by ear`,
+      `// ${isAdjusted(adjustment) ? 'Adjusted' : 'Exported'} on the Overtone site (${notes}): check it by ear`,
       ...lines.map((line) => `${roundHalfEven(line.timeMs)},${line.beatMs.toFixed(12)},${line.meter},1,0,100,1,0`),
     ]
   }

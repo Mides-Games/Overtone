@@ -298,7 +298,23 @@
     "notConfigured": "O login não está configurado neste servidor.",
     "failed": "Não foi possível iniciar o login: {{message}}",
     "privacy": "O Overtone só guarda seu perfil público da Mides: nome, avatar e banner. Nunca seu e-mail.",
-    "devTitle": "Login de desenvolvimento"
+    "devTitle": "Login de desenvolvimento",
+    "unavailable": "Entrar pelo Mides não está disponível agora.",
+    "reasons": {
+      "app_unknown": "O Mides ainda não aceita entradas no Overtone. Sua conta está ok: tente de novo mais tarde.",
+      "unreachable": "O Mides não respondeu. Tente de novo em alguns minutos."
+    },
+    "mides": {
+      "redirect_not_allowed": "O Mides ainda não aceita entradas no Overtone. Sua conta está ok: tente de novo mais tarde.",
+      "discord_mismatch": "Essa conta do Discord não é a vinculada à sua conta do Mides. Entre com o Discord vinculado lá, ou com o Google.",
+      "sanctioned": "O Mides não deixou esta conta entrar. Confira sua conta em midesprojects.com.",
+      "account_blocked": "O Mides não deixou esta conta entrar. Confira sua conta em midesprojects.com.",
+      "cancelled": "A entrada foi cancelada no Discord ou no Google.",
+      "bad_state": "A entrada demorou demais ou foi interrompida. Tente de novo.",
+      "token_error": "O Discord ou o Google não concluiu a entrada. Tente de novo.",
+      "provider_error": "O Discord ou o Google não concluiu a entrada. Tente de novo.",
+      "other": "O Mides recusou a entrada ({{code}}). Tente de novo."
+    }
   },
   "callback": {
     "working": "Entrando…",
@@ -1954,7 +1970,8 @@
       "unavailable": "Ainda não é possível vincular o Discord neste servidor.",
       "notify": "Me mandar uma DM no Discord quando uma análise terminar",
       "notifyHint": "Pelo bot do Overtone, para as músicas desta conta. Você pode desligar aqui ou com /notify off.",
-      "botOff": "O bot do Overtone ainda não está rodando neste servidor: nada é enviado até ele rodar."
+      "botOff": "O bot do Overtone ainda não está rodando neste servidor: nada é enviado até ele rodar.",
+      "as": "Vinculado como {{name}}"
     },
     "osu": {
       "title": "Vincular o osu!",
@@ -1967,7 +1984,8 @@
       "working": "Vinculando sua conta do osu!…",
       "denied": "O osu! não foi vinculado: o pedido foi recusado no osu!.",
       "stateMissing": "Este vínculo não começou neste navegador, ou demorou demais. Comece de novo pelo seu perfil.",
-      "failed": "Não foi possível vincular o osu!: {{message}}"
+      "failed": "Não foi possível vincular o osu!: {{message}}",
+      "linkedHint": "Vinculado. Seu cartão do osu! aparece no seu perfil; “Atualizar” o lê de novo do osu!."
     }
   },
   "social": {
@@ -2116,13 +2134,102 @@
       "makePublic": "Tornar público",
       "tabs": {
         "timings": "Timings",
-        "collections": "Coleções"
+        "collections": "Coleções",
+        "edit": "Editar"
       },
       "totals": {
         "published": "Publicados",
         "timed": "Músicas timeadas",
         "uses": "Usos",
         "rating": "Estrelas"
+      },
+      "about": "Sobre",
+      "links": {
+        "title": "Links",
+        "osu": "Perfil do osu!",
+        "website": "Site",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "Copiar link do perfil",
+      "copied": "Link copiado",
+      "showcase": "Timings fixados",
+      "badgeEarned": "Conquistada em {{date}}",
+      "stats": {
+        "title": "Tempo",
+        "bpm": "BPM dos timings publicados",
+        "tempo": "Tempo único ou variável",
+        "mostUsed": "Timing mais usado",
+        "noneUsed": "Nenhum desses timings foi usado em um mapa ainda.",
+        "uses_one": "{{count}} uso",
+        "uses_other": "{{count}} usos"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "Rank global",
+        "countryRank": "Rank nacional",
+        "pp": "Performance",
+        "accuracy": "Precisão",
+        "playCount": "Partidas",
+        "ranked": "Mapas ranqueados",
+        "asOf": "Segundo o osu! em {{date}}",
+        "refresh": "Atualizar",
+        "refreshing": "Atualizando…",
+        "refreshSoon": "O cartão foi lido do osu! há menos de cinco minutos. Tente de novo mais tarde."
+      },
+      "activity": {
+        "title": "Atividade",
+        "empty": "Nada público ainda.",
+        "more": "Mostrar mais",
+        "kinds": {
+          "published": "Publicou",
+          "used": "Usado em um mapa:",
+          "verified": "Confirmou no tempo:",
+          "review": "Avaliou o Overtone",
+          "suggestion": "Sugestão aceita:"
+        }
+      },
+      "editor": {
+        "title": "Editar seu perfil",
+        "intro": "O que você escrever aqui aparece na sua página pública, a menos que ela seja privada.",
+        "photoNote": "Sua foto, seu banner e seu nome de usuário vêm do seu perfil do Mides e são atualizados toda vez que você entra.",
+        "photoLink": "Alterar no Mides",
+        "displayName": "Nome de exibição",
+        "displayNameHint": "Opcional. Deixe vazio para mostrar seu nome do Mides ({{name}}).",
+        "about": "Sobre",
+        "aboutHint": "Texto simples, até {{max}} caracteres.",
+        "linksHint": "Só links https, cada um para o próprio site. Deixe um campo vazio para removê-lo.",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "Cor de destaque",
+        "accentHint": "Colore sua página nos dois temas. Toda opção fica legível no claro e no escuro.",
+        "accents": {
+          "default": "Verde-azulado do Overtone",
+          "blue": "Azul",
+          "violet": "Violeta",
+          "pink": "Rosa",
+          "orange": "Laranja",
+          "green": "Verde",
+          "red": "Vermelho"
+        },
+        "save": "Salvar",
+        "saved": "Salvo.",
+        "failed": "Não foi possível salvar: {{message}}",
+        "badLink": "Esse link de {{site}} não pode aparecer neste perfil. Confira se é https e se é desse site."
+      },
+      "showcaseEditor": {
+        "title": "Timings fixados",
+        "hint": "Fixe até {{max}} dos seus timings publicados no topo da sua página, na ordem que quiser.",
+        "up": "Subir",
+        "down": "Descer",
+        "pin": "Fixar",
+        "unpin": "Desafixar",
+        "none": "Você ainda não tem timings publicados para fixar.",
+        "full": "Os seis lugares estão ocupados: desafixe um antes."
       }
     },
     "badges": {
@@ -2149,6 +2256,10 @@
       "ranked-match": {
         "name": "Bate com o ranked",
         "why": "Um timing bateu com o mapa ranked da sua música."
+      },
+      "ranked-mapper": {
+        "name": "Mapper ranqueado",
+        "why": "A conta do osu! vinculada tem mapas ranqueados."
       }
     }
   },

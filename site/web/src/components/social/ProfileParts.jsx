@@ -112,10 +112,11 @@ export function ProfileSkeleton() {
   )
 }
 
-/** The badges, each with what earned it; a quiet line when there are none yet. */
-export function Badges({ badges }) {
-  const { t } = useTranslation()
+/** The badges, each with what earned it and when; a quiet line when there are none yet. */
+export function Badges({ badges, dates = {} }) {
+  const { t, i18n } = useTranslation()
   const earned = BADGES.filter((b) => badges.includes(b))
+  const when = (iso) => (iso ? new Date(iso).toLocaleDateString(i18n.language, { dateStyle: 'medium' }) : null)
   return (
     <section aria-labelledby="profile-badges" className="space-y-3">
       {/* A title, not a section heading: a short row of chips does not carry a headline. */}
@@ -132,7 +133,10 @@ export function Badges({ badges }) {
                 <Icon name="check" size={12} strokeWidth={2} />
                 {t(`social.badges.${b}.name`)}
               </span>
-              <span className="text-caption text-muted">{t(`social.badges.${b}.why`)}</span>
+              <span className="space-y-0.5">
+                <span className="block text-caption text-muted">{t(`social.badges.${b}.why`)}</span>
+                {when(dates[b]) && <span className="readout block text-caption text-dim">{t('social.profile.badgeEarned', { date: when(dates[b]) })}</span>}
+              </span>
             </li>
           ))}
         </ul>

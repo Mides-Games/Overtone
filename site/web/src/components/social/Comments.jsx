@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
 
 import { useAuth } from '../../context/AuthContext.jsx'
 import { length } from '../../lib/community.js'
@@ -8,6 +7,7 @@ import { deleteComment, formatAt, LIMITS, listComments, parseAt, postComment } f
 import Avatar from '../Avatar.jsx'
 import { HideButton, ReportButton, StaffNote } from '../community/Moderation.jsx'
 import { Counter } from '../community/Suggestions.jsx'
+import SignInLink from '../SignInLink.jsx'
 
 /**
  * Comments on a published timing (W6), oldest first. A comment may point at
@@ -63,9 +63,9 @@ export default function Comments({ id, durationS, onSeek, position, onItems = nu
       ) : (
         account === null && (
           <p className="text-caption text-dim">
-            <Link to="/login" className="text-accent hover:underline">
+            <SignInLink className="text-accent hover:underline">
               {t('social.comments.signIn')}
-            </Link>
+            </SignInLink>
           </p>
         )
       )}

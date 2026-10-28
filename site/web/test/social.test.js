@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { beatmapLink, BADGES, formatAt, parseAt, ratingLabel, sortedQuery, userPath } from '../src/lib/social.js'
+import { ABOUT_MAX, LINK_KINDS as API_LINK_KINDS, NAME_MAX, SHOWCASE_MAX } from '../../api/src/utils/profile.js'
+import {
+  beatmapLink,
+  BADGES,
+  formatAt,
+  LINK_KINDS,
+  move,
+  parseAt,
+  PROFILE_LIMITS,
+  profileUrl,
+  ratingLabel,
+  sortedQuery,
+  userPath,
+} from '../src/lib/social.js'
 
 /**
  * Social v2's pure parts (W6, W13.15, W13.18): the times a comment points
@@ -46,4 +59,20 @@ test('the list orders go in the query string only when they are not the default'
   assert.equal(ratingLabel(4.25), '4.25')
   assert.equal(userPath('a b'), '/u/a%20b')
   assert.equal(new Set(BADGES).size, BADGES.length)
+})
+
+test('the showcase moves one place at a time and never off its ends; the link kinds are the API\'s', () => {
+  assert.deepEqual(move(['a', 'b', 'c'], 1, -1), ['b', 'a', 'c'])
+  assert.deepEqual(move(['a', 'b', 'c'], 1, 1), ['a', 'c', 'b'])
+  const list = ['a', 'b']
+  assert.equal(move(list, 0, -1), list)
+  assert.equal(move(list, 1, 1), list)
+  assert.equal(move(list, 5, 1), list)
+  assert.deepEqual(LINK_KINDS, API_LINK_KINDS)
+  assert.equal(PROFILE_LIMITS.about, ABOUT_MAX)
+  assert.equal(PROFILE_LIMITS.displayName, NAME_MAX)
+  assert.equal(PROFILE_LIMITS.showcase, SHOWCASE_MAX)
+  // The profile link is this site's own origin, whatever the username holds.
+  assert.equal(profileUrl('a/b?c', 'https://overtone.example'), 'https://overtone.example/u/a%2Fb%3Fc')
+  assert.ok(BADGES.includes('ranked-mapper'))
 })

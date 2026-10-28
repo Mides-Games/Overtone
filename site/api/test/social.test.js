@@ -19,6 +19,7 @@ const {
   atMsOf, badgesOf, beatmapUrlOf, COLLECTIONS_PER_ACCOUNT, MIN_RATINGS_TO_RANK, rankScore, TIMER_MIN_RATINGS, TIMER_MIN_USES,
 } = await import('../src/utils/social.js');
 const { listFilters } = await import('../src/utils/timings.js');
+const { ABOUT_MAX, linkOf, profileEdit } = await import('../src/utils/profile.js');
 
 /**
  * Social v2 on published timings (W5.6, W6, W13.15, W13.18), over HTTP on the
@@ -423,7 +424,11 @@ test('a profile shows what its timer published, their totals and badges; a priva
 
   const profile = await call('GET', '/users/CAROL');
   assert.equal(profile.status, 200);
-  assert.deepEqual(profile.body.user, { username: 'carol', displayName: 'CAROL', avatarUrl: null, bannerUrl: null });
+  assert.deepEqual(profile.body.user, {
+    username: 'carol', displayName: 'CAROL', avatarUrl: null, bannerUrl: null, about: null, links: {}, accent: null,
+  });
+  assert.equal(profile.body.osu, null);
+  assert.equal(profile.body.edit, undefined, 'what the owner edits is the owner\'s view only');
   assert.deepEqual(profile.body.totals, { timed: 3, published: 2, uses: 1, rating: { average: 3.5, count: 2 } });
   assert.deepEqual(profile.body.badges, ['first-timing', 'used-by-others']);
   assert.equal(profile.body.mine, false);
@@ -440,7 +445,7 @@ test('a profile shows what its timer published, their totals and badges; a priva
   assert.equal((await call('PUT', '/me/profile', { cookie: carol, body: { private: 'yes' } })).status, 400);
   assert.equal((await call('PUT', '/me/profile', { cookie: carol, body: { private: true }, sameOrigin: false })).status, 403);
   assert.equal((await call('PUT', '/me/profile', { body: { private: true } })).status, 401);
-  assert.deepEqual((await call('PUT', '/me/profile', { cookie: carol, body: { private: true } })).body, { private: true });
+  assert.equal((await call('PUT', '/me/profile', { cookie: carol, body: { private: true } })).body.private, true);
   for (const cookie of ['', alice, bob]) {
     assert.equal((await call('GET', '/users/carol', { cookie })).status, 404);
     assert.equal((await call('GET', '/users/carol/timings', { cookie })).status, 404);
@@ -502,6 +507,132 @@ test('the ranking of timers: by uses or by stars, a minimum to enter, private pr
   await call('PUT', '/me/profile', { cookie: erin, body: { private: true } });
   assert.ok(!(await call('GET', '/timers')).body.timers.some((r) => r.user.username === 'erin'));
   await call('PUT', '/me/profile', { cookie: erin, body: { private: false } });
+});
+
+/** A new member with a session, made directly (the dev login has two). */
+const member = async (name) => {
+  const row = await upsertFromMides({
+    midesUserId: `test-${name}`, username: name, displayName: `${name} on Mides`, avatarUrl: null, bannerUrl: null, discordId: null, role: null,
+  });
+  return `${COOKIE}=${issue(row.id, row.session_version)}`;
+};
+
+test('profile links are read to their own sites and kept in one form; anything else is refused', () => {
+  assert.equal(linkOf('osu', 'osu.ppy.sh/u/peppy'), 'https://osu.ppy.sh/users/peppy');
+  assert.equal(linkOf('osu', 'https://osu.ppy.sh/users/2/mania'), 'https://osu.ppy.sh/users/2/mania');
+  assert.equal(linkOf('youtube', 'https://youtube.com/@someone'), 'https://www.youtube.com/@someone');
+  assert.equal(linkOf('youtube', 'https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv'), 'https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv');
+  assert.equal(linkOf('twitch', 'https://www.twitch.tv/SomeOne_'), 'https://www.twitch.tv/someone_');
+  assert.equal(linkOf('website', 'https://example.org/me?x=1'), 'https://example.org/me?x=1');
+  assert.equal(linkOf('website', ''), null);
+  for (const [kind, bad] of [
+    ['osu', 'https://osu.ppy.sh.evil.example/users/2'],
+    ['osu', 'https://evil.example/osu.ppy.sh/users/2'],
+    ['osu', 'https://osu.ppy.sh/beatmapsets/1'],
+    ['youtube', 'https://youtube.com.evil.example/@a'],
+    ['youtube', 'https://www.youtube.com/watch?v=x'],
+    ['twitch', 'https://twitch.tv/a/videos'],
+    ['website', 'http://example.org'],
+    ['website', 'javascript:alert(1)'],
+    ['website', 'https://user:pw@example.org'],
+    ['website', 'https://127.0.0.1/'],
+    ['website', 'https://localhost/'],
+    ['website', 'https://example.org:8443/'],
+    ['website', `https://example.org/${'a'.repeat(250)}`],
+    ['website', 42],
+  ]) {
+    assert.throws(() => linkOf(kind, bad), (error) => error.code === 'BAD_LINK', `${kind} ${bad}`);
+  }
+  // Text is cleaned and capped; an empty one is "none".
+  const edit = profileEdit({ about: `  Hi‮ there\n\n\n\nbye ${'x'.repeat(700)}`, displayName: '  ' });
+  assert.ok(!edit.about.includes('‮') && !edit.about.includes('\n\n\n'));
+  assert.equal([...edit.about].length, ABOUT_MAX);
+  assert.equal(edit.displayName, null);
+  assert.throws(() => profileEdit({}), (error) => error.code === 'BAD_PROFILE');
+  assert.throws(() => profileEdit({ accent: '#ff0000' }), (error) => error.code === 'BAD_ACCENT');
+  assert.throws(() => profileEdit({ showcase: ['x'] }), (error) => error.code === 'BAD_SHOWCASE');
+});
+
+test('the owner edits about, name, links, accent and showcase; others see them, and only their own timings pin', async () => {
+  const hana = await member('hana');
+  const ivan = await member('ivan');
+  const h1 = await timing({ cookie: hana, bpm: 174 });
+  const h2 = await timing({ cookie: hana, bpm: 90 });
+  const draft = await timing({ cookie: hana, publish: false });
+  const theirs = await timing({ cookie: ivan });
+
+  const edit = (cookie, body, sameOrigin = true) => call('PUT', '/me/profile', { cookie, body, sameOrigin });
+  assert.equal((await edit('', { about: 'x' })).status, 401);
+  assert.equal((await edit(hana, { about: 'x' }, false)).status, 403);
+  assert.equal((await edit(hana, { links: { osu: 'https://evil.example/' } })).body.error.code, 'BAD_LINK');
+  // Someone else's timing, an unpublished one, or one that is not there: the 404 of a missing timing.
+  for (const id of [theirs, draft, newPublicId()]) assert.equal((await edit(hana, { showcase: [id] })).status, 404, id);
+  assert.equal((await edit(hana, { showcase: [h1, h1] })).status, 400);
+
+  const saved = await edit(hana, {
+    about: 'I time <b>DnB</b>.', displayName: 'Hana T', accent: 'violet', showcase: [h2, h1],
+    links: { osu: 'osu.ppy.sh/users/hana', website: 'https://hana.example', youtube: '', twitch: null, other: 'https://x.example' },
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.body.links, { osu: 'https://osu.ppy.sh/users/hana', website: 'https://hana.example/' });
+
+  const page = (await call('GET', '/users/hana')).body;
+  assert.equal(page.user.displayName, 'Hana T');
+  assert.equal(page.user.about, 'I time <b>DnB</b>.', 'kept as text; the page renders it as text');
+  assert.equal(page.user.accent, 'violet');
+  assert.deepEqual(page.showcase.map((t) => t.id), [h2, h1]);
+  assert.deepEqual(page.stats.tempo, { single: 2, variable: 0 });
+  assert.equal(page.stats.bpm.buckets.reduce((sum, b) => sum + b.count, 0), 2);
+  assert.equal(page.stats.mostUsed, null, 'no uses yet, so no most-used timing');
+  assert.ok(page.badgeDates['first-timing']);
+
+  // The owner's view carries what they edit, and where Mides edits the rest.
+  const own = (await call('GET', '/me/profile', { cookie: hana })).body;
+  assert.equal(own.edit.displayName, 'Hana T');
+  assert.equal(own.edit.midesDisplayName, 'hana on Mides');
+  assert.equal((await call('GET', '/me', { cookie: hana })).body.account.displayName, 'Hana T');
+
+  // An empty name falls back to Mides'; unpublishing a pinned timing drops it from the showcase.
+  await edit(hana, { displayName: '' });
+  assert.equal((await call('GET', '/users/hana')).body.user.displayName, 'hana on Mides');
+  await analyses().unpublish(h2);
+  assert.deepEqual((await call('GET', '/users/hana')).body.showcase.map((t) => t.id), [h1]);
+
+  await call('PUT', `/timings/${h1}/use`, { cookie: ivan, body: {} });
+  assert.equal((await call('GET', '/users/hana')).body.stats.mostUsed.id, h1);
+});
+
+test('the activity is public actions only, paged; a private profile shows none of it to others', async () => {
+  const jo = await member('jo');
+  const kim = await member('kim');
+  const t1 = await timing({ cookie: jo });
+  await timing({ cookie: jo, publish: false });
+  await timing({ cookie: jo, publish: false, isPrivate: true });
+  await call('PUT', `/timings/${t1}/use`, { cookie: kim, body: {} });
+  assert.ok((await call('POST', '/community/reviews', { cookie: jo, body: { stars: 5, body: 'Good site.' } })).status < 300);
+  const s = await call('POST', '/community/suggestions', { cookie: jo, body: { title: 'A suggestion', body: 'Please.' } });
+  await call('POST', `/community/suggestions/${s.body.suggestion.id}/state`, { cookie: bob, body: { state: 'planned' } });
+
+  const page = await call('GET', '/users/jo/activity');
+  assert.equal(page.status, 200);
+  const kinds = page.body.items.map((e) => e.kind).sort();
+  assert.deepEqual(kinds, ['published', 'review', 'suggestion', 'used']);
+  assert.equal(page.body.items.find((e) => e.kind === 'review').stars, 5);
+  assert.equal(page.body.items.filter((e) => e.kind === 'published').length, 1, 'only the published one');
+  assert.ok(page.body.items.every((e) => !('accountId' in e) && !JSON.stringify(e).includes('kim')), 'a use names nobody');
+  assert.equal((await call('GET', '/users/jo/activity?cursor=bad')).status, 400);
+
+  // Private: the profile, its activity and its card are the 404 of a name nobody has, to everyone but the owner.
+  await call('PUT', '/me/profile', { cookie: jo, body: { private: true, about: 'secret words' } });
+  for (const cookie of ['', alice, kim]) {
+    for (const path of ['/users/jo', '/users/jo/activity', '/users/jo/timings']) assert.equal((await call('GET', path, { cookie })).status, 404, path);
+  }
+  assert.equal((await call('GET', '/users/jo/card')).status, 404);
+  assert.equal((await call('GET', '/users/jo/card', { cookie: jo })).status, 404, 'the card never reads a session');
+  assert.equal((await call('GET', '/users/jo/activity', { cookie: jo })).status, 200);
+  await call('PUT', '/me/profile', { cookie: jo, body: { private: false } });
+  const card = await call('GET', '/users/jo/card');
+  assert.deepEqual(card.body, { username: 'jo', displayName: 'jo on Mides', about: 'secret words', published: 1 });
 });
 
 test('nothing this file read carried an upload\'s SHA-1, address hash or anonymous hash', async () => {

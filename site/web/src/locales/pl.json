@@ -306,7 +306,23 @@
     "notConfigured": "Logowanie nie jest skonfigurowane na tym serwerze.",
     "failed": "Nie udało się rozpocząć logowania: {{message}}",
     "privacy": "Overtone przechowuje tylko twój publiczny profil Mides: nazwę, awatar i baner. Nigdy twojego e-maila.",
-    "devTitle": "Logowanie deweloperskie"
+    "devTitle": "Logowanie deweloperskie",
+    "unavailable": "Logowanie przez Mides jest teraz niedostępne.",
+    "reasons": {
+      "app_unknown": "Mides nie przyjmuje jeszcze logowań do Overtone. Z twoim kontem wszystko w porządku: spróbuj później.",
+      "unreachable": "Mides nie odpowiedział. Spróbuj ponownie za kilka minut."
+    },
+    "mides": {
+      "redirect_not_allowed": "Mides nie przyjmuje jeszcze logowań do Overtone. Z twoim kontem wszystko w porządku: spróbuj później.",
+      "discord_mismatch": "To konto Discord nie jest tym połączonym z twoim kontem Mides. Zaloguj się Discordem połączonym tam albo przez Google.",
+      "sanctioned": "Mides nie pozwolił zalogować się temu kontu. Sprawdź swoje konto na midesprojects.com.",
+      "account_blocked": "Mides nie pozwolił zalogować się temu kontu. Sprawdź swoje konto na midesprojects.com.",
+      "cancelled": "Logowanie zostało anulowane w Discordzie lub Google.",
+      "bad_state": "Logowanie trwało zbyt długo lub zostało przerwane. Spróbuj ponownie.",
+      "token_error": "Discord lub Google nie dokończył logowania. Spróbuj ponownie.",
+      "provider_error": "Discord lub Google nie dokończył logowania. Spróbuj ponownie.",
+      "other": "Mides odrzucił logowanie ({{code}}). Spróbuj ponownie."
+    }
   },
   "callback": {
     "working": "Logowanie…",
@@ -2038,7 +2054,8 @@
       "unavailable": "Łączenie z Discordem nie jest jeszcze dostępne na tym serwerze.",
       "notify": "Wyślij mi DM na Discordzie, gdy analiza się skończy",
       "notifyHint": "Od bota Overtone, dla utworów tego konta. Możesz to wyłączyć tutaj albo komendą /notify off.",
-      "botOff": "Bot Overtone nie działa jeszcze na tym serwerze: nic nie zostanie wysłane, dopóki nie zacznie."
+      "botOff": "Bot Overtone nie działa jeszcze na tym serwerze: nic nie zostanie wysłane, dopóki nie zacznie.",
+      "as": "Połączono jako {{name}}"
     },
     "osu": {
       "title": "Łączenie z osu!",
@@ -2053,7 +2070,8 @@
       "working": "Łączenie twojego konta osu!…",
       "denied": "Nie połączono osu!: prośba została odrzucona w osu!.",
       "stateMissing": "To łączenie nie zaczęło się w tej przeglądarce albo trwało zbyt długo. Zacznij od nowa ze swojego profilu.",
-      "failed": "Nie udało się połączyć osu!: {{message}}"
+      "failed": "Nie udało się połączyć osu!: {{message}}",
+      "linkedHint": "Połączono. Twoja karta osu! jest widoczna w profilu; „Odśwież” wczytuje ją ponownie z osu!."
     }
   },
   "social": {
@@ -2222,13 +2240,104 @@
       "makePublic": "Ustaw jako publiczny",
       "tabs": {
         "timings": "Timingi",
-        "collections": "Kolekcje"
+        "collections": "Kolekcje",
+        "edit": "Edytuj"
       },
       "totals": {
         "published": "Opublikowane",
         "timed": "Ztimowane utwory",
         "uses": "Użycia",
         "rating": "Gwiazdki"
+      },
+      "about": "O mnie",
+      "links": {
+        "title": "Linki",
+        "osu": "Profil osu!",
+        "website": "Strona",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "Kopiuj link do profilu",
+      "copied": "Skopiowano link",
+      "showcase": "Przypięte timingi",
+      "badgeEarned": "Zdobyta {{date}}",
+      "stats": {
+        "title": "Tempo",
+        "bpm": "BPM opublikowanych timingów",
+        "tempo": "Stałe lub zmienne tempo",
+        "mostUsed": "Najczęściej używany timing",
+        "noneUsed": "Żaden z tych timingów nie został jeszcze użyty w mapie.",
+        "uses_one": "{{count}} użycie",
+        "uses_few": "{{count}} użycia",
+        "uses_many": "{{count}} użyć",
+        "uses_other": "{{count}} użycia"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "Ranking globalny",
+        "countryRank": "Ranking krajowy",
+        "pp": "Performance",
+        "accuracy": "Celność",
+        "playCount": "Liczba gier",
+        "ranked": "Mapy rankingowe",
+        "asOf": "Według osu! z dnia {{date}}",
+        "refresh": "Odśwież",
+        "refreshing": "Odświeżanie…",
+        "refreshSoon": "Karta została wczytana z osu! mniej niż pięć minut temu. Spróbuj później."
+      },
+      "activity": {
+        "title": "Aktywność",
+        "empty": "Na razie nic publicznego.",
+        "more": "Pokaż więcej",
+        "kinds": {
+          "published": "Opublikowano",
+          "used": "Użyto w mapie:",
+          "verified": "Potwierdzono jako w rytmie:",
+          "review": "Wystawiono opinię o Overtone",
+          "suggestion": "Przyjęta sugestia:"
+        }
+      },
+      "editor": {
+        "title": "Edytuj profil",
+        "intro": "To, co tu napiszesz, pojawi się na twojej publicznej stronie, chyba że jest prywatna.",
+        "photoNote": "Twoje zdjęcie, baner i nazwa użytkownika pochodzą z profilu Mides i odświeżają się przy każdym logowaniu.",
+        "photoLink": "Zmień je w Mides",
+        "displayName": "Wyświetlana nazwa",
+        "displayNameHint": "Opcjonalnie. Zostaw puste, aby pokazać nazwę z Mides ({{name}}).",
+        "about": "O mnie",
+        "aboutHint": "Zwykły tekst, do {{max}} znaków.",
+        "linksHint": "Tylko linki https, każdy do własnej strony. Wyczyść pole, aby usunąć link.",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "Kolor akcentu",
+        "accentHint": "Koloruje twoją stronę w obu motywach. Każdy wybór jest czytelny w jasnym i ciemnym.",
+        "accents": {
+          "default": "Morski Overtone",
+          "blue": "Niebieski",
+          "violet": "Fioletowy",
+          "pink": "Różowy",
+          "orange": "Pomarańczowy",
+          "green": "Zielony",
+          "red": "Czerwony"
+        },
+        "save": "Zapisz",
+        "saved": "Zapisano.",
+        "failed": "Nie udało się zapisać: {{message}}",
+        "badLink": "Tego linku ({{site}}) ten profil nie może pokazać. Sprawdź, czy to https i czy prowadzi do tej strony."
+      },
+      "showcaseEditor": {
+        "title": "Przypięte timingi",
+        "hint": "Przypnij do {{max}} opublikowanych timingów na górze strony, w wybranej kolejności.",
+        "up": "W górę",
+        "down": "W dół",
+        "pin": "Przypnij",
+        "unpin": "Odepnij",
+        "none": "Nie masz jeszcze opublikowanych timingów do przypięcia.",
+        "full": "Wszystkie sześć miejsc jest zajętych: najpierw odepnij jeden."
       }
     },
     "badges": {
@@ -2255,6 +2364,10 @@
       "ranked-match": {
         "name": "Zgodność z ranked",
         "why": "Timing zgodził się z mapą ranked swojego utworu."
+      },
+      "ranked-mapper": {
+        "name": "Mapper rankingowy",
+        "why": "Połączone konto osu! ma mapy rankingowe."
       }
     }
   },

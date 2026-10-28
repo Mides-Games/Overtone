@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import SignInLink from '../SignInLink.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import {
   addToCollection,
@@ -243,9 +244,9 @@ export function BeatmapLink({ url }) {
 function SignInHint({ text }) {
   return (
     <p className="text-caption text-dim">
-      <Link to="/login" className="text-accent hover:underline">
+      <SignInLink className="text-accent hover:underline">
         {text}
-      </Link>
+      </SignInLink>
     </p>
   )
 }

@@ -363,9 +363,19 @@ function escapeAttr(value) {
     .replace(/'/g, '&#39;');
 }
 
-// The card, read from the API as overtone-web forwards anything else: the
-// proxy secret, and the visitor's address so the API's read limit counts them.
-function timingCard(req, id) {
+// A public profile's preview (/u/<username>, 2026-10-28) is written the same
+// way from the API's /users/<username>/card: the shown name, the start of the
+// About text and the published count. The card is asked for without the
+// visitor's cookies, so a private profile is a 404 there and its page goes
+// out plain, with no tags at all.
+const PROFILE_PAGE = /^\/u\/([A-Za-z0-9_.-]{1,40})\/?$/;
+
+const timingCard = (req, id) => apiCard(req, `/api/v1/timings/${id}/card`);
+const profileCard = (req, username) => apiCard(req, `/api/v1/users/${encodeURIComponent(username)}/card`);
+
+// A card, read from the API as overtone-web forwards anything else: the proxy
+// secret, and the visitor's address so the API's read limit counts them.
+function apiCard(req, apiPath) {
   return new Promise((resolve) => {
     const headers = { accept: 'application/json', host: UPSTREAM.host };
     if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
@@ -373,7 +383,7 @@ function timingCard(req, id) {
     headers['x-forwarded-for'] = forwardedFor(req, peer, fromTrustedProxy(peer));
     headers['x-forwarded-proto'] = 'http';
     const up = http.request(
-      { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: 'GET', path: `/api/v1/timings/${id}/card`, headers },
+      { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: 'GET', path: apiPath, headers },
       (r) => {
         if (r.statusCode !== 200) {
           r.resume();
@@ -410,8 +420,20 @@ function withCard(html, card) {
   const bpm = Number.isFinite(card.bpm) ? `${Math.round(card.bpm * 100) / 100} BPM` : null;
   const lines = Number.isInteger(card.redLines) ? `${card.redLines} red line${card.redLines === 1 ? '' : 's'}` : null;
   const who = card.uploader?.username ? `timed by ${card.uploader.username}` : 'timed anonymously';
-  const title = escapeAttr(`${song} · Overtone`);
-  const description = escapeAttr([bpm, lines, who].filter(Boolean).join(' · '));
+  return withTags(html, `${song} · Overtone`, [bpm, lines, who].filter(Boolean).join(' · '));
+}
+
+/** index.html with a profile's title and Open Graph tags in its head. */
+function withProfileCard(html, card) {
+  const name = card.displayName && card.displayName !== card.username ? `${card.displayName} (@${card.username})` : `@${card.username}`;
+  const count = Number.isInteger(card.published) ? `${card.published} published timing${card.published === 1 ? '' : 's'}` : null;
+  return withTags(html, `${name} · Overtone`, [card.about, count].filter(Boolean).join(' · ') || 'A timer on Overtone');
+}
+
+/** Writes the title, description and Open Graph tags, every value escaped for an attribute. */
+function withTags(html, rawTitle, rawDescription) {
+  const title = escapeAttr(rawTitle);
+  const description = escapeAttr(rawDescription);
   const tags = [
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="Overtone" />`,
@@ -425,16 +447,22 @@ function withCard(html, card) {
     .replace(/<\/head>/i, () => `    ${tags}\n  </head>`);
 }
 
-async function serveTimingPage(req, res, id) {
+const serveTimingPage = (req, res, id) => serveCardPage(req, res, () => timingCard(req, id), withCard);
+const serveProfilePage = (req, res, username) =>
+  serveCardPage(req, res, () => profileCard(req, username), (html, card) => (typeof card.username === 'string' ? withProfileCard(html, card) : null));
+
+async function serveCardPage(req, res, load, write) {
   const index = path.join(ROOT, 'index.html');
   if (!(await file(index))) return false;
-  const card = await timingCard(req, id);
+  const card = await load();
   if (!card) return false;
-  const body = Buffer.from(withCard(await readFile(index, 'utf8'), card), 'utf8');
+  const html = write(await readFile(index, 'utf8'), card);
+  if (!html) return false;
+  const body = Buffer.from(html, 'utf8');
   res.writeHead(200, {
     'content-type': TYPES['.html'],
     'content-length': body.length,
-    // Never kept: an unpublished timing must stop being described at once.
+    // Never kept: an unpublished timing, or a profile made private, must stop being described at once.
     'cache-control': 'no-store',
     ...(await securityHeaders()),
   });
@@ -456,6 +484,8 @@ async function serve(req, res) {
   }
   const timing = TIMING_PAGE.exec(rel);
   if (timing && (await serveTimingPage(req, res, timing[1]))) return;
+  const profile = PROFILE_PAGE.exec(rel);
+  if (profile && (await serveProfilePage(req, res, profile[1]))) return;
   // Resolved against ROOT and checked to stay inside it: `..` never escapes.
   let target = path.join(ROOT, path.normalize(rel));
   if (target !== ROOT && !target.startsWith(ROOT + path.sep)) {

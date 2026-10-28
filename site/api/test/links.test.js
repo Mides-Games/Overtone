@@ -14,7 +14,7 @@ import { after, before, test } from 'node:test';
  * side is off, and that is tested too.
  */
 
-const osu = { challenge: null, tokenCalls: 0, meCalls: 0, lastTokenBody: null, me: null };
+const osu = { challenge: null, tokenCalls: 0, meCalls: 0, lastTokenBody: null, me: null, appTokens: 0, userCalls: 0, user: null };
 const fakeOsu = createServer((req, res) => {
   let body = '';
   req.on('data', (chunk) => (body += chunk));
@@ -28,6 +28,11 @@ const fakeOsu = createServer((req, res) => {
       const b = JSON.parse(body || '{}');
       osu.lastTokenBody = b;
       if (b.client_id !== 4242 || b.client_secret !== 'osu-test-secret') return send(401, { error: 'invalid_client' });
+      // The refresh's app token: client credentials, `public` only, no user behind it.
+      if (b.grant_type === 'client_credentials') {
+        osu.appTokens += 1;
+        return b.scope === 'public' ? send(200, { access_token: 'osu-app', token_type: 'Bearer', expires_in: 86400 }) : send(400, { error: 'invalid_scope' });
+      }
       if (b.code !== 'good-code' || b.redirect_uri !== 'http://localhost:5173/link/osu') return send(400, { error: 'invalid_grant' });
       const challenge = createHash('sha256').update(b.code_verifier ?? '').digest('base64url');
       if (challenge !== osu.challenge) return send(400, { error: 'invalid_grant', hint: 'pkce' });
@@ -37,6 +42,12 @@ const fakeOsu = createServer((req, res) => {
       osu.meCalls += 1;
       if (req.headers.authorization !== 'Bearer osu-access') return send(401, {});
       return send(200, osu.me);
+    }
+    const user = /^\/api\/v2\/users\/(\d+)\/osu\?key=id$/.exec(req.url);
+    if (req.method === 'GET' && user) {
+      osu.userCalls += 1;
+      if (req.headers.authorization !== 'Bearer osu-app') return send(401, {});
+      return osu.user && String(osu.user.id) === user[1] ? send(200, osu.user) : send(404, {});
     }
     return send(404, {});
   });
@@ -49,6 +60,8 @@ delete process.env.BOT_TOKEN;
 process.env.NODE_ENV = 'development';
 process.env.MIDES_DEV_LOGIN = '1';
 process.env.MIDES_WEB_URL = 'https://mides.example';
+// Unset by default (env.js says why); a Mides that serves the page is set up like this.
+process.env.MIDES_DISCORD_LINK_PATH = '/connections/discord/link';
 process.env.OSU_CLIENT_ID = '4242';
 process.env.OSU_CLIENT_SECRET = 'osu-test-secret';
 process.env.OSU_REDIRECT_URI = 'http://localhost:5173/link/osu';
@@ -110,11 +123,10 @@ test('the Mides profile\'s discord_id is kept only when it is a snowflake', () =
 test('links need a session, and say what this server can link', async () => {
   assert.equal((await fetch(`${base}/me/links`)).status, 401);
   const mine = await links(alice);
-  assert.deepEqual(mine.discord, { linked: true, notify: false });
+  assert.deepEqual(mine.discord, { linked: true, notify: false, username: null });
   assert.equal(mine.osu, null);
   // No BOT_TOKEN here; osu! configured; the dev login has no Mides to link with.
-  assert.deepEqual(mine.available, { midesDiscord: false, bot: false, osu: true });
-  assert.deepEqual((await links(bob)).discord, { linked: false, notify: false });
+  assert.deepEqual(mine.available, { midesDiscord: false, bot: false, osu: true });  assert.deepEqual((await links(bob)).discord, { linked: false, notify: false, username: null });
 });
 
 test('the Discord link goes to the Mides page, back to the profile, built from the server\'s own URLs', async () => {
@@ -143,14 +155,14 @@ test('DMs turn on only with Discord linked, and unlinking turns them off', async
   assert.equal((await notify(alice, 'yes')).status, 400);
   assert.equal((await notify(alice, true, { 'Content-Type': 'application/json' })).status, 403);
   assert.equal((await notify(alice, true)).status, 200);
-  assert.deepEqual((await links(alice)).discord, { linked: true, notify: true });
+  assert.deepEqual((await links(alice)).discord, { linked: true, notify: true, username: null });
 
   const unlink = await fetch(`${base}/links/discord`, { method: 'DELETE', headers: { ...SAME_ORIGIN, Cookie: alice } });
   assert.equal(unlink.status, 204);
-  assert.deepEqual((await links(alice)).discord, { linked: false, notify: false });
+  assert.deepEqual((await links(alice)).discord, { linked: false, notify: false, username: null });
   // Signing in again through a Mides that sends the id links it again.
   alice = await signIn('discord');
-  assert.deepEqual((await links(alice)).discord, { linked: true, notify: false });
+  assert.deepEqual((await links(alice)).discord, { linked: true, notify: false, username: null });
 });
 
 /** Starts an osu! link for `cookie`: the authorize URL and the state cookie. */
@@ -186,13 +198,21 @@ test('the osu! authorize URL asks for identify only, with a state and an S256 ch
 });
 
 test('osu! links: code exchanged server side with the PKCE verifier, /me read once, the token kept nowhere', async () => {
-  osu.me = { id: 2, username: 'peppy', avatar_url: 'https://a.ppy.sh/2', ranked_beatmapset_count: 7, email: 'never@kept' };
+  osu.me = {
+    id: 2, username: 'peppy', avatar_url: 'https://a.ppy.sh/2', ranked_beatmapset_count: 7, email: 'never@kept', country_code: 'AU',
+    statistics: { global_rank: 1234, country_rank: 56, pp: 4321.987, hit_accuracy: 98.765, play_count: 4500 },
+  };
   const { url, stateCookie } = await startOsu(bob);
   const before = { token: osu.tokenCalls, me: osu.meCalls };
   const response = await exchangeOsu(bob, stateCookie, { code: 'good-code', state: url.searchParams.get('state') });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual({ ...body.osu, linkedAt: undefined }, { id: 2, username: 'peppy', avatarUrl: 'https://a.ppy.sh/2', rankedCount: 7, linkedAt: undefined });
+  assert.deepEqual({ ...body.osu, linkedAt: undefined, refreshedAt: undefined }, {
+    id: 2, username: 'peppy', url: 'https://osu.ppy.sh/users/2', country: 'AU', globalRank: 1234, countryRank: 56,
+    pp: 4321.99, accuracy: 98.77, playCount: 4500, rankedCount: 7, linkedAt: undefined, refreshedAt: undefined,
+  });
+  // The avatar is kept but not sent: the page loads no image from osu!'s host.
+  assert.ok(!JSON.stringify(body).includes('a.ppy.sh'));
   assert.equal(osu.tokenCalls - before.token, 1);
   assert.equal(osu.meCalls - before.me, 1);
   assert.equal(osu.lastTokenBody.grant_type, 'authorization_code');
@@ -204,6 +224,47 @@ test('osu! links: code exchanged server side with the PKCE verifier, /me read on
   const unlink = await fetch(`${base}/links/osu`, { method: 'DELETE', headers: { ...SAME_ORIGIN, Cookie: bob } });
   assert.equal(unlink.status, 204);
   assert.equal((await links(bob)).osu, null);
+});
+
+const refresh = (cookie, headers = JSON_BODY) => fetch(`${base}/links/osu/refresh`, { method: 'POST', headers: { ...headers, Cookie: cookie }, body: '{}' });
+
+test('the osu! card refreshes only on the owner\'s press, with the app\'s token, at most once in five minutes', async () => {
+  // Not linked: nothing to refresh, and osu! is not asked.
+  const calls = osu.userCalls;
+  assert.equal((await refresh(alice)).status, 409);
+  assert.equal((await refresh(alice, { 'Content-Type': 'application/json' })).status, 403);
+  assert.equal(osu.userCalls, calls);
+
+  osu.me = { id: 9, username: 'mapper', ranked_beatmapset_count: 0, statistics: { global_rank: 900, pp: 100 } };
+  const { url, stateCookie } = await startOsu(alice);
+  assert.equal((await exchangeOsu(alice, stateCookie, { code: 'good-code', state: url.searchParams.get('state') })).status, 200);
+  // Just linked: the card is fresh, so a refresh waits.
+  const soon = await refresh(alice);
+  assert.equal(soon.status, 429);
+  assert.equal((await soon.json()).error.code, 'OSU_REFRESH_SOON');
+  assert.equal(osu.userCalls, calls);
+
+  // Five minutes on (the stored time moved back by hand), it reads /users/9/osu.
+  const { memory } = await import('../src/services/account.service.js');
+  const row = [...memory.accounts.values()].find((a) => Number(a.osu_user_id) === 9);
+  row.osu_refreshed_at = new Date(Date.now() - 6 * 60_000);
+  osu.user = { id: 9, username: 'mapper', ranked_beatmapset_count: 3, country_code: 'ES', statistics: { global_rank: 800, pp: 150.5 } };
+  const fresh = await refresh(alice);
+  assert.equal(fresh.status, 200);
+  const card = (await fresh.json()).osu;
+  assert.equal(card.rankedCount, 3);
+  assert.equal(card.globalRank, 800);
+  assert.equal(card.country, 'ES');
+  assert.equal(osu.userCalls, calls + 1);
+  assert.equal(osu.lastTokenBody.grant_type, 'client_credentials');
+  // A ranked osu! account earns the profile its badge.
+  const profile = await (await fetch(`${base}/me/profile`, { headers: { Cookie: alice } })).json();
+  assert.ok(profile.badges.includes('ranked-mapper'));
+  assert.equal(profile.osu.username, 'mapper');
+  // And nobody's page view asks osu! anything.
+  await fetch(`${base}/users/dev_discord`);
+  assert.equal(osu.userCalls, calls + 1);
+  await fetch(`${base}/links/osu`, { method: 'DELETE', headers: { ...SAME_ORIGIN, Cookie: alice } });
 });
 
 test('an osu! return without its own state, or for another account, is refused before osu! is called', async () => {
@@ -237,10 +298,14 @@ test('a stale osu! code, or a verifier that does not match the challenge, is ref
   assert.equal(response.status, 400);
 });
 
-test('osu!\'s /me is reduced to four fields; an avatar off ppy.sh is dropped', () => {
+test('osu!\'s /me is reduced to an allow-list; an avatar off ppy.sh and numbers out of range are dropped', () => {
   assert.deepEqual(toOsuProfile({ id: 5, username: 'a\u0000b', avatar_url: 'https://evil.example/x.png', ranked_and_approved_beatmapset_count: 3 }), {
-    id: 5, username: 'ab', avatarUrl: null, rankedCount: 3,
+    id: 5, username: 'ab', avatarUrl: null, rankedCount: 3, country: null, globalRank: null, countryRank: null, pp: null, accuracy: null, playCount: null,
   });
+  const odd = toOsuProfile({
+    id: 5, username: 'a', country_code: 'es<script>', statistics: { global_rank: -1, country_rank: 1.5, pp: 'lots', hit_accuracy: 101, play_count: 2 ** 40 },
+  });
+  assert.deepEqual([odd.country, odd.globalRank, odd.countryRank, odd.pp, odd.accuracy, odd.playCount], [null, null, null, null, null, null]);
   assert.equal(toOsuProfile({ id: 'x', username: 'a' }), null);
   assert.equal(toOsuProfile({ id: 5, username: '' }), null);
   assert.equal(toOsuProfile({ id: 5, username: 'a' }).rankedCount, null);

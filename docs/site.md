@@ -164,8 +164,8 @@ is missing.
 | `WORKER_TOKEN` | random per process | The bearer of `/api/internal`. 32+ characters. **Required in production.** `pnpm dev` generates one and hands it to the worker it starts. |
 | `JOB_TIMEOUT_S` | `900` | A job running longer goes back to the queue; two attempts in all. |
 | `BOT_TOKEN` | none (bot off) | The Discord bot's bearer for `/api/internal/bot` (W9.3, `docs/bot.md`). 32+ characters, never `WORKER_TOKEN`. Unset, those routes answer 503 `BOT_OFF` and the profile offers no bot code. |
-| `MIDES_DISCORD_LINK_PATH` | `/connections/discord/link` | The Mides page that links Discord and returns to `/profile?linked=discord` (W9.1). Mides does not serve it yet. |
-| `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI` | none (osu! off) | The osu! OAuth app (W9.2): all three or none; the redirect URI is `SITE_URL/link/osu`, exactly as registered. |
+| `MIDES_DISCORD_LINK_PATH` | none (button off) | The Mides page that links Discord and returns to `/profile?linked=discord` (W9.1), e.g. `/connections/discord/link`. Unset since 2026-10-28: Mides serves no such page yet, and a button to it would strand the person on Mides' 404. Until then the profile offers the bot's `/link` code. |
+| `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI` | none (osu! off) | The osu! OAuth app (W9.2): all three or none; the redirect URI is `SITE_URL/link/osu`, exactly as registered. The same pair also gets the app's own client-credentials token for the osu! card's "Refresh". Unset, the profile's osu! row says "not available yet". |
 | `OSU_PKCE` | on | `0` leaves PKCE out of the osu! link, should osu! ever refuse it; the state check stays. |
 | `PROXY_SECRET` | none | The header overtone-web (`deploy/web/serve.mjs`) adds to everything it forwards; without it the API answers 404, except `/api/internal`. 32+ characters. **Required in production** (docs/deploy.md). Not needed with Vite's proxy. |
 | `OVERTONE_PYTHON` | `.venv`'s | `pnpm dev` only: the Python that runs the worker. |
@@ -193,6 +193,23 @@ and a breach of this server takes no Mides account with it.
 
 The real SSO needs W3.2 first: `overtone` registered in Mides-Dev-Web's
 `SSO_APPS` with this site's origins and `/login/callback`.
+
+**When Mides would not bring the person back** (2026-10-28). Mides' SSO start
+(`${MIDES_WEB_URL}/api/auth/<provider>/start?sso_app=overtone&sso_redirect=…`,
+the request its `/authorize` page makes) redirects an app it does not know,
+or a `redirect_uri` it does not allow, to its *own* `/oauth/callback#error=redirect_not_allowed`,
+where a person would be stranded. The API reads that redirect without
+following it (`mides.service.js` `ssoStatus`, kept ten minutes, so at most a
+few probes an hour reach Mides) and `GET /auth/config` says `sso`: `ready`,
+`app_unknown`, `unreachable` or `unknown`. With `app_unknown` or `unreachable`
+the login page shows "Sign-in through Mides is not available right now" with
+the reason and no buttons, and `/auth/sso/start` answers 503 the same way. Every
+other refusal Mides sends back to `/login/callback#error=<reason>`
+(`discord_mismatch`, `sanctioned`, `cancelled`, …): the callback takes it to
+`/login`, which says it in words, with the buttons to try again. A 403 from the
+exchange (an account Mides will not let in) is `MIDES_FORBIDDEN`, said to the
+person. "Sign in" links carry the page they were pressed on, so the return
+lands there rather than on `/profile`.
 
 The endpoints are described in `site/api/docs/openapi.yaml`.
 
@@ -2412,3 +2429,56 @@ its anchor, the suggestion link with its history open, "Delete read", bulk "Mark
 the staff kinds leading to `/staff`, and a change in the panel reloading the page under it.
 Not seen: the PostgreSQL store (its SQL is unexercised here; the memory twin is what the
 tests run).
+
+### The profile: edit, osu! card, showcase, activity, stats, accent and share (2026-10-28)
+
+**What comes from where.** Photo, banner, username and the Mides name come from the
+Mides profile, refreshed at every sign-in (`upsertFromMides`); `/profile` says so in
+its Edit tab and links to Mides' `/settings`, the page where they change. Everything
+else on the page is Overtone's:
+
+| Field | Rule (`site/api/src/utils/profile.js`) |
+|---|---|
+| About | Cleaned like every person's text (`cleanText`, multiline), 600 code points, rendered as text (`whitespace-pre-line`). |
+| Display name | 40, one line; empty falls back to Mides' name. Shown on the profile, its card and the navbar (`/me`). Lists elsewhere still name people by Mides' name. |
+| Links | `osu` (`osu.ppy.sh/users/<name or id>[/mode]`, or `/u/…`), `website` (any https host name, no IP, port or credentials), `youtube` (`@handle`, `channel/UC…`, `c/…`, `user/…`), `twitch` (`/<login>`). https only, each on its own site, stored in one canonical form; anything else is 400 `BAD_LINK` naming the kind. Rendered `rel="noopener nofollow ugc"`. |
+| Accent | `null` or one of `blue violet pink orange green red`. Colours in `site/web/src/lib/accents.js`, one per theme; `test/accents.test.js` checks each at 4.5:1 on every surface and its ink on it. Only `--accent` changes, inside the profile; high contrast keeps its own. |
+| Showcase | Up to 6 public ids of the account's own published timings, in order; anything else is the 404 of a missing timing. An unpublished one drops out when read. |
+
+`PUT /me/profile` takes any of `{ private, about, displayName, links, accent, showcase }`
+(only those sent), behind `requireSameOrigin`, the profile rate limit (30 per 10 min)
+and the session. Both stores; the columns are in `schema.sql` (`profile_*`,
+`discord_username`, `osu_country` … `osu_refreshed_at`).
+
+**The osu! card.** Read at link time from the `/me` the identify scope gets (username,
+country, global and country rank, pp, accuracy, play count, ranked maps; the profile URL
+is built from the id), and again only when the owner presses "Refresh"
+(`POST /links/osu/refresh`): `/users/{id}/osu` with the app's client-credentials token,
+five minutes apart per account (429 `OSU_REFRESH_SOON`), ten an hour per address. No
+page view asks osu!. Shown on `/profile` (with Refresh) and on `/u/<name>` unless
+private. No avatar: `a.ppy.sh` stays out of `img-src`, so a public profile's visitors
+never tell osu!'s host whose page they read. Without `OSU_CLIENT_ID` the row says
+"not available yet". A ranked count above zero earns **Ranked mapper**.
+
+**Stats, badges, activity.** `GET /users/<name>` adds `stats` (the published timings over
+`/stats`' BPM buckets, single vs variable, the most used one), `badgeDates` (derived
+from the records each time: the 1st/10th/50th publication, the first use by someone
+else, the first accepted suggestion's `updated_at`, the osu! link), `showcase`, `osu`,
+and the person's text. `GET /users/<name>/activity?cursor=o<n>`, 20 a page, lists
+published timings, uses of them by other accounts (naming nobody), "on time" votes
+cast while a mapper (the ones a timing's page already names), reviews and accepted
+suggestions staff have not hidden. A private profile is the 404 of a name nobody has,
+for all of it, to everyone but its owner.
+
+**Share.** "Copy profile link" copies this origin's `/u/<name>`. `serve.mjs` writes the
+title and Open Graph tags of `/u/<name>` from `GET /users/<name>/card` (shown name,
+the first 160 characters of About, the published count), escaped, asked without the
+visitor's cookies: a private profile is a 404 there and goes out plain.
+
+**Discord.** The linked-accounts card shows "Linked as <name>" when Mides sends a
+`discord_username` beside the `discord_id` (it did not on 2026-10-28; `docs/bot.md`).
+
+Checked by hand at 375 px, Spanish, dark and light: the edit form, a YouTube link on
+another host refused with its kind named, the saved page in violet with the About
+shown as text and the osu! link's `rel`. Not checked: the osu! card and the charts
+with real data, a real Mides pre-flight, English and the other locales by eye.

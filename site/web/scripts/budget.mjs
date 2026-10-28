@@ -38,8 +38,9 @@ export const CHUNK_KB = {
   // grouped it into listen, check and export zones with folded tools).
   AnalysisResult: 32,
   // The changelog tab carries the timeline's last 30 entries as data
-  // (11.7 kB on 2026-10-27), and grows with them.
-  Changelog: 16,
+  // (11.7 kB on 2026-10-27), and grows with them: 16.2 kB on 2026-10-28,
+  // when entries got longer (the profile's).
+  Changelog: 20,
   // What the result page and a published timing share: the player, the song
   // in the browser, the .osz (14.0 kB on 2026-10-27).
   useSongAudio: 20,
@@ -53,16 +54,19 @@ export const CHUNK_KB = {
   // on 2026-10-27, before W12; the ten files are ~110-120 kB raw each on
   // 2026-10-28). They grow with every page; the CJK and Cyrillic files
   // compress less. Raised on 2026-10-28 with W13's strings, when Russian
-  // reached 50.3 kB and French and Polish 43-44 kB of their 45.
-  es: 50,
-  fr: 50,
-  de: 50,
-  it: 50,
-  pl: 50,
-  'pt-BR': 50,
-  ja: 56,
-  ko: 56,
-  ru: 58,
+  // reached 50.3 kB and French and Polish 43-44 kB of their 45. Raised again
+  // the same day with the profile's strings (edit, osu! card, activity,
+  // sign-in reasons: about 4 kB gzip per language), when Polish reached
+  // 50.4 kB, French 49.7 and Russian 57.6.
+  es: 56,
+  fr: 56,
+  de: 56,
+  it: 56,
+  pl: 56,
+  'pt-BR': 56,
+  ja: 62,
+  ko: 62,
+  ru: 64,
 }
 
 const kb = (bytes) => bytes / 1000

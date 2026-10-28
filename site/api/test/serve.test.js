@@ -290,6 +290,41 @@ test('a published timing\'s page carries its own title and Open Graph tags, esca
   assert.equal(seen.length, 2);
 });
 
+test('a public profile\'s page carries its Open Graph tags, escaped; a private one (the API\'s 404) none', async () => {
+  const seen = [];
+  const api = await upstream((req, res) => {
+    seen.push({ url: req.url, cookie: req.headers.cookie ?? null });
+    if (req.url !== '/api/v1/users/mapper/card') {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      return res.end('{"error":{"status":404}}');
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({
+      username: 'mapper', displayName: 'Map "</title><script>x</script>', about: 'I time <b>DnB</b> & more', published: 3,
+    }));
+  });
+  const port = await serve(api, { WEB_ROOT: webRoot() });
+
+  const { status, body, headers } = await get(port, '/u/mapper', { cookie: '__Host-overtone_session=s' });
+  assert.equal(status, 200);
+  assert.equal(headers['cache-control'], 'no-store');
+  assert.match(body, /<title>Map &quot;&lt;\/title&gt;&lt;script&gt;x&lt;\/script&gt; \(@mapper\) · Overtone<\/title>/);
+  assert.match(body, /<meta property="og:description" content="I time &lt;b&gt;DnB&lt;\/b&gt; &amp; more · 3 published timings" \/>/);
+  assert.equal(body.includes('<script>'), false);
+  assert.equal(body.includes('<b>'), false);
+  // The card is asked for without the visitor's cookies: a private profile cannot be described to its owner's link.
+  assert.equal(seen[0].cookie, null);
+
+  // Private, or nobody of that name: the API says 404, and the page goes out plain.
+  const hidden = await get(port, '/u/someone');
+  assert.equal(hidden.status, 200);
+  assert.equal(hidden.body.includes('og:title'), false);
+  // Not a username: not even asked.
+  const odd = await get(port, '/u/a%20b');
+  assert.equal(odd.body.includes('og:title'), false);
+  assert.equal(seen.length, 2);
+});
+
 test('an API that does not answer a card leaves the page plain, in time', async () => {
   const api = await upstream(() => {}); // never answers
   const port = await serve(api, { WEB_ROOT: webRoot() });

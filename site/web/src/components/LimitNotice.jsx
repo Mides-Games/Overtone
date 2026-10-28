@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import SignInLink from './SignInLink.jsx'
 import { countdown } from '../lib/limits.js'
 import { useTracker } from '../lib/tracking.js'
 
@@ -61,9 +62,9 @@ export default function LimitNotice({ limit }) {
       )}
       {limit.scope === 'anonymous' && limit.code === 'QUOTA_EXCEEDED' && (
         <p className="text-caption text-dim">
-          <Link to="/login" className="text-accent hover:underline">
+          <SignInLink className="text-accent hover:underline">
             {t('limits.signIn')}
-          </Link>
+          </SignInLink>
         </p>
       )}
     </div>

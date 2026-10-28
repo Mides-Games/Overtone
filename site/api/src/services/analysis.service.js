@@ -1242,7 +1242,7 @@ export const filterClauses = (filters, arg) => {
  * reads one, in SQL, and the memory store's rows, so the social orders and
  * totals read the same rows the recent list does.
  */
-export { LIST_COLS, PUBLISHED, listRow };
+export { BPM, LIST_COLS, PUBLISHED, VARIABLE, listRow };
 export const memoryAnalyses = () => memory.analyses.values();
 
 export const analyses = () => (hasDatabase() ? pgStore : memoryStore);

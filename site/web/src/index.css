@@ -134,6 +134,24 @@
 }
 
 /*
+ * A profile's own accent (2026-10-28, lib/accents.js): the wrapper carries
+ * both themes' colours as custom properties and these rules pick the theme's,
+ * inside the profile only. High contrast keeps its own accent (no rule
+ * matches), so the setting a reader chose always wins over a page's taste.
+ */
+:root:not(.contrast-more) .profile-accent {
+  --accent: var(--pa-light);
+  --accent-hover: var(--pa-light-hover);
+  --accent-ink: var(--pa-light-ink);
+}
+
+:root.dark:not(.contrast-more) .profile-accent {
+  --accent: var(--pa-dark);
+  --accent-hover: var(--pa-dark-hover);
+  --accent-ink: var(--pa-dark-ink);
+}
+
+/*
  * The colour-blind-safe palette: the three reserved meanings (red lines,
  * check by ear, tempo) moved apart for protanopia, deuteranopia and
  * tritanopia, on the whole site so the map, its table and the chips keep

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '../lib/api.js'
+import { refreshOsu } from '../lib/social.js'
+import { OsuCard } from './social/ProfileMore.jsx'
 import Icon from './ui/Icon.jsx'
 import SectionHeader from './ui/SectionHeader.jsx'
 import Skeleton from './ui/Skeleton.jsx'
@@ -15,11 +17,18 @@ import Skeleton from './ui/Skeleton.jsx'
  * bot as `/link`. osu! is its own OAuth, `identify` only. Each part says when
  * this server cannot offer it, instead of showing a button that fails.
  *
- * The osu! avatar is not shown: images load only from this site and Mides
- * (the img-src of deploy/web/serve.mjs), and widening that for one picture
- * on a page only its owner sees is not worth a third-party request.
+ * Once osu! is linked, its card (rank, pp, accuracy, plays, ranked maps) is
+ * shown here with "Refresh", the one thing that asks osu! again, rate
+ * limited by the API; the same card shows on the public profile, read from
+ * what is stored, never fetched per visitor.
+ *
+ * The osu! avatar is not shown, here or on the public page: images load only
+ * from this site and Mides (the img-src of deploy/web/serve.mjs). Allowing
+ * a.ppy.sh would make every visitor of a public profile ask osu!'s host for
+ * a picture, telling it who looks at whose page, for a second photo when the
+ * Mides one is already there. Decided 2026-10-28; docs/site.md says so.
  */
-export default function Connections() {
+export default function Connections({ onOsuChange = () => {} }) {
   const { t } = useTranslation()
   const [links, setLinks] = useState(undefined)
   const [code, setCode] = useState(null)
@@ -87,7 +96,18 @@ export default function Connections() {
   const unlinkOsu = () =>
     act('unlinkOsu', async () => {
       await api('/links/osu', { method: 'DELETE' })
+      onOsuChange(null)
       await load()
+    })
+  const refresh = () =>
+    act('refreshOsu', async () => {
+      try {
+        const { osu: card } = await refreshOsu()
+        setLinks((old) => ({ ...old, osu: card }))
+        onOsuChange(card)
+      } catch (e) {
+        throw e.code === 'OSU_REFRESH_SOON' ? new Error(t('social.profile.osu.refreshSoon')) : e
+      }
     })
 
   return (
@@ -100,6 +120,9 @@ export default function Connections() {
               <ServiceMark linked={discord.linked} />
               <div className="min-w-0 space-y-1">
                 <h3 className="heading-title">Discord</h3>
+                {discord.linked && discord.username && (
+                  <p className="readout text-label text-text">{t('links.discord.as', { name: discord.username })}</p>
+                )}
                 <p className="max-w-[60ch] text-caption text-muted">{discord.linked ? t('links.discord.linked') : t('links.discord.notLinked')}</p>
               </div>
             </div>
@@ -161,19 +184,7 @@ export default function Connections() {
               <div className="min-w-0 space-y-1">
                 <h3 className="heading-title">osu!</h3>
                 {osu ? (
-                  <p className="flex flex-wrap items-center gap-x-2 text-caption text-muted">
-                    <a
-                      href={`https://osu.ppy.sh/users/${encodeURIComponent(osu.id)}`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="link inline-flex items-center gap-1"
-                    >
-                      {osu.username}
-                      <Icon name="external" size={13} />
-                      <span className="sr-only">{t('common.newTab')}</span>
-                    </a>
-                    {osu.rankedCount !== null && <span className="readout">· {t('links.osu.ranked', { count: osu.rankedCount })}</span>}
-                  </p>
+                  <p className="text-caption text-muted">{t('links.osu.linkedHint')}</p>
                 ) : (
                   <p className="text-caption text-muted">{available.osu ? t('links.osu.notLinked') : t('links.osu.unavailable')}</p>
                 )}
@@ -192,6 +203,21 @@ export default function Connections() {
               )
             )}
           </div>
+          {osu && (
+            <div className="sm:pl-9">
+              <OsuCard
+                osu={osu}
+                action={
+                  available.osu && (
+                    <button type="button" className="btn-ghost btn-sm" onClick={refresh} disabled={busy !== null}>
+                      <Icon name="loop" size={14} />
+                      {busy === 'refreshOsu' ? t('social.profile.osu.refreshing') : t('social.profile.osu.refresh')}
+                    </button>
+                  )
+                }
+              />
+            </div>
+          )}
           <p className="max-w-[72ch] text-caption text-dim sm:pl-9">{t('links.osu.scope')}</p>
         </div>
       </div>

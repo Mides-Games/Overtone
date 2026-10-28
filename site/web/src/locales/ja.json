@@ -294,7 +294,23 @@
     "notConfigured": "このサーバーではログインが設定されていません。",
     "failed": "ログインを開始できませんでした：{{message}}",
     "privacy": "Overtone が保存するのは Mides の公開プロフィール（名前、アバター、バナー）だけです。メールアドレスは保存しません。",
-    "devTitle": "開発用ログイン"
+    "devTitle": "開発用ログイン",
+    "unavailable": "現在、Mides でのサインインは利用できません。",
+    "reasons": {
+      "app_unknown": "Mides はまだ Overtone へのサインインを受け付けていません。アカウントに問題はありません。しばらくしてからもう一度お試しください。",
+      "unreachable": "Mides から応答がありませんでした。数分後にもう一度お試しください。"
+    },
+    "mides": {
+      "redirect_not_allowed": "Mides はまだ Overtone へのサインインを受け付けていません。アカウントに問題はありません。しばらくしてからもう一度お試しください。",
+      "discord_mismatch": "その Discord アカウントは Mides アカウントに連携されたものではありません。連携済みの Discord か Google でサインインしてください。",
+      "sanctioned": "Mides がこのアカウントのサインインを許可しませんでした。midesprojects.com でアカウントを確認してください。",
+      "account_blocked": "Mides がこのアカウントのサインインを許可しませんでした。midesprojects.com でアカウントを確認してください。",
+      "cancelled": "Discord または Google でサインインがキャンセルされました。",
+      "bad_state": "サインインに時間がかかりすぎたか、中断されました。もう一度お試しください。",
+      "token_error": "Discord または Google がサインインを完了しませんでした。もう一度お試しください。",
+      "provider_error": "Discord または Google がサインインを完了しませんでした。もう一度お試しください。",
+      "other": "Mides がサインインを拒否しました（{{code}}）。もう一度お試しください。"
+    }
   },
   "callback": {
     "working": "ログイン中…",
@@ -1912,7 +1928,8 @@
       "unavailable": "このサーバーではまだ Discord の連携を使えません。",
       "notify": "解析が終わったら Discord の DM で知らせる",
       "notifyHint": "このアカウントの曲について、Overtone ボットから送られます。ここか /notify off でオフにできます。",
-      "botOff": "このサーバーではまだ Overtone ボットが動いていません。動くまで何も送られません。"
+      "botOff": "このサーバーではまだ Overtone ボットが動いていません。動くまで何も送られません。",
+      "as": "{{name}} として連携済み"
     },
     "osu": {
       "title": "osu! の連携",
@@ -1924,7 +1941,8 @@
       "working": "osu! アカウントを連携中…",
       "denied": "osu! は連携されませんでした：osu! 側でリクエストが拒否されました。",
       "stateMissing": "この連携はこのブラウザで開始されていないか、時間がかかりすぎました。プロフィールからやり直してください。",
-      "failed": "osu! を連携できませんでした：{{message}}"
+      "failed": "osu! を連携できませんでした：{{message}}",
+      "linkedHint": "連携済み。osu! カードはプロフィールに表示され、「更新」で osu! から読み直せます。"
     }
   },
   "social": {
@@ -2063,13 +2081,101 @@
       "makePublic": "公開にする",
       "tabs": {
         "timings": "タイミング",
-        "collections": "コレクション"
+        "collections": "コレクション",
+        "edit": "編集"
       },
       "totals": {
         "published": "公開",
         "timed": "タイミングを取った曲",
         "uses": "使用",
         "rating": "星"
+      },
+      "about": "自己紹介",
+      "links": {
+        "title": "リンク",
+        "osu": "osu! プロフィール",
+        "website": "ウェブサイト",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "プロフィールのリンクをコピー",
+      "copied": "リンクをコピーしました",
+      "showcase": "ピン留めしたタイミング",
+      "badgeEarned": "{{date}} に獲得",
+      "stats": {
+        "title": "テンポ",
+        "bpm": "公開したタイミングの BPM",
+        "tempo": "一定テンポか可変テンポか",
+        "mostUsed": "最も使われたタイミング",
+        "noneUsed": "これらのタイミングはまだどのマップでも使われていません。",
+        "uses_other": "{{count}} 回使用"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "世界ランク",
+        "countryRank": "国内ランク",
+        "pp": "パフォーマンス",
+        "accuracy": "精度",
+        "playCount": "プレイ回数",
+        "ranked": "ランク譜面",
+        "asOf": "{{date}} 時点の osu! の情報",
+        "refresh": "更新",
+        "refreshing": "更新中…",
+        "refreshSoon": "カードは 5 分以内に osu! から読み込まれました。しばらくしてからもう一度お試しください。"
+      },
+      "activity": {
+        "title": "アクティビティ",
+        "empty": "公開されたものはまだありません。",
+        "more": "もっと見る",
+        "kinds": {
+          "published": "公開：",
+          "used": "マップで使用：",
+          "verified": "タイミングが正しいと確認：",
+          "review": "Overtone をレビュー",
+          "suggestion": "提案が採用："
+        }
+      },
+      "editor": {
+        "title": "プロフィールを編集",
+        "intro": "ここに書いた内容は、非公開でない限り公開ページに表示されます。",
+        "photoNote": "写真、バナー、ユーザー名は Mides のプロフィールから取得され、サインインのたびに更新されます。",
+        "photoLink": "Mides で変更する",
+        "displayName": "表示名",
+        "displayNameHint": "任意。空欄にすると Mides の名前（{{name}}）が表示されます。",
+        "about": "自己紹介",
+        "aboutHint": "プレーンテキスト、最大 {{max}} 文字。",
+        "linksHint": "https のリンクのみ、それぞれ該当するサイトへ。空欄にすると削除されます。",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "アクセントカラー",
+        "accentHint": "両方のテーマでページに色を付けます。どの色もライトとダークの両方で読みやすくなっています。",
+        "accents": {
+          "default": "Overtone ティール",
+          "blue": "ブルー",
+          "violet": "バイオレット",
+          "pink": "ピンク",
+          "orange": "オレンジ",
+          "green": "グリーン",
+          "red": "レッド"
+        },
+        "save": "保存",
+        "saved": "保存しました。",
+        "failed": "保存できませんでした：{{message}}",
+        "badLink": "その {{site}} のリンクはこのプロフィールに表示できません。https で、そのサイトのリンクか確認してください。"
+      },
+      "showcaseEditor": {
+        "title": "ピン留めしたタイミング",
+        "hint": "公開したタイミングを最大 {{max}} 件、好きな順番でページの上部にピン留めできます。",
+        "up": "上へ",
+        "down": "下へ",
+        "pin": "ピン留め",
+        "unpin": "外す",
+        "none": "ピン留めできる公開済みのタイミングはまだありません。",
+        "full": "6 件すべて埋まっています。先に 1 件外してください。"
       }
     },
     "badges": {
@@ -2096,6 +2202,10 @@
       "ranked-match": {
         "name": "Ranked と一致",
         "why": "タイミングがその曲の Ranked 譜面と一致した。"
+      },
+      "ranked-mapper": {
+        "name": "ランク譜面マッパー",
+        "why": "連携した osu! アカウントにランク譜面があります。"
       }
     }
   },

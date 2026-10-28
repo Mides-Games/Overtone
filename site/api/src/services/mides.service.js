@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
+import { discordName } from '../utils/profile.js';
 
 /**
  * The Mides identity (midesprojects.com), spoken server to server. Ported from
@@ -58,6 +59,12 @@ export const exchangeCode = async (code) => {
     throw new HttpError(400, 'The sign-in code is not valid or has expired. Try again.', 'SSO_CODE_INVALID');
   }
 
+  // Mides' exchange answers 403 for an account that is not active or is
+  // sanctioned (sso.py `exchange`): the person's account, said to them.
+  if (status === 403) {
+    throw new HttpError(403, 'Mides did not let this account sign in. Check your account on Mides.', 'MIDES_FORBIDDEN');
+  }
+
   if (status >= 400 || !data?.access_token || !data?.user) {
     throw new HttpError(502, 'Mides did not return a valid session.', 'SSO_BAD_ANSWER');
   }
@@ -83,8 +90,79 @@ export const toUser = (u) => ({
   avatarUrl: absolute(u.photo_url),
   bannerUrl: absolute(u.banner_url),
   discordId: snowflake(u.discord_id),
+  // Shown to the account itself (the linked-accounts card), as text. Mides'
+  // full profile had no Discord username on 2026-10-28; read when it does.
+  discordUsername: discordName(u.discord_username),
   role: u.is_moderator === true ? 'moderator' : null,
 });
+
+/** Where a person changes their photo, banner and name: Mides' settings page (its App.jsx route). */
+export const midesSettingsUrl = () => (env.midesWebUrl ? `${env.midesWebUrl}/settings` : null);
+
+// ── The pre-flight (does Mides know this app?) ──────────────────────────────
+
+/**
+ * Whether sending someone to Mides now would bring them back, read from the
+ * one place Mides answers it without a session: the first hop of the SSO
+ * with a provider (Mides' oauth.py `start`), the very request its /authorize
+ * page makes. It redirects either to the provider (the app and its
+ * redirect_uri are allowed), or back to Mides' own /oauth/callback with
+ * `#error=redirect_not_allowed` (Mides does not know the app, or not this
+ * SITE_URL), which is where a real sign-in would strand the person. The
+ * redirect is read, never followed, so nothing reaches Discord.
+ *
+ *   ready        the provider's page, or Mides' own /authorize (provider off there)
+ *   app_unknown  Mides refused the app or its redirect_uri
+ *   unreachable  Mides did not answer in time
+ *   unknown      anything else (a 429, a new answer): not a reason to block
+ *
+ * Kept SSO_STATUS_MS, so at most a few probes an hour reach Mides (its start
+ * allows 20 an hour per address), whatever the traffic of /login.
+ */
+const SSO_STATUS_MS = 10 * 60_000;
+const SSO_STATUS_SHORT_MS = 60_000;
+let ssoStatusCache = null;
+
+export const resetSsoStatus = () => {
+  ssoStatusCache = null;
+};
+
+export const readProbe = (status, location, webUrl) => {
+  if (status < 300 || status >= 400 || !location) return 'unknown';
+  let url;
+  try {
+    url = new URL(location, webUrl);
+  } catch {
+    return 'unknown';
+  }
+  const mides = new URL(webUrl).origin;
+  if (url.origin === mides && url.pathname === '/oauth/callback') {
+    return /(^|[#&])error=redirect_not_allowed(&|$)/.test(url.hash) ? 'app_unknown' : 'unknown';
+  }
+  return 'ready';
+};
+
+export const ssoStatus = async () => {
+  if (!env.midesWebUrl) return 'unknown';
+  if (ssoStatusCache && ssoStatusCache.until > Date.now()) return ssoStatusCache.state;
+  const probe = new URL(`${env.midesWebUrl}/api/auth/discord/start`);
+  probe.searchParams.set('sso_app', env.midesApp);
+  probe.searchParams.set('sso_redirect', `${env.siteUrl}/login/callback`);
+  let state;
+  try {
+    const response = await fetch(probe, { redirect: 'manual', signal: AbortSignal.timeout(5_000) });
+    await response.body?.cancel().catch(() => {});
+    state = readProbe(response.status, response.headers.get('location'), env.midesWebUrl);
+  } catch (error) {
+    console.warn(`[mides] the sign-in pre-flight got no answer: ${error.cause?.code ?? error.message}`);
+    state = 'unreachable';
+  }
+  if (state === 'app_unknown') {
+    console.error(`[mides] Mides does not accept app "${env.midesApp}" with redirect_uri ${env.siteUrl}/login/callback (SSO_APPS in Mides' config.py)`);
+  }
+  ssoStatusCache = { state, until: Date.now() + (state === 'ready' ? SSO_STATUS_MS : SSO_STATUS_SHORT_MS) };
+  return state;
+};
 
 /** A Discord id as a string of 17 to 20 digits, or `null`. */
 export const snowflake = (value) => {
@@ -99,7 +177,7 @@ export const snowflake = (value) => {
  * SITE_URL, like the SSO's redirect_uri: never from the request.
  */
 export const discordLinkUrl = () => {
-  if (!env.midesWebUrl) {
+  if (!env.midesWebUrl || !env.midesDiscordLinkPath) {
     throw new HttpError(503, 'Linking Discord through Mides is not configured on this server.', 'MIDES_LINK_OFF');
   }
   const url = new URL(`${env.midesWebUrl}${env.midesDiscordLinkPath}`);

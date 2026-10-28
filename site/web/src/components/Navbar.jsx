@@ -4,6 +4,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 
 import { useAuth } from '../context/AuthContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
+import useSignInState from '../hooks/useSignInState.js'
 import { gutter } from '../lib/gutter.js'
 import Avatar from './Avatar.jsx'
 import Bell from './Bell.jsx'
@@ -182,6 +183,7 @@ function Places() {
 /** The phone's menu: the places as large rows, the palette, and the way to sign in. */
 function Sheet({ account, onClose, firstRef }) {
   const { t } = useTranslation()
+  const signInState = useSignInState()
   const row = ({ isActive }) =>
     `flex min-h-12 items-center justify-between rounded-control px-3 text-[17px] font-medium transition-colors ${
       isActive ? 'bg-surface-2 text-text' : 'text-muted hover:bg-surface-2 hover:text-text'
@@ -210,7 +212,7 @@ function Sheet({ account, onClose, firstRef }) {
           <div className="space-y-2 border-t border-line pt-4">
             <PaletteButton wide />
             {!account && (
-              <Link to="/login" className="btn-primary w-full" onClick={onClose}>
+              <Link to="/login" state={signInState} className="btn-primary w-full" onClick={onClose}>
                 {t('nav.signIn')}
               </Link>
             )}
@@ -225,6 +227,7 @@ export default function Navbar() {
   const { t } = useTranslation()
   const { account } = useAuth()
   const { pathname } = useLocation()
+  const signInState = useSignInState()
   const [open, setOpen] = useState(false)
   const menuButton = useRef(null)
   const firstLink = useRef(null)
@@ -278,7 +281,7 @@ export default function Navbar() {
           {account ? (
             <UserMenu account={account} />
           ) : (
-            <Link to="/login" className="btn-ghost btn-sm ml-1.5 hidden lg:inline-flex">
+            <Link to="/login" state={signInState} className="btn-ghost btn-sm ml-1.5 hidden lg:inline-flex">
               {t('nav.signIn')}
             </Link>
           )}

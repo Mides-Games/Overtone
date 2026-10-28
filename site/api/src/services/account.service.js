@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { hasDatabase, query } from '../config/database.js';
+import { ACCENTS, storedLinks } from '../utils/profile.js';
 
 /**
  * Accounts, from the Mides profile each sign-in brings. No Mides token is kept.
@@ -16,11 +17,21 @@ export const memory = { accounts: new Map() };
 
 export const COLUMNS =
   'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, ' +
-  'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private';
+  'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private, ' +
+  'profile_about, profile_name, profile_links, profile_accent, profile_showcase, discord_username, ' +
+  'osu_country, osu_global_rank, osu_country_rank, osu_pp, osu_accuracy, osu_play_count, osu_refreshed_at';
 
-/** The W9 fields a new memory row starts with, as the table's defaults. */
+/** The osu! card's columns, empty: what unlinking leaves (services/links.service.js). */
+export const OSU_EMPTY = {
+  osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null,
+  osu_country: null, osu_global_rank: null, osu_country_rank: null, osu_pp: null, osu_accuracy: null, osu_play_count: null,
+  osu_refreshed_at: null,
+};
+
+/** The W9 and profile fields a new memory row starts with, as the table's defaults. */
 const LINK_DEFAULTS = {
-  discord_notify: false, osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null,
+  discord_notify: false, discord_username: null, ...OSU_EMPTY,
+  profile_about: null, profile_name: null, profile_links: {}, profile_accent: null, profile_showcase: [],
 };
 
 /**
@@ -55,6 +66,8 @@ export const upsertFromMides = async (user) => {
       avatar_url: user.avatarUrl,
       banner_url: user.bannerUrl,
       discord_id: user.discordId ?? existing?.discord_id ?? null,
+      // The name comes with the id or not at all: kept from before only when Mides sent no id.
+      discord_username: user.discordId ? user.discordUsername ?? null : existing?.discord_username ?? null,
       mides_role: user.role,
       cached_at: now,
     };
@@ -69,18 +82,21 @@ export const upsertFromMides = async (user) => {
     );
   }
   const { rows } = await query(
-    `INSERT INTO accounts (mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO accounts (mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, discord_username)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (mides_user_id) DO UPDATE
              SET username = EXCLUDED.username,
                  display_name = EXCLUDED.display_name,
                  avatar_url = EXCLUDED.avatar_url,
                  banner_url = EXCLUDED.banner_url,
                  discord_id = coalesce(EXCLUDED.discord_id, accounts.discord_id),
+                 discord_username = CASE WHEN EXCLUDED.discord_id IS NOT NULL THEN EXCLUDED.discord_username
+                                         ELSE accounts.discord_username END,
                  mides_role = EXCLUDED.mides_role,
                  cached_at = now()
        RETURNING ${COLUMNS}`,
-    [user.midesUserId, user.username, user.displayName, user.avatarUrl, user.bannerUrl, user.discordId, user.role],
+    [user.midesUserId, user.username, user.displayName, user.avatarUrl, user.bannerUrl, user.discordId, user.role,
+      user.discordId ? user.discordUsername ?? null : null],
   );
   return rows[0];
 };
@@ -126,31 +142,96 @@ export const publicAccount = (row) => ({
   id: row.id,
   midesUserId: row.mides_user_id,
   username: row.username,
-  displayName: row.display_name,
+  displayName: shownName(row),
+  midesDisplayName: row.display_name ?? null,
   avatarUrl: row.avatar_url,
   bannerUrl: row.banner_url,
   role: row.mides_role,
   createdAt: new Date(row.created_at).toISOString(),
   profilePrivate: Boolean(row.profile_private),
+  accent: profileAccent(row),
 });
 
+/** The name a page shows: the one written on Overtone, else Mides'. */
+export const shownName = (row) => row.profile_name || row.display_name || null;
+
+export const profileAccent = (row) => (ACCENTS.includes(row.profile_accent) ? row.profile_accent : null);
+
+const number = (value) => (value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value));
+const iso = (value) => (value ? new Date(value).toISOString() : null);
+
 /**
- * The account's own links (W9.1, W9.2), for `/me` only: whether Discord is
- * linked and DMs are on, and the osu! profile read at link time. The Discord
- * id itself is not sent: the page has no use for it.
+ * The osu! card (W9.2 and the profile, 2026-10-28): what osu! said at link
+ * time or at the last "Refresh", never read on a page view. `null` when no
+ * osu! account is linked. The avatar URL is kept but not sent: the page does
+ * not load images from osu!'s host (deploy/web/serve.mjs, img-src).
  */
-export const ownLinks = (row) => ({
-  discord: { linked: Boolean(row.discord_id), notify: Boolean(row.discord_id && row.discord_notify) },
-  osu: row.osu_user_id
+export const osuCard = (row) =>
+  row.osu_user_id
     ? {
         id: Number(row.osu_user_id),
         username: row.osu_username,
-        avatarUrl: row.osu_avatar_url,
-        rankedCount: row.osu_ranked_count ?? null,
-        linkedAt: row.osu_linked_at ? new Date(row.osu_linked_at).toISOString() : null,
+        url: `https://osu.ppy.sh/users/${Number(row.osu_user_id)}`,
+        country: row.osu_country ?? null,
+        globalRank: number(row.osu_global_rank),
+        countryRank: number(row.osu_country_rank),
+        pp: number(row.osu_pp),
+        accuracy: number(row.osu_accuracy),
+        playCount: number(row.osu_play_count),
+        rankedCount: number(row.osu_ranked_count),
+        linkedAt: iso(row.osu_linked_at),
+        refreshedAt: iso(row.osu_refreshed_at ?? row.osu_linked_at),
       }
-    : null,
+    : null;
+
+/**
+ * The account's own links (W9.1, W9.2), for `/me` only: whether Discord is
+ * linked and DMs are on (with the Discord username when Mides sent one), and
+ * the osu! card. The Discord id itself is not sent: the page has no use for it.
+ */
+export const ownLinks = (row) => ({
+  discord: {
+    linked: Boolean(row.discord_id),
+    notify: Boolean(row.discord_id && row.discord_notify),
+    username: row.discord_id ? row.discord_username ?? null : null,
+  },
+  osu: osuCard(row),
 });
+
+/** What the person wrote on their profile, as a page reads it. Links are re-read: a row edited by hand stays safe. */
+export const profileFields = (row) => ({
+  about: row.profile_about ?? null,
+  displayName: row.profile_name ?? null,
+  links: storedLinks(row.profile_links),
+  accent: profileAccent(row),
+  showcase: Array.isArray(row.profile_showcase) ? row.profile_showcase.map((id) => String(id).trim()) : [],
+});
+
+/**
+ * Writes the fields of a profile edit (utils/profile.js `profileEdit`), only
+ * those sent. Returns the row as it is now.
+ */
+export const setProfileFields = async (id, edit) => {
+  const columns = {
+    private: 'profile_private', about: 'profile_about', displayName: 'profile_name',
+    links: 'profile_links', accent: 'profile_accent', showcase: 'profile_showcase',
+  };
+  const entries = Object.entries(edit).filter(([key]) => key in columns);
+  if (!hasDatabase()) {
+    const row = memory.accounts.get(id);
+    if (!row) return null;
+    for (const [key, value] of entries) row[columns[key]] = key === 'links' ? { ...value } : key === 'showcase' ? [...value] : value;
+    return row;
+  }
+  if (!entries.length) return accountById(id);
+  // Column names come from the fixed map above, never from the request.
+  const sets = entries.map(([key], i) => `${columns[key]} = $${i + 2}${key === 'links' ? '::jsonb' : ''}`);
+  const { rows } = await query(
+    `UPDATE accounts SET ${sets.join(', ')} WHERE id = $1 RETURNING ${COLUMNS}`,
+    [id, ...entries.map(([key, value]) => (key === 'links' ? JSON.stringify(value) : value))],
+  );
+  return rows[0] ?? null;
+};
 
 // ── Profiles (W5.6, W13.18) ─────────────────────────────────────────────────
 

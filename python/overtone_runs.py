@@ -87,6 +87,12 @@ EXPERIMENTS = {
     "piecewise-strict": {"PIECEWISE_GRID": True, "PIECEWISE_PENALTY": 120.0},
     "piecewise-cg": {"PIECEWISE_GRID": True, "CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
                      "CONSTANT_GRID_SHARE": 0.8},
+    "drift-48": {"DRIFT_WINDOW_BEATS": 48},
+    "drift-32": {"DRIFT_WINDOW_BEATS": 32},
+    "drift-32-loose": {"DRIFT_WINDOW_BEATS": 32, "DRIFT_MIN_GAIN": 0.97, "DRIFT_MAX_STEP": 0.06},
+    "drift-16-loose": {"DRIFT_WINDOW_BEATS": 16, "DRIFT_MIN_GAIN": 0.97, "DRIFT_MAX_STEP": 0.06},
+    "piecewise-min32": {"PIECEWISE_GRID": True, "PIECEWISE_MIN_BEATS": 32},
+    "piecewise-drift-32": {"PIECEWISE_GRID": True, "DRIFT_WINDOW_BEATS": 32},
     "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
                              "CONSTANT_GRID_SHARE": 0.7},
 }

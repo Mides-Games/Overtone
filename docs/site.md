@@ -218,17 +218,22 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
 
 ## Look
 
-The site uses the desktop app's "Console" look (`app/styles.css`), one step
-darker: violet graphite surfaces, one signal-cyan accent, flat panels with
-hairline borders, DIN headings (Bahnschrift on Windows, DIN Alternate on
-macOS), monospaced readouts, and the app's reserved colours (red = timing
-points, amber = check by ear, lavender = tempo). midesprojects.com was the
-reference for structure (ticker, navigation, footer, avatar, loader) and for
-the storage keys, `mides.theme` and `mides.lang`, which are shared across the
-ecosystem. Its palette and its Horizon headline font are not used. Horizon's
-licence is unknown and this repository is public, so dropping it also means
-no font file has to be kept out of git. Every face is a system face and
-nothing is fetched from the network.
+Since 2026-10-28 the site follows **docs/design.md**: a studio monitor, not a
+dashboard. Near-black, neutral cool surfaces; the logo's cyan as the one accent;
+colour only as signal, with the reserved meanings (red = timing points, amber =
+check by ear, tempo green = the tempo curve; it was lavender until then); panels
+only for what you operate, everything else on the page's ground separated by space
+and hairlines; the waveform with red lines as the signature. Type is Archivo (wide,
+for headings), Geist (text) and Geist Mono (every number), self-hosted from pinned
+`@fontsource-variable` packages: served from the site's own origin, so nothing is
+fetched from another one and the CSP's `font-src 'self'` holds. Their licence is the
+OFL, listed on the credits page. The tokens, the primitives (`index.css`,
+`components/ui/`), the motion rules and a guide for restyling a page are in that file.
+
+midesprojects.com was the reference for structure (ticker, navigation, footer,
+avatar, loader) and for the storage keys, `mides.theme` and `mides.lang`, which are
+shared across the ecosystem. Its palette and its Horizon headline font are not used:
+Horizon's licence is unknown and this repository is public.
 
 ## How it was checked (2026-10-26)
 
@@ -331,7 +336,7 @@ did, from the browser. Code: `site/web/src/pages/AnalysisResult.jsx`,
 - **The tempo map.** Two canvases sized to the device pixel ratio: the map,
   repainted when the view or the data change, and an overlay for the playhead,
   the hover cursor and the loop. Lanes: the red lines' chips (BPM, and the meter
-  where it changes), the tempo plot (local tempo in lavender, each line's BPM in
+  where it changes), the tempo plot (local tempo in the tempo colour, lavender before 2026-10-28, each line's BPM in
   red, each section's level along its foot, the half/double hints in amber), the
   waveform with the onsets as ticks and the beat and bar grid, the drift lane
   (each onset's distance from its line's nearest 1/1-1/4 tick, +-30 ms) and the
@@ -1228,7 +1233,7 @@ page and action also matches its name in English and Spanish ("inicio" finds Hom
   do not scale.
 - **Colour-blind-safe palette**: the map already drew only with tokens; the one
   colour it hard-coded, the ink on a red chip, is now `--red-ink`. The palette
-  moves `--red`, `--amber` and `--lavender` on the whole site, so the map, the
+  moves `--red`, `--amber` and `--tempo` (`--lavender` before 2026-10-28) on the whole site, so the map, the
   table and the chips keep agreeing; the accent stays. The values came from a
   random search over hues near each meaning, scored by the smallest CIELAB distance
   between the map's four colours under Machado et al.'s (2009) simulation of
@@ -1764,3 +1769,56 @@ page's demo, which clips in every language. Spot checks of ja and ru at 375 px. 
 all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
+
+### The studio rework: the foundation and the front page (2026-10-28)
+
+The site's look follows **docs/design.md** (the decision, its measurements and the guide
+for the pages still to be restyled). This branch laid the foundation and reworked the
+front page; the other pages took the new look in place, through their existing classes.
+
+- **Tokens** (`src/index.css`): the studio palette in both themes, `--tempo` for the
+  former `--lavender` (CSS, `draw.js`, the map image's fixed palette, every class), the
+  high-contrast and colour-blind sets re-derived, `--line-control` for a field's edge,
+  motion (`--ease-out-strong`, `--ease-in-out-strong`, `--dur-*`, `--stagger`), the type
+  scale (`text-caption` to `text-display`), `--bar-height` and `--space-section`.
+- **Fonts:** Archivo (with its width axis), Geist and Geist Mono from pinned
+  `@fontsource-variable` packages, split by `unicode-range`; the Latin Archivo the hero
+  uses is preloaded. Credited with the npm packages (`scripts/credits.mjs`).
+- **Primitives:** the old classes (`btn-primary`, `btn-ghost`, `tool-btn`, `field`,
+  `panel`, `label`, `readout`, `chip-*`) restyled in place; new ones beside them
+  (`btn-quiet`, `btn-sm`, `btn-lg`, `icon-btn`, `eyebrow`, `heading-*`, `lede`, `unit`,
+  `link`, `chip-red`, `chip-tempo`, `chip-neutral`, `panel-well`, `menu`, `menu-item`,
+  `skeleton`, `pop-in`, `sheet-in`) and `components/ui/` (`Icon`, `Waveform` and
+  `WaveRule`, `SectionHeader`, `EmptyState`, `Skeleton` and `SkeletonRows`, `Reveal`);
+  `hooks/useReducedMotion.js` shared by the strip and `Reveal`.
+- **Shell:** the bar is one 56 px sticky row; below 1024 px the places, the palette and
+  the sign-in move into a sheet (Escape closes it and returns focus, as do a click
+  outside and a followed link). The ticker is a still status line above the bar that
+  scrolls away and is not drawn on a phone. The footer sits on the page's ground under a
+  waveform rule; its external links say they open a new tab (`common.newTab`, ten
+  languages). The tray enters from its corner and moves its progress by transform. The
+  `theme-color` meta follows the site's theme switch.
+- **Front page:** the same sections, strings and requests. An asymmetric hero (text and
+  the example strip side by side from 1024 px), the live numbers as readouts, the
+  benefits as a spec sheet under a sticky heading, the steps along one ruler, the FAQ
+  and the closing call without boxes, the page ending on the waveform. Groups below the
+  fold rise in on scroll (`Reveal`), never with reduced motion.
+
+Checked: `site/web` 258/258 (2 new in `test/design.test.js`: design.md's colour table is
+`index.css`'s tokens, and every `var(--…)` the source names is declared), `site/api`
+174/174, the build and `scripts/budget.mjs` (initial JS 163.8 of 200 kB gzip). axe
+(`site/e2e/tests/a11y.spec.js`): 50/50 clean, every public page and the result page in
+dark and light. In the browser pane (web 5231, API 3061, `OVERTONE_WORKER=0`): Home and
+the shell at 1440, 1024, 900 and 375 px, dark and light, in en, es, de and ja; no
+element past the viewport at 375 px; a keyboard walk of the shell and Home (every stop
+shows the ring, none hides under the bar); the sheet's Escape returning focus; the
+places measured in all ten languages at 1024 px (383-563 px against 566-593 free).
+`/analyze` and `/terms`, untouched, read with the new type, fields and panels.
+
+Not checked: a screen reader over the sheet and the sections; Safari, Firefox and a real
+phone; the reveal's entrance while the pane was hidden (a hidden pane runs no
+`IntersectionObserver` callbacks; it was seen working with the pane drawn); a signed-in
+bar; the recent-timings list on Home (no timings were published on the dev API).
+`site/e2e/tests/site.spec.js` has two language tests that still look for the EN/ES
+toggle's "Switch to English" button, which the ten-language selector replaced before
+this branch; master's bar has no such button either, so they fail there too (read, not\nrun), and were left to the selector's owner.

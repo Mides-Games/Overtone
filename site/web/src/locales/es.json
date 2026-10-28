@@ -264,7 +264,30 @@
     "voteOn": "activado",
     "voteOff": "desactivado",
     "cached": "mismo audio analizado antes: resultado guardado",
-    "removed": "Un moderador sacó esta canción de la cola, así que no se analizó. Su archivo se borró."
+    "removed": "Un moderador sacó esta canción de la cola, así que no se analizó. Su archivo se borró.",
+    "zones": {
+      "nav": "En esta página",
+      "listen": {
+        "eyebrow": "Escuchar",
+        "title": "Escucha las líneas rojas sobre la canción"
+      },
+      "check": {
+        "eyebrow": "Revisar",
+        "title": "Qué revisar, línea por línea"
+      },
+      "export": {
+        "eyebrow": "Exportar",
+        "title": "Llévalo a osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Más herramientas de escucha",
+      "hint": "Práctica, clics entre pulsos, A/B, tempo por toques y latencia"
+    },
+    "oszMore": {
+      "title": "Opciones del .osz y divisor de ritmo",
+      "hint": "Dónde caen los ataques, la portada, la vista previa, el lead-in y el set de mapas"
+    }
   },
   "login": {
     "title": "Entrar",

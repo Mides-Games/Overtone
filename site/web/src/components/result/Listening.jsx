@@ -134,7 +134,7 @@ export default function Listening({ player, snapshot, lines, grid, adjusted, nud
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="btn-ghost h-10 min-w-20"
+            className="btn-ghost min-w-20"
             aria-keyshortcuts="T"
             aria-describedby="tap-reading"
             onPointerDown={(e) => {
@@ -165,7 +165,7 @@ export default function Listening({ player, snapshot, lines, grid, adjusted, nud
             </p>
           ) : (
             <p>
-              <span className="readout text-text">{formatBpm(Number(tappedBpm.toFixed(1)))} BPM</span>
+              <span className="readout text-text">{formatBpm(Number(tappedBpm.toFixed(1)))}<span className="unit">BPM</span></span>
               <span className="readout text-dim"> ±{(tempo.spreadBpm / snapshot.rate).toFixed(1)}</span>
               <span className="text-dim"> · {t('listening.taps', { count: tempo.taps })}</span>
               {comparison && (
@@ -207,7 +207,7 @@ export default function Listening({ player, snapshot, lines, grid, adjusted, nud
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="label">{t('listening.latency')}</span>
-        <span className="readout text-label text-text">{snapshot.latencyMs ? `${snapshot.latencyMs} ms` : t('listening.latencyNone')}</span>
+        <span className="readout text-label text-text">{snapshot.latencyMs ? <>{snapshot.latencyMs}<span className="unit">ms</span></> : t('listening.latencyNone')}</span>
         <button ref={calibrateButton} type="button" className="tool-btn px-2.5" onClick={() => setCalibrating(true)} aria-haspopup="dialog">
           {t('listening.calibrate')}
         </button>

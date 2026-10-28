@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { HISTOGRAM_DIVISORS, suggestDivisor } from '../../lib/mapping.js'
+import Icon from '../ui/Icon.jsx'
 import { formatClock } from '../../lib/timing.js'
 
 /** The bins in the order the bars are drawn: the divisors, then "on none". */
@@ -27,11 +28,9 @@ export default function DivisorChart({ histogram, lines }) {
       </h3>
       <Bars title={t('divisors.all')} h={histogram.all} />
       {several && (
-        <details className="group">
-          <summary className="cursor-pointer list-none text-caption text-dim hover:text-text">
-            <span aria-hidden className="mr-1 inline-block transition group-open:rotate-90">
-              ▸
-            </span>
+        <details className="group/lines">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-caption text-dim hover:text-text [&::-webkit-details-marker]:hidden">
+            <Icon name="chevron-right" size={14} className="transition-transform duration-150 ease-out group-open/lines:rotate-90" />
             {t('divisors.perLine')}
           </summary>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">

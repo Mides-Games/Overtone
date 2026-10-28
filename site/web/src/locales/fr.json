@@ -268,7 +268,30 @@
     "voteOn": "activé",
     "voteOff": "désactivé",
     "cached": "même audio déjà analysé : résultat conservé",
-    "removed": "Un modérateur a retiré cette chanson de la file, elle n'a donc pas été analysée. Son fichier a été supprimé."
+    "removed": "Un modérateur a retiré cette chanson de la file, elle n'a donc pas été analysée. Son fichier a été supprimé.",
+    "zones": {
+      "nav": "Sur cette page",
+      "listen": {
+        "eyebrow": "Écouter",
+        "title": "Écoutez les lignes rouges sur la chanson"
+      },
+      "check": {
+        "eyebrow": "Vérifier",
+        "title": "Ce qu'il faut vérifier, ligne par ligne"
+      },
+      "export": {
+        "eyebrow": "Exporter",
+        "title": "Emportez-le dans osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Plus d'outils d'écoute",
+      "hint": "Entraînement, clics entre les temps, A/B, tempo au tap et latence"
+    },
+    "oszMore": {
+      "title": "Options du .osz et division de temps",
+      "hint": "Où tombent les attaques, la pochette, l'aperçu, le lead-in et le set de maps"
+    }
   },
   "login": {
     "title": "Se connecter",

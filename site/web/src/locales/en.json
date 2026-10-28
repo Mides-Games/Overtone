@@ -264,7 +264,30 @@
     "voteOn": "on",
     "voteOff": "off",
     "cached": "same audio analysed before: stored result",
-    "removed": "A moderator took this song off the queue, so it was not analysed. Its file has been deleted."
+    "removed": "A moderator took this song off the queue, so it was not analysed. Its file has been deleted.",
+    "zones": {
+      "nav": "On this page",
+      "listen": {
+        "eyebrow": "Listen",
+        "title": "Hear the red lines against the song"
+      },
+      "check": {
+        "eyebrow": "Check",
+        "title": "What to check, line by line"
+      },
+      "export": {
+        "eyebrow": "Export",
+        "title": "Take it into osu!"
+      }
+    },
+    "moreTools": {
+      "title": "More listening tools",
+      "hint": "Practice, clicks between beats, A/B, tap tempo and latency"
+    },
+    "oszMore": {
+      "title": ".osz options and beat snap",
+      "hint": "Where the attacks fall, the cover, preview, lead-in and the map set"
+    }
   },
   "login": {
     "title": "Sign in",

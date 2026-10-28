@@ -3,8 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import Avatar from '../components/Avatar.jsx'
-import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import Reveal from '../components/ui/Reveal.jsx'
+import SectionHeader from '../components/ui/SectionHeader.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { formatRange } from '../lib/analysis-options.js'
 import { api } from '../lib/api.js'
@@ -60,36 +64,48 @@ export default function Queue() {
   }, [tick])
 
   return (
-    <div className="space-y-8">
-      <header className="rise space-y-2">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('queue.title')}</h1>
-        <p className="max-w-[60ch] text-muted">{t('queue.subtitle')}</p>
+    <div className="space-y-12">
+      <header className="rise max-w-3xl space-y-4">
+        <h1 className="heading-headline">{t('queue.title')}</h1>
+        <p className="lede max-w-[60ch]">{t('queue.subtitle')}</p>
       </header>
 
-      {offline && <p className="text-label text-dim">{t('result.reconnecting')}</p>}
+      {offline && (
+        <p role="status" className="text-label text-dim">
+          {t('result.reconnecting')}
+        </p>
+      )}
 
       {!data ? (
-        !offline && <BrandLoader className="py-16" />
+        !offline && <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />
       ) : (
         <>
-          <section className="space-y-3" aria-live="polite">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="label">{t('queue.live')}</h2>
-              <span className="readout text-caption text-dim">{t('queue.count', { count: data.live.length + data.more })}</span>
-            </div>
+          <section className="space-y-5" aria-live="polite" aria-labelledby="queue-live">
+            <SectionHeader
+              id="queue-live"
+              title={t('queue.live')}
+              action={<span className="readout text-label text-dim">{t('queue.count', { count: data.live.length + data.more })}</span>}
+            />
             {data.live.length ? (
               <Rows rows={data.live} onModerated={() => setTick((n) => n + 1)} />
             ) : (
-              <p className="rounded-panel border border-line px-4 py-6 text-center text-label text-dim">
-                {t('queue.empty')} <Link to="/analyze" className="text-accent hover:underline">{t('queue.upload')}</Link>
-              </p>
+              <EmptyState
+                className="border-y border-line"
+                title={t('queue.empty')}
+                action={
+                  <Link to="/analyze" className="btn-ghost">
+                    {t('queue.upload')}
+                    <Icon name="arrow-right" size={16} />
+                  </Link>
+                }
+              />
             )}
             {data.more > 0 && <p className="text-caption text-dim">{t('queue.more', { count: data.more })}</p>}
           </section>
 
           {data.recent.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="label">{t('queue.recent')}</h2>
+            <section className="space-y-5 pt-4" aria-labelledby="queue-recent">
+              <SectionHeader id="queue-recent" title={t('queue.recent')} />
               <Rows rows={data.recent} />
             </section>
           )}
@@ -106,26 +122,26 @@ export default function Queue() {
 
 function Rows({ rows, onModerated }) {
   return (
-    <ul className="divide-y divide-line rounded-panel border border-line">
+    <Reveal as="ul" className="divide-y divide-line border-y border-line">
       {rows.map((row, i) => (
-        <Row key={row.id ?? row.ref ?? `${row.createdAt}-${i}`} row={row} onModerated={onModerated} />
+        <Row key={row.id ?? row.ref ?? `${row.createdAt}-${i}`} row={row} onModerated={onModerated} index={i} />
       ))}
-    </ul>
+    </Reveal>
   )
 }
 
-function Row({ row, onModerated }) {
+function Row({ row, onModerated, index = 0 }) {
   const { t } = useTranslation()
   const [cancelled, setCancelled] = useState(false)
   if (cancelled) return null
   const body = (
-    <div className={`flex items-center gap-3 px-4 py-3 ${row.mine ? 'bg-accent/5' : ''}`}>
-      <span className="readout w-8 shrink-0 text-center text-label text-dim">{row.position ? `#${row.position}` : ''}</span>
+    <div className={`flex items-center gap-3 px-2 py-3 sm:px-3 ${row.mine ? 'bg-accent/5' : ''}`}>
+      {row.position ? <span className="readout w-8 shrink-0 text-center text-label text-dim">#{row.position}</span> : null}
       <Uploader row={row} />
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="truncate text-label">
+        <p className="truncate text-label text-text">
           {row.song ?? <span className="text-dim">{t('queue.privateSong')}</span>}
-          {row.mine && <span className="chip ml-2 align-middle">{t('queue.yours')}</span>}
+          {row.mine && <span className="chip-accent ml-2 align-middle">{t('queue.yours')}</span>}
         </p>
         <p className="truncate text-caption text-dim">{who(t, row)}</p>
         {row.status === 'running' && (
@@ -134,11 +150,14 @@ function Row({ row, onModerated }) {
             role="progressbar"
             aria-label={row.song ?? t('queue.privateSong')}
             aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((row.progress ?? 0) * 100)}>
-            <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round((row.progress ?? 0) * 100)}%` }} />
+            <div
+              className="h-full origin-left bg-accent transition-transform duration-[var(--dur-panel)] ease-out"
+              style={{ transform: `scaleX(${Math.round((row.progress ?? 0) * 100) / 100})` }}
+            />
           </div>
         )}
       </div>
-      <div className="shrink-0 space-y-1 text-right">
+      <div className="max-w-[45%] shrink-0 space-y-1 text-right">
         <Status row={row} />
         <p className="readout text-caption text-dim">{formatElapsed(row.elapsedS)}</p>
         {/* W3.16: an estimate, a range, and said to be one; W11.1: in which mode. */}
@@ -151,12 +170,12 @@ function Row({ row, onModerated }) {
       </div>
     </div>
   )
-  const link = row.id ? <Link to={`/analyze/${row.id}`} className="block hover:bg-surface-2">{body}</Link> : body
+  const link = row.id ? <Link to={`/analyze/${row.id}`} className="block transition-colors duration-150 ease-out hover:bg-surface-2">{body}</Link> : body
   // Your own waiting song can be taken back (W3.12); the button sits beside
   // the link, not inside it.
   const cancellable = row.mine && row.id && row.status === 'queued'
   return (
-    <li>
+    <li data-reveal style={{ '--i': index }}>
       {cancellable ? (
         <div className="flex items-center bg-accent/5">
           <div className="min-w-0 flex-1">{link}</div>
@@ -192,13 +211,13 @@ function StaffActions({ row, onDone }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-line px-4 py-2">
+    <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-line px-2 py-2 sm:px-3">
       <span className="label text-amber">{t('moderation.staff')}</span>
-      <button type="button" disabled={busy} onClick={() => act('remove')} className="btn-ghost h-7 px-2.5 text-caption">
+      <button type="button" disabled={busy} onClick={() => act('remove')} className="btn-ghost btn-sm">
         {t('moderation.remove')}
       </button>
       {row.status === 'running' && (
-        <button type="button" disabled={busy} onClick={() => act('requeue')} className="btn-ghost h-7 px-2.5 text-caption">
+        <button type="button" disabled={busy} onClick={() => act('requeue')} className="btn-ghost btn-sm">
           {t('moderation.requeue')}
         </button>
       )}
@@ -227,14 +246,14 @@ function ModerationLog({ tick }) {
   }, [tick])
 
   return (
-    <section className="space-y-3">
-      <h2 className="label">{t('moderation.logTitle')}</h2>
+    <section className="space-y-5 pt-4" aria-labelledby="queue-moderation">
+      <SectionHeader id="queue-moderation" eyebrow={t('moderation.staff')} title={t('moderation.logTitle')} />
       {!log?.length ? (
         <p className="text-caption text-dim">{t('moderation.logEmpty')}</p>
       ) : (
-        <ul className="divide-y divide-line rounded-panel border border-line">
+        <ul className="divide-y divide-line border-y border-line">
           {log.map((entry, i) => (
-            <li key={`${entry.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 text-caption">
+            <li key={`${entry.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-caption">
               <span className="readout text-dim">{new Date(entry.at).toLocaleString()}</span>
               <span>{t(`moderation.did.${entry.action}`, { moderator: entry.moderator })}</span>
               {entry.ref && <span className="readout text-dim">{entry.ref.slice(0, 8)}</span>}
@@ -251,10 +270,7 @@ function Uploader({ row }) {
   if (row.uploader) return <Avatar account={row.uploader} size={32} />
   return (
     <div aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-surface-3 text-dim">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 21a8 8 0 0 1 16 0" />
-      </svg>
+      <Icon name="user" size={15} />
     </div>
   )
 }

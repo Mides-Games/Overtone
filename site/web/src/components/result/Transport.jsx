@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { formatClock } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
 
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5]
 
@@ -19,15 +20,16 @@ export default function Transport({ player, snapshot, durationS, clockRef }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <button
           type="button"
-          className="btn-primary h-10 w-24"
+          className="btn-primary min-w-28"
           onClick={() => player.toggle()}
           disabled={disabled}
           aria-keyshortcuts="Space"
         >
+          <Icon name={snapshot.playing ? 'pause' : 'play'} size={16} strokeWidth={2} />
           {snapshot.playing ? t('tempo.pause') : t('tempo.play')}
         </button>
-        <span className="readout text-label">
-          <span ref={clockRef}>{formatClock(0)}</span>
+        <span className="readout text-body">
+          <span ref={clockRef} className="text-text">{formatClock(0)}</span>
           <span className="text-dim"> / {formatClock(durationS * 1000)}</span>
         </span>
 
@@ -50,20 +52,21 @@ export default function Transport({ player, snapshot, durationS, clockRef }) {
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            className="tool-btn px-2.5"
+            className="tool-btn gap-1.5 px-2.5"
             aria-pressed={snapshot.loopOn}
             disabled={disabled}
             onClick={() => player.setLoopOn(!snapshot.loopOn)}
             aria-keyshortcuts="L"
           >
+            <Icon name="loop" size={15} />
             {t('tempo.loop')}
           </button>
           <span className="readout text-caption text-dim">
             {range ? `${formatClock(range.a * 1000)} – ${formatClock(range.b * 1000)}` : t('tempo.loopSection')}
           </span>
           {range && (
-            <button type="button" className="tool-btn px-2" onClick={() => player.setRange(null)} aria-label={t('tempo.loopClear')} title={t('tempo.loopClear')}>
-              ×
+            <button type="button" className="tool-btn" onClick={() => player.setRange(null)} aria-label={t('tempo.loopClear')} title={t('tempo.loopClear')}>
+              <Icon name="close" size={14} />
             </button>
           )}
         </div>

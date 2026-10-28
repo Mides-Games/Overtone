@@ -272,7 +272,30 @@
     "voteOn": "wł.",
     "voteOff": "wył.",
     "cached": "to samo audio było już analizowane: zapisany wynik",
-    "removed": "Moderator usunął ten utwór z kolejki, więc nie został przeanalizowany. Jego plik został usunięty."
+    "removed": "Moderator usunął ten utwór z kolejki, więc nie został przeanalizowany. Jego plik został usunięty.",
+    "zones": {
+      "nav": "Na tej stronie",
+      "listen": {
+        "eyebrow": "Słuchaj",
+        "title": "Posłuchaj czerwonych linii na tle utworu"
+      },
+      "check": {
+        "eyebrow": "Sprawdź",
+        "title": "Co sprawdzić, linia po linii"
+      },
+      "export": {
+        "eyebrow": "Eksport",
+        "title": "Przenieś to do osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Więcej narzędzi do słuchania",
+      "hint": "Ćwiczenie, kliknięcia między uderzeniami, A/B, tempo z tapnięć i opóźnienie"
+    },
+    "oszMore": {
+      "title": "Opcje .osz i podział beatu",
+      "hint": "Gdzie padają ataki, okładka, podgląd, lead-in i zestaw map"
+    }
   },
   "login": {
     "title": "Zaloguj się",

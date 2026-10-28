@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { BPM_TOLERANCE, OFFSET_TOLERANCE_MS } from '../../lib/compare.js'
 import { formatBpm, formatClock } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
 
 /** Signed differences, rounded first so a hair's breadth reads 0, never "+0.0" or "-0.0". */
 const ms1 = (value) => {
@@ -51,7 +52,7 @@ export default function CompareReport({ comparison, labelA, labelB, onPlayAt = n
   return (
     <div className="space-y-4">
       <div className={`space-y-1.5 rounded-panel border p-4 ${TONE[c.verdict] ?? ''}`} role="status">
-        <p className="font-display text-[17px] font-semibold text-text">{verdict}</p>
+        <p className="heading-title">{verdict}</p>
         {c.verdict !== 'noOverlap' && (
           <p className="text-caption text-muted">
             {t('compare.tolerance', { ms: OFFSET_TOLERANCE_MS, bpm: BPM_TOLERANCE, from: formatClock(c.startMs) })}
@@ -65,10 +66,10 @@ export default function CompareReport({ comparison, labelA, labelB, onPlayAt = n
         {c.unmatched.length > 0 && <p className="text-caption text-muted">{t('compare.unmatchedCount', { count: c.unmatched.length })}</p>}
       </div>
 
-      <div className="max-h-[28rem] overflow-auto rounded-panel border border-line">
+      <div className="panel max-h-[28rem] overflow-auto">
         <table className="w-full min-w-[44rem] text-left text-label">
           <caption className="sr-only">{t('compare.tableCaption', names)}</caption>
-          <thead className="sticky top-0 z-[1] bg-surface-2">
+          <thead className="sticky top-0 z-[1] border-b border-line bg-surface-2">
             <tr className="label">
               <th className="px-3 py-2 font-semibold">{t('compare.col.time', { name: labelA })}</th>
               <th className="px-3 py-2 font-semibold">{t('compare.col.time', { name: labelB })}</th>
@@ -105,8 +106,8 @@ function PlayAt({ ms, onPlayAt }) {
   const { t } = useTranslation()
   if (!onPlayAt) return null
   return (
-    <button type="button" className="tool-btn ml-2 h-6 px-2 text-caption" onClick={() => onPlayAt(ms)} title={t('compare.playHere')} aria-label={t('compare.playHere')}>
-      ▶
+    <button type="button" className="tool-btn ml-2 h-6 min-w-6 px-1" onClick={() => onPlayAt(ms)} title={t('compare.playHere')} aria-label={t('compare.playHere')}>
+      <Icon name="play" size={12} />
     </button>
   )
 }

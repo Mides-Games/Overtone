@@ -5,6 +5,7 @@ import { embedCode, mapPng, mapSvg } from '../../lib/map-image.js'
 import { overlayPath } from '../../lib/overlay.js'
 import { songNames } from '../../lib/osz.js'
 import { adjustmentNote, downloadName, formatBpm, saveText } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
 import { readPalette } from './draw.js'
 
 /**
@@ -61,19 +62,21 @@ export default function MapImage({ id, analysis, lines, data, adjustment, publis
     <div className="space-y-2 border-t border-line px-4 py-3">
       <h3 className="label">{t('platform.image.title')}</h3>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-ghost" onClick={png} disabled={state === 'busy'}>
+        <button type="button" className="btn-ghost btn-sm" onClick={png} disabled={state === 'busy'}>
           {t('platform.image.png')}
         </button>
-        <button type="button" className="btn-ghost" onClick={svg}>
+        <button type="button" className="btn-ghost btn-sm" onClick={svg}>
           {t('platform.image.svg')}
         </button>
         {published && (
           <>
-            <button type="button" className="btn-ghost" onClick={copyEmbed}>
+            <button type="button" className="btn-ghost btn-sm" onClick={copyEmbed}>
               {state === 'copied' ? t('platform.image.copied') : state === 'copyFailed' ? t('platform.image.copyFailed') : t('platform.image.embed')}
             </button>
-            <a href={`/embed/${id}`} target="_blank" rel="noopener" className="text-caption text-accent hover:underline">
-              {t('platform.image.preview')} ↗
+            <a href={`/embed/${id}`} target="_blank" rel="noopener" className="link inline-flex items-center gap-1 text-caption">
+              {t('platform.image.preview')}
+              <Icon name="external" size={13} />
+              <span className="sr-only">{t('common.newTab')}</span>
             </a>
             {/* W13.23: the stream overlay, a URL to paste into OBS's browser source. */}
             <a href={overlayPath(id)} target="_blank" rel="noopener" className="text-caption text-accent hover:underline">

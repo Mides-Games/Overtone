@@ -251,6 +251,25 @@ Contrast, computed from `index.css` (WCAG 2 ratio; the lowest surface first):
   on a tablet, two on a phone, so its words never shrink with a viewBox; its one red
   line falls where the steps start making red lines (Sections).
 
+The core pages (`design/core-pages`: Analyze, the queue, the result page, `/t/:id`,
+Compare) added these, each for the reason given:
+
+- **The result page has three zones** (listen, check, export), each under a
+  `SectionHeader`, with an "On this page" row of jump links above them. It is the
+  densest page on the site; a reader who came for the .osz should not scroll past the
+  map to find it, and one who came to listen should not meet the exports first.
+- **One primary per zone there, not per page:** Play in the transport and Download .osz
+  in the export panel. Play is the instrument's own control, used every few seconds;
+  as a ghost it read as optional. Everything else on the page (Publish, Analyse again,
+  Save a version, Choose an .osu) became a ghost.
+- **Folds, `components/result/Disclosure.jsx`:** a native `details` whose summary names
+  everything inside it. Used twice: practice and the by-ear tools, and the beat-snap
+  chart with the .osz options. What is folded stays mounted, so its keyboard shortcuts
+  (T, A) work folded. Nested `details` use named groups (`group/…`) so an inner chevron
+  does not turn with the outer one.
+- **The tempo map and the red lines table are the panels** of their zones; check here,
+  compare with a map, how it was analysed and sharing sit between hairlines.
+
 ## 11. Guide for restyling a page
 
 Read sections 1, 4 and 6 first. Then, for each page:

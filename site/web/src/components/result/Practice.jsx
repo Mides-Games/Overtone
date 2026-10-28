@@ -39,11 +39,11 @@ export default function Practice({ player, snapshot }) {
           <span>{t('practice.countIn')}</span>
         </label>
         {practice ? (
-          <button type="button" className="btn-ghost h-9 px-3" onClick={() => player.stop()}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => player.stop()}>
             {t('practice.stop')}
           </button>
         ) : (
-          <button type="button" className="btn-ghost h-9 px-3" disabled={!snapshot.ready} onClick={start}>
+          <button type="button" className="btn-ghost btn-sm" disabled={!snapshot.ready} onClick={start}>
             {t('practice.start')}
           </button>
         )}

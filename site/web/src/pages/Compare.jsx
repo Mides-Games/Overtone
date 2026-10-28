@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
 import CompareReport from '../components/compare/CompareReport.jsx'
 import { ClicksSwitch } from '../components/compare/CompareWithMap.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Transport from '../components/result/Transport.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import SectionHeader from '../components/ui/SectionHeader.jsx'
+import Skeleton, { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
@@ -83,22 +85,26 @@ export default function Compare() {
 
   const ready = timingA?.result && timingB?.result
   return (
-    <div className="space-y-8">
-      <header className="rise space-y-2">
-        <p className="label text-accent">{t('compare.page.eyebrow')}</p>
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('compare.page.title')}</h1>
-        <p className="max-w-[64ch] text-muted">{t('compare.page.subtitle')}</p>
+    <div className="space-y-10">
+      <header className="rise max-w-3xl space-y-4">
+        <p className="eyebrow">{t('compare.page.eyebrow')}</p>
+        <h1 className="heading-headline">{t('compare.page.title')}</h1>
+        <p className="lede max-w-[64ch]">{t('compare.page.subtitle')}</p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <SideCard letter="A" side={a} timing={timingA} other={b} onChange={(side) => setSide('a', side)} />
-        <SideCard letter="B" side={b} timing={timingB} other={a} onChange={(side) => setSide('b', side)} />
+      <div className="space-y-3">
+        {/* The two sides are what you operate here: each its own panel, side by side from 768 px. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <SideCard letter="A" side={a} timing={timingA} other={b} onChange={(side) => setSide('a', side)} />
+          <SideCard letter="B" side={b} timing={timingB} other={a} onChange={(side) => setSide('b', side)} />
+        </div>
+        {a && b && (
+          <button type="button" className="btn-quiet btn-sm -ml-2.5" onClick={swap}>
+            <Icon name="loop" size={16} />
+            {t('compare.page.swap')}
+          </button>
+        )}
       </div>
-      {a && b && (
-        <button type="button" className="btn-ghost h-8 px-3 text-caption" onClick={swap}>
-          {t('compare.page.swap')}
-        </button>
-      )}
 
       {ready && <Comparison a={a} b={b} timingA={timingA} timingB={timingB} />}
     </div>
@@ -112,15 +118,15 @@ function SideCard({ letter, side, timing, other, onChange }) {
   const { t } = useTranslation()
   const [picking, setPicking] = useState(false)
   const heading = (
-    <h2 className="label flex items-center gap-2">
-      <span className="h-2.5 w-2.5 rounded-full" style={{ background: SIDE_TONE[letter] }} aria-hidden="true" />
+    <h2 className="heading-title flex items-center gap-2.5">
+      <span className="h-4 w-0.5 rounded-full" style={{ background: SIDE_TONE[letter] }} aria-hidden="true" />
       {t('compare.page.side', { letter })}
     </h2>
   )
 
   if (!side || picking) {
     return (
-      <section className="panel space-y-3 p-4">
+      <section className="panel space-y-4 p-4 sm:p-5">
         {heading}
         <Picker
           other={other}
@@ -130,7 +136,7 @@ function SideCard({ letter, side, timing, other, onChange }) {
           }}
         />
         {side && (
-          <button type="button" className="btn-ghost h-8 px-3 text-caption" onClick={() => setPicking(false)}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => setPicking(false)}>
             {t('compare.page.cancel')}
           </button>
         )}
@@ -140,15 +146,18 @@ function SideCard({ letter, side, timing, other, onChange }) {
 
   const lines = timing?.result?.red_lines ?? []
   return (
-    <section className="panel space-y-3 p-4">
+    <section className="panel space-y-4 p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         {heading}
-        <button type="button" className="btn-ghost h-7 shrink-0 px-2.5 text-caption" onClick={() => setPicking(true)}>
+        <button type="button" className="btn-ghost btn-sm shrink-0" onClick={() => setPicking(true)}>
           {t('compare.page.change')}
         </button>
       </div>
       {!timing || timing.loading ? (
-        <BrandLoader />
+        <div className="space-y-2" role="status" aria-label={t('common.loading')}>
+          <Skeleton className="h-3.5 w-3/5" />
+          <Skeleton className="h-3 w-2/5" />
+        </div>
       ) : timing.error ? (
         <p role="alert" className="text-label text-amber">
           {t(`compare.page.errors.${timing.error}`)}
@@ -156,11 +165,12 @@ function SideCard({ letter, side, timing, other, onChange }) {
       ) : (
         <>
           <div className="min-w-0 space-y-0.5">
-            <Link to={timing.own ? `/analyze/${timing.id}` : timingPath(timing.id)} className="block truncate text-label font-semibold text-text hover:text-accent">
+            <Link to={timing.own ? `/analyze/${timing.id}` : timingPath(timing.id)} className="block truncate text-body font-semibold text-text transition-colors duration-150 ease-out hover:text-accent">
               {timing.name ?? t('timings.untitled')}
             </Link>
             <p className="readout text-caption text-dim">
-              {bpmLabel(timing.result.global_bpm)} BPM · {t('timings.redLines', { count: lines.length })} · {timing.own ? t('compare.page.yours') : t('compare.page.published')}
+              {bpmLabel(timing.result.global_bpm)}
+              <span className="unit">BPM</span> · {t('timings.redLines', { count: lines.length })} · {timing.own ? t('compare.page.yours') : t('compare.page.published')}
             </p>
           </div>
           <Adjust side={side} onChange={onChange} />
@@ -196,13 +206,13 @@ function Adjust({ side, onChange }) {
           step="0.5"
           min={-1000}
           max={1000}
-          className="field h-8 w-20 px-2 text-label"
+          className="field readout h-8 min-h-8 w-20 px-2 py-0 text-label"
           value={nudge}
           onChange={(e) => setNudge(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => e.key === 'Enter' && commit()}
         />
-        ms
+        <span className="unit">ms</span>
       </label>
     </div>
   )
@@ -248,21 +258,26 @@ function Picker({ other, onPick }) {
       {other && (
         <div className="flex flex-wrap gap-2">
           {[2, 0.5].map((factor) => (
-            <button key={factor} type="button" className="btn-ghost h-8 px-3 text-caption" onClick={() => onPick({ id: other.id, factor, nudgeMs: 0 })}>
+            <button key={factor} type="button" className="btn-ghost btn-sm" onClick={() => onPick({ id: other.id, factor, nudgeMs: 0 })}>
               {t('compare.page.sameAdjusted', { factor })}
             </button>
           ))}
         </div>
       )}
       {mine === null ? (
-        <BrandLoader />
+        <SkeletonRows rows={2} label={t('common.loading')} />
       ) : choices.length ? (
-        <ul className="max-h-56 divide-y divide-line overflow-auto rounded-control border border-line">
+        <ul className="panel-well max-h-56 divide-y divide-line overflow-auto">
           {choices.map((item) => (
             <li key={item.id}>
-              <button type="button" className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-2" onClick={() => onPick({ id: item.id, factor: 1, nudgeMs: 0 })}>
+              <button type="button" className="flex min-h-10 w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-150 ease-out hover:bg-surface-2" onClick={() => onPick({ id: item.id, factor: 1, nudgeMs: 0 })}>
                 <span className="min-w-0 flex-1 truncate text-label text-text">{item.name ?? t('timings.untitled')}</span>
-                {item.bpm !== undefined && <span className="readout shrink-0 text-caption text-dim">{bpmLabel(item.bpm)} BPM</span>}
+                {item.bpm !== undefined && (
+                  <span className="readout shrink-0 text-caption text-dim">
+                    {bpmLabel(item.bpm)}
+                    <span className="unit">BPM</span>
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -354,12 +369,10 @@ function Comparison({ a, b, timingA, timingB }) {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {otherAudio && <p className="rounded-control border border-amber/40 bg-amber/10 px-3 py-2 text-caption text-text">{t('compare.page.otherAudio')}</p>}
-      <section className="space-y-3" aria-labelledby="compare-result-title">
-        <h2 id="compare-result-title" className="label">
-          {t('compare.page.difference')}
-        </h2>
+      <section className="space-y-5 border-t border-line pt-8" aria-labelledby="compare-result-title">
+        <SectionHeader id="compare-result-title" title={t('compare.page.difference')} />
         <CompareReport
           comparison={comparison}
           labelA="A"
@@ -368,12 +381,15 @@ function Comparison({ a, b, timingA, timingB }) {
         />
       </section>
 
+      <section className="space-y-5 border-t border-line pt-8" aria-labelledby="compare-listen">
+      <SectionHeader id="compare-listen" eyebrow={t('result.zones.listen.eyebrow')} title={t('result.zones.listen.title')} />
       <ClicksSwitch clicks={clicks} onClicks={setClicks} labelA={`A · ${formatBpm(linesA[0]?.bpm)}`} labelB={`B · ${formatBpm(linesB[0]?.bpm)}`} />
       <TempoMap data={data} player={player} snapshot={snapshot} selected={selected} hovered={hovered} onSelect={setSelected} onHover={setHovered} clockRef={clockRef} focus={null}>
         <AudioSource audio={audio} filename={timingA.name} visitor={!timingA.own} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
       </TempoMap>
       <p className="max-w-[72ch] text-caption leading-relaxed text-dim">{t('compare.page.mapNote')}</p>
+      </section>
     </div>
   )
 }

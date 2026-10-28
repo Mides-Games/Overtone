@@ -15,6 +15,9 @@ import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.j
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
 import BatchTools from '../components/BatchTools.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import Reveal from '../components/ui/Reveal.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
 import { sharedState, takeSharedAudio } from '../lib/pwa.js'
 
 /**
@@ -64,7 +67,8 @@ export default function Analyze() {
         setLimits(data.limits)
         setCosts(data.costs ?? null)
       })
-      .catch(() => setLimits(null))
+      // false, not null: the readouts say "–" instead of waiting for ever.
+      .catch(() => setLimits(false))
   }, [])
 
   const single = items.length === 1 ? items[0] : null
@@ -197,15 +201,16 @@ export default function Analyze() {
   const toSend = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error').length
 
   return (
-    <div className="space-y-8">
-      <header className="rise space-y-2">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('analyze.title')}</h1>
-        <p className="max-w-[60ch] text-muted">{t('analyze.subtitle')}</p>
+    <div className="space-y-10">
+      <header className="rise max-w-3xl space-y-4">
+        <h1 className="heading-headline">{t('analyze.title')}</h1>
+        <p className="lede max-w-[60ch]">{t('analyze.subtitle')}</p>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <div className="min-w-0 space-y-6">
-          <form onSubmit={submit} className="panel min-w-0 space-y-5 p-5 sm:p-6">
+      <div className="grid gap-x-10 gap-y-10 lg:grid-cols-12">
+        <div className="min-w-0 space-y-10 lg:col-span-7">
+          {/* The one thing on the page you operate: the form is the panel; inside it, wells and hairlines. */}
+          <form onSubmit={submit} className="panel min-w-0 space-y-5 p-4 sm:p-6">
             {shared && (
               <p role="status" className={`rounded-control border px-3 py-2 text-label ${shared === 'added' ? 'border-accent/40 bg-accent/5' : 'border-amber/40 bg-amber/10'}`}>
                 {shared === 'added' ? t('platform.pwa.sharedAdded') : t('platform.pwa.sharedNone')}
@@ -223,15 +228,20 @@ export default function Analyze() {
                 setDragging(false)
                 pickAudio(await droppedFiles(e.dataTransfer))
               }}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-panel border border-dashed px-4 py-10 text-center transition ${
-                dragging ? 'border-accent bg-accent/5' : 'border-line-strong bg-surface-2 hover:border-line-hover'
+              className={`group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-panel border border-dashed px-4 py-10 text-center transition-colors duration-150 ease-out sm:py-12 ${
+                dragging ? 'border-accent bg-accent/5' : 'border-line-control bg-surface-3 hover:border-line-hover'
               }`}
             >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                <path d="M4 14v1a5 5 0 0 0 5 5h6a5 5 0 0 0 5-5v-1M12 4v11M7.5 8.5 12 4l4.5 4.5" />
-              </svg>
-              <span className="font-display text-[15px] font-semibold">{t('analyze.drop')}</span>
-              <span className="text-caption text-dim">{t('analyze.audioHint')}</span>
+              <span
+                className={`flex h-12 w-12 items-center justify-center rounded-full border text-accent transition-transform duration-150 ease-out ${
+                  dragging ? 'scale-110 border-accent' : 'border-line-strong group-hover:-translate-y-0.5'
+                }`}
+                aria-hidden="true"
+              >
+                <Icon name="upload" size={22} />
+              </span>
+              <span className="heading-title">{t('analyze.drop')}</span>
+              <span className="readout text-caption text-dim">{t('analyze.audioHint')}</span>
               <input
                 id="audio"
                 type="file"
@@ -246,7 +256,8 @@ export default function Analyze() {
             </label>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="btn-ghost h-8 cursor-pointer px-3 text-caption">
+              <label className="btn-ghost btn-sm cursor-pointer">
+                <Icon name="list" size={16} />
                 {t('analyze.folder')}
                 <input
                   type="file"
@@ -263,7 +274,7 @@ export default function Analyze() {
             </div>
 
             {items.length > 0 && (
-              <ul className="space-y-2">
+              <ul className="divide-y divide-line border-t border-line">
                 {items.map((item) => (
                   <FileCard
                     key={item.key}
@@ -284,10 +295,10 @@ export default function Analyze() {
               error={request.error}
             />
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
-              <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
+            <label className="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="mt-1 accent-[var(--accent)]" />
               <span className="space-y-0.5">
-                <span className="block text-label">{t('analyze.private')}</span>
+                <span className="block text-label text-text">{t('analyze.private')}</span>
                 <span className="block text-caption text-dim">{t('analyze.privateHint')}</span>
               </span>
             </label>
@@ -295,14 +306,15 @@ export default function Analyze() {
             {items.length > 1 && finished > 0 && <BatchTools items={batchItems} creator={account?.username} />}
 
             {items.length > 1 && canNotify && (
-              <label className="flex cursor-pointer items-center gap-3 px-1 text-label">
+              <label className="flex cursor-pointer items-center gap-3 text-label">
                 <input type="checkbox" checked={settings.notify} onChange={(e) => askToNotify(e.target.checked)} className="accent-[var(--accent)]" />
                 {t('analyze.batch.notify')}
               </label>
             )}
 
-            <button type="submit" className="btn-primary w-full" disabled={sending || (items.length > 0 && toSend === 0)}>
+            <button type="submit" className="btn-primary btn-lg w-full" disabled={sending || (items.length > 0 && toSend === 0)}>
               {sending ? t('analyze.sendingMany') : toSend > 1 ? t('analyze.submitMany', { count: toSend }) : t('analyze.submit')}
+              {!sending && <Icon name="arrow-right" size={18} />}
             </button>
 
             {/* W13.20: a refusal for one of the person's own limits says why and when it frees up, live. */}
@@ -320,63 +332,83 @@ export default function Analyze() {
           </form>
 
           {recent.length > 0 && (
-            <section className="space-y-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="label">{t('analyze.recentTitle')}</h2>
-                <Link to="/history" className="text-caption text-accent hover:underline">
-                  {t('timings.history.all')} →
+            <section className="space-y-4" aria-labelledby="analyze-recent">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h2 id="analyze-recent" className="heading-title">
+                  {t('analyze.recentTitle')}
+                </h2>
+                <Link to="/history" className="btn-quiet btn-sm -mr-2.5">
+                  {t('timings.history.all')}
+                  <Icon name="arrow-right" size={16} />
                 </Link>
               </div>
-              <ul className="divide-y divide-line rounded-panel border border-line">
-                {recent.map((item) => (
-                  <li key={item.id}>
-                    <Link to={`/analyze/${item.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-surface-2">
+              <Reveal as="ul" className="divide-y divide-line border-y border-line">
+                {recent.map((item, i) => (
+                  <li key={item.id} data-reveal style={{ '--i': i }}>
+                    <Link
+                      to={`/analyze/${item.id}`}
+                      className="group flex min-h-11 items-center justify-between gap-3 py-2.5 transition-colors duration-150 ease-out hover:text-accent"
+                    >
                       <span className="min-w-0 truncate text-label">{item.filename || item.id}</span>
                       <span className="readout shrink-0 text-caption text-dim">{new Date(item.at).toLocaleString()}</span>
                     </Link>
                   </li>
                 ))}
-              </ul>
+              </Reveal>
             </section>
           )}
         </div>
 
-        <aside className="min-w-0 space-y-6">
-          <section className="panel overflow-hidden">
-            <h2 className="label border-b border-line px-4 py-2.5">{account ? t('analyze.limitsTitleAccount') : t('analyze.limitsTitle')}</h2>
-            <dl className="grid grid-cols-2 gap-px bg-line">
-              <div className="space-y-1 bg-surface px-4 py-3">
+        {/* What the form will cost and give: facts on the page's ground, set off by hairlines, not boxed. */}
+        <aside className="min-w-0 space-y-10 lg:col-span-5 lg:pl-4">
+          <section className="space-y-4" aria-labelledby="analyze-limits">
+            <h2 id="analyze-limits" className="label">
+              {account ? t('analyze.limitsTitleAccount') : t('analyze.limitsTitle')}
+            </h2>
+            <dl className="grid grid-cols-2 border-y border-line">
+              <div className="space-y-1.5 py-4 pr-4">
                 <dt className="label">{t('analyze.perDay')}</dt>
-                <dd className="readout text-title">{perDay ?? '–'}</dd>
+                <dd className="readout text-heading font-medium leading-none text-text">{limits === null ? <Skeleton className="h-6 w-14" /> : (perDay ?? '–')}</dd>
               </div>
-              <div className="space-y-1 bg-surface px-4 py-3">
+              <div className="space-y-1.5 border-l border-line py-4 pl-5">
                 <dt className="label">{t('analyze.maxLength')}</dt>
-                <dd className="readout text-title">
-                  {limits ? limits.maxAudioSeconds / 60 : '–'}
-                  <span className="ml-1 text-label text-dim">min</span>
+                <dd className="readout text-heading font-medium leading-none text-text">
+                  {limits ? (
+                    <>
+                      {limits.maxAudioSeconds / 60}
+                      <span className="unit">min</span>
+                    </>
+                  ) : limits === null ? (
+                    <Skeleton className="h-6 w-14" />
+                  ) : (
+                    '–'
+                  )}
                 </dd>
               </div>
             </dl>
-            <p className="border-t border-line px-4 py-3 text-caption text-dim">
-              {account ? t('analyze.limitsNoteAccount') : t('analyze.limitsNote')}
-            </p>
+            <p className="text-caption text-dim">{account ? t('analyze.limitsNoteAccount') : t('analyze.limitsNote')}</p>
           </section>
 
-          <section className="space-y-3">
-            <h2 className="label">{t('analyze.outputsTitle')}</h2>
-            <ul className="divide-y divide-line rounded-panel border border-line">
+          <section className="space-y-4" aria-labelledby="analyze-outputs">
+            <h2 id="analyze-outputs" className="label">
+              {t('analyze.outputsTitle')}
+            </h2>
+            <ul className="divide-y divide-line border-y border-line">
               {OUTPUTS.map(({ key, ready }) => (
-                <li key={key} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-label">{t(`analyze.outputs.${key}`)}</span>
-                  <span className={`readout text-caption ${ready ? 'text-accent' : 'text-dim'}`}>{ready ? t('analyze.ready') : t('analyze.soon')}</span>
+                <li key={key} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="flex min-w-0 items-center gap-2.5 text-label text-text">
+                    <Icon name={ready ? 'check' : 'clock'} size={16} className={ready ? 'text-accent' : 'text-dim'} strokeWidth={ready ? 2 : 1.5} />
+                    {t(`analyze.outputs.${key}`)}
+                  </span>
+                  <span className={ready ? 'chip-accent' : 'chip-neutral'}>{ready ? t('analyze.ready') : t('analyze.soon')}</span>
                 </li>
               ))}
             </ul>
           </section>
 
-          <section className="flex flex-col gap-2">
+          <section className="flex flex-col gap-3 border-t border-line pt-6">
             <span className="chip-amber self-start">{t('home.checkByEar')}</span>
-            <p className="text-caption leading-relaxed text-muted">{t('analyze.honest')}</p>
+            <p className="text-label leading-relaxed text-muted">{t('analyze.honest')}</p>
           </section>
         </aside>
       </div>
@@ -453,14 +485,14 @@ function FileCard({ item, problem, onRemove }) {
   }
 
   return (
-    <li className="space-y-1.5 rounded-control border border-line bg-surface-2 px-3 py-2">
+    <li className="space-y-1.5 py-2.5">
       <div className="flex items-center justify-between gap-3">
         {upload.kind === 'sent' ? (
-          <Link to={`/analyze/${upload.id}`} className="min-w-0 truncate text-label text-accent hover:underline">
+          <Link to={`/analyze/${upload.id}`} className="link min-w-0 truncate text-label">
             {file.name}
           </Link>
         ) : (
-          <span className="min-w-0 truncate text-label">{file.name}</span>
+          <span className="min-w-0 truncate text-label text-text">{file.name}</span>
         )}
         <span className="flex shrink-0 items-center gap-2">
           <span className="readout text-caption text-dim">
@@ -472,9 +504,9 @@ function FileCard({ item, problem, onRemove }) {
               type="button"
               onClick={onRemove}
               aria-label={t('analyze.card.remove', { name: file.name })}
-              className="px-1 text-dim hover:text-text"
+              className="icon-btn -my-1.5 -mr-2"
             >
-              ×
+              <Icon name="close" size={16} />
             </button>
           )}
         </span>
@@ -487,7 +519,7 @@ function FileCard({ item, problem, onRemove }) {
       </div>
       {percent !== null && (
         <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={file.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-          <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+          <div className="h-full origin-left bg-accent transition-transform duration-[var(--dur-panel)] ease-out" style={{ transform: `scaleX(${percent / 100})` }} />
         </div>
       )}
     </li>

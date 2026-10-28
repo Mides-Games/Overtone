@@ -34,8 +34,9 @@ export const DEFAULT_CHUNK_KB = 12
 /** Chunks known to be larger than the default, each with why. */
 export const CHUNK_KB = {
   // The result page: the tempo map's canvases, the player, the exports
-  // (19.5 kB on 2026-10-27).
-  AnalysisResult: 30,
+  // (19.5 kB on 2026-10-27; 30.1 kB on 2026-10-28 after the design rework
+  // grouped it into listen, check and export zones with folded tools).
+  AnalysisResult: 32,
   // The changelog tab carries the timeline's last 30 entries as data
   // (11.7 kB on 2026-10-27), and grows with them.
   Changelog: 16,

@@ -26,6 +26,7 @@ const PATHS = {
   close: <path d="m6 6 12 12M18 6 6 18" />,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
   'chevron-down': <path d="m6 9 6 6 6-6" />,
   'chevron-right': <path d="m9 6 6 6-6 6" />,
   'arrow-right': <path d="M5 12h14M13 6l6 6-6 6" />,
@@ -84,6 +85,28 @@ const PATHS = {
       <path d="M8 11V8a4 4 0 0 1 7.5-2" />
     </>
   ),
+  // The result page's controls (docs/design.md, section 11.7: no ▶, ⟲, ✎ or × characters).
+  play: <path d="M8 5.5v13l10.5-6.5z" />,
+  pause: <path d="M8.5 5.5v13M15.5 5.5v13" />,
+  loop: (
+    <>
+      <path d="M4 11.5V10a3 3 0 0 1 3-3h12" />
+      <path d="m16 4 3 3-3 3M20 12.5V14a3 3 0 0 1-3 3H5" />
+      <path d="m8 20-3-3 3-3" />
+    </>
+  ),
+  edit: <path d="M4.5 19.5h4l10-10a2.83 2.83 0 0 0-4-4l-10 10zM13.5 7l3.5 3.5" />,
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  download: <path d="M12 4.5v11M7.5 11 12 15.5l4.5-4.5M5 19.5h14" />,
+  star: <path d="m12 4 2.45 5 5.55.8-4 3.9.95 5.5L12 16.6l-4.95 2.6L8 13.7 4 9.8l5.55-.8z" />,
+  'arrow-left': <path d="M19 12H5M11 6l-6 6 6 6" />,
+  link: <path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />,
+  sliders: <path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4" />,
   code: <path d="m8 7-5 5 5 5M16 7l5 5-5 5" />,
   desktop: <path d="M3 5h18v11H3zM8 20h8M12 16v4" />,
   'not-affiliated': (

@@ -51,7 +51,7 @@ export default function GameFormats({ analysis, lines, offsetDecimals, durationS
       <h3 className="label">{t('gameFormats.title')}</h3>
       <div className="flex flex-wrap gap-2">
         {GAME_FORMATS.map((format) => (
-          <button key={format.id} type="button" className="btn-ghost" disabled={!files[format.id]} onClick={() => save(format.id)}>
+          <button key={format.id} type="button" className="btn-ghost btn-sm" disabled={!files[format.id]} onClick={() => save(format.id)}>
             {format.game} <span className="text-dim">.{format.ext}</span>
           </button>
         ))}

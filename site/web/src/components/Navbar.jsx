@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { gutter } from '../lib/gutter.js'
 import Avatar from './Avatar.jsx'
+import { SearchIcon, usePalette } from './CommandPalette.jsx'
 import Mark from './Mark.jsx'
 import { TrayButton } from './Tray.jsx'
 
@@ -43,6 +44,25 @@ function ThemeToggle() {
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
       )}
+    </button>
+  )
+}
+
+/** Opens the command palette (W12.14): the keyboard's Ctrl+K, for a pointer or a phone. */
+function PaletteButton({ className = '' }) {
+  const { t } = useTranslation()
+  const { openPalette, shortcut } = usePalette()
+  return (
+    <button
+      type="button"
+      onClick={openPalette}
+      aria-label={t('palette.open', { shortcut })}
+      title={t('palette.open', { shortcut })}
+      aria-keyshortcuts="Control+K Meta+K"
+      aria-haspopup="dialog"
+      className={`${iconButton} ${className}`}
+    >
+      <SearchIcon />
     </button>
   )
 }
@@ -112,6 +132,9 @@ function UserMenu({ account }) {
             <Link role="menuitem" to="/history" className={item} onClick={() => setOpen(false)}>
               {t('timings.nav.history')}
             </Link>
+            <Link role="menuitem" to="/settings" className={item} onClick={() => setOpen(false)}>
+              {t('settings.title')}
+            </Link>
             <button
               role="menuitem"
               type="button"
@@ -162,22 +185,30 @@ export default function Navbar() {
           <span className="font-display text-[15px] font-bold uppercase tracking-[0.16em] text-text">Overtone</span>
         </Link>
 
-        <Places className="hidden h-full items-stretch md:flex" />
+        {/* min-w-0 and its own scroll: at a large font size (W12.15) the places scroll rather than push the account off the bar. */}
+        <Places className="hidden h-full min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] md:flex" />
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <TrayButton />
+          <div className="hidden md:block">
+            <PaletteButton />
+          </div>
           <LanguageToggle />
           <ThemeToggle />
           {account ? (
             <UserMenu account={account} />
           ) : (
-            <Link to="/login" className="btn-ghost ml-1 h-8 px-3">
+            <Link to="/login" className="btn-ghost ml-1 h-8 whitespace-nowrap px-3">
               {t('nav.signIn')}
             </Link>
           )}
         </div>
       </div>
-      <Places className="flex h-10 items-stretch overflow-x-auto border-t border-line px-2 md:hidden" />
+      {/* On a phone the palette's button leads the places' row: the top row has no room left at a large font size. */}
+      <div className="flex h-10 items-stretch border-t border-line md:hidden">
+        <PaletteButton className="ml-2 self-center" />
+        <Places className="flex min-w-0 flex-1 items-stretch overflow-x-auto px-1 [scrollbar-width:none]" />
+      </div>
     </header>
   )
 }

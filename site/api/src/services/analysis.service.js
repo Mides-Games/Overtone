@@ -1099,17 +1099,7 @@ const pgPage = async (where, params, atCol, filters) => {
     args.push(value);
     return `$${args.length}`;
   };
-  const clauses = [where];
-  if (filters.bpmMin !== null) clauses.push(`${BPM} >= ${arg(filters.bpmMin)}`);
-  if (filters.bpmMax !== null) clauses.push(`${BPM} <= ${arg(filters.bpmMax)}`);
-  if (filters.tempo) clauses.push(filters.tempo === 'variable' ? VARIABLE : `NOT ${VARIABLE}`);
-  if (filters.status) clauses.push(`a.status = ${arg(filters.status)}`);
-  if (filters.from) clauses.push(`a.created_at >= ${arg(filters.from)}`);
-  if (filters.to) clauses.push(`a.created_at < ${arg(filters.to)}`);
-  if (filters.q) {
-    const like = arg(likePattern(filters.q));
-    clauses.push(`(a.tag_title ILIKE ${like} OR a.tag_artist ILIKE ${like} OR a.filename ILIKE ${like})`);
-  }
+  const clauses = [where, ...filterClauses(filters, arg)];
   if (filters.cursor) {
     // Exact to the microsecond: the epoch plus a whole number of them.
     const micros = arg(String(filters.cursor.micros));
@@ -1131,5 +1121,35 @@ const pgPage = async (where, params, atCol, filters) => {
     next: rows.length > filters.limit && last ? encodeCursor(String(last[micros]), last.public_id) : null,
   };
 };
+
+/**
+ * The SQL of utils/timings.js `matches`, one clause per filter that is set,
+ * on `analyses a`; `arg(value)` adds a parameter and returns its `$n`. Also
+ * what the social store's orders by stars and uses filter with
+ * (services/social.service.js), so the two lists filter alike.
+ */
+export const filterClauses = (filters, arg) => {
+  const clauses = [];
+  if (filters.bpmMin !== null) clauses.push(`${BPM} >= ${arg(filters.bpmMin)}`);
+  if (filters.bpmMax !== null) clauses.push(`${BPM} <= ${arg(filters.bpmMax)}`);
+  if (filters.tempo) clauses.push(filters.tempo === 'variable' ? VARIABLE : `NOT ${VARIABLE}`);
+  if (filters.status) clauses.push(`a.status = ${arg(filters.status)}`);
+  if (filters.from) clauses.push(`a.created_at >= ${arg(filters.from)}`);
+  if (filters.to) clauses.push(`a.created_at < ${arg(filters.to)}`);
+  if (filters.q) {
+    const like = arg(likePattern(filters.q));
+    clauses.push(`(a.tag_title ILIKE ${like} OR a.tag_artist ILIKE ${like} OR a.filename ILIKE ${like})`);
+  }
+  if (filters.accountId) clauses.push(`a.account_id = ${arg(filters.accountId)}::uuid`);
+  return clauses;
+};
+
+/**
+ * For services/social.service.js: what a published row is and how a list
+ * reads one, in SQL, and the memory store's rows, so the social orders and
+ * totals read the same rows the recent list does.
+ */
+export { LIST_COLS, PUBLISHED, listRow };
+export const memoryAnalyses = () => memory.analyses.values();
 
 export const analyses = () => (hasDatabase() ? pgStore : memoryStore);

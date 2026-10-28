@@ -64,6 +64,27 @@ components:
       name: bpmMax
       in: query
       schema: { type: number, minimum: 0, maximum: 1000 }
+    sort:
+      name: sort
+      in: query
+      description: |
+        `new` (default): newest published first. `rated`: timings with at
+        least `minRatings` (3) ratings, by a Bayesian average (the ratings plus
+        3 more at 3 stars), so a few 5s do not outrank many 4.6s. `used`:
+        timings marked used at least once, most uses first. The last two page
+        by offset (`o<n>`): their numbers move while someone reads.
+      schema: { type: string, enum: [new, rated, used], default: new }
+    username:
+      name: username
+      in: path
+      required: true
+      description: A Mides username, any case.
+      schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,40}$' }
+    collectionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[0-9a-f]{32}$' }
   schemas:
     QueueEntry:
       type: object
@@ -331,6 +352,7 @@ components:
         bannerUrl: { type: [string, 'null'], format: uri }
         role: { type: [string, 'null'] }
         createdAt: { type: string, format: date-time }
+        profilePrivate: { type: boolean, description: 'Whether the public profile, /u/{username}, is hidden (W13.18).' }
     Author:
       type: [object, 'null']
       description: The public face of a Mides account. `null` for an anonymous review or a deleted account.
@@ -411,6 +433,118 @@ components:
           properties:
             createdAt: { type: string, format: date-time, description: When it was analysed. }
             result: { $ref: '#/components/schemas/TimingResult' }
+
+    RatingSummary:
+      type: object
+      description: The plain average of 1-5 stars (to two decimals) and how many rated; null with none.
+      required: [average, count]
+      properties:
+        average: { type: [number, 'null'], minimum: 1, maximum: 5 }
+        count: { type: integer, minimum: 0 }
+
+    RankedTiming:
+      description: A timing in a list (W5.1, W6), with its stars and how many accounts marked it used.
+      allOf:
+        - $ref: '#/components/schemas/TimingSummary'
+        - type: object
+          required: [rating, uses]
+          properties:
+            rating: { $ref: '#/components/schemas/RatingSummary' }
+            uses: { type: integer, minimum: 0 }
+
+    TimingPage:
+      type: object
+      description: A page of timings. `next` is the cursor of the next page, null on the last.
+      required: [timings, next, minRatings]
+      properties:
+        timings: { type: array, items: { $ref: '#/components/schemas/RankedTiming' } }
+        next: { type: [string, 'null'] }
+        minRatings: { type: integer, description: The ratings a timing needs before "best rated" counts it. }
+
+    Uses:
+      type: object
+      required: [count, mine, recent]
+      properties:
+        count: { type: integer, minimum: 0 }
+        mine:
+          type: [object, 'null']
+          description: The session account's own use, or null.
+          properties:
+            beatmapUrl: { type: [string, 'null'] }
+        recent:
+          type: array
+          description: The latest 20 uses, newest first.
+          items:
+            type: object
+            required: [user, beatmapUrl, at]
+            properties:
+              user: { $ref: '#/components/schemas/Author' }
+              beatmapUrl:
+                type: [string, 'null']
+                description: 'Always `https://osu.ppy.sh/beatmapsets/<set>`, optionally `#<mode>/<beatmap>`: the only form stored.'
+              at: { type: string, format: date-time }
+
+    Comment:
+      type: object
+      description: |
+        Plain text, cleaned of control and bidi characters. `hidden` appears
+        only when true (staff, or its author); `hiddenReason` only to staff.
+        No address or hash is ever sent.
+      required: [id, body, atMs, author, mine, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        body: { type: string, minLength: 1, maxLength: 1000 }
+        atMs: { type: [integer, 'null'], minimum: 0, description: 'The time in the song it is about (W13.15), or null.' }
+        author: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+
+    Collection:
+      type: object
+      required: [id, name, public, count, owner, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        public: { type: boolean }
+        count: { type: integer, description: Its timings that are published now. }
+        owner: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        has: { type: boolean, description: 'Only in `/me/collections?timing=`: whether it holds that timing.' }
+
+    Profile:
+      type: object
+      description: |
+        A timer's public profile (W5.6, W13.18): only what they published.
+        `timed` counts the songs they analysed that were never private; the
+        other totals count published timings. Badges are earned by counts:
+        `first-timing`, `published-10`, `published-50`, `suggestion-accepted`,
+        `used-by-others`; `ranked-match` waits for the osu! link (W9.2).
+      required: [user, totals, badges, collections, mine]
+      properties:
+        user:
+          type: object
+          properties:
+            username: { type: string }
+            displayName: { type: [string, 'null'] }
+            avatarUrl: { type: [string, 'null'] }
+            bannerUrl: { type: [string, 'null'] }
+        totals:
+          type: object
+          properties:
+            timed: { type: integer }
+            published: { type: integer }
+            uses: { type: integer, description: Uses of their published timings, by other accounts. }
+            rating: { $ref: '#/components/schemas/RatingSummary' }
+        badges:
+          type: array
+          items: { type: string, enum: [first-timing, published-10, published-50, suggestion-accepted, used-by-others, ranked-match] }
+        collections: { type: array, items: { $ref: '#/components/schemas/Collection' }, description: Their public collections. }
+        mine: { type: boolean }
+        private: { type: boolean, description: Sent to the profile's owner only. }
 
     HistoryEntry:
       type: object
@@ -1158,7 +1292,7 @@ paths:
 
   /community/{kind}/{id}/report:
     parameters:
-      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews] } }
+      - { name: kind, in: path, required: true, description: '`comments` are comments on published timings (W6); one on a timing that is not published is a 404.', schema: { type: string, enum: [suggestions, reviews, comments] } }
       - $ref: '#/components/parameters/analysisId'
     post:
       summary: Report a suggestion or a review (anyone)
@@ -1185,7 +1319,7 @@ paths:
 
   /community/{kind}/{id}/moderate:
     parameters:
-      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews] } }
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews, comments] } }
       - $ref: '#/components/parameters/analysisId'
     post:
       summary: Staff only, hide or unhide a suggestion or a review
@@ -1231,8 +1365,9 @@ paths:
                       type: object
                       properties:
                         action: { type: string, enum: [state, hide, unhide] }
-                        kind: { type: string, enum: [suggestion, review] }
+                        kind: { type: string, enum: [suggestion, review, comment] }
                         ref: { type: string }
+                        timing: { type: [string, 'null'], description: 'A comment''s timing (its page is /t/{timing}); only for comments, null once the comment is gone.' }
                         from: { type: [string, 'null'] }
                         to: { type: [string, 'null'] }
                         moderator: { type: string }
@@ -1243,8 +1378,9 @@ paths:
                     items:
                       type: object
                       properties:
-                        kind: { type: string, enum: [suggestion, review] }
+                        kind: { type: string, enum: [suggestion, review, comment] }
                         ref: { type: string }
+                        timing: { type: [string, 'null'], description: As in the log. }
                         count: { type: integer }
                         reasons: { type: array, items: { type: string }, maxItems: 5 }
                         at: { type: string, format: date-time }
@@ -1382,19 +1518,18 @@ paths:
         - name: tempo
           in: query
           schema: { type: string, enum: [single, variable] }
+        - $ref: '#/components/parameters/sort'
         - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/cursor'
+        - name: cursor
+          in: query
+          description: The `next` of the previous page, as given; a keyset cursor for `sort=new`, `o<n>` for the others.
+          schema: { type: string }
       responses:
         '200':
-          description: One page.
+          description: One page; each timing with its stars and uses (W6).
           content:
             application/json:
-              schema:
-                type: object
-                required: [timings, next]
-                properties:
-                  timings: { type: array, items: { $ref: '#/components/schemas/TimingSummary' } }
-                  next: { type: [string, 'null'], description: The cursor of the next page; null on the last. }
+              schema: { $ref: '#/components/schemas/TimingPage' }
         '400': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
@@ -1525,3 +1660,382 @@ paths:
                   next: { type: [string, 'null'] }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+
+  # ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ──────────────
+  # Everything hangs off a published timing: one that is not published is the
+  # same 404 for every route below, and so is everything on it. Mutations need
+  # the same-origin header and are rate limited per address.
+
+  /timings/{id}/social:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's stars and uses
+      responses:
+        '200':
+          description: The numbers, and what the session account did.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rating, uses, uploaderProfile, own, minRatings]
+                properties:
+                  rating:
+                    allOf:
+                      - $ref: '#/components/schemas/RatingSummary'
+                      - type: object
+                        properties:
+                          mine: { type: [integer, 'null'], minimum: 1, maximum: 5 }
+                  uses: { $ref: '#/components/schemas/Uses' }
+                  uploaderProfile: { type: boolean, description: Whether the uploader has a public profile to link to. }
+                  own: { type: boolean, description: The session account uploaded it (and so can neither rate it nor mark it used). }
+                  minRatings: { type: integer }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/rating:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Rate it, 1-5 stars; one rating per account, a second is an edit
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stars]
+              properties:
+                stars: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        '200': { description: 'The new summary: `{ rating }`, as in /social.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: 'No same-origin header, or `OWN_TIMING`: the uploader cannot rate their own.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Take your rating back
+      security: [{ session: [] }]
+      responses:
+        '200': { description: '`{ rating }`.' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/use:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: '"I used this": one per account; marking again changes only the link'
+      description: |
+        `beatmapUrl` is optional: an osu.ppy.sh beatmapset link
+        (`/beatmapsets/<set>`, optionally `#<mode>/<beatmap>`, or the old
+        `/s/<set>`), stored in its one canonical https form; anything else is
+        400 `BAD_BEATMAP_URL`. Its metadata is not fetched (that needs W9.2).
+      security: [{ session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                beatmapUrl: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '200':
+          description: The uses now.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uses: { $ref: '#/components/schemas/Uses' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: 'No same-origin header, or `OWN_TIMING`.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Unmark it
+      security: [{ session: [] }]
+      responses:
+        '200': { description: '`{ uses }`.' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: Its comments, oldest first, 100 a page
+      description: A hidden comment is listed only for staff and its author.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  staff: { type: boolean, const: true }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Comment, signed in
+      description: |
+        1-1000 characters after cleaning; too long is refused (`TOO_LONG`),
+        never cut. `atMs` anchors it to a time in the song (W13.15): whole
+        milliseconds inside the song's length, else 400 `BAD_TIME`. Staff hide
+        one through `/community/comments/{id}/moderate`.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+                atMs: { type: [integer, 'null'], minimum: 0 }
+      responses:
+        '201':
+          description: Posted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - { name: commentId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      - $ref: '#/components/parameters/sameOrigin'
+    delete:
+      summary: Delete your own comment
+      description: Someone else's, or one on another timing, is the 404 of one that is not there.
+      security: [{ session: [] }]
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/collections:
+    get:
+      summary: Your collections, newest change first
+      security: [{ session: [] }]
+      parameters:
+        - { name: timing, in: query, description: 'A timing id: each collection then says whether it holds it (`has`).', schema: { type: string } }
+      responses:
+        '200':
+          description: All of them, public and private.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections: { type: array, items: { $ref: '#/components/schemas/Collection' } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /collections:
+    post:
+      summary: Make a collection, private unless `public` is true (at most 50 each)
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                public: { type: boolean, default: false }
+      responses:
+        '201': { description: '`{ collection }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { description: '`LIMIT`: 50 collections already.' }
+
+  /collections/{id}:
+    parameters:
+      - $ref: '#/components/parameters/collectionId'
+    get:
+      summary: A public collection, or your own, and a page of its published timings
+      description: A private collection that is not yours is the 404 of one that does not exist.
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, pattern: '^o\d{1,5}$' } }
+      responses:
+        '200':
+          description: The collection and 50 of its timings, latest added first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection: { $ref: '#/components/schemas/Collection' }
+                  timings: { type: array, items: { $ref: '#/components/schemas/RankedTiming' } }
+                  next: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Rename it or change who sees it; yours only
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                public: { type: boolean }
+      responses:
+        '200': { description: '`{ collection }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete it; yours only
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /collections/{id}/items/{timingId}:
+    parameters:
+      - $ref: '#/components/parameters/collectionId'
+      - { name: timingId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Add a published timing to your collection (at most 500 in one)
+      security: [{ session: [] }]
+      responses:
+        '201': { description: 'Added: `{ added: true }`.' }
+        '200': { description: 'It was there already: `{ added: false }`.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: '`LIMIT`.' }
+    delete:
+      summary: Take a timing out of your collection
+      security: [{ session: [] }]
+      responses:
+        '204': { description: Removed. }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: A timer's public profile (W5.6, W13.18)
+      description: A private profile is the 404 of a name nobody has, for everyone but its owner.
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}/timings:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: A timer's published timings, with the recent list's filters and orders
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/limit'
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingPage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/profile:
+    get:
+      summary: Your own profile, private or not, with `private`
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      summary: Make your profile private or public again
+      description: A private profile is a 404 at /users/{username} and is left out of /timers. Your published timings stay published.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [private]
+              properties:
+                private: { type: boolean }
+      responses:
+        '200': { description: '`{ private }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /timers:
+    get:
+      summary: The ranking of timers (W6)
+      description: |
+        By uses of their published timings by other accounts (at least 3 to
+        enter) or by the stars those timings received (at least 5 ratings,
+        ordered by the same Bayesian average as `sort=rated`). Private
+        profiles are left out. At most 50.
+      parameters:
+        - { name: by, in: query, schema: { type: string, enum: [uses, stars], default: uses } }
+      responses:
+        '200':
+          description: The ranking and its minimums.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [by, min, timers]
+                properties:
+                  by: { type: string, enum: [uses, stars] }
+                  min:
+                    type: object
+                    properties:
+                      uses: { type: integer }
+                      ratings: { type: integer }
+                  timers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user: { $ref: '#/components/schemas/Author' }
+                        published: { type: integer }
+                        uses: { type: integer }
+                        rating: { $ref: '#/components/schemas/RatingSummary' }

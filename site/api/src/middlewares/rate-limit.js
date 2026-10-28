@@ -86,12 +86,15 @@ const counterFor = () => (hasDatabase() ? pgCounter : fallback);
 /**
  * `guard(bucket, max, windowMs)`: at most `max` requests per address per
  * window in `bucket`. `counter` is for the tests; the default picks the table
- * or memory per request.
+ * or memory per request. `keyOf` names who is counted when it is not the
+ * address: the bot's routes count per Discord user (routes/bot.routes.js),
+ * since every one of their requests comes from the bot's one address. A key
+ * is an HMAC already, never the raw id.
  */
-export const guard = (bucket, max, windowMs, { counter = null } = {}) => async (req, _res, next) => {
+export const guard = (bucket, max, windowMs, { counter = null, keyOf = null } = {}) => async (req, _res, next) => {
   if (max <= 0) return next();
 
-  const client = clientKey(req.ip);
+  const client = keyOf ? keyOf(req) : clientKey(req.ip);
   const chosen = counter ?? counterFor();
   let hit;
   try {

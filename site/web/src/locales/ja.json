@@ -14,7 +14,7 @@
     "account": "アカウントメニュー",
     "changeTheme": "テーマを変更",
     "changeLanguage": "言語を変更",
-    "otherLanguage": "EN",
+    "language": "言語：{{name}}",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる",
     "queue": "キュー"
@@ -446,6 +446,7 @@
     "updated": "最終更新 {{date}}",
     "date": "2026年10月27日",
     "toBeSet": "未定",
+    "translationNote": "この翻訳は便宜のために提供しています。英語版が優先されます。",
     "resultLink": "「耳で確認」とはどういう意味か",
     "terms": {
       "title": "利用規約",
@@ -1219,7 +1220,8 @@
       "contrastOn": "ハイコントラストをオン",
       "contrastOff": "ハイコントラストをオフ",
       "settings": "設定を開く",
-      "shortcuts": "キーボードショートカット"
+      "shortcuts": "キーボードショートカット",
+      "language": "言語：{{name}}"
     },
     "help": {
       "title": "キーボードショートカット",
@@ -1292,9 +1294,7 @@
     "reset": "コントラスト、サイズ、色、アニメーションをリセット",
     "language": {
       "title": "言語",
-      "label": "サイトの言語",
-      "en": "English",
-      "es": "Español"
+      "label": "サイトの言語"
     },
     "audio": {
       "title": "プレーヤー",

@@ -48,9 +48,19 @@ export const CHUNK_KB = {
   // The API reference carries the whole OpenAPI document (17.0 kB on
   // 2026-10-27).
   Developers: 24,
-  // The Spanish strings, loaded only for a Spanish visitor (28 kB on
-  // 2026-10-27); they grow with every page.
-  es: 36,
+  // Each language's strings, loaded only for its visitors (Spanish was 28 kB
+  // on 2026-10-27, before W12; the ten files are ~110-120 kB raw each on
+  // 2026-10-28). They grow with every page; the CJK and Cyrillic files
+  // compress less.
+  es: 45,
+  fr: 45,
+  de: 45,
+  it: 45,
+  pl: 45,
+  'pt-BR': 45,
+  ja: 50,
+  ko: 50,
+  ru: 50,
 }
 
 const kb = (bytes) => bytes / 1000

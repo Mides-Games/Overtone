@@ -13,8 +13,8 @@
     "signOut": "Sign out",
     "account": "Account menu",
     "changeTheme": "Change theme",
-    "changeLanguage": "Cambiar a español",
-    "otherLanguage": "ES",
+    "changeLanguage": "Change language",
+    "language": "Language: {{name}}",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "queue": "Queue"
@@ -454,6 +454,7 @@
     "updated": "Last updated {{date}}",
     "date": "27 October 2026",
     "toBeSet": "To be set",
+    "translationNote": "This translation is provided for convenience; the English version prevails.",
     "resultLink": "What “check by ear” means",
     "terms": {
       "title": "Terms of use",
@@ -655,7 +656,7 @@
             "These stay in your browser's local storage and are never sent to the server:"
           ],
           "li": [
-            "mides.theme and mides.lang: light or dark, English or Spanish.",
+            "mides.theme and mides.lang: light or dark, and the language you chose.",
             "overtone.player.volumes: the song and click-track volumes.",
             "overtone.player.latencyMs: your audio latency, if you calibrated it.",
             "overtone.player.listening: the click subdivision, its volume and whether the clicks are moved by your latency.",
@@ -1252,7 +1253,8 @@
       "contrastOn": "Turn high contrast on",
       "contrastOff": "Turn high contrast off",
       "settings": "Open settings",
-      "shortcuts": "Keyboard shortcuts"
+      "shortcuts": "Keyboard shortcuts",
+      "language": "Language: {{name}}"
     },
     "help": {
       "title": "Keyboard shortcuts",
@@ -1325,9 +1327,7 @@
     "reset": "Reset contrast, size, colours and motion",
     "language": {
       "title": "Language",
-      "label": "Language of the site",
-      "en": "English",
-      "es": "Español"
+      "label": "Language of the site"
     },
     "audio": {
       "title": "Player",

@@ -2603,8 +2603,44 @@
         "refused": "\"{{title}}\" 분석이 BPM 없이 끝났어요.",
         "failed": "\"{{title}}\" 분석에 실패했어요."
       },
-      "unknown": "무슨 일이 있었어요."
-    }
+      "unknown": "무슨 일이 있었어요.",
+      "staff": {
+        "correction": "\"{{title}}\"에 대한 수정이 검토를 기다리고 있어요.",
+        "report": {
+          "suggestion": "제안이 신고되었어요.",
+          "review": "리뷰가 신고되었어요.",
+          "comment": "댓글이 신고되었어요.",
+          "item": "무언가가 신고되었어요."
+        }
+      }
+    },
+    "deleteRead": "읽은 알림 삭제",
+    "markRead": "읽음으로 표시",
+    "markUnread": "읽지 않음으로 표시",
+    "delete": "삭제",
+    "unreadTab": "읽지 않음",
+    "emptyUnread": "모두 확인했어요.",
+    "emptyHint": "내 타이밍에 달린 댓글, 투표, 사용, 끝난 분석, 내 제안이 여기에 표시돼요.",
+    "changeFailed": "변경 사항을 저장할 수 없었어요. 목록을 다시 불러왔어요.",
+    "retry": "다시 시도",
+    "select": "선택: {{text}}",
+    "selectPage": "이 페이지 선택",
+    "selected": "선택됨: {{count}}",
+    "bulk": "선택한 항목에",
+    "kind": "종류",
+    "allKinds": "모든 종류",
+    "kinds": {
+      "suggestion": "제안",
+      "comment": "댓글",
+      "use": "사용",
+      "vote": "투표",
+      "analysis": "분석",
+      "staff": "스태프"
+    },
+    "pages": "페이지",
+    "previous": "이전",
+    "next": "다음",
+    "range": "{{total}}개 중 {{first}}–{{last}}"
   },
   "staff": {
     "nav": "스태프 패널",

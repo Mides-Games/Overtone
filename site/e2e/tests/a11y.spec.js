@@ -89,5 +89,35 @@ for (const theme of ['dark', 'light']) {
       await page.waitForLoadState('networkidle')
       await audit(page)
     })
+
+    test('the bell, its panel and /notifications, signed in as staff', async ({ page, request }) => {
+      await signInAsStaff(page)
+      // A notification to show: staff hear of a report made by someone else
+      // (here a visitor with no session) on a suggestion staff posted.
+      const posted = await page.request.post('/api/v1/community/suggestions', {
+        headers: { 'X-Requested-With': 'overtone-web' },
+        data: { title: `Axe ${theme} bell`, body: 'Something for the bell to say.' },
+      })
+      const { suggestion } = await posted.json()
+      await request.post(`/api/v1/community/suggestions/${suggestion.id}/report`, {
+        headers: { 'X-Requested-With': 'overtone-web' },
+        data: { reason: 'For the axe run' },
+      })
+      await page.goto('/')
+      await ready(page)
+      const bell = page.getByRole('button', { name: /^Notifications, unread/ })
+      await bell.click()
+      const panel = page.getByRole('dialog', { name: 'Notifications' })
+      await expect(panel.getByText('A suggestion was reported.').first()).toBeVisible()
+      await audit(page)
+      // Escape gives the focus back to the bell.
+      await page.keyboard.press('Escape')
+      await expect(panel).toBeHidden()
+      await expect(bell).toBeFocused()
+      await page.goto('/notifications')
+      await ready(page)
+      await page.waitForLoadState('networkidle')
+      await audit(page)
+    })
   })
 }

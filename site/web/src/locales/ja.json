@@ -2603,8 +2603,44 @@
         "refused": "「{{title}}」の解析は BPM なしで終了しました。",
         "failed": "「{{title}}」の解析に失敗しました。"
       },
-      "unknown": "何かが起きました。"
-    }
+      "unknown": "何かが起きました。",
+      "staff": {
+        "correction": "「{{title}}」への修正がレビューを待っています。",
+        "report": {
+          "suggestion": "提案が報告されました。",
+          "review": "レビューが報告されました。",
+          "comment": "コメントが報告されました。",
+          "item": "何かが報告されました。"
+        }
+      }
+    },
+    "deleteRead": "既読を削除",
+    "markRead": "既読にする",
+    "markUnread": "未読にする",
+    "delete": "削除",
+    "unreadTab": "未読",
+    "emptyUnread": "未読の通知はありません。",
+    "emptyHint": "あなたのタイミングへのコメント・投票・使用、完了した解析、あなたの提案がここに表示されます。",
+    "changeFailed": "その変更を保存できませんでした。一覧を読み込み直しました。",
+    "retry": "再試行",
+    "select": "選択：{{text}}",
+    "selectPage": "このページを選択",
+    "selected": "選択中：{{count}}",
+    "bulk": "選択したものに",
+    "kind": "種類",
+    "allKinds": "すべての種類",
+    "kinds": {
+      "suggestion": "提案",
+      "comment": "コメント",
+      "use": "使用",
+      "vote": "投票",
+      "analysis": "解析",
+      "staff": "スタッフ"
+    },
+    "pages": "ページ",
+    "previous": "前へ",
+    "next": "次へ",
+    "range": "{{total}} 件中 {{first}}–{{last}}"
   },
   "staff": {
     "nav": "スタッフパネル",

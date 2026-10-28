@@ -547,5 +547,8 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS public_id char(32) UNIQUE CHE
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key text CHECK (char_length(dedupe_key) <= 100);
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_key_idx ON notifications (account_id, dedupe_key);
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
+-- `staff` (2026-10-28): a report or a correction waiting on /staff. Widened
+-- here, in the one place the check is made, and not by a later DROP/ADD: on
+-- the next boot a narrower ADD above a wider one would refuse the staff rows.
 ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check
-  CHECK (kind IN ('suggestion', 'comment', 'use', 'vote', 'analysis'));
+  CHECK (kind IN ('suggestion', 'comment', 'use', 'vote', 'analysis', 'staff'));

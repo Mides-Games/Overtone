@@ -259,20 +259,22 @@ export default function Navbar() {
       <div className="mx-auto flex h-[var(--bar-height)] max-w-[76rem] items-center gap-5 xl:gap-8" style={gutter}>
         <Link to="/" className="flex shrink-0 items-center gap-2.5 rounded-control" aria-label="Overtone">
           <Mark size={22} />
-          <span className="wordmark">Overtone</span>
+          {/* Signed in, the bell and the account join the row: under 420 px on a touch screen
+              (44 px targets) the name would push the menu button off the bar, so the mark stands alone. */}
+          <span className={`wordmark ${account ? 'max-[419px]:hidden' : ''}`}>Overtone</span>
         </Link>
 
         <Places />
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <TrayButton />
-          {/* W13.17: the bell, for an account only; it polls once a minute while the tab is seen. */}
-          {account && <Bell />}
           <div className="hidden lg:block">
             <PaletteButton />
           </div>
           <LanguageSelect />
           <ThemeToggle />
+          {/* W13.17: the bell, for an account only, beside the account at every width; it polls once a minute while the tab is seen. */}
+          {account && <Bell />}
           {account ? (
             <UserMenu account={account} />
           ) : (

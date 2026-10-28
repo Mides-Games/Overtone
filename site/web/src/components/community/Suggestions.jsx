@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import { useAuth } from '../../context/AuthContext.jsx'
 import { getSuggestion, LIMITS, length, listSuggestions, postSuggestion, setState, STATE_TONE, STATES, vote } from '../../lib/community.js'
@@ -32,16 +32,27 @@ export default function Suggestions({ onModerated }) {
     onModerated?.()
   }, [onModerated])
 
+  // A notification's link (W13.17), `?suggestion=<id>`: that one is shown
+  // first even when the sort, the filter or the paging would leave it out.
+  const [params] = useSearchParams()
+  const linkedId = /^[0-9a-f]{32}$/.test(params.get('suggestion') ?? '') ? params.get('suggestion') : null
+
   useEffect(() => {
     let alive = true
     setFailed(false)
     listSuggestions({ sort, state })
-      .then((data) => alive && setPage(data))
+      .then(async (data) => {
+        if (linkedId && !data.items.some((s) => s.id === linkedId)) {
+          const linked = await getSuggestion(linkedId).catch(() => null)
+          if (linked?.suggestion) data = { ...data, items: [linked.suggestion, ...data.items] }
+        }
+        if (alive) setPage(data)
+      })
       .catch(() => alive && setFailed(true))
     return () => {
       alive = false
     }
-  }, [sort, state, tick, account?.id])
+  }, [sort, state, tick, account?.id, linkedId])
 
   async function more() {
     const next = await listSuggestions({ sort, state, offset: page.items.length })

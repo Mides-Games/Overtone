@@ -56,7 +56,7 @@ test('each kind of notification leads to its page, and nowhere for a payload it 
   assert.equal(notificationLink({ kind: 'vote', payload: { timing: ID } }), `/t/${ID}`)
   assert.equal(notificationLink({ kind: 'use', payload: { timing: '../admin' } }), null)
   assert.equal(notificationLink({ kind: 'analysis', payload: { analysis: ID } }), `/analyze/${ID}`)
-  assert.equal(notificationLink({ kind: 'suggestion', payload: { suggestion: ID } }), `/community#suggestion-${ID}`)
+  assert.equal(notificationLink({ kind: 'suggestion', payload: { suggestion: ID } }), `/community?suggestion=${ID}#suggestion-${ID}`)
   assert.equal(notificationLink({ kind: 'suggestion', payload: {} }), '/community')
   assert.equal(notificationLink({ kind: 'mystery', payload: {} }), null)
   assert.equal(notificationLink(null), null)

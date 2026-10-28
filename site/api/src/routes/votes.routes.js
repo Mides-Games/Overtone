@@ -4,7 +4,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { analyses } from '../services/analysis.service.js';
 import { newPublicId } from '../services/community.service.js';
-import { notify } from '../services/notification.service.js';
+import { notify, notifyStaff } from '../services/notification.service.js';
 import { votes } from '../services/vote.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { songNames } from '../utils/timings.js';
@@ -94,6 +94,12 @@ router.put('/timings/:id/vote', voteLimit, requireSameOrigin, requireSession, as
       proposedOffsetMs: vote.proposedOffsetMs,
       ...(mapper ? { mapper: req.account.username } : {}),
     }, { actorId: req.account.id });
+    // W13.17: a correction waits in the staff queue; staff hear of it, not who sent it.
+    if (hasCorrection(vote)) {
+      await notifyStaff(`staff:correction:${row.publicId}:${req.account.id}`, {
+        item: 'correction', timing: row.publicId, title: songNames(row).title ?? null,
+      }, { actorId: req.account.id });
+    }
   }
   const summary = await votes().summary(row.publicId, req.account.id);
   res.json({ ...summaryView(summary), own: false, queued: hasCorrection(vote) });

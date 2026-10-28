@@ -1306,6 +1306,68 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
+  /stats:
+    get:
+      summary: The site's public statistics (W12.13)
+      description: |
+        Aggregates only: no id, name or hash. Counts the engine's own runs (a
+        cache hit is in `cached`), never a deleted analysis. Computed at most
+        once a minute per API process and shared; rate limited (60 per 10
+        minutes). The analysis times are from upload to result, queue wait
+        included, over done analyses of the last `days` days, and null while
+        fewer than `minCount` finished in that window.
+      responses:
+        '200':
+          description: The statistics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [generatedAt, totals, bpm, tempo, analysisTime, queue]
+                properties:
+                  generatedAt: { type: string, format: date-time }
+                  totals:
+                    type: object
+                    properties:
+                      done: { type: integer }
+                      refused: { type: integer }
+                      failed: { type: integer }
+                      cached: { type: integer, description: Answers from the cache. }
+                      published: { type: integer }
+                      songs: { type: integer, description: Distinct audio files timed. }
+                  bpm:
+                    type: object
+                    properties:
+                      edges: { type: array, items: { type: number } }
+                      buckets:
+                        type: array
+                        description: The main BPM of done analyses; `from` is included, `to` is not, null is open.
+                        items:
+                          type: object
+                          properties:
+                            from: { type: [number, 'null'] }
+                            to: { type: [number, 'null'] }
+                            count: { type: integer }
+                  tempo:
+                    type: object
+                    properties:
+                      single: { type: integer }
+                      variable: { type: integer, description: Red lines at more than one BPM. }
+                  analysisTime:
+                    type: object
+                    properties:
+                      days: { type: integer }
+                      count: { type: integer }
+                      minCount: { type: integer }
+                      medianS: { type: [number, 'null'] }
+                      p90S: { type: [number, 'null'] }
+                  queue:
+                    type: object
+                    properties:
+                      queued: { type: integer }
+                      running: { type: integer }
+        '429': { $ref: '#/components/responses/Error' }
+
   /timings:
     get:
       summary: Recent published timings from everyone (W5.1)

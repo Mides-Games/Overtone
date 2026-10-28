@@ -1,12 +1,9 @@
 /**
- * Overtone's mark: a ring (the O, and a sustained tone) cut by one red line,
- * the timing point the tool exists to place.
+ * Overtone's logo: the overtone series (a fundamental and two fading
+ * harmonics) cut by one red timing line, on its panel. It is the desktop
+ * app's own icon, drawn by assets/logo.py, which also writes the SVG served
+ * here (public/favicon.svg), never a redrawing of it.
  */
 export default function Mark({ size = 24, className = '' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
-      <circle cx="12" cy="12" r="8" stroke="var(--accent)" strokeWidth="2.6" />
-      <rect x="10.9" y="1.5" width="2.2" height="21" rx="1.1" fill="var(--red)" />
-    </svg>
-  )
+  return <img src="/favicon.svg" width={size} height={size} alt="" aria-hidden="true" draggable="false" className={`shrink-0 ${className}`} />
 }

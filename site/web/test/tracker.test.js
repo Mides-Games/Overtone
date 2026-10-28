@@ -355,3 +355,20 @@ test('dismissing keeps a song in flight, and the oldest finished go first past f
   h.tracker.track('not an id', 'x')
   assert.equal(h.tracker.getSnapshot().entries.length, 1)
 })
+
+test('a change the page made is merged into what every viewer reads, without a new read', async () => {
+  const h = harness()
+  h.answers[A] = { id: A, status: 'done', result: {}, published: false }
+  const stop = h.tracker.watch(A)
+  await h.advance(1_000)
+  const reads = h.calls.length
+  h.tracker.patch(A, { published: true, publishedAt: '2026-10-27T00:00:00Z' })
+  const data = h.tracker.getSnapshot().live[A].data
+  assert.equal(data.published, true)
+  assert.equal(data.status, 'done')
+  assert.equal(h.calls.length, reads)
+  // Nothing read yet: nothing to merge into.
+  h.tracker.patch('f'.repeat(32), { published: true })
+  assert.equal(h.tracker.getSnapshot().live['f'.repeat(32)], undefined)
+  stop()
+})

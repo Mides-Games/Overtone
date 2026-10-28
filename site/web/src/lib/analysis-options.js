@@ -128,5 +128,5 @@ export function formatRange(t, lowS, highS) {
   return a === b ? t('modes.estimate.about', { value: a }) : t('modes.estimate.range', { low: a, high: b })
 }
 
-/** The compare view of two analyses (W3.24, W12.11): built on another branch; this only links to it. */
+/** The compare view of two analyses (W3.24, W12.11, pages/Compare.jsx). */
 export const compareHref = (a, b) => `/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`

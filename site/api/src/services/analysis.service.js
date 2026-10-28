@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 
 import { hasDatabase, pool, query } from '../config/database.js';
 import { HttpError } from '../utils/http-error.js';
-import { encodeCursor, likePattern, matches, microsOf } from '../utils/timings.js';
+import { BPM_EDGES, STATS_DAYS, bucketOf, percentile } from '../utils/stats.js';
+import { encodeCursor, isVariable, likePattern, mainBpm, matches, microsOf } from '../utils/timings.js';
 
 /**
  * Analyses and their queue (ADR-W5): `songs` by audio SHA-1, one `analyses`
@@ -424,6 +425,44 @@ const memoryStore = {
   async purgeDeleted() {
     const since = startOfUtcDay();
     for (const [id, a] of memory.analyses) if (a.deletedAt && a.createdAt < since) memory.analyses.delete(id);
+  },
+
+  // ── Site statistics (W12.13) ──
+
+  async stats({ days = STATS_DAYS } = {}) {
+    const counts = { done: 0, refused: 0, failed: 0, cached: 0, published: 0 };
+    const songs = new Set();
+    const buckets = new Array(BPM_EDGES.length + 1).fill(0);
+    const tempo = { single: 0, variable: 0 };
+    const durations = [];
+    const queue = { queued: 0, running: 0 };
+    const since = Date.now() - days * 86_400_000;
+    for (const a of memory.analyses.values()) {
+      if (a.job?.state === 'queued') queue.queued += 1;
+      else if (a.job?.state === 'running') queue.running += 1;
+      if (a.deletedAt) continue;
+      if (a.cachedFrom) {
+        if (a.status === 'done' || a.status === 'refused') counts.cached += 1;
+        continue;
+      }
+      if (a.status === 'done') {
+        counts.done += 1;
+        songs.add(a.sha1);
+        if (a.publishedAt) counts.published += 1;
+        const bpm = mainBpm(a.result);
+        if (bpm !== null) buckets[bucketOf(bpm)] += 1;
+        tempo[isVariable(a.result) ? 'variable' : 'single'] += 1;
+        if (a.finishedAt && a.finishedAt.getTime() >= since) durations.push(a.finishedAt - a.createdAt);
+      } else if (a.status === 'refused') counts.refused += 1;
+      else if (a.status === 'failed') counts.failed += 1;
+    }
+    return {
+      counts: { ...counts, songs: songs.size },
+      buckets,
+      tempo,
+      times: { count: durations.length, medianMs: percentile(durations, 0.5), p90Ms: percentile(durations, 0.9) },
+      queue,
+    };
   },
 };
 
@@ -955,6 +994,58 @@ const pgStore = {
 
   async purgeDeleted() {
     await query('DELETE FROM analyses WHERE deleted_at IS NOT NULL AND created_at < $1', [startOfUtcDay()]);
+  },
+
+  // ── Site statistics (W12.13) ──
+
+  /**
+   * One snapshot in one statement, so the totals, the histogram and the queue
+   * are read at the same instant. Every sub-select returns aggregates only.
+   * The engine's own runs are counted (`cached_from IS NULL`): a cache hit
+   * re-serves a result already counted, and goes in `cached`.
+   */
+  async stats({ days = STATS_DAYS } = {}) {
+    const OWN = 'a.deleted_at IS NULL AND a.cached_from IS NULL';
+    const { rows: [row] } = await query(
+      `SELECT
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done')::int AS done,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'refused')::int AS refused,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'failed')::int AS failed,
+         (SELECT count(*) FROM analyses a
+           WHERE a.deleted_at IS NULL AND a.cached_from IS NOT NULL AND a.status IN ('done', 'refused'))::int AS cached,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND a.published_at IS NOT NULL)::int AS published,
+         (SELECT count(DISTINCT a.song_id) FROM analyses a WHERE ${OWN} AND a.status = 'done')::int AS songs,
+         (SELECT coalesce(json_agg(json_build_array(b, n)), '[]'::json)
+            FROM (SELECT width_bucket(${BPM}, $2::float8[]) AS b, count(*)::int AS n
+                    FROM analyses a WHERE ${OWN} AND a.status = 'done' AND ${BPM} IS NOT NULL
+                   GROUP BY 1) h) AS buckets,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND ${VARIABLE})::int AS variable,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND NOT ${VARIABLE})::int AS single,
+         t.count AS timed, t.median_ms, t.p90_ms,
+         (SELECT count(*) FROM jobs WHERE state = 'queued')::int AS queued,
+         (SELECT count(*) FROM jobs WHERE state = 'running')::int AS running
+       FROM (SELECT count(*)::int AS count,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM a.finished_at - a.created_at) * 1000) AS median_ms,
+                    percentile_cont(0.9) WITHIN GROUP (ORDER BY extract(epoch FROM a.finished_at - a.created_at) * 1000) AS p90_ms
+               FROM analyses a
+              WHERE ${OWN} AND a.status = 'done' AND a.finished_at >= now() - make_interval(days => $1)) t`,
+      [days, BPM_EDGES],
+    );
+    const buckets = new Array(BPM_EDGES.length + 1).fill(0);
+    for (const [b, n] of row.buckets ?? []) if (b >= 0 && b < buckets.length) buckets[b] = n;
+    return {
+      counts: {
+        done: row.done, refused: row.refused, failed: row.failed, cached: row.cached, published: row.published, songs: row.songs,
+      },
+      buckets,
+      tempo: { single: row.single, variable: row.variable },
+      times: {
+        count: row.timed,
+        medianMs: row.median_ms === null ? null : Number(row.median_ms),
+        p90Ms: row.p90_ms === null ? null : Number(row.p90_ms),
+      },
+      queue: { queued: row.queued, running: row.running },
+    };
   },
 };
 

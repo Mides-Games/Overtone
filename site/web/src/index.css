@@ -36,7 +36,10 @@
   --red: #c42e3b;
   --amber: #8f5e08;
   --lavender: #5b45d6;
+  /* The other timing on a comparison's map (W12.10, W12.11). */
+  --compare: #1565c0;
   --onset: #bdb6cc;
+  --red-ink: #ffffff;
   --grid: rgba(26, 23, 36, 0.09);
   --scrim: rgba(245, 244, 248, 0.82);
 }
@@ -59,9 +62,73 @@
   --red: #ff5d6c;
   --amber: #f5b44a;
   --lavender: #a996ff;
+  --compare: #5cb3ff;
   --onset: #4a4360;
+  --red-ink: #22070b;
   --grid: rgba(255, 255, 255, 0.06);
   --scrim: rgba(13, 11, 18, 0.82);
+}
+
+/*
+ * The settings page's choices (W12.15, lib/settings.js), as classes on <html>
+ * next to `dark`, so each is one more set of values and nothing else.
+ *
+ * High contrast raises text, signal colours and lines. Every text token
+ * reaches WCAG AAA (7:1) against every surface it sits on, down to the
+ * darkest panel (--surface-3); the strong line reaches 3:1 against the page,
+ * the non-text minimum. test/settings.test.js computes each ratio from the
+ * values below, so a change that drops one fails there.
+ */
+:root:not(.dark).contrast-more {
+  --line: #b3acc3;
+  --line-strong: #8a829c;
+  --line-hover: #6e6682;
+  --text: #0b0910;
+  --muted: #3d3850;
+  --dim: #48425a;
+  --accent: #05555e;
+  --accent-hover: #033f46;
+  --red: #8f1824;
+  --amber: #5e3d00;
+  --lavender: #3f2aa8;
+  --onset: #8a829c;
+  --grid: rgba(11, 9, 16, 0.18);
+}
+
+.dark.contrast-more {
+  --line: #4d4760;
+  --line-strong: #6e6784;
+  --line-hover: #8f88a1;
+  --text: #ffffff;
+  --muted: #d0cadb;
+  --dim: #bdb6cb;
+  --red: #ff8a95;
+  --lavender: #b9aaff;
+  --onset: #6e6784;
+  --grid: rgba(255, 255, 255, 0.14);
+}
+
+/*
+ * The colour-blind-safe palette: the three reserved meanings (red lines,
+ * check by ear, tempo) moved apart for protanopia, deuteranopia and
+ * tritanopia, on the whole site so the map, its table and the chips keep
+ * agreeing. The accent stays. Found by a random search over hues near each
+ * meaning, scored by the smallest CIELAB distance between the four map
+ * colours under Machado et al.'s (2009) simulation of each deficiency, with
+ * every colour at 5.5:1 or more against the panel; test/settings.test.js
+ * recomputes the distances. Declared after high contrast with the same
+ * weight, so with both on these three hues stay (AA rather than AAA).
+ */
+:root:not(.dark).palette-cb {
+  --red: #5a0f1d;
+  --amber: #756406;
+  --lavender: #9e0fc4;
+}
+
+.dark.palette-cb {
+  --red: #fb6357;
+  --amber: #f2d901;
+  --lavender: #a170fe;
 }
 
 @theme inline {
@@ -86,15 +153,19 @@
   --color-red: var(--red);
   --color-amber: var(--amber);
   --color-lavender: var(--lavender);
+  --color-compare: var(--compare);
   --color-onset: var(--onset);
+  --color-red-ink: var(--red-ink);
 
-  /* The app's scale, a little larger for reading on a page. */
-  --text-caption: 11.5px;
+  /* The app's scale, a little larger for reading on a page, times the reader's
+     font size (W12.15: --font-scale, 0.9 to 1.3, set on <html>). The display
+     size is in rem, which the root's size already scales. */
+  --text-caption: calc(11.5px * var(--font-scale, 1));
   --text-caption--letter-spacing: 0.08em;
-  --text-label: 12.5px;
-  --text-body: 15px;
+  --text-label: calc(12.5px * var(--font-scale, 1));
+  --text-body: calc(15px * var(--font-scale, 1));
   --text-body--line-height: 1.6;
-  --text-title: 20px;
+  --text-title: calc(20px * var(--font-scale, 1));
   --text-display: clamp(2.1rem, 1.4rem + 3vw, 3.6rem);
   --text-display--line-height: 1.02;
 
@@ -110,11 +181,17 @@ body,
   min-height: 100%;
 }
 
+/* The reader's font size scales the rem too, so spacing grows with the text
+   and a line keeps its measure; the px sizes above take the same factor. */
+html {
+  font-size: calc(100% * var(--font-scale, 1));
+}
+
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale, 1));
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
 }
@@ -129,6 +206,13 @@ h3 {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* The palette's field is the only thing in its dialog that takes the focus,
+   and the active option shows where the keys go: a ring there would only
+   cut into the dialog's edge. */
+.palette-input:focus-visible {
+  outline: none;
 }
 
 ::selection {
@@ -202,6 +286,25 @@ h3 {
   .chip-accent {
     @apply chip border-accent/40 bg-accent/10 text-accent;
   }
+  /* A glossary word (components/Term.jsx): the text it sits in, dotted underneath. */
+  .term {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: inherit;
+    text-decoration: underline dotted;
+    text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .term:hover,
+  .term[aria-expanded='true'] {
+    text-decoration-color: var(--accent);
+  }
 }
 
 /* The signal strip: the ticker, quiet and monospaced. */
@@ -250,17 +353,28 @@ h3 {
   animation: rise 0.45s var(--ease-standard) both;
 }
 
+/* Reduced motion follows the system unless the reader chose (W12.15): the
+   rule runs under the media query when nothing overrides it, and always
+   under .motion-reduce. The two copies are the same rule. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not(.motion-allow) *,
+  :root:not(.motion-allow) *::before,
+  :root:not(.motion-allow) *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  .ticker-track,
-  .playhead,
-  .beat-bar {
+  :root:not(.motion-allow) :is(.ticker-track, .playhead, .beat-bar) {
     animation: none !important;
   }
+}
+.motion-reduce *,
+.motion-reduce *::before,
+.motion-reduce *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+.motion-reduce :is(.ticker-track, .playhead, .beat-bar) {
+  animation: none !important;
 }

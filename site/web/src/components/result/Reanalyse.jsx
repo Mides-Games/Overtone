@@ -19,7 +19,7 @@ import { messageFor } from '../../pages/Analyze.jsx'
  *
  * The two results are linked both ways (the API's `reanalysis_of`), and each
  * lists the other here, with a link to compare them side by side (W12.11,
- * `/compare`, built on its own branch).
+ * `/compare`, pages/Compare.jsx).
  */
 export default function Reanalyse({ analysis }) {
   const { t } = useTranslation()

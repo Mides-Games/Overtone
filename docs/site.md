@@ -200,10 +200,12 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
 - An account's history: an analysis made while signed in is readable from any
   browser of that account, but there is no list of them yet (the Analyze page's
   "recent" list is this browser's own storage).
-- Profile is a placeholder: counters show a dash, timings come with publishing (W5).
 - The schema holds every table of the plan's data model; `accounts`,
   `songs`, `analyses`, `jobs`, `rate_limits`, `moderation_log`, `reports`,
-  `suggestions`, `suggestion_votes` and `reviews` are used. `mides_tokens` was dropped on 2026-10-27.
+  `suggestions`, `suggestion_votes`, `reviews`, `timing_ratings`, `timing_uses`,
+  `timing_comments`, `collections` and `collection_items` are used (the last five on
+  published analyses, see "Social v2"); `timings`, `timing_reactions` and
+  `notifications` are not yet. `mides_tokens` was dropped on 2026-10-27.
 - The PostgreSQL store of the queue (`services/analysis.service.js`) has not
   run against a database yet: the end-to-end checks below ran on the in-memory
   store. `pnpm check` should be run on a real server before W4.
@@ -1288,3 +1290,95 @@ Not checked: a screen reader on the popover and the charts; touch on a real phon
 `/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
 cache across several API processes (each keeps its own minute); the text against a
 mapper's reading, which only a mapper can give.
+
+### Social v2: stars, uses, comments, collections and profiles (W5.6, W6, W13.15, W13.18, 2026-10-27)
+
+The routes are in `site/api/src/routes/social.routes.js` (the rules are written at its
+top), the two stores in `services/social.service.js`, the shared rules in
+`utils/social.js`; the web's are `src/lib/social.js`, `src/components/social/` and the
+pages `UserProfile.jsx` (`/u/<username>`), `Timers.jsx` (`/timers`),
+`CollectionPage.jsx` (`/c/<id>`) and `Profile.jsx` (`/profile`, Timings and
+Collections tabs).
+
+- **What a "timing" is here.** A published analysis (`/t/<id>`). schema.sql's drafted
+  social tables pointed at `timings`, the W4 rows people will edit and fork; each now
+  also has `analysis_id`, and a check says it names exactly one of the two. The
+  one-per-account rules that were primary keys are unique indexes per target. Only
+  published rows count anywhere: what hangs off a timing its uploader took back stays
+  stored, unseen, and returns with it; a deleted analysis takes it all (cascade).
+- **Stars.** 1-5, one per account (a second is an edit; pressing your rating again
+  takes it back), never on your own timing (403 `OWN_TIMING`). `/t/<id>` and every list
+  row show the plain average and the count. "Best rated" on `/recent` counts a timing
+  from 3 ratings and orders by a Bayesian average with 3 prior ratings at 3 stars, so
+  three 5s (4.0) lead five 4s (3.625), but not two hundred 4.6s. Why 3: the least that
+  says more than one person agreed, and a higher bar would leave the sort empty while
+  the site is small.
+- **"I used this".** One per account, not on your own timing, with an optional link
+  that must be an osu.ppy.sh beatmapset (`/beatmapsets/<set>` with an optional
+  `#<mode>/<map>`, or the old `/s/<set>`) and is stored in that one https form. The
+  page lists the latest 20 uses, the link shown as its own text with
+  `rel="noopener nofollow ugc"`. "Most used" orders by them. Anonymous uses are not
+  taken. The beatmapset's own metadata is not fetched: that needs the osu! API (W9.2).
+- **Comments.** Signed in, 1-1000 characters after `cleanText`, plain text, oldest
+  first. An optional time (`atMs`, inside the song's length) shows as an m:ss button
+  that moves the result's player there (`Result` takes a `playerRef`) and scrolls the
+  map into view; the form can take the player's position. Its author deletes it. Anyone
+  reports and staff hide or unhide it through the community's own routes
+  (`/community/comments/<id>/report|moderate`): `comment` is a third kind in
+  `community.service.js`, logged in `moderation_log`, and the staff panel links a
+  reported comment to its timing. A hidden one is listed only for staff and its author.
+- **Collections.** Private by default, up to 50 per account and 500 timings each,
+  names up to 80 characters. Added to and taken from on `/t/<id>`, managed (rename,
+  public or private, delete) in `/profile?tab=collections`. A private collection, or
+  one that is not yours, is the same 404 as one that never was, for reading and for
+  every change. The page lists only timings that are published now.
+- **Profiles.** `/u/<username>` (any case; the most recently signed-in holder of a
+  name wins, since Mides cannot be asked by id) shows the Mides public fields, totals,
+  badges, published timings (with the three orders) and public collections. Totals:
+  published, songs timed (analyses finished and never private: a private upload stays
+  out even as a number), uses by others, and the average stars received. Badges are
+  counted, never granted: first timing, 10 and 50 published, a suggestion that reached
+  planned / in progress / done, used by others. `ranked-match` has its line in
+  `badgesOf` and waits for W9.2. A private profile (`PUT /me/profile`) is a 404 for
+  everyone but its owner and leaves `/timers`; its timings stay published with the name
+  on them, and the timing page then stops linking the name.
+- **Timers (W6).** `/timers` ranks by uses by others (3 to enter) or by stars received
+  (5 ratings, the same Bayesian order), 50 at most, private profiles out. Both minimums
+  are on the page.
+- **Pages and SEO.** `/timers` is in the sitemap; `/u/<username>` and `/c/<id>` sit
+  beside `/t/<id>` in `test/seo.test.js` as pages with an id, which no static sitemap
+  can list. Every new page calls `usePageMeta`. Strings are under `social` in EN and ES.
+
+Checked:
+
+- `site/api` 121/121 after merging `origin/experimental`: 13 new in
+  `test/social.test.js` over HTTP on the memory store (permissions and the same-origin
+  header on every write; one rating and one use per account; never on your own timing;
+  the beatmap link's forms and refusals; the orders, their minimum and offset paging;
+  comment cleaning, caps, times and deletion; comment reports and hides through the
+  community routes; collections private, capped and showing only published timings;
+  profiles, totals, badges and the private 404; the ranking's minimums and private
+  profiles; and every response read searched for the uploads' SHA-1s and hashes).
+- Before the merge, the same 13 against PostgreSQL 18.6 through PGlite 0.5.12 (a
+  temporary install outside the repository) over HTTP: 13/13; `check` applied the
+  schema twice (18 tables) and `db:migrate` ran twice. `timings`, `community` and
+  `moderation` on PGlite gave 12/13, 8/12 and 5/5, the same failures as the untouched
+  `origin/experimental` code (those tests reset only the memory store between cases).
+- `site/web` 186/186 (3 new for `lib/social.js`), `vite build`.
+- In the browser (dev API in memory, one timing seeded through the worker routes) at
+  375 px, dark: `/t/<id>` with its stars, uses, beatmap link and a timed comment, no
+  horizontal scroll, the comment's 1:02 moving the player to 1:02.000, the panel in
+  Spanish; `/u/dev_discord` with its totals, badges and list; `/timers` empty with its
+  minimum stated.
+
+Not checked: signed-in actions in the browser (rating, marking, comments, collections
+and the private switch were exercised over HTTP by the tests, not clicked); light mode
+and the profile tabs in the browser; screen readers on the star input; the routes on a
+real PostgreSQL server (only PGlite); `bench/facts.py` (the owner's 2026-10-27 rule
+keeps the Python checks off this machine; the counts in `CLAUDE.md` and `AGENTS.md`
+were set by hand to the two suites' totals).
+
+Left for later: the Ranked-match badge and beatmapset metadata (W9.2), posts to the
+Mides Feed (needs Mides' API), emoji reactions (`timing_reactions`), threaded comments,
+drawing timed comments on the tempo map, and notifying a timer of ratings, uses or
+comments (W13.17).

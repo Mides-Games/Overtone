@@ -14,7 +14,7 @@
     "account": "계정 메뉴",
     "changeTheme": "테마 변경",
     "changeLanguage": "언어 변경",
-    "otherLanguage": "ES",
+    "language": "언어: {{name}}",
     "openMenu": "메뉴 열기",
     "closeMenu": "메뉴 닫기",
     "queue": "대기열"
@@ -446,6 +446,7 @@
     "updated": "마지막 업데이트: {{date}}",
     "date": "2026년 10월 27일",
     "toBeSet": "추후 지정",
+    "translationNote": "이 번역은 편의를 위해 제공돼요. 영어 버전이 우선해요.",
     "resultLink": "“귀로 확인”의 의미",
     "terms": {
       "title": "이용약관",
@@ -1219,7 +1220,8 @@
       "contrastOn": "고대비 켜기",
       "contrastOff": "고대비 끄기",
       "settings": "설정 열기",
-      "shortcuts": "키보드 단축키"
+      "shortcuts": "키보드 단축키",
+      "language": "언어: {{name}}"
     },
     "help": {
       "title": "키보드 단축키",
@@ -1292,9 +1294,7 @@
     "reset": "대비, 크기, 색상, 움직임 초기화",
     "language": {
       "title": "언어",
-      "label": "사이트 언어",
-      "en": "English",
-      "es": "Español"
+      "label": "사이트 언어"
     },
     "audio": {
       "title": "플레이어",

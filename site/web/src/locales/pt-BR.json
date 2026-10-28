@@ -13,8 +13,8 @@
     "signOut": "Sair",
     "account": "Menu da conta",
     "changeTheme": "Mudar tema",
-    "changeLanguage": "Mudar para espanhol",
-    "otherLanguage": "ES",
+    "changeLanguage": "Mudar idioma",
+    "language": "Idioma: {{name}}",
     "openMenu": "Abrir menu",
     "closeMenu": "Fechar menu",
     "queue": "Fila"
@@ -454,6 +454,7 @@
     "updated": "Última atualização: {{date}}",
     "date": "27 de outubro de 2026",
     "toBeSet": "A definir",
+    "translationNote": "Esta tradução é oferecida por conveniência; prevalece a versão em inglês.",
     "resultLink": "O que significa “conferir de ouvido”",
     "terms": {
       "title": "Termos de uso",
@@ -655,7 +656,7 @@
             "Estes ficam no armazenamento local do seu navegador e nunca são enviados ao servidor:"
           ],
           "li": [
-            "mides.theme e mides.lang: claro ou escuro, inglês ou espanhol.",
+            "mides.theme e mides.lang: claro ou escuro, e o idioma que você escolheu.",
             "overtone.player.volumes: os volumes da música e da faixa de cliques.",
             "overtone.player.latencyMs: a latência do seu áudio, se você a calibrou.",
             "overtone.player.listening: a subdivisão dos cliques, o volume deles e se os cliques são deslocados pela sua latência.",
@@ -1252,7 +1253,8 @@
       "contrastOn": "Ativar alto contraste",
       "contrastOff": "Desativar alto contraste",
       "settings": "Abrir configurações",
-      "shortcuts": "Atalhos de teclado"
+      "shortcuts": "Atalhos de teclado",
+      "language": "Idioma: {{name}}"
     },
     "help": {
       "title": "Atalhos de teclado",
@@ -1325,9 +1327,7 @@
     "reset": "Redefinir contraste, tamanho, cores e movimento",
     "language": {
       "title": "Idioma",
-      "label": "Idioma do site",
-      "en": "English",
-      "es": "Español"
+      "label": "Idioma do site"
     },
     "audio": {
       "title": "Player",

@@ -402,7 +402,27 @@
     "reset": "Resetuj",
     "adjusted": "Te liczby zostały przez ciebie skorygowane: kopia i pobrane pliki zawierają korektę i mówią o tym w linii komentarza. Sprawdź ją na słuch, zanim jej użyjesz.",
     "hint": "Od {{from}} do {{to}} onsety rzedną do co drugiego beatu: silnik odczytuje to jako możliwy half- lub double-time wewnątrz jednej red line (bursztynowy znacznik). To przesłanka, nie red line: posłuchaj.",
-    "swing": "Od {{from}} do {{to}} ósemka na słabej części beatu wypada późno, o około {{late}} ms ({{snap}} beatu): swing. Ustaw te nuty na słuch."
+    "swing": "Od {{from}} do {{to}} ósemka na słabej części beatu wypada późno, o około {{late}} ms ({{snap}} beatu): swing. Ustaw te nuty na słuch.",
+    "bands": {
+      "toggle": "Pasma",
+      "hint": "Ataki niskie, średnie i wysokie pod przebiegiem: które pasmo niesie puls",
+      "legend": "Ataki w pasmach: niskie, średnie, wysokie",
+      "note": "Pasmo to zakres częstotliwości, nie instrument: stopa zwykle siedzi w niskim, trzask werbla w średnim, a talerze w wysokim, ale linia basu czy głos też tam trafiają.",
+      "lowShort": "Nis",
+      "midShort": "Śr",
+      "highShort": "Wys"
+    },
+    "spectrogram": {
+      "toggle": "Spektrogram",
+      "hint": "Częstotliwości utworu w czasie pod przebiegiem, od 40 Hz do 11 kHz, w powiększeniu mapy",
+      "legend": "Spektrogram, 40 Hz–11 kHz (mocniejszy kolor to głośniej)"
+    },
+    "layers": {
+      "needSong": "Pasma i spektrogram są odczytywane z samego utworu: wczytaj go poniżej, żeby je zobaczyć.",
+      "working": "Odczytywanie pasm i spektrogramu utworu w tle… {{percent}}%",
+      "failed": "Ta przeglądarka nie zdołała odczytać pasm i spektrogramu utworu.",
+      "done": "Odczytano w {{seconds}} s w tej przeglądarce; nic nie zostało wysłane."
+    }
   },
   "moderation": {
     "staff": "Zespół",
@@ -1113,7 +1133,23 @@
     "chartFitted_few": "{{count}} zmiany tempa wypadają między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
     "chartFitted_many": "{{count}} zmian tempa wypada między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
     "chartFitted_other": "{{count}} zmiany tempa wypada między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
-    "failed": "Nie udało się zbudować tego pliku z tych red lines."
+    "failed": "Nie udało się zbudować tego pliku z tych red lines.",
+    "beatSaber": "Beat Saber: poziom trudności v3, ExpertStandard.dat, tylko ze zdarzeniami BPM. Wpisz go w swoim Info.dat i ustaw w Info.dat BPM na {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: prosta ścieżka, jedno pole na uderzenie, z SetSpeed tam, gdzie zmienia się tempo. Połóż piosenkę obok.",
+    "fnf": "Friday Night Funkin’: JSON charta, który czytają gra sprzed 0.3 i Psych Engine, w sekcjach po 16 kroków z changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: plik .rdlevel z PlaySong (BPM i offset), SetBeatsPerMinute i SetCrotchetsPerBar. Połóż piosenkę obok.",
+    "adofaiOdd_one": "{{count}} zmiana tempa wypada między polami A Dance of Fire and Ice: pole przed nią dostaje własną prędkość, żeby zmiana trafiła w czas.",
+    "adofaiOdd_few": "{{count}} zmiany tempa wypadają między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "adofaiOdd_many": "{{count}} zmian tempa wypada między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "adofaiOdd_other": "{{count}} zmiany tempa wypada między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "fnfOdd_one": "{{count}} zmiana tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed nią, z własną prędkością, sprawia, że trafia w czas.",
+    "fnfOdd_few": "{{count}} zmiany tempa wypadają między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "fnfOdd_many": "{{count}} zmian tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "fnfOdd_other": "{{count}} zmiany tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "rdMeter_one": "{{count}} zmiana metrum wypada w środku taktu Rhythm Doctor, gdzie nie może zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_few": "{{count}} zmiany metrum wypadają w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_many": "{{count}} zmian metrum wypada w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_other": "{{count}} zmiany metrum wypada w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum."
   },
   "oszPlus": {
     "title": "Opcje .osz",
@@ -2378,5 +2414,137 @@
     "other": "żaden",
     "aria": "{{divisor}}: {{pct}}%",
     "note": "Każde uderzenie, które usłyszał silnik, według najprostszego dzielnika beatu, na który pada (w granicach 1/48 beatu, najwyżej 15 ms); słabe uderzenia liczą się mniej. To propozycja dzielnika snapu w edytorze, nie pomiar timingu."
+  },
+  "daw": {
+    "title": "Programy muzyczne (mapa tempa)",
+    "midi": "Mapa tempa MIDI",
+    "midiNote": "Plik MIDI typu 1 z 960 tickami na uderzenie: tempo i metrum przy każdej red line, każda zmiana najwyżej {{ms}} ms od swojego momentu.",
+    "leadIn": "Takt 1 to takt wstępny, który kończy się na pierwszej mocnej części pierwszej red line, żeby kolejne takty pokrywały się z piosenką.",
+    "reaperNote": "Reaper: projekt z tempem, znacznikiem na każdej red line i piosenką na ścieżce. Zapisz go w folderze, w którym jest {{file}}.",
+    "reaperNoAudio": "Reaper: projekt z tempem i znacznikiem na każdej red line. Piosenkę połóż na ścieżce sam.",
+    "ableton": "Ableton Live nie potrafi wczytać mapy tempa z tekstu, więc nie ma tu pliku dla Live. Użyj pliku MIDI: przeciągnij go do Arrangement, a Live może przejąć jego zmiany tempa i metrum (zależnie od wersji pyta o to albo włącza to opcja importu)."
+  },
+  "calculator": {
+    "title": "Kalkulator timingu",
+    "description": "BPM i ms na uderzenie, ticki, odstęp między dwiema red lines, dryf i BPM z dwóch znaczników czasu: rachunki timingu mapy, liczone w twojej przeglądarce.",
+    "intro": "Rachunki timingu mapy, liczone na bieżąco, gdy piszesz. Nic nie opuszcza tej strony.",
+    "keys": "Klawiatura: Tab przechodzi między polami; ↑ i ↓ zmieniają bieżące pole o 1, z Shift o 10, z Alt o 0,1. Wybierz wynik, żeby skopiować jego liczbę.",
+    "copy": "Kopiuj {{label}}: {{value}}",
+    "copied": "Skopiowano",
+    "fromResult": "Kalkulator timingu",
+    "bpmMs": {
+      "title": "BPM ↔ ms na uderzenie",
+      "bpm": "BPM",
+      "ms": "ms na uderzenie",
+      "beat": "Jedno uderzenie",
+      "exactBpm": "BPM",
+      "bar": "Jeden takt 4/4",
+      "quarter": "Jeden tick 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticki",
+      "bpm": "BPM",
+      "divisor": "Dzielnik uderzenia",
+      "span": "Odcinek",
+      "count": "Ticki",
+      "tick": "Jeden tick",
+      "ticks": "Odcinek w tickach",
+      "nearest": "Najbliższy pełny tick",
+      "off": "Odcinek wychodzi {{ms}} ms za niego.",
+      "toMs": "Te ticki w ms"
+    },
+    "lines": {
+      "title": "Między dwiema red lines",
+      "intro": "Gdzie druga linia wypada na siatce pierwszej.",
+      "from": "Pierwsza red line",
+      "bpm": "Jej BPM",
+      "to": "Druga red line",
+      "meter": "Uderzenia na takt",
+      "span": "Odstęp",
+      "beats": "Odstęp w uderzeniach",
+      "bars": "Odstęp w taktach",
+      "nearest": "Najbliższe uderzenie pierwszej siatki",
+      "off": "Druga linia względem tego uderzenia",
+      "offNote": "Dodatnie: jest spóźniona.",
+      "earliest": "Najwcześniejszy offset pierwszej siatki"
+    },
+    "drift": {
+      "title": "Dryf",
+      "intro": "Jak daleko siatka przy jednym BPM odjeżdża od innej przez kilka taktów, i BPM, które mieszczą się w dryfie, jaki akceptujesz.",
+      "right": "Właściwe BPM",
+      "mapped": "BPM w mapie",
+      "bars": "Takty",
+      "meter": "Uderzenia na takt",
+      "total": "Dryf do ostatniego taktu",
+      "sign": "Dodatni: siatka mapy jest spóźniona.",
+      "perBar": "Dryf na takt",
+      "allowed": "Akceptowany dryf",
+      "slower": "Najwolniejsze BPM w tym zakresie",
+      "faster": "Najszybsze BPM w tym zakresie",
+      "precision": "Potrzebna dokładność BPM"
+    },
+    "span": {
+      "title": "BPM z dwóch znaczników czasu",
+      "intro": "Dwa momenty piosenki i liczba uderzeń między nimi.",
+      "start": "Pierwszy znacznik",
+      "end": "Drugi znacznik",
+      "beats": "Uderzenia pomiędzy",
+      "bpm": "BPM",
+      "beat": "Jedno uderzenie"
+    }
+  },
+  "practice": {
+    "title": "Ćwiczenie",
+    "reps": "Razy",
+    "countIn": "Odliczanie taktu",
+    "start": "Zacznij ćwiczyć",
+    "stop": "Zakończ ćwiczenie",
+    "counting": "Odliczanie…",
+    "status": "Przejście {{rep}} z {{reps}} · {{rate}}×",
+    "noStretch": "Nie ma tu czego ćwiczyć: zaznacz pętlę (Shift i przeciągnij na mapie) albo przesuń głowicę do sekcji red line.",
+    "hint": "Gra zaznaczoną pętlę albo sekcję pod głowicą {{reps}} razy, od {{from}}× do {{to}}×, za każdym razem trochę szybciej. Wysokość dźwięku zmienia się z prędkością; kliki za nią podążają."
+  },
+  "tapMic": {
+    "footer": "BPM z mikrofonu",
+    "eyebrow": "Narzędzie",
+    "title": "BPM z mikrofonu",
+    "description": "Przeglądarka słucha przez kilka sekund i proponuje BPM wraz z pewnością. Nic nie jest wysyłane.",
+    "intro": "Puść utwór blisko urządzenia, naciśnij Słuchaj i pozwól przeglądarce posłuchać go przez kilka sekund. Zaproponuje BPM i powie, jak bardzo jest pewna. Dźwięk nigdy nie opuszcza tej strony: jest odczytywany tutaj i odrzucany.",
+    "length": "Słuchaj przez",
+    "seconds": "{{n}} s",
+    "listen": "Słuchaj",
+    "again": "Słuchaj ponownie",
+    "stop": "Zatrzymaj i odczytaj",
+    "permission": "Przeglądarka poprosi o mikrofon, gdy naciśniesz Słuchaj, nie wcześniej.",
+    "asking": "Czekam na zgodę na mikrofon…",
+    "listening": "Słucham… {{percent}}%",
+    "listeningLabel": "Słuchanie",
+    "level": "Poziom wejścia",
+    "quiet": "Bardzo cicho: podgłośnij utwór albo podejdź bliżej.",
+    "reading": "Odczytywanie pulsu…",
+    "errors": {
+      "unsupported": "Ta przeglądarka nie może tu nagrywać z mikrofonu.",
+      "denied": "Mikrofon nie został dopuszczony. Możesz na to zezwolić w ustawieniach witryny w przeglądarce i spróbować ponownie.",
+      "noMic": "Nie znaleziono mikrofonu albo używa go inna aplikacja.",
+      "failed": "Coś poszło nie tak podczas słuchania. Spróbuj ponownie."
+    },
+    "result": {
+      "short": "Za krótko, żeby odczytać tempo: posłuchaj kilka sekund dłużej.",
+      "silent": "Nic nie słychać: mikrofon zarejestrował tylko ciszę.",
+      "noPulse": "Nie słychać równego pulsu. Utwór z wyraźnym beatem, głośniej albo bliżej, czyta się lepiej; szum i mowa go nie mają."
+    },
+    "confidence": "Pewność {{percent}}%",
+    "alternatives": "Może to być też {{list}}: mikrofon słyszy puls, a nie to, w której oktawie liczy się utwór.",
+    "heard": "Z {{seconds}} s dźwięku, odczytane w tej przeglądarce.",
+    "limitsTitle": "Co potrafi, a czego nie",
+    "limits": {
+      "private": "Nic nie jest wysyłane ani zapisywane: nagranie zostaje na tej stronie i znika po odczytaniu.",
+      "precision": "Kilka sekund daje tempo z dokładnością do około jednego BPM w najlepszym razie; dłuższe słuchanie jest stabilniejsze. To szybkie sprawdzenie, nie timing.",
+      "octave": "Może odczytać połowę lub dwukrotność tempa, które wybrałby mapper; pozostałe oktawy są pokazane obok.",
+      "changes": "Zakłada równe tempo: utwór, który przyspiesza, zwalnia albo zmienia metrum, odczyta się jako średnia albo wcale.",
+      "room": "Echo, szum, rozmowy i cienki bas głośnika telefonu rozmywają ataki, których słucha.",
+      "offset": "Nie podaje offsetu ani red lines: do tego plik utworu przechodzi przez silnik."
+    },
+    "forTiming": "Po pełny timing z red lines i offsetem przeanalizuj sam plik."
   }
 }

@@ -115,16 +115,16 @@ test('a malformed trusted range stops the start', async () => {
   await assert.rejects(serve(1, { TRUSTED_PROXY_ADDRS: '10.0.0.0/33' }), /not an address or CIDR range/);
 });
 
-test('images load only from this origin, data: and Mides\' own origins', async () => {
+test('images load only from this origin, data:, its own blob: URLs and Mides\' own origins', async () => {
   const policy = async (env) => {
     const port = await serve(1, env);
     const { headers } = await get(port, '/missing.png');
     return headers['content-security-policy'].split('; ').find((d) => d.startsWith('img-src'));
   };
-  assert.equal(await policy({}), "img-src 'self' data:");
+  assert.equal(await policy({}), "img-src 'self' data: blob:");
   assert.equal(
     await policy({ MIDES_WEB_URL: 'https://mides.example/', MIDES_IMAGE_ORIGINS: 'https://cdn.mides.example, https://mides.example' }),
-    "img-src 'self' data: https://mides.example https://cdn.mides.example",
+    "img-src 'self' data: blob: https://mides.example https://cdn.mides.example",
   );
   await assert.rejects(serve(1, { MIDES_IMAGE_ORIGINS: 'https://cdn.mides.example/avatars' }), /not an http\(s\) origin/);
 });

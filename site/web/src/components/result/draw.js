@@ -6,6 +6,8 @@
  * section's confidence along its foot), the waveform with the onsets and the
  * beat grid, the drift lane, the ruler.
  */
+import { parseColor } from '../../lib/cover-accent.js'
+import { SPEC_HI_HZ, SPEC_LO_HZ, specColumns } from '../../lib/spectral.js'
 import { BAR, formatBpm, formatRuler, lowerBound, SUB } from '../../lib/timing.js'
 
 export const MONO = "11px 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, ui-monospace, monospace"
@@ -46,8 +48,12 @@ export function readPalette() {
 
 export const LEVEL_TONE = { high: 'accent', medium: 'tempo', check: 'amber' }
 
-/** Lane positions for a canvas `width` CSS pixels wide. */
-export function layout(width) {
+/**
+ * Lane positions for a canvas `width` CSS pixels wide. `extra` adds the
+ * reader's optional lanes under the waveform: the spectrogram (W13.7) and the
+ * three bands' attacks (W13.6); without them the map is as it always was.
+ */
+export function layout(width, { spectrogram = false, bands = false } = {}) {
   const compact = width < 640
   const x0 = compact ? 30 : 46
   const x1 = Math.max(x0 + 10, width - 8)
@@ -59,12 +65,30 @@ export function layout(width) {
   const waveTop = y
   y += compact ? 66 : 88
   const waveBottom = y
+  let specTop = null
+  let specBottom = null
+  if (spectrogram) {
+    y += 6
+    specTop = y
+    y += compact ? 52 : 72
+    specBottom = y
+  }
+  let bandsTop = null
+  let bandsBottom = null
+  if (bands) {
+    y += 6
+    bandsTop = y
+    y += 3 * (compact ? 13 : 16)
+    bandsBottom = y
+  }
+  // The beat grid runs through every lane above the drift.
+  const gridBottom = y
   y += 6
   const driftTop = y
   y += compact ? 32 : 42
   const driftBottom = y
   const height = y + 20
-  return { compact, width, height, x0, x1, tempoTop, tempoBottom, waveTop, waveBottom, driftTop, driftBottom }
+  return { compact, width, height, x0, x1, tempoTop, tempoBottom, waveTop, waveBottom, specTop, specBottom, bandsTop, bandsBottom, gridBottom, driftTop, driftBottom }
 }
 
 export function niceStep(span, target) {
@@ -129,8 +153,11 @@ export function paintMap(ctx, L, view, d, c) {
   const lanes = [
     [L.tempoTop, L.tempoBottom],
     [L.waveTop, L.waveBottom],
+    ...(L.specTop !== null && L.specTop !== undefined ? [[L.specTop, L.specBottom]] : []),
+    ...(L.bandsTop !== null && L.bandsTop !== undefined ? [[L.bandsTop, L.bandsBottom]] : []),
     [L.driftTop, L.driftBottom],
   ]
+  const gridBottom = L.gridBottom ?? L.waveBottom
   ctx.clearRect(0, 0, L.width, L.height)
 
   // Lane panels.
@@ -169,6 +196,9 @@ export function paintMap(ctx, L, view, d, c) {
     ctx.fillRect(X(view.a), top, Math.min(X(bounds[0]), x1) - X(view.a), foot - top)
   }
 
+  // The spectrogram (W13.7) under the grid, so the beats read over it.
+  if (L.specTop !== null && L.specTop !== undefined && d.spectra) paintSpectrogram(ctx, L, view, d.spectra, c, d.specCache)
+
   // The beat grid once beats are far enough apart to read; zoomed out past that, the bars alone.
   const gt = d.grid.t
   const gl = d.grid.level
@@ -192,7 +222,7 @@ export function paintMap(ctx, L, view, d, c) {
       if (cl[i] !== SUB) continue
       const x = Math.round(X(ct[i])) + 0.5
       ctx.moveTo(x, top)
-      ctx.lineTo(x, L.waveBottom)
+      ctx.lineTo(x, gridBottom)
     }
     ctx.stroke()
     ctx.setLineDash([])
@@ -205,7 +235,7 @@ export function paintMap(ctx, L, view, d, c) {
       ctx.lineWidth = gl[i] === BAR ? 1.2 : 1
       ctx.beginPath()
       ctx.moveTo(x, top)
-      ctx.lineTo(x, L.waveBottom)
+      ctx.lineTo(x, gridBottom)
       ctx.stroke()
     }
   }
@@ -367,6 +397,25 @@ export function paintMap(ctx, L, view, d, c) {
     ctx.globalAlpha = 1
   }
 
+  // The bands' attacks (W13.6): a row each, low at the bottom as on a mixer, each tick as tall and as dark as it is strong.
+  const bandRows = L.bandsTop !== null && L.bandsTop !== undefined && d.spectra ? d.spectra.bands : null
+  if (bandRows) {
+    const rowH = (L.bandsBottom - L.bandsTop) / bandRows.length
+    bandRows.forEach((band, r) => {
+      const bottom = L.bandsBottom - r * rowH
+      ctx.fillStyle = c.grid
+      ctx.fillRect(x0, Math.round(bottom - rowH), x1 - x0, 1)
+      ctx.fillStyle = c.text
+      for (let i = lowerBound(band.t, view.a); i < band.t.length && band.t[i] <= view.b; i++) {
+        const w = band.w[i] / 100
+        ctx.globalAlpha = 0.3 + 0.7 * w
+        const h = (rowH - 3) * (0.35 + 0.65 * w)
+        ctx.fillRect(Math.round(X(band.t[i])), bottom - 1.5 - h, 1.5, h)
+      }
+      ctx.globalAlpha = 1
+    })
+  }
+
   // Swing: where the engine heard the off-beat eighth land late.
   ctx.font = MONO
   ctx.textBaseline = 'alphabetic'
@@ -414,6 +463,15 @@ export function paintMap(ctx, L, view, d, c) {
     ctx.fillText(Number.isInteger(b) ? String(b) : b.toFixed(1), x0 - 5, Y(b))
   }
   ctx.fillText(L.compact ? '±30' : `±${DRIFT_RANGE_MS}`, x0 - 5, dmid)
+  if (bandRows) {
+    const rowH = (L.bandsBottom - L.bandsTop) / bandRows.length
+    bandRows.forEach((band, r) => ctx.fillText(d.bandLabels?.[band.key] ?? band.key, x0 - 5, L.bandsBottom - (r + 0.5) * rowH))
+  }
+  if (L.specTop !== null && L.specTop !== undefined && d.spectra) {
+    // The spectrogram's ends, in Hz: its rows are log-spaced between them.
+    ctx.fillText(`${SPEC_HI_HZ / 1000}k`, x0 - 5, L.specTop + 7)
+    ctx.fillText(String(SPEC_LO_HZ), x0 - 5, L.specBottom - 7)
+  }
 
   // Ruler.
   ctx.textAlign = 'center'
@@ -562,4 +620,65 @@ export function paintOverview(ctx, width, height, d, c) {
   // The other timing's lines: the lower half, so a line both share shows as red above and blue below.
   ctx.fillStyle = c.compare
   for (const line of d.other ?? []) ctx.fillRect(Math.round(X(line.timeMs / 1000)), mid, 1.5, height - 3 - mid)
+}
+
+/**
+ * The spectrogram lane (W13.7): the worker's cells (lib/spectral.js) for the
+ * view, one column a pixel, low frequencies at the bottom, in the theme's text
+ * colour with the level as its opacity, so it reads in either theme and under
+ * the colour-blind palette. Painted into an offscreen canvas and scaled onto
+ * the map; `cache` (one per map) keeps that canvas, the last view's key and a
+ * 4096-column copy of the whole song, so a zoomed-out view reads a few
+ * thousand columns rather than every frame, and a repaint that did not move
+ * the view costs one drawImage.
+ */
+export function paintSpectrogram(ctx, L, view, s, c, cache = {}) {
+  const width = Math.max(1, Math.round(L.x1 - L.x0))
+  const { spectrogram, fps } = s
+  const rows = spectrogram.rows
+  if (cache.source !== s) {
+    cache.source = s
+    cache.coarse = null
+    cache.key = null
+  }
+  const key = `${view.a}|${view.b}|${width}|${c.text}`
+  if (cache.key !== key) {
+    let source = spectrogram
+    let sourceFps = fps
+    if (((view.b - view.a) * fps) / width > 8) {
+      if (!cache.coarse) {
+        const columns = Math.min(4096, spectrogram.frames)
+        const seconds = spectrogram.frames / fps
+        cache.coarse = { spec: { rows, frames: columns, data: specColumns(spectrogram, fps, 0, seconds, columns) }, fps: columns / seconds }
+      }
+      source = cache.coarse.spec
+      sourceFps = cache.coarse.fps
+    }
+    const cells = specColumns(source, sourceFps, view.a, view.b, width)
+    const [r, g, b] = parseColor(c.text) ?? [128, 128, 128]
+    if (!cache.canvas) cache.canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(width, rows) : document.createElement('canvas')
+    if (cache.canvas.width !== width || cache.canvas.height !== rows) {
+      cache.canvas.width = width
+      cache.canvas.height = rows
+    }
+    const g2 = cache.canvas.getContext('2d')
+    const image = g2.createImageData(width, rows)
+    const px = image.data
+    for (let x = 0; x < width; x++) {
+      for (let row = 0; row < rows; row++) {
+        const v = cells[x * rows + row] / 255
+        const o = ((rows - 1 - row) * width + x) * 4
+        px[o] = r
+        px[o + 1] = g
+        px[o + 2] = b
+        px[o + 3] = Math.round(235 * v * v)
+      }
+    }
+    g2.putImageData(image, 0, 0)
+    cache.key = key
+  }
+  ctx.save()
+  ctx.imageSmoothingEnabled = true
+  ctx.drawImage(cache.canvas, L.x0, L.specTop, L.x1 - L.x0, L.specBottom - L.specTop)
+  ctx.restore()
 }

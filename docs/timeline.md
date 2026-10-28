@@ -83,6 +83,87 @@ version is `v0.2.0-alpha`.
   fold, and only once its script runs.
 
 ---
+
+## Unreleased — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
+
+### Changed
+
+- The tempo map has two optional lanes under the waveform, both read from the reader's
+  own decoded song in a Web Worker: the attacks of three frequency bands (low, mid,
+  high; on by default) and a spectrogram at the map's zoom (off by default) (W13.6,
+  W13.7). Chosen once per browser.
+- Practice mode under the transport: the drawn loop or the section under the playhead,
+  3 to 8 times from 0.5× to 1×, after a bar counted in (W13.8).
+- `/tools/tap-mic`: the browser listens for 6 to 15 seconds and proposes a BPM with its
+  confidence and its octave neighbours, or says it heard no pulse (W13.12). Nothing is
+  uploaded; the microphone is asked for only on the button.
+- The cover in the song's tags tints the header of the result and public timing pages,
+  kept at AA, and not under high contrast (W13.24).
+
+### Hardening
+
+- The microphone's worklet is emitted as its own file (`?url&no-inline`): Vite would
+  have inlined it as a data: URL, which the site's `script-src 'self'` refuses.
+- The cover is decoded with `createImageBitmap`, not loaded from a blob: URL that
+  `img-src` does not allow.
+
+### Measured
+
+- Six minutes of stereo 44.1 kHz (`node site/web/scripts/spectral-cost.mjs`): bands and
+  spectrogram 1.30 s in one pass (2.6 s before two-frame FFTs, `sqrt` for `hypot` and
+  compressing only the bins a band reads), downmix 135-218 ms in slices. In the browser
+  (dev build): 2.42 s in the worker, 2.65 s end to end, the page's longest stall 27 ms.
+- Node tests: site/web 258/258 (18 new, on synthetic drums, clicks, noise, silence and
+  covers); the budget passes; `bench/facts.py` ok. Not measured: a real microphone, a
+  phone, Safari and Firefox; no screenshot (the shared browser pane was hidden).
+
+### Rejected / tried and dropped
+
+- A filter bank in an OfflineAudioContext for the bands: three renders of the song
+  where one STFT gives the bands and the spectrogram together.
+- Log compression of raw FFT magnitudes: a kick's spectral splatter lit the high band at
+  20 % of a hat. Magnitudes are now scaled by 2/N first, and the picker's floor is a
+  fifth of the band's loud end, not a tenth: each band then reports only its own
+  instrument on the synthetic drums.
+- The plain autocorrelation peak for the microphone: a click train at 128 BPM read as
+  64, its period falling between two frames. The envelope is smoothed, each candidate
+  refined to a twentieth of a frame, and the faster octave wins when it scores 80 % of
+  the slower.
+
+---
+
+## Unreleased — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
+
+### Changed
+
+- `/tools/calculator` (W13.9): BPM ↔ ms, ms ↔ ticks, the gap between two red lines,
+  drift and the BPMs within an accepted drift, and the BPM from two timestamps. Keyboard
+  first; the result page opens it with its first red line filled in.
+- "More downloads" gains a MIDI tempo map (type 1, 960 PPQ) and a Reaper project (W13.10).
+  Ableton gets no file of its own: Live has no tempo-map text format, so the page sends
+  its users to the MIDI file and says so.
+- Four more games' timing files (W13.11): Beat Saber v3 `bpmEvents`, A Dance of Fire and
+  Ice `.adofai`, Friday Night Funkin' legacy chart JSON, Rhythm Doctor `.rdlevel`.
+
+### Measured
+
+- MIDI read back by an independent parser in the tests: every red line within 0.5 ms of
+  its time on 40 changes off the grid (the worst is printed on the page; 0.08 ms on the
+  browser check's two-line result). The games' files read back by each game's arithmetic,
+  all under 0.5 ms. `site/web` tests 264/264 on the branch (240 before), 280/280 after merging master, budget ok (AnalysisResult
+  24.6 of 30 kB, Calculator 2.5 kB). No file was opened in a game or a DAW.
+
+### Rejected / tried and dropped
+
+- ADOFAI changes off the beat by an angled tile (a fractional beat): exact, but which way
+  an angle counts is easy to get backwards untested, and a wrong guess would be silent.
+  An odd tile with its own speed is visible in the editor and right either way.
+- Fitting the whole span's BPM so a change lands on a whole tile or section (as Clone Hero
+  does between ticks): over a long span it moves the grid by up to half a beat against the
+  music before the change; the odd unit keeps the grid exact everywhere else.
+
+---
+
 ## Unreleased — 2026-10-28 · Mapping helpers on the result page
 
 ### Changed

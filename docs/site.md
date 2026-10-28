@@ -1822,3 +1822,140 @@ bar; the recent-timings list on Home (no timings were published on the dev API).
 `site/e2e/tests/site.spec.js` has two language tests that still look for the EN/ES
 toggle's "Switch to English" button, which the ten-language selector replaced before
 this branch; master's bar has no such button either, so they fail there too (read, not\nrun), and were left to the selector's owner.
+
+### Bands, spectrogram, practice, the microphone and the cover's accent (W13.6, W13.7, W13.8, W13.12, W13.24, 2026-10-28)
+
+Five additions to listening, none of them the engine: everything below is computed in the
+reader's browser from the reader's own file or microphone, and nothing is sent.
+
+- **One spectral library** (`lib/spectral.js`), pure and tested in node: a radix-2 FFT
+  run two frames at a time (one real, one imaginary, split by symmetry), a 1024-point
+  Hann STFT with a 256 hop on the song downmixed to mono and halved in rate (about
+  22 kHz, 46 ms windows, 11.6 ms frames), log-compressed spectral flux per band, and a
+  peak picker (the highest frame within ±35 ms, a fifth of the band's 99th percentile
+  over the mean of the 100 ms around it, 50 ms apart at least). The same code runs in a
+  module worker (`lib/spectral.worker.js`); `lib/song-spectra.js` is the page's side:
+  it downmixes in half-million-sample slices with a breath between (the AudioBuffer
+  lives on the main thread), transfers the result, and keeps four songs' results per
+  analysis id for the session.
+- **Bands (W13.6).** Three rows under the waveform, low at the bottom: 30-150 Hz,
+  200-4000 Hz and 5-11 kHz, where a kick, a snare's crack and cymbals usually sit. The
+  page says a band is a range, not an instrument. Each tick is as tall and as dark as
+  its attack is strong in its own band. The button **Bands** in the map's toolbar
+  toggles it; it starts **on**, since it costs the page nothing but a worker's second
+  (decided here: the roadmap leaves it open). On synthetic drums the three bands report
+  every kick, snare and hat once each, and nothing else, within 25 ms
+  (`test/spectral.test.js`).
+- **Spectrogram (W13.7).** 80 log-spaced rows from 40 Hz to 11 kHz, dB under the
+  song's loudest cell, 72 dB deep, as bytes (2.4 MB for six minutes). Painted at the
+  map's zoom into an offscreen canvas, one column a pixel, in the theme's text colour
+  with the level as its opacity (so it reads in both themes and under the colour-blind
+  palette), then scaled onto the lane; zoomed out it reads from a 4096-column copy of
+  the song, and a repaint that did not move the view is one `drawImage`. **Off** by
+  default, as asked. The choice of lanes is kept in this browser
+  (`overtone.map.layers`).
+- **Practice (W13.8)**, under the transport: the drawn loop, or the red line's section
+  under the playhead, played 3 to 8 times from 0.5× to 1× in even steps, after one bar
+  counted in at the first speed (`lib/practice.js`, tested). The player schedules each
+  repetition as its own buffer source on the audio clock, starting where the last one
+  ends, so the speed steps exactly at the seam and the clicks follow each speed. The
+  count-in goes through its own bus, heard even with the clicks off. Playing, seeking,
+  a rate or a loop ends it. Like the rate buttons, a slower speed lowers the pitch.
+- **The microphone (W13.12)** at `/tools/tap-mic` (in the sitemap and the footer):
+  6, 10 or 15 seconds, asked for only on **Listen**, with echo cancelling, noise
+  suppression and gain control off. An AudioWorklet (`lib/mic-recorder.worklet.js`,
+  emitted as a file of its own: `script-src 'self'` refuses a data: worklet) hands the
+  samples to the page, the worker reads them (`lib/mic-tempo.js`): the onset envelope,
+  its autocorrelation scored at the first four multiples of each period with a gentle
+  pull towards 120 BPM, the faster octave preferred when it explains the envelope at
+  least 80 % as well, and a confidence of the winning score over the median one. Under
+  25 % it proposes nothing; silence and fewer than four seconds are said as such; the
+  half and double are shown beside the reading. The page lists its limits. Synthetic
+  clicks at 90, 128 and 174 BPM read within 1 BPM; white noise reads as no pulse.
+- **The cover's accent (W13.24).** The cover the `.osz` already takes (`readCover`) is
+  decoded at 32 px by `createImageBitmap` (no blob: URL, so nothing for `img-src`),
+  and its dominant hue, weighted by how coloured each pixel is (greys count for
+  nothing; a mostly grey cover has no accent), washes the result page's header and the
+  public timing page's from the left, at 14 % (light) or 18 % (dark). The eyebrow takes
+  the hue with its lightness walked until it reads at 4.5:1 on both the wash and the
+  page; the wash thins until `--text`, `--muted` and `--dim` all keep 4.5:1, and an
+  accent that cannot is dropped (`lib/cover-accent.js`, tested over eight covers in
+  both themes). Off under high contrast, by the setting or the system's.
+
+Measured (`node site/web/scripts/spectral-cost.mjs`, a synthetic six-minute stereo
+44.1 kHz song, this machine): the downmix 135-218 ms (in slices on the page), the
+bands and spectrogram in one pass 1.30 s, a 1200-column view of the whole song 10-16 ms
+(once per view) and of ten seconds 1-2 ms. In the browser (Vite dev build, the pane
+hidden): 2.42 s in the worker, 2.65 s from the request to the result, and the page's
+longest gap between timers 27 ms meanwhile. A 40-second song: 0.4 s. The budget passes:
+the worker is a 2.9 kB chunk, the microphone page 2.4 kB, the result page 21.5 kB of
+its 30.
+
+Seen in the browser (web 5244, API 3074, `OVERTONE_WORKER=0`, a 40 s FLAC of synthetic
+drums with a PNG cover, its job finished by hand through `/api/internal`): the bands
+computed and drawn, the spectrogram on, both painted in dark and light (counted from
+the canvas's pixels), the header washed in the cover's purple, practice counting in
+and then playing time 1 of 4 at 0.50×, `/tools/tap-mic` in English and Spanish, and the
+worker reading 10 s of synthetic clicks at 128 BPM as 127.84 with 99 % confidence.
+**Not seen:** any of it on screen (the shared pane was hidden, so no screenshot), the
+map at 375 px with the new lanes (the resize was not delivered to a hidden pane), a
+real microphone and a real song through a speaker, a phone's timing, Safari and
+Firefox, and a screen reader.
+
+### The timing calculator, DAW tempo maps and four more games (W13.9-W13.11, 2026-10-28)
+
+**The calculator** (`/tools/calculator`, `pages/Calculator.jsx`, the arithmetic in
+`lib/calc.js`): BPM ↔ ms per beat (two linked fields), ms ↔ ticks of a beat divisor
+(1/1 to 1/16, with the nearest whole tick and how far past it), where a second red line
+falls on the first one's grid (gap in ms, beats and bars, nearest beat, how far off,
+and the first grid's earliest offset), drift between two BPMs over some bars and the
+BPMs that stay within a drift you accept (so "how precise must this BPM be"), and the
+BPM from two timestamps and a beat count. Every result is live, fixed decimals (3 for
+ms, 6 for BPM) and a button that copies its number. Keyboard first: the first field
+has the focus, the arrows step the field in hand (Shift ×10, Alt ×0.1), a comma is a
+decimal point. The result page links to it with the first red line's BPM and offset
+filled in (`?bpm=&offset=`, timing only, never the file name); the palette and the
+footer's Learn column list it; it is in the sitemap. Nothing is sent or kept.
+
+**DAW tempo maps** (`lib/daw-exports.js`, `components/result/DawExports.jsx`), in
+"More downloads" after the games, built from the lines as exported:
+
+- A Standard MIDI File, format 1 with one conductor track, 960 PPQ: Set Tempo
+  (whole µs per quarter) and Time Signature (n/4) at each red line. Tick 0 is the
+  audio's start, so a lead-in bar reaches the first line's first downbeat (the Clone
+  Hero rule). A change between ticks gets the nearest tick, and the tempo before it is
+  fitted only when keeping it would land the change more than 0.25 ms off; each span
+  starts where the file put the last change, so nothing accumulates. The tests parse
+  the file back by the spec and time every line through its tempo map: under 0.5 ms
+  on 40 changes off the grid; the page prints the worst.
+- Reaper: a small `.rpp` project rather than a list, chosen because it is the one text
+  route that carries tempo (the region/marker manager's CSV import has no tempo): the
+  master tempo envelope (`PT`, square, time signatures packed as num + 65536 × den), a
+  marker per red line, and the song as an item on a track when its type is one Reaper
+  names (mp3, ogg, wav, flac, opus).
+- Ableton Live: no file. Live has no tempo-map text format, so the page sends its users
+  to the MIDI file and says how, rather than inventing one.
+
+**Four more games** (`lib/game-formats.js`; its comment holds each format's rules and
+where we are least sure): Beat Saber v3 `bpmEvents` in `ExpertStandard.dat` (beats
+accumulated; beat 0 the audio's start, so a lead-in beat; the page names the BPM for
+Info.dat; v3 chosen because v2 has no official BPM event of its own), A Dance of Fire
+and Ice `.adofai` (a straight path, a tile a beat, `SetSpeed` by BPM; a span that is not
+whole beats ends on one odd tile at its own speed, rather than an angled tile whose
+direction we could get backwards untested), Friday Night Funkin' legacy chart JSON
+(sections of 16 steps with `changeBPM`, `lengthInSteps` and Psych's `sectionBeats`; a
+lead-in and odd sections of whole steps), Rhythm Doctor `.rdlevel` (`PlaySong` with BPM
+and offset, `SetBeatsPerMinute`, `SetCrotchetsPerBar` where a meter starts a bar). Every
+position is worked from where the file puts the change before it, so roundings never
+accumulate. The page counts the odd tiles and sections and the meters Rhythm Doctor
+cannot place. Tests: `game-formats-more.test.js`, against hand-written files in
+`test/fixtures/games` and read back by each game's own arithmetic.
+
+Checked in the browser pane (5243/3073, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the calculator at 375 px in
+ES and EN, dark and light, nothing past the edge, the link's BPM and offset filled in,
+Shift+↑ and Alt+↓ stepping a field (174.3 → 184.2); the result page's "More downloads"
+at 375 px with the eight game buttons, the two DAW buttons and their notes; the six new
+files caught in the page and read (the MIDI header, the Reaper envelope with the 3/4
+packed as 262147, the JSON files). Not checked: any file opened in its game or DAW
+(none was run), the clipboard copy in a real click, Safari and Firefox.

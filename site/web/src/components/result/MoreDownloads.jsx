@@ -7,15 +7,17 @@ import { SNAP_DIVISORS } from '../../lib/mapping.js'
 import { patchOsuFile } from '../../lib/osu-patch.js'
 import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
 import ExportOptions, { useExportOptions } from './ExportOptions.jsx'
+import DawExports from './DawExports.jsx'
 import GameFormats from './GameFormats.jsx'
 
 /**
  * The downloads after the .osz (W3.20), folded away so the export row stays
  * one button: the reader's own .osu with the red lines put in, the click
- * track as a WAV, the other games' files (W12.7), the CSV, the result as
+ * track as a WAV, the other games' files (W12.7, W13.11), the tempo map for
+ * music software (W13.10), the CSV, the result as
  * JSON and a plain-text summary. All of it is built in this browser; the .osu
  * and the song never leave it. On top, the export options (W12.8), which the
- * .osz above, the copy, the .osu and the games' files follow; the clicks, the
+ * .osz above, the copy, the .osu, the games' and the DAWs' files follow; the clicks, the
  * CSV, the summary and the JSON do not (they are the timing as the page has it).
  * The click track may carry the subdivisions the player clicks (`clicks`,
  * W12.6); it never carries the player's latency shift. The patched .osu may
@@ -162,7 +164,9 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
         </div>
       </div>
 
-      <GameFormats analysis={analysis} lines={written} offsetDecimals={options.offsetDecimals} />
+      <GameFormats analysis={analysis} lines={written} offsetDecimals={options.offsetDecimals} durationS={durationS} />
+
+      <DawExports analysis={analysis} lines={written} durationS={durationS} />
 
       <div className="space-y-2 border-t border-line px-4 py-3">
         <h3 className="label">{t('exports.filesTitle')}</h3>

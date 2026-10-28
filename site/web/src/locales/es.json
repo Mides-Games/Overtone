@@ -390,7 +390,27 @@
     "reset": "Restablecer",
     "adjusted": "Estos números los ajustaste vos: la copia y las descargas llevan el ajuste y lo dicen en una línea de comentario. Revisalo de oído antes de usarlo.",
     "hint": "De {{from}} a {{to}} los ataques se espacian a uno cada dos tiempos: el motor lo lee como un posible medio tiempo o doble tiempo dentro de una red line (la marca ámbar). Es evidencia, no una red line: escuchalo.",
-    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído."
+    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído.",
+    "bands": {
+      "toggle": "Bandas",
+      "hint": "Ataques graves, medios y agudos bajo la forma de onda: qué banda marca el pulso",
+      "legend": "Ataques por banda: graves, medios, agudos",
+      "note": "Una banda es un rango de frecuencias, no un instrumento: el bombo suele caer en los graves, el golpe de la caja en los medios y los platillos en los agudos, pero un bajo o una voz también caen ahí.",
+      "lowShort": "Grav",
+      "midShort": "Med",
+      "highShort": "Agu"
+    },
+    "spectrogram": {
+      "toggle": "Espectrograma",
+      "hint": "Las frecuencias de la canción en el tiempo bajo la forma de onda, de 40 Hz a 11 kHz, con el zoom del mapa",
+      "legend": "Espectrograma, 40 Hz–11 kHz (más tinta, más fuerte)"
+    },
+    "layers": {
+      "needSong": "Las bandas y el espectrograma se leen de la canción misma: cargala abajo para verlos.",
+      "working": "Leyendo las bandas y el espectrograma de la canción en segundo plano… {{percent}} %",
+      "failed": "Este navegador no pudo leer las bandas y el espectrograma de la canción.",
+      "done": "Leído en {{seconds}} s en este navegador; no se envió nada."
+    }
   },
   "moderation": {
     "staff": "Staff",
@@ -1065,7 +1085,17 @@
     "quaMeter_other": "Quaver solo conoce 4/4 y 3/4: {{count}} red lines en otro compás se escriben como 4/4.",
     "chartFitted_one": "{{count}} cambio de tempo cae entre los ticks de Clone Hero: el BPM anterior se ajusta apenas para que caiga a tiempo (a menos de {{ms}} ms).",
     "chartFitted_other": "{{count}} cambios de tempo caen entre los ticks de Clone Hero: el BPM anterior a cada uno se ajusta apenas para que caigan a tiempo (a menos de {{ms}} ms).",
-    "failed": "No se pudo armar ese archivo con estas red lines."
+    "failed": "No se pudo armar ese archivo con estas red lines.",
+    "beatSaber": "Beat Saber: una dificultad v3, ExpertStandard.dat, solo con los eventos de BPM. Nombrala en tu Info.dat y poné en Info.dat un BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: un camino recto, una baldosa por tiempo, con SetSpeed donde cambia el tempo. Poné la canción al lado.",
+    "fnf": "Friday Night Funkin’: el JSON de chart que leen el juego anterior a 0.3 y Psych Engine, en secciones de 16 pasos con changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: un .rdlevel con PlaySong (BPM y offset), SetBeatsPerMinute y SetCrotchetsPerBar. Poné la canción al lado.",
+    "adofaiOdd_one": "{{count}} cambio de tempo cae entre las baldosas de A Dance of Fire and Ice: la baldosa anterior lleva una velocidad propia, así el cambio llega a tiempo.",
+    "adofaiOdd_other": "{{count}} cambios de tempo caen entre las baldosas de A Dance of Fire and Ice: la baldosa anterior a cada uno lleva una velocidad propia, así llegan a tiempo.",
+    "fnfOdd_one": "{{count}} cambio de tempo cae entre secciones de Friday Night Funkin’: una sección más corta antes, con velocidad propia, lo hace llegar a tiempo.",
+    "fnfOdd_other": "{{count}} cambios de tempo caen entre secciones de Friday Night Funkin’: una sección más corta antes de cada uno, con velocidad propia, los hace llegar a tiempo.",
+    "rdMeter_one": "{{count}} cambio de compás cae en medio de un compás de Rhythm Doctor, donde no puede empezar uno: esos compases conservan el compás anterior.",
+    "rdMeter_other": "{{count}} cambios de compás caen en medio de un compás de Rhythm Doctor, donde no pueden empezar uno: esos compases conservan el compás anterior."
   },
   "oszPlus": {
     "title": "Opciones del .osz",
@@ -2270,5 +2300,137 @@
     "other": "ninguno",
     "aria": "{{divisor}}: {{pct}} %",
     "note": "Cada ataque que oyó el engine, según el divisor más simple del tiempo en el que cae (a menos de 1/48 de tiempo, 15 ms como mucho); los ataques débiles cuentan menos. Sugiere el divisor de snap del editor; no mide el timing."
+  },
+  "daw": {
+    "title": "Software de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Un archivo MIDI tipo 1 a 960 ticks por tiempo: un tempo y un compás en cada red line, cada cambio a menos de {{ms}} ms de su momento.",
+    "leadIn": "El compás 1 es un compás de entrada que termina en el primer tiempo fuerte de la primera red line, así los compases siguientes coinciden con la canción.",
+    "reaperNote": "Reaper: un proyecto con el tempo, un marcador en cada red line y la canción en una pista. Guardalo en la carpeta donde está {{file}}.",
+    "reaperNoAudio": "Reaper: un proyecto con el tempo y un marcador en cada red line. La canción la ponés vos en una pista.",
+    "ableton": "Ableton Live no puede leer un mapa de tempo desde texto, así que acá no hay archivo de Live. Usá el MIDI: arrastralo al Arrangement y Live puede tomar sus cambios de tempo y compás (según la versión, te pregunta o lo activa una opción de importación)."
+  },
+  "calculator": {
+    "title": "Calculadora de timing",
+    "description": "BPM y ms por tiempo, ticks, la distancia entre dos red lines, el corrimiento y el BPM a partir de dos marcas: la aritmética de timear un mapa, hecha en tu navegador.",
+    "intro": "La aritmética de timear un mapa, calculada mientras escribís. Nada sale de esta página.",
+    "keys": "Teclado: Tab pasa de un campo a otro; ↑ y ↓ mueven el campo en el que estás de a 1, con Shift de a 10, con Alt de a 0,1. Elegí un resultado para copiar su número.",
+    "copy": "Copiar {{label}}: {{value}}",
+    "copied": "Copiado",
+    "fromResult": "Calculadora de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms por tiempo",
+      "bpm": "BPM",
+      "ms": "ms por tiempo",
+      "beat": "Un tiempo",
+      "exactBpm": "BPM",
+      "bar": "Un compás de 4/4",
+      "quarter": "Un tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Divisor de tiempo",
+      "span": "Intervalo",
+      "count": "Ticks",
+      "tick": "Un tick",
+      "ticks": "El intervalo en ticks",
+      "nearest": "Tick entero más cercano",
+      "off": "El intervalo lo pasa por {{ms}} ms.",
+      "toMs": "Los ticks en ms"
+    },
+    "lines": {
+      "title": "Entre dos red lines",
+      "intro": "Dónde cae la segunda línea sobre la grilla de la primera.",
+      "from": "Primera red line",
+      "bpm": "Su BPM",
+      "to": "Segunda red line",
+      "meter": "Tiempos por compás",
+      "span": "Distancia",
+      "beats": "Distancia en tiempos",
+      "bars": "Distancia en compases",
+      "nearest": "Tiempo más cercano de la primera grilla",
+      "off": "Segunda línea respecto de ese tiempo",
+      "offNote": "Positivo: llega tarde.",
+      "earliest": "El offset más temprano de la primera grilla"
+    },
+    "drift": {
+      "title": "Corrimiento",
+      "intro": "Cuánto se aleja una grilla a un BPM de otra en unos compases, y los BPM que se mantienen dentro de un corrimiento que aceptás.",
+      "right": "El BPM correcto",
+      "mapped": "El BPM del mapa",
+      "bars": "Compases",
+      "meter": "Tiempos por compás",
+      "total": "Corrimiento al último compás",
+      "sign": "Positivo: la grilla del mapa llega tarde.",
+      "perBar": "Corrimiento por compás",
+      "allowed": "Corrimiento que aceptás",
+      "slower": "BPM más lento dentro de eso",
+      "faster": "BPM más rápido dentro de eso",
+      "precision": "Precisión de BPM que hace falta"
+    },
+    "span": {
+      "title": "BPM a partir de dos marcas",
+      "intro": "Dos momentos de la canción y la cantidad de tiempos entre ellos.",
+      "start": "Primera marca",
+      "end": "Segunda marca",
+      "beats": "Tiempos entre ellas",
+      "bpm": "BPM",
+      "beat": "Un tiempo"
+    }
+  },
+  "practice": {
+    "title": "Práctica",
+    "reps": "Veces",
+    "countIn": "Contar un compás antes",
+    "start": "Empezar a practicar",
+    "stop": "Parar la práctica",
+    "counting": "Contando…",
+    "status": "Vez {{rep}} de {{reps}} · {{rate}}×",
+    "noStretch": "No hay nada para practicar acá: marcá un loop (Shift y arrastrar en el mapa) o llevá el cabezal a la sección de una red line.",
+    "hint": "Toca el loop que marcaste, o la sección bajo el cabezal, {{reps}} veces de {{from}}× a {{to}}×, un poco más rápido cada vez. La altura cambia con la velocidad; los clics la siguen."
+  },
+  "tapMic": {
+    "footer": "BPM con el micrófono",
+    "eyebrow": "Herramienta",
+    "title": "BPM con el micrófono",
+    "description": "El navegador escucha unos segundos y propone un BPM con su confianza. No se sube nada.",
+    "intro": "Poné la canción cerca del dispositivo, tocá Escuchar y dejá que el navegador la oiga unos segundos. Propone un BPM y dice cuán seguro está. El sonido nunca sale de esta página: se lee acá y se descarta.",
+    "length": "Escuchar",
+    "seconds": "{{n}} s",
+    "listen": "Escuchar",
+    "again": "Escuchar de nuevo",
+    "stop": "Parar y leer",
+    "permission": "El navegador pide el micrófono cuando tocás Escuchar, no antes.",
+    "asking": "Esperando el permiso del micrófono…",
+    "listening": "Escuchando… {{percent}} %",
+    "listeningLabel": "Escuchando",
+    "level": "Nivel de entrada",
+    "quiet": "Muy bajo: subí la canción o acercate.",
+    "reading": "Leyendo el pulso…",
+    "errors": {
+      "unsupported": "Este navegador no puede grabar con un micrófono acá.",
+      "denied": "No se permitió el micrófono. Podés permitirlo en los ajustes del sitio del navegador y probar de nuevo.",
+      "noMic": "No se encontró un micrófono, o lo está usando otra app.",
+      "failed": "Algo salió mal mientras escuchaba. Probá de nuevo."
+    },
+    "result": {
+      "short": "Muy poco para leer un tempo: escuchá unos segundos más.",
+      "silent": "No se oyó nada: el micrófono solo captó silencio.",
+      "noPulse": "No se oyó un pulso estable. Una canción con un beat claro, más fuerte o más cerca, se lee mejor; el ruido y la voz hablada no tienen."
+    },
+    "confidence": "{{percent}} % de confianza",
+    "alternatives": "También podría ser {{list}}: un micrófono oye el pulso, no en qué octava se cuenta la canción.",
+    "heard": "Con {{seconds}} s de sonido, leídos en este navegador.",
+    "limitsTitle": "Qué puede y qué no",
+    "limits": {
+      "private": "No se sube ni se guarda nada: la grabación queda en esta página y desaparece una vez leída.",
+      "precision": "Unos segundos dan un tempo a un BPM, en el mejor caso; escuchar más lo vuelve más estable. Es un chequeo rápido, no un timing.",
+      "octave": "Puede leer la mitad o el doble del tempo que elegiría un mapper; las otras octavas se muestran al lado.",
+      "changes": "Supone un tempo estable: una canción que acelera, frena o cambia de compás se lee como un promedio, o no se lee.",
+      "room": "El eco, el ruido, la gente hablando y los graves flacos del parlante de un teléfono desdibujan los ataques que escucha.",
+      "offset": "No da offset ni red lines: para eso, el archivo de la canción pasa por el engine."
+    },
+    "forTiming": "Para un timing completo con red lines y offset, analizá el archivo."
   }
 }

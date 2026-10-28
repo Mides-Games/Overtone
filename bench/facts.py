@@ -56,6 +56,14 @@ def bot_tests() -> int:
                for p in (ROOT / "bot" / "test").glob("*.test.js"))
 
 
+def client_tests() -> tuple[int, int]:
+    """(JavaScript, Python): the community clients' tests (clients/, W13.22),
+    counted as the site's and the engine's are. Not part of either suite."""
+    js = sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
+             for p in (ROOT / "clients" / "js" / "test").glob("*.test.js"))
+    return js, _count(ROOT / "clients" / "python" / "test_overtone_client.py")
+
+
 def crate_dirs() -> list[str]:
     return sorted(p.parent.name for p in (ROOT / "crates").glob("*/Cargo.toml"))
 
@@ -91,9 +99,11 @@ def main() -> int:
     golden = golden_vectors()
     site_api, site_web = site_tests()
     bot = bot_tests()
+    client_js, client_py = client_tests()
     print(f"source: {python} Python tests ({engine} engine + {worker} worker), "
           f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors, "
-          f"{site_api} site/api, {site_web} site/web and {bot} bot tests")
+          f"{site_api} site/api, {site_web} site/web and {bot} bot tests, "
+          f"{client_js} JS and {client_py} Python client tests")
 
     def expect(doc: str, what: str, found: list[str], want: int) -> None:
         if not found:
@@ -123,6 +133,10 @@ def main() -> int:
             expect(doc, "site/web tests", stated_web, site_web)
         expect(doc, "bot tests",
                re.findall(r"pnpm --dir bot test\s+# all pass \((\d+) on", text), bot)
+        expect(doc, "JS client tests",
+               re.findall(r'clients/js/test/\*\.test\.js"\s+# all pass \((\d+) on', text), client_js)
+        expect(doc, "Python client tests",
+               re.findall(r"discover -s clients/python\s+# all pass \((\d+) on", text), client_py)
         listed = sorted(set(re.findall(r"^\s+(overtone-[a-z]+)/", text, re.M)))
         if listed != crates:
             problems.append(f"{doc}: layout lists crates {listed}, crates/ holds {crates}")

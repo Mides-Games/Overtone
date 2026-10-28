@@ -891,3 +891,48 @@ body {
 .motion-reduce :is(.playhead, .beat-bar, .skeleton) {
   animation: none !important;
 }
+
+/* The stream overlay (W13.23, pages/Overlay.jsx). index.html adds .overlay to
+   the root on /overlay/* before the first frame, so OBS's browser source sees
+   a transparent page from the start; no other path gets it. Its colours are
+   fixed, not the theme's: they sit on top of a video, light or dark, so the
+   text is white with a dark halo and the pulse the dark theme's accent. */
+html.overlay,
+html.overlay body {
+  background: transparent;
+}
+.overlay-text {
+  color: #ffffff;
+  text-shadow: 0 0 2px #000000, 0 1px 3px #000000, 0 0 8px rgb(0 0 0 / 0.6);
+}
+.overlay-pulse {
+  display: block;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 999px;
+  background: #3fd0dc;
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.55), 0 0 18px rgb(63 208 220 / 0.7);
+  opacity: 0.25;
+  will-change: transform, opacity;
+}
+.overlay-pulse-bar {
+  background: #ff5d6c;
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.55), 0 0 18px rgb(255 93 108 / 0.7);
+}
+.overlay-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.25);
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.5);
+}
+.overlay-dot-first {
+  width: 18px;
+}
+.overlay-dot-on {
+  background: #3fd0dc;
+}
+.overlay-dot-on.overlay-dot-first {
+  background: #ff5d6c;
+}

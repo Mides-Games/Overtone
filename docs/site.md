@@ -1770,6 +1770,67 @@ all ten fit after shorter French labels (Attente, Connexion), German's "Queue" a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
 
+### Community clients and the stream overlay (W13.22, W13.23, 2026-10-28)
+
+**Clients for the token API (W13.22).** `clients/js/overtone.mjs` (one ES module on
+`fetch`, Node 18+ and browsers) and `clients/python/overtone_client.py` (one module on
+`urllib`, Python 3.9+), each with a README and examples; no dependencies in either, so
+each can be copied as one file. Same surface (camelCase in JS, snake_case in Python):
+`health`, `me`, `upload`, `waitFor`/`wait_for`, `analyze`, `analyzeFile`, `analysis`,
+`myAnalyses` and a paging iterator, `analysisVersions`, the `timing.txt` and CSV of an
+analysis and of a published timing, `timings`, `timing`, and `request` for anything
+else a token may call.
+
+- Errors are one class with `status`, the API's `code`, `details` and `retryAfter`, and a
+  subclass for 401, 403, 404, 429, a timeout (`TIMEOUT`), no answer (`NETWORK`) and a
+  `failed` analysis (`ANALYSIS_FAILED`, with the row). A refusal is a result, not an error.
+- A 429 with `Retry-After` (the per-token limit) is waited out, at most 3 times and never
+  past 60 s; a 429 without it (the quota, the pending cap) is thrown at once, since
+  waiting would not help. Every request has a timeout (30 s; uploads 5 min); the wait for
+  an analysis has its own (30 min) and polls through up to four passing 502/503/504s.
+- An upload asks `/analyses/lookup` with the SHA-1 first (JS: when Web Crypto is there,
+  so not on Node 18), so a song the engine knows costs no upload and no quota.
+- The token is never an enumerable field (JS) or in `repr` (Python), so logging the
+  client does not print it.
+- `clients/js/examples/discord-webhook.mjs` is the Discord-style example: it posts each
+  result to a channel through a webhook the user made, with no library or bot account.
+- Tests: `clients/testing/api.mjs` starts `site/api`'s own app in memory with the dev
+  sign-in, mints two tokens (every scope; `read:timings` alone), runs a stand-in worker
+  on the real `/api/internal` routes and publishes one timing; the JS tests import it,
+  the Python tests run it with Node and read its one line. 429s and timeouts are tested
+  against a local server that misbehaves on purpose. 13 JS and 10 Python tests, counted
+  by `bench/facts.py`; neither set is part of the site's or the engine's suite.
+- `/developers` has a Clients section with the same call in each and a link to
+  `clients/` on GitHub.
+
+**The stream overlay (W13.23).** `pages/Overlay.jsx` at `/overlay/<id>`, `lib/overlay.js`,
+the `html.overlay` rules in `index.css`. A published timing as a chrome-less page for
+OBS's browser source: the BPM in force, "red line i of n" (and the meter when it is not
+4/4), a dot per beat of the bar and a pulse on every beat (red on the downbeat).
+
+- It cannot hear the stream, and says so until started. It counts from a start given
+  by Space or S (OBS: right-click the source, Interact) or by `?t0=<epoch ms>`; starting
+  writes `t0` into the address so a source refresh keeps the sync. ← and → nudge by
+  10 ms (`?nudge=`, at most ±5 s), Esc stops. A `t0` before 2020 or more than a day ahead
+  is ignored; a few seconds ahead is a count-in.
+- The clock is pure (`overlayState`): a line's beats stop where the next line starts, as
+  the click track's do, so a line change restarts the count. The pulse is a frame loop
+  writing opacity and scale on one element; React re-renders only when the beat, line or
+  phase changes. Reduced motion keeps the flash and drops the swell.
+- Only `/overlay/*` is see-through: `index.html`'s early script adds `overlay` to the
+  root on that path before the first frame (the page adds it too when reached inside
+  the app), and only that class clears the background. Its colours are fixed (white text
+  with a dark halo), as they sit over video.
+- `serve.mjs` lets `/overlay/<id>` be framed by any site, as `/embed/<id>`; every look-alike
+  path keeps `frame-ancestors 'none'` (`serve.test.js`). The result page's "Image and
+  embed" panel links it for a published timing.
+
+Seen in the browser (web 5246, API 3076, a seeded timing of two red lines): the idle
+note, Space writing `t0`, the change to the 3/4 line at 16.5 s with its three dots, the
+nudge note, and the computed backgrounds transparent; `/developers` and the result
+panel at 375 px in EN and ES, dark and light, without horizontal scroll. Not seen: the
+page inside OBS itself, and the clients against the production site.
+
 ### Votes, the mapper's badge, the bell, the staff panel and limit notices (W13.14-W13.17, W13.19, W13.20, 2026-10-28)
 
 The API's new routes are `routes/votes.routes.js`, `routes/notifications.routes.js` and

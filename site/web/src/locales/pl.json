@@ -2314,7 +2314,13 @@
       "required": "wymagany",
       "body": "Treść",
       "responses": "Odpowiedzi",
-      "schemas": "Schematy"
+      "schemas": "Schematy",
+      "clientsTitle": "Klienty",
+      "clientsIntro": "Dwa małe klienty, trzymane w repozytorium samej strony, zajmują się za ciebie tokenem, błędami, czekaniem po 429 i limitami czasu. Żaden nie wymaga niczego poza samym językiem.",
+      "clientsJs": "JavaScript: jeden moduł ES oparty na fetch, dla Node 18+ i przeglądarek.",
+      "clientsPython": "Python: jeden moduł na bibliotece standardowej, Python 3.9+.",
+      "clientsBot": "Przykład w stylu Discorda publikuje każdy wynik na kanale przez utworzony przez ciebie webhook.",
+      "clientsLink": "Klienty na GitHubie"
     },
     "versions": {
       "title": "Wersje",
@@ -2365,7 +2371,9 @@
       "preview": "Zobacz osadzenie",
       "failed": "Nie udało się utworzyć obrazu w tej przeglądarce. SVG może nadal działać.",
       "note": "PNG to powyższa mapa dla całego utworu, a SVG to prostszy rysunek red lines i tempa. Osadzenie pokazuje kartę tego timingu na innej stronie, z linkiem z powrotem tutaj.",
-      "notePrivate": "PNG to powyższa mapa dla całego utworu, a SVG to prostszy rysunek red lines i tempa. Opublikuj timing, żeby osadzić go na innej stronie."
+      "notePrivate": "PNG to powyższa mapa dla całego utworu, a SVG to prostszy rysunek red lines i tempa. Opublikuj timing, żeby osadzić go na innej stronie.",
+      "overlay": "Nakładka na stream (OBS)",
+      "overlayNote": "Nakładka na stream to przezroczysta strona dla źródła przeglądarki w OBS: BPM, red line i puls na każde uderzenie. Nie słyszy streamu: uruchom ją Spacją, gdy zaczyna się utwór, albo przez ?t0= w adresie."
     },
     "embed": {
       "title": "Timing",
@@ -2397,6 +2405,20 @@
     "pwa": {
       "sharedAdded": "Udostępniony utwór jest na liście. Sprawdź go i naciśnij Analizuj.",
       "sharedNone": "Z udostępnienia nie dotarło nic użytecznego: udostępnij plik MP3, OGG, WAV, FLAC, M4A lub Opus albo wybierz go poniżej."
+    },
+    "overlay": {
+      "title": "Nakładka na stream",
+      "line": "Red line {{index}} z {{total}}",
+      "bar": "Uderzenia taktu",
+      "countIn_one": "Start za {{count}} sekundę",
+      "countIn_few": "Start za {{count}} sekundy",
+      "countIn_many": "Start za {{count}} sekund",
+      "countIn_other": "Start za {{count}} sekundy",
+      "ended": "Utwór się skończył. Naciśnij Spację, aby zacząć od nowa.",
+      "cannotHear": "Ta nakładka nie słyszy twojego streamu. Liczy uderzenia od chwili, w której ją uruchomisz, więc uruchom ją, gdy zaczyna się utwór.",
+      "howToStart": "Naciśnij Spację lub S, gdy zaczyna się utwór (w OBS: prawy przycisk na źródle, Interakcja), albo dodaj do adresu ?t0= z czasem startu w milisekundach epoch.",
+      "keys": "Spacja / S start · ← → przesuń o 10 ms · Esc stop",
+      "nudged": "Przesunięto o {{ms}} ms"
     }
   },
   "mapSet": {

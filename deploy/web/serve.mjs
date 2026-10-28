@@ -43,9 +43,11 @@
  * the song, its BPM and who timed it. Without a card in 1.5 s, or for a
  * timing that is not published, it is the plain index.html.
  *
- * /embed/<id> (W12.18) is the one page another site may frame: its CSP says
- * frame-ancestors * and it has no X-Frame-Options. Every other response keeps
- * frame-ancestors 'none' and X-Frame-Options: DENY.
+ * /embed/<id> (W12.18) and /overlay/<id> (W13.23, the stream overlay) are the
+ * pages another site may frame: their CSP says frame-ancestors * and they have
+ * no X-Frame-Options. Every other response keeps frame-ancestors 'none' and
+ * X-Frame-Options: DENY. The overlay's transparent background is the page's
+ * own (index.html and index.css mark /overlay/* alone); no header is involved.
  *
  * /sw.js, the service worker (W12.23), is served no-cache with
  * Service-Worker-Allowed: /, and a POST to /share-target that no worker
@@ -278,8 +280,8 @@ async function contentSecurityPolicy(framable = false) {
   const s = await file(index);
   const mtime = s ? s.mtimeMs : 0;
   if (mtime !== policy.mtime) policy = { mtime, value: await basePolicy(s, index) };
-  // W12.18: an embed card (/embed/<id>) may be framed by any site; every
-  // other page by none.
+  // W12.18, W13.23: an embed card (/embed/<id>) and the stream overlay
+  // (/overlay/<id>) may be framed by any site; every other page by none.
   return policy.value.replace("frame-ancestors 'none'", framable ? 'frame-ancestors *' : "frame-ancestors 'none'");
 }
 
@@ -307,8 +309,11 @@ async function basePolicy(s, index) {
   return value;
 }
 
-// The embed card's path, and nothing else, may be framed (W12.18).
-const EMBED_PAGE = /^\/embed\/[0-9a-f]{32}\/?$/;
+// The embed card's path (W12.18) and the stream overlay's (W13.23), and
+// nothing else, may be framed. The overlay is mostly loaded straight into
+// OBS's browser source, which is not framing; a page that composes a stream
+// layout from frames is, and the overlay offers nothing to click either.
+const FRAMABLE_PAGE = /^\/(?:embed|overlay)\/[0-9a-f]{32}\/?$/;
 
 async function securityHeaders(framable = false) {
   const headers = {
@@ -476,7 +481,7 @@ async function serve(req, res) {
     'content-type': TYPES[ext] || 'application/octet-stream',
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : worker ? 'no-cache, max-age=0' : 'no-cache',
     ...(worker ? { 'service-worker-allowed': '/' } : {}),
-    ...(await securityHeaders(EMBED_PAGE.test(rel))),
+    ...(await securityHeaders(FRAMABLE_PAGE.test(rel))),
   };
   const encoding = COMPRESSIBLE.has(ext) && s.size >= COMPRESS_MIN_BYTES ? pickEncoding(req.headers['accept-encoding']) : null;
   if (COMPRESSIBLE.has(ext)) headers.vary = 'Accept-Encoding';

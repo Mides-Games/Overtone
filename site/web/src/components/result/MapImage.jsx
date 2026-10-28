@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { embedCode, mapPng, mapSvg } from '../../lib/map-image.js'
+import { overlayPath } from '../../lib/overlay.js'
 import { songNames } from '../../lib/osz.js'
 import { adjustmentNote, downloadName, formatBpm, saveText } from '../../lib/timing.js'
 import { readPalette } from './draw.js'
@@ -74,12 +75,17 @@ export default function MapImage({ id, analysis, lines, data, adjustment, publis
             <a href={`/embed/${id}`} target="_blank" rel="noopener" className="text-caption text-accent hover:underline">
               {t('platform.image.preview')} ↗
             </a>
+            {/* W13.23: the stream overlay, a URL to paste into OBS's browser source. */}
+            <a href={overlayPath(id)} target="_blank" rel="noopener" className="text-caption text-accent hover:underline">
+              {t('platform.image.overlay')} ↗
+            </a>
           </>
         )}
       </div>
       <p className="text-caption text-dim" role={state === 'failed' ? 'alert' : undefined}>
         {state === 'failed' ? t('platform.image.failed') : published ? t('platform.image.note') : t('platform.image.notePrivate')}
       </p>
+      {published && <p className="text-caption text-dim">{t('platform.image.overlayNote')}</p>}
     </div>
   )
 }

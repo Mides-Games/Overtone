@@ -117,10 +117,18 @@ And the site's, before any commit that touches `site/` or `bot/` (after `pnpm in
 
 ```bash
 pnpm --dir site/api test                               # all pass (191 on 2026-10-28)
-pnpm --dir site/web test                               # all pass (321 on 2026-10-28)
+pnpm --dir site/web test                               # all pass (326 on 2026-10-28)
 pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
 pnpm --dir site/e2e test                               # 76 pass in Chromium: the main paths, axe on every page in both themes
 pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
+```
+
+The community clients (`clients/`, W13.22), when they or the token routes change. Both
+start the real API in memory (`clients/testing/api.mjs`); neither is in a suite above:
+
+```bash
+node --test --test-concurrency=1 "clients/js/test/*.test.js"   # all pass (13 on 2026-10-28)
+.venv/Scripts/python.exe -m unittest discover -s clients/python   # all pass (10 on 2026-10-28); needs Node (OVERTONE_NODE)
 ```
 
 `site/e2e` starts its own API (in memory, with a fake worker) and Vite on 3090 and 5290
@@ -257,6 +265,9 @@ crates/                   the v4 Rust workspace
                             points, density, elastic grid, 2-D coherence map
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
+clients/                  community clients of the public token API (W13.22): js/ (one
+                          ES module on fetch), python/ (one module on urllib), and
+                          testing/api.mjs, the real API in memory their tests start
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
                           its systemd timer and setup-deploy-user.sh (docs/server.md);
                           eggs/ and web/ host the site (docs/deploy.md)

@@ -300,7 +300,7 @@ test('an API that does not answer a card leaves the page plain, in time', async 
   assert.ok(Date.now() - started < 5_000);
 });
 
-test('only an embed card may be framed, by anyone; every other page by no one', async () => {
+test('only an embed card and the stream overlay may be framed, by anyone; every other page by no one', async () => {
   const port = await serve(1, { WEB_ROOT: webRoot() });
   const frame = (headers) => [
     headers['content-security-policy'].split('; ').find((d) => d.startsWith('frame-ancestors')),
@@ -312,8 +312,17 @@ test('only an embed card may be framed, by anyone; every other page by no one', 
   assert.match(embed.body, /<div id="root">/);
   assert.deepEqual(frame(embed.headers), ['frame-ancestors *', null]);
   assert.deepEqual(frame((await get(port, `/embed/${id}/`)).headers), ['frame-ancestors *', null]);
-  // Anything else, including look-alikes of the embed path, is not framable.
-  for (const path of ['/', `/t/${id}`, '/embed', '/embed/not-an-id', `/embed/${id}/x`, `/embed/${id}.js`, `/analyze/${id}`, '/missing.png']) {
+  // W13.23: the overlay, for OBS and for stream layouts built from frames.
+  const overlay = await get(port, `/overlay/${id}?t0=1767225600000`);
+  assert.equal(overlay.status, 200);
+  assert.match(overlay.body, /<div id="root">/);
+  assert.deepEqual(frame(overlay.headers), ['frame-ancestors *', null]);
+  assert.deepEqual(frame((await get(port, `/overlay/${id}/`)).headers), ['frame-ancestors *', null]);
+  // Anything else, including look-alikes of either path, is not framable.
+  for (const path of [
+    '/', `/t/${id}`, '/embed', '/embed/not-an-id', `/embed/${id}/x`, `/embed/${id}.js`, `/analyze/${id}`, '/missing.png',
+    '/overlay', '/overlay/not-an-id', `/overlay/${id}/x`, `/overlay/${id}.js`, `/overlays/${id}`, `/x/overlay/${id}`,
+  ]) {
     assert.deepEqual(frame((await get(port, path)).headers), ["frame-ancestors 'none'", 'DENY'], path);
   }
   // The policy is otherwise the same.

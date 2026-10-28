@@ -2206,7 +2206,13 @@
       "required": "obligatorio",
       "body": "Cuerpo",
       "responses": "Respuestas",
-      "schemas": "Esquemas"
+      "schemas": "Esquemas",
+      "clientsTitle": "Clientes",
+      "clientsIntro": "Dos clientes chicos, guardados en el mismo repositorio del sitio, se ocupan del token, los errores, las esperas después de un 429 y los timeouts. Ninguno necesita instalar nada además del lenguaje.",
+      "clientsJs": "JavaScript: un módulo ES sobre fetch, para Node 18+ y navegadores.",
+      "clientsPython": "Python: un módulo con la biblioteca estándar, Python 3.9+.",
+      "clientsBot": "Un ejemplo al estilo Discord publica cada resultado en un canal con un webhook que creás vos.",
+      "clientsLink": "Los clientes en GitHub"
     },
     "versions": {
       "title": "Versiones",
@@ -2255,7 +2261,9 @@
       "preview": "Ver el embed",
       "failed": "No se pudo armar la imagen en este navegador. El SVG puede funcionar igual.",
       "note": "El PNG es el mapa de arriba para toda la canción, el SVG un dibujo más simple de las red lines y el tempo. El embed muestra la tarjeta de este timing en otro sitio, con un enlace de vuelta acá.",
-      "notePrivate": "El PNG es el mapa de arriba para toda la canción, el SVG un dibujo más simple de las red lines y el tempo. Publicá el timing para embeberlo en otro sitio."
+      "notePrivate": "El PNG es el mapa de arriba para toda la canción, el SVG un dibujo más simple de las red lines y el tempo. Publicá el timing para embeberlo en otro sitio.",
+      "overlay": "Overlay para streams (OBS)",
+      "overlayNote": "El overlay para streams es una página transparente para la fuente de navegador de OBS: el BPM, la red line y un pulso en cada tiempo. No puede escuchar el stream: arrancalo con Espacio cuando empieza la canción, o con ?t0= en la dirección."
     },
     "embed": {
       "title": "Timing",
@@ -2283,6 +2291,19 @@
     "pwa": {
       "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
       "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
+    },
+    "overlay": {
+      "title": "Overlay para streams",
+      "line": "Red line {{index}} de {{total}}",
+      "bar": "Tiempos del compás",
+      "countIn_one": "Empieza en {{count}} segundo",
+      "countIn_many": "Empieza en {{count}} segundos",
+      "countIn_other": "Empieza en {{count}} segundos",
+      "ended": "La canción terminó. Apretá Espacio para empezar de nuevo.",
+      "cannotHear": "Este overlay no puede escuchar tu stream. Cuenta los tiempos desde que lo arrancás, así que arrancalo cuando empieza la canción.",
+      "howToStart": "Apretá Espacio o S cuando empieza la canción (en OBS: clic derecho en la fuente, Interactuar), o agregá ?t0= a la dirección con la hora de inicio en milisegundos epoch.",
+      "keys": "Espacio / S empezar · ← → correr 10 ms · Esc parar",
+      "nudged": "Corrido {{ms}} ms"
     }
   },
   "mapSet": {

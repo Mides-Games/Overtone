@@ -135,6 +135,7 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
         out.append({"file": entry["file"], "folder": song["folder"], "split": song["split"],
                     "path": analysis["path"], "map_lines": len(reds),
                     "detected_lines": len(detected), "rows": rows,
+                    "lines": [[round(float(o), 1), round(float(b), 3)] for o, b in detected],
                     "d_map": d_map, "d_eng": d_eng,
                     **({"message": analysis["message"]} if analysis.get("message") else {}),
                     **{k: analysis.get(k) for k in ("global_bpm", "octave_margin", "offbeat_ratio",

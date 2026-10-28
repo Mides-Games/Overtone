@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "Saltar al contenido",
     "loading": "Cargando…",
-    "byMides": "Una herramienta de Mides Projects"
+    "byMides": "Una herramienta de Mides Projects",
+    "newTab": "(se abre en una pestaña nueva)"
   },
   "nav": {
     "home": "Inicio",
@@ -389,7 +390,27 @@
     "reset": "Restablecer",
     "adjusted": "Estos números los ajustaste vos: la copia y las descargas llevan el ajuste y lo dicen en una línea de comentario. Revisalo de oído antes de usarlo.",
     "hint": "De {{from}} a {{to}} los ataques se espacian a uno cada dos tiempos: el motor lo lee como un posible medio tiempo o doble tiempo dentro de una red line (la marca ámbar). Es evidencia, no una red line: escuchalo.",
-    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído."
+    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído.",
+    "bands": {
+      "toggle": "Bandas",
+      "hint": "Ataques graves, medios y agudos bajo la forma de onda: qué banda marca el pulso",
+      "legend": "Ataques por banda: graves, medios, agudos",
+      "note": "Una banda es un rango de frecuencias, no un instrumento: el bombo suele caer en los graves, el golpe de la caja en los medios y los platillos en los agudos, pero un bajo o una voz también caen ahí.",
+      "lowShort": "Grav",
+      "midShort": "Med",
+      "highShort": "Agu"
+    },
+    "spectrogram": {
+      "toggle": "Espectrograma",
+      "hint": "Las frecuencias de la canción en el tiempo bajo la forma de onda, de 40 Hz a 11 kHz, con el zoom del mapa",
+      "legend": "Espectrograma, 40 Hz–11 kHz (más tinta, más fuerte)"
+    },
+    "layers": {
+      "needSong": "Las bandas y el espectrograma se leen de la canción misma: cargala abajo para verlos.",
+      "working": "Leyendo las bandas y el espectrograma de la canción en segundo plano… {{percent}} %",
+      "failed": "Este navegador no pudo leer las bandas y el espectrograma de la canción.",
+      "done": "Leído en {{seconds}} s en este navegador; no se envió nada."
+    }
   },
   "moderation": {
     "staff": "Staff",
@@ -806,7 +827,13 @@
     "filesTitle": "Archivos",
     "json": "Resultado (JSON)",
     "summary": "Resumen (TXT)",
-    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor."
+    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor.",
+    "snapLabel": "Ajustar los hit objects al timing nuevo",
+    "snapOff": "No",
+    "snapNote": "Cada objeto se mueve al tick más cercano de la grilla nueva con este divisor; solo cambia su tiempo (y el final de un spinner o de un hold). Los sliders conservan su largo en tiempos. Sin ajuste, los objetos quedan donde están.",
+    "snapped": "Ajustado a {{divisor}}: se movieron {{moved}} de {{total}} objetos, como mucho {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Ajustado a {{divisor}}: ninguno de los {{total}} objetos tuvo que moverse.",
+    "snapShared": "Objetos que ahora caen en el mismo tick que el anterior: {{n}}. Revisalos en el editor."
   },
   "community": {
     "nav": "Comunidad",
@@ -1058,7 +1085,17 @@
     "quaMeter_other": "Quaver solo conoce 4/4 y 3/4: {{count}} red lines en otro compás se escriben como 4/4.",
     "chartFitted_one": "{{count}} cambio de tempo cae entre los ticks de Clone Hero: el BPM anterior se ajusta apenas para que caiga a tiempo (a menos de {{ms}} ms).",
     "chartFitted_other": "{{count}} cambios de tempo caen entre los ticks de Clone Hero: el BPM anterior a cada uno se ajusta apenas para que caigan a tiempo (a menos de {{ms}} ms).",
-    "failed": "No se pudo armar ese archivo con estas red lines."
+    "failed": "No se pudo armar ese archivo con estas red lines.",
+    "beatSaber": "Beat Saber: una dificultad v3, ExpertStandard.dat, solo con los eventos de BPM. Nombrala en tu Info.dat y poné en Info.dat un BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: un camino recto, una baldosa por tiempo, con SetSpeed donde cambia el tempo. Poné la canción al lado.",
+    "fnf": "Friday Night Funkin’: el JSON de chart que leen el juego anterior a 0.3 y Psych Engine, en secciones de 16 pasos con changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: un .rdlevel con PlaySong (BPM y offset), SetBeatsPerMinute y SetCrotchetsPerBar. Poné la canción al lado.",
+    "adofaiOdd_one": "{{count}} cambio de tempo cae entre las baldosas de A Dance of Fire and Ice: la baldosa anterior lleva una velocidad propia, así el cambio llega a tiempo.",
+    "adofaiOdd_other": "{{count}} cambios de tempo caen entre las baldosas de A Dance of Fire and Ice: la baldosa anterior a cada uno lleva una velocidad propia, así llegan a tiempo.",
+    "fnfOdd_one": "{{count}} cambio de tempo cae entre secciones de Friday Night Funkin’: una sección más corta antes, con velocidad propia, lo hace llegar a tiempo.",
+    "fnfOdd_other": "{{count}} cambios de tempo caen entre secciones de Friday Night Funkin’: una sección más corta antes de cada uno, con velocidad propia, los hace llegar a tiempo.",
+    "rdMeter_one": "{{count}} cambio de compás cae en medio de un compás de Rhythm Doctor, donde no puede empezar uno: esos compases conservan el compás anterior.",
+    "rdMeter_other": "{{count}} cambios de compás caen en medio de un compás de Rhythm Doctor, donde no pueden empezar uno: esos compases conservan el compás anterior."
   },
   "oszPlus": {
     "title": "Opciones del .osz",
@@ -1085,7 +1122,13 @@
     "openTipFirefox": "En Firefox, abrí Ajustes → General → Archivos y aplicaciones, buscá el tipo .osz y ponelo para abrir con osu!. El próximo .osz va directo a osu!.",
     "openTipOsu": "Hace falta tener osu! instalado con los .osz asociados, cosa que hace su instalador. El sitio no puede abrir el archivo por vos: una página web nunca ejecuta lo que descarga.",
     "openTipClose": "Entendido",
-    "openTipNever": "No mostrar más"
+    "openTipNever": "No mostrar más",
+    "divisor": "Divisor de snap",
+    "divisorAt": "{{divisor}}: el divisor en el que caen los ataques, escrito como BeatDivisor del editor.",
+    "divisorNone": "Muy pocos ataques sobre la grilla: el editor se queda con su 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Silencios largos entre los ataques, dentro de los márgenes de osu! para un break: {{spans}}.",
+    "breaksNone": "No hay silencios de 5 s o más entre los ataques."
   },
   "listening": {
     "subdivision": "Entre tiempos",
@@ -1279,6 +1322,16 @@
         "loop": "Activar o desactivar el bucle",
         "clicks": "Activar o desactivar los clics",
         "follow": "Seguir o no el cabezal"
+      },
+      "editor": {
+        "title": "Editor de timing",
+        "toggle": "Editar las red lines",
+        "nudge": "Mover 1 ms la red line elegida",
+        "nudge10": "Moverla 10 ms",
+        "add": "Red line en el cabezal",
+        "delete": "Borrar la red line elegida",
+        "undo": "Deshacer",
+        "redo": "Rehacer"
       }
     }
   },
@@ -2157,7 +2210,7 @@
     },
     "versions": {
       "title": "Versiones",
-      "note": "Cada análisis que hiciste de este mismo audio, y los ajustes que guardaste. Una versión guardada se queda solo con su ×2 / ÷2 y el corrimiento: el timing en sí es el del engine.",
+      "note": "Cada análisis que hiciste de este mismo audio, y los ajustes que guardaste. Una versión guardada se queda con su ×2 / ÷2, su corrimiento y las red lines que editaste (✎): la lectura del engine en sí nunca cambia.",
       "engine": "como lo leyó el engine",
       "thisOne": "este",
       "now": "como se ve ahora",
@@ -2165,7 +2218,7 @@
       "labelPlaceholder": "Una nota para esta versión (opcional)",
       "save": "Guardar {{adjustment}} como versión",
       "saved": "Este ajuste ya está guardado como versión.",
-      "howToSave": "Probá ×2, ÷2 o un corrimiento arriba y guardalo acá para no perderlo.",
+      "howToSave": "Probá ×2, ÷2, un corrimiento o el editor de arriba y guardalo acá para no perderlo.",
       "saveFailed": "No se pudo guardar la versión. Probá de nuevo.",
       "limit": "Este timing ya tiene la cantidad máxima de versiones guardadas. Borrá una primero.",
       "loadFailed": "No se pudieron cargar las versiones.",
@@ -2231,6 +2284,279 @@
       "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
       "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
+  },
+  "mapSet": {
+    "title": "El set del mapa",
+    "mode": "Modo de juego",
+    "modeNote": "Se escribe como Mode en cada dificultad; en mania, la cantidad de teclas va en CircleSize.",
+    "keys": "Teclas",
+    "test": "Mapa de prueba",
+    "off": "No",
+    "testNote": "Una dificultad jugable, \"Overtone test\", con un círculo en cada tiempo o medio tiempo: el primer tiempo del compás abre un combo con un finish y los medios tiempos suenan con whistle. Jugalo en osu! y sentí si el timing está corrido. Es para revisar, no para rankear.",
+    "testBreaks": "Breaks que deja vacíos: {{n}}.",
+    "difficulties": "Dificultades vacías",
+    "difficultiesNote": "Cada una es su propio .osu dentro del set, con el mismo timing y sin objetos. Su HP, CS, OD y AR son un punto de partida para cambiar en el editor.",
+    "count": "Dificultades en el .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Dónde caen los ataques",
+    "all": "Toda la canción",
+    "perLine": "Bajo cada red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "sugerido {{divisor}}",
+    "none": "muy pocos ataques para decir",
+    "other": "ninguno",
+    "aria": "{{divisor}}: {{pct}} %",
+    "note": "Cada ataque que oyó el engine, según el divisor más simple del tiempo en el que cae (a menos de 1/48 de tiempo, 15 ms como mucho); los ataques débiles cuentan menos. Sugiere el divisor de snap del editor; no mide el timing."
+  },
+  "daw": {
+    "title": "Software de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Un archivo MIDI tipo 1 a 960 ticks por tiempo: un tempo y un compás en cada red line, cada cambio a menos de {{ms}} ms de su momento.",
+    "leadIn": "El compás 1 es un compás de entrada que termina en el primer tiempo fuerte de la primera red line, así los compases siguientes coinciden con la canción.",
+    "reaperNote": "Reaper: un proyecto con el tempo, un marcador en cada red line y la canción en una pista. Guardalo en la carpeta donde está {{file}}.",
+    "reaperNoAudio": "Reaper: un proyecto con el tempo y un marcador en cada red line. La canción la ponés vos en una pista.",
+    "ableton": "Ableton Live no puede leer un mapa de tempo desde texto, así que acá no hay archivo de Live. Usá el MIDI: arrastralo al Arrangement y Live puede tomar sus cambios de tempo y compás (según la versión, te pregunta o lo activa una opción de importación)."
+  },
+  "calculator": {
+    "title": "Calculadora de timing",
+    "description": "BPM y ms por tiempo, ticks, la distancia entre dos red lines, el corrimiento y el BPM a partir de dos marcas: la aritmética de timear un mapa, hecha en tu navegador.",
+    "intro": "La aritmética de timear un mapa, calculada mientras escribís. Nada sale de esta página.",
+    "keys": "Teclado: Tab pasa de un campo a otro; ↑ y ↓ mueven el campo en el que estás de a 1, con Shift de a 10, con Alt de a 0,1. Elegí un resultado para copiar su número.",
+    "copy": "Copiar {{label}}: {{value}}",
+    "copied": "Copiado",
+    "fromResult": "Calculadora de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms por tiempo",
+      "bpm": "BPM",
+      "ms": "ms por tiempo",
+      "beat": "Un tiempo",
+      "exactBpm": "BPM",
+      "bar": "Un compás de 4/4",
+      "quarter": "Un tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Divisor de tiempo",
+      "span": "Intervalo",
+      "count": "Ticks",
+      "tick": "Un tick",
+      "ticks": "El intervalo en ticks",
+      "nearest": "Tick entero más cercano",
+      "off": "El intervalo lo pasa por {{ms}} ms.",
+      "toMs": "Los ticks en ms"
+    },
+    "lines": {
+      "title": "Entre dos red lines",
+      "intro": "Dónde cae la segunda línea sobre la grilla de la primera.",
+      "from": "Primera red line",
+      "bpm": "Su BPM",
+      "to": "Segunda red line",
+      "meter": "Tiempos por compás",
+      "span": "Distancia",
+      "beats": "Distancia en tiempos",
+      "bars": "Distancia en compases",
+      "nearest": "Tiempo más cercano de la primera grilla",
+      "off": "Segunda línea respecto de ese tiempo",
+      "offNote": "Positivo: llega tarde.",
+      "earliest": "El offset más temprano de la primera grilla"
+    },
+    "drift": {
+      "title": "Corrimiento",
+      "intro": "Cuánto se aleja una grilla a un BPM de otra en unos compases, y los BPM que se mantienen dentro de un corrimiento que aceptás.",
+      "right": "El BPM correcto",
+      "mapped": "El BPM del mapa",
+      "bars": "Compases",
+      "meter": "Tiempos por compás",
+      "total": "Corrimiento al último compás",
+      "sign": "Positivo: la grilla del mapa llega tarde.",
+      "perBar": "Corrimiento por compás",
+      "allowed": "Corrimiento que aceptás",
+      "slower": "BPM más lento dentro de eso",
+      "faster": "BPM más rápido dentro de eso",
+      "precision": "Precisión de BPM que hace falta"
+    },
+    "span": {
+      "title": "BPM a partir de dos marcas",
+      "intro": "Dos momentos de la canción y la cantidad de tiempos entre ellos.",
+      "start": "Primera marca",
+      "end": "Segunda marca",
+      "beats": "Tiempos entre ellas",
+      "bpm": "BPM",
+      "beat": "Un tiempo"
+    }
+  },
+  "practice": {
+    "title": "Práctica",
+    "reps": "Veces",
+    "countIn": "Contar un compás antes",
+    "start": "Empezar a practicar",
+    "stop": "Parar la práctica",
+    "counting": "Contando…",
+    "status": "Vez {{rep}} de {{reps}} · {{rate}}×",
+    "noStretch": "No hay nada para practicar acá: marcá un loop (Shift y arrastrar en el mapa) o llevá el cabezal a la sección de una red line.",
+    "hint": "Toca el loop que marcaste, o la sección bajo el cabezal, {{reps}} veces de {{from}}× a {{to}}×, un poco más rápido cada vez. La altura cambia con la velocidad; los clics la siguen."
+  },
+  "tapMic": {
+    "footer": "BPM con el micrófono",
+    "eyebrow": "Herramienta",
+    "title": "BPM con el micrófono",
+    "description": "El navegador escucha unos segundos y propone un BPM con su confianza. No se sube nada.",
+    "intro": "Poné la canción cerca del dispositivo, tocá Escuchar y dejá que el navegador la oiga unos segundos. Propone un BPM y dice cuán seguro está. El sonido nunca sale de esta página: se lee acá y se descarta.",
+    "length": "Escuchar",
+    "seconds": "{{n}} s",
+    "listen": "Escuchar",
+    "again": "Escuchar de nuevo",
+    "stop": "Parar y leer",
+    "permission": "El navegador pide el micrófono cuando tocás Escuchar, no antes.",
+    "asking": "Esperando el permiso del micrófono…",
+    "listening": "Escuchando… {{percent}} %",
+    "listeningLabel": "Escuchando",
+    "level": "Nivel de entrada",
+    "quiet": "Muy bajo: subí la canción o acercate.",
+    "reading": "Leyendo el pulso…",
+    "errors": {
+      "unsupported": "Este navegador no puede grabar con un micrófono acá.",
+      "denied": "No se permitió el micrófono. Podés permitirlo en los ajustes del sitio del navegador y probar de nuevo.",
+      "noMic": "No se encontró un micrófono, o lo está usando otra app.",
+      "failed": "Algo salió mal mientras escuchaba. Probá de nuevo."
+    },
+    "result": {
+      "short": "Muy poco para leer un tempo: escuchá unos segundos más.",
+      "silent": "No se oyó nada: el micrófono solo captó silencio.",
+      "noPulse": "No se oyó un pulso estable. Una canción con un beat claro, más fuerte o más cerca, se lee mejor; el ruido y la voz hablada no tienen."
+    },
+    "confidence": "{{percent}} % de confianza",
+    "alternatives": "También podría ser {{list}}: un micrófono oye el pulso, no en qué octava se cuenta la canción.",
+    "heard": "Con {{seconds}} s de sonido, leídos en este navegador.",
+    "limitsTitle": "Qué puede y qué no",
+    "limits": {
+      "private": "No se sube ni se guarda nada: la grabación queda en esta página y desaparece una vez leída.",
+      "precision": "Unos segundos dan un tempo a un BPM, en el mejor caso; escuchar más lo vuelve más estable. Es un chequeo rápido, no un timing.",
+      "octave": "Puede leer la mitad o el doble del tempo que elegiría un mapper; las otras octavas se muestran al lado.",
+      "changes": "Supone un tempo estable: una canción que acelera, frena o cambia de compás se lee como un promedio, o no se lee.",
+      "room": "El eco, el ruido, la gente hablando y los graves flacos del parlante de un teléfono desdibujan los ataques que escucha.",
+      "offset": "No da offset ni red lines: para eso, el archivo de la canción pasa por el engine."
+    },
+    "forTiming": "Para un timing completo con red lines y offset, analizá el archivo."
+  },
+  "editor": {
+    "edit": "Editar",
+    "toggleHint": "Editar las red lines en el mapa (E)",
+    "title": "Editando tus red lines",
+    "note": "Arrastrá una red line (se pega a un ataque o a un pulso; con Alt se mueve libre) o hacé doble clic para agregar una. La lectura del engine queda como vino: estas son tuyas, para revisar de oído.",
+    "done": "Listo",
+    "open": "Editar",
+    "undo": "Deshacer",
+    "redo": "Rehacer",
+    "reset": "Volver a la del engine",
+    "inForce_one": "Timing editado en uso: {{count}} red line",
+    "inForce_other": "Timing editado en uso: {{count}} red lines",
+    "closedHint": "Tocá Editar en el mapa (o E) para mover, agregar, dividir o borrar red lines.",
+    "lineOf": "Red line {{n}} de {{total}}",
+    "time": "Tiempo (ms)",
+    "apply": "Aplicar",
+    "meter": "Pulsos por compás",
+    "meterHint": "El largo del compás desde esta red line hasta la siguiente; el pulso no cambia",
+    "move": "Mover",
+    "moveGroup": "Mover la red line elegida",
+    "nudgeBy": "Moverla {{ms}} ms",
+    "linesGroup": "Agregar o borrar red lines",
+    "addAtPlayhead": "Red line en el cabezal",
+    "delete": "Borrar",
+    "section": "Sección",
+    "sectionGroup": "Herramientas de sección",
+    "split": "Dividir en el cabezal",
+    "splitHint": "Una red line en el pulso de esta sección más cercano al cabezal; las dos mitades se reajustan a sus ataques",
+    "merge": "Unir con la siguiente",
+    "mergeHint": "Quita la red line siguiente y reajusta todo el tramo desde esta",
+    "halfSection": "Dividir por dos el BPM de esta sección",
+    "doubleSection": "Duplicar el BPM de esta sección",
+    "keysHint": "← → la mueven 1 ms (Shift: 10 ms) · N agrega una red line en el cabezal · Supr la borra · Ctrl+Z deshace",
+    "selectHint": "Elegí una red line en el mapa, en la tabla o con [ y ].",
+    "keptOwner": "Se guarda en este navegador para este timing. Guardalo como versión abajo para que quede con el timing.",
+    "keptHere": "Se guarda solo en este navegador, para este timing.",
+    "history": "Historial",
+    "editedLine": "editada por vos",
+    "addedLine": "agregada por vos",
+    "nothingToUndo": "Nada que deshacer.",
+    "nothingToRedo": "Nada que rehacer.",
+    "undone": "Deshecho: {{step}}",
+    "redone": "Rehecho: {{step}}",
+    "wentTo": "De vuelta en: {{step}}",
+    "steps": {
+      "start": "La lectura del engine",
+      "restored": "Tus ediciones de la última vez",
+      "version": "Una versión guardada aplicada",
+      "reset": "De vuelta a la lectura del engine",
+      "move": "Red line {{n}} movida a {{time}}",
+      "nudge": "Red line {{n}} movida {{ms}} ms",
+      "offset": "Red line {{n}} puesta en {{ms}} ms",
+      "bpm": "Red line {{n}} puesta en {{bpm}} BPM",
+      "add": "Red line {{n}} agregada en {{time}}",
+      "delete": "Red line {{n}} borrada",
+      "meter": "Red line {{n}}: {{meter}} pulsos por compás",
+      "split": "Sección {{n}} dividida en {{time}}",
+      "merge": "Secciones {{n}} y {{next}} unidas",
+      "double": "Sección {{n}} duplicada a {{bpm}} BPM",
+      "half": "Sección {{n}} a la mitad: {{bpm}} BPM"
+    },
+    "refit": {
+      "fit": "{{bpm}} BPM según sus ataques ({{share}} % en la grilla)",
+      "few": "quedó en {{bpm}} BPM: muy pocos ataques para reajustar",
+      "weak": "quedó en {{bpm}} BPM: sus ataques no encajan en ninguna grilla ({{share}} %)"
+    },
+    "report": {
+      "split": "Antes de {{time}}: {{first}}. Después: {{second}}.",
+      "merge": "Todo el tramo: {{first}}."
+    },
+    "errors": {
+      "noLine": "Elegí una red line primero.",
+      "tooClose": "Dos red lines quedarían a menos de 1 ms: osu! las lee como una.",
+      "badTime": "Ese tiempo no es un número.",
+      "badBpm": "El BPM tiene que ser un número mayor que 0.",
+      "bpmRange": "El BPM tiene que estar entre 1 y 5000.",
+      "tooMany": "Acá un timing tiene como mucho 512 red lines.",
+      "first": "La primera red line ancla el mapa y no se puede borrar.",
+      "badMeter": "Un compás tiene de 1 a 16 pulsos.",
+      "badFactor": "Una sección se duplica o se divide por dos, nada más.",
+      "rescaleRange": "Eso dejaría la sección fuera de 30-600 BPM.",
+      "splitOutside": "Poné el cabezal dentro de la sección, un pulso o más después de su red line y antes de la siguiente.",
+      "noNext": "No hay una sección siguiente con la que unir."
+    }
+  },
+  "lab": {
+    "title": "Laboratorio de offset",
+    "sub": "Lo que el archivo dice de su propio delay, y una prueba ciega de dónde suenan a tiempo los clics.",
+    "headerNeedsAudio": "Elegí la canción arriba para leer su encabezado.",
+    "header": "{{encoder}}: delay de {{delay}} samples ({{delayMs}} ms), padding de {{pad}} ({{padMs}} ms). Cada navegador decide si lo salta o no.",
+    "noTag": "Sin etiqueta gapless: este archivo no dice su delay.",
+    "testTitle": "Prueba ciega",
+    "testSub": "Escuchá el mismo pasaje dos veces ({{seconds}} s cada una) con dos corrimientos ocultos de los clics y elegí el que va a tiempo. Cada corrimiento compite contra cero, tres veces. Suena tu loop si dibujaste uno; si no, desde la primera red line.",
+    "blocked": {
+      "noAudio": "Elegí la canción arriba primero.",
+      "rate": "Poné la velocidad en 100 % para la prueba.",
+      "clicks": "Prendé los clics para la prueba."
+    },
+    "start": "Empezar",
+    "hear": "Escuchar {{n}}",
+    "vote": "{{n}} iba a tiempo",
+    "again": "Empezar de nuevo",
+    "cancel": "Cancelar",
+    "trial": "Prueba {{k}} de {{n}}",
+    "shift": "Corrimiento",
+    "wins": "Ganadas",
+    "interval": "Intervalo del 95 %",
+    "best": "Preferido: {{shift}} ms ({{lo}}-{{hi}} % preferido sobre cero).",
+    "none": "Nada le gana a cero: los clics quedan donde están.",
+    "apply": "Poner el offset global en {{ms}} ms"
   },
   "votes": {
     "title": "¿Está a tiempo?",

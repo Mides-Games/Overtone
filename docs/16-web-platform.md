@@ -725,6 +725,18 @@ de referencia (`app/app.js`, `overtone_web.py`) está en `parked/desktop-app`, y
 funciones puras de edición que llamaba (`add_timing_point`, `nudge_timing_point`,
 `split_section`, `merge_sections`, `set_meter`…) siguen en `python/overtone.py`.
 
+**Hecha en su mayor parte el 2026-10-28** (`feature/site-editor`, `docs/site.md`): modo
+Editar en el mapa del resultado: arrastrar red lines (pegadas a ataques o pulsos, Alt
+libre), mover 1/10 ms con las flechas, agregar en el cabezal o con doble clic, borrar,
+tipear tiempo, BPM y compás, partir/unir y ×2/÷2 por sección con el reajuste del
+escritorio (portado a `lib/editor.js` y probado contra el Python en 16 casos), deshacer
+y rehacer con historial visible y anuncios para lectores de pantalla, y el offset lab
+(cabecera gapless del MP3 y prueba ciega). Las ediciones alimentan clics, copia, `.osz`
+y exportes marcadas como editadas; se guardan en el navegador y como versión (W12.21).
+**Falta:** fijar (lock) red lines, el metrónomo aparte de los clics, la comparación de
+decodificadores del offset lab (necesita los dos engines), y probar un arrastre con
+mouse real, la prueba ciega entera y un lector de pantalla.
+
 ### Fase W8 — Vuelven las piezas estacionadas, bien hechas
 
 Hitsounds primero, con su propia puerta de calidad antes de mostrarse. Después Train
@@ -811,7 +823,7 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 | W12.14 | **Paleta de comandos y atajos** (2.ª tanda): Ctrl+K para ir a cualquier página, abrir un análisis reciente o cambiar idioma y tema; `?` muestra todos los atajos |
 | W12.15 | **Ajustes y accesibilidad** (2.ª tanda): `/settings` con tema, alto contraste, tamaño de letra, paleta del mapa apta para daltonismo, movimiento reducido, volúmenes por defecto y la latencia de W12.2; todo en el navegador |
 | W12.16 | **Más idiomas**: pt-BR, fr, de, ja, ko, con un flujo para que la comunidad traduzca (un JSON por idioma y la prueba de claves de i18n)<br>**Hecha el 2026-10-28** (`feature/site-languages` y las ramas de cada idioma): diez idiomas (en, es, fr, de, it, pl, pt-BR, ja, ko, ru) con un selector con banderas en SVG en la barra; un idioma nuevo es su JSON en `src/locales/`, una fila en `lib/languages.js` y su bandera, cargado al elegirlo; `test/i18n.test.js` controla claves, placeholders, plurales por idioma y cobertura (los diez al 100 %). **Falta:** un lector de pantalla sobre el selector y una página de resultado vista en cada idioma |
-| W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 |
+| W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 (hecho, 2026-10-28: dentro del editor de W7) |
 | W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord (hecho, 2026-10-27: PNG del mapa de la página, SVG reducido, `/embed/<id>` enmarcable solo esa ruta; falta una imagen Open Graph para que Discord la muestre en el link) |
 | W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota)<br>**Hecho el 2026-10-27** (`feature/site-analysis-modes`), del lado del worker y no recortando en el navegador: el navegador decodifica con otro decoder (el retardo de MP3 movería los tiempos), un WAV del tramo cambia el SHA-1 y puede pasar el tope de subida. El worker decodifica como el engine, analiza el tramo y devuelve los tiempos en la línea de tiempo de la canción; la página dice qué tramo cubrió. Se sube el archivo entero (misma cuota; la espera sí baja) |
 | W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad (hecho, 2026-10-27: `/settings/tokens`, `/developers`, tres permisos, 120 pedidos/min por token; falta probar el store de PostgreSQL contra una base real) |
@@ -830,18 +842,18 @@ miden; ninguna mueve la línea base sin pasar las puertas.
 
 | # | Tarea |
 |---|---|
-| W13.1 | **Mapa de prueba jugable:** un `.osz` con un círculo en cada tiempo (o en cada 1/2) y hitsound en el primer tiempo del compás, para jugar el timing en osu! y sentir si está corrido |
-| W13.2 | **Ajustar los objetos al timing nuevo:** al parchear un `.osu` propio, mover opcionalmente cada hit object al tick más cercano de la grilla nueva (1/1 a 1/16), con un informe de cuántos se movieron y cuánto |
-| W13.3 | **Divisor sugerido:** un histograma de a qué divisor caen los ataques (1/2, 1/3, 1/4, 1/6, 1/8) para elegir `BeatDivisor`, que se escribe en el `.osu` |
-| W13.4 | **Pausas sugeridas:** los silencios largos como `Break` en `[Events]`, opcionales |
-| W13.5 | **Modo y dificultades:** elegir osu!, taiko, catch o mania en el `.osz`, y crear varias dificultades vacías (Easy a Expert) con el mismo timing |
-| W13.6 | **Bandas en el mapa:** graves, medios y agudos (bombo, caja, platillos) como carriles de ataques, para ver qué instrumento marca el pulso |
-| W13.7 | **Espectrograma** opcional bajo la forma de onda, con el mismo zoom |
-| W13.8 | **Modo práctica:** repetir un tramo cada vez más rápido (0,5 → 1,0) con conteo previo, para practicar el ritmo |
-| W13.9 | **Calculadora de timing:** BPM ↔ ms por tiempo, ms ↔ divisor, offset entre dos red lines, y "¿a qué BPM se corre X ms en Y compases?" |
-| W13.10 | **Exportar a DAWs:** un mapa de tempo MIDI (`.mid` con eventos de tempo y compás) y marcadores para Reaper y Ableton |
-| W13.11 | **Más juegos:** Beat Saber (eventos de BPM en `.dat`), A Dance of Fire and Ice (`.adofai`), Friday Night Funkin' (`.json` con `bpm` y `changeBPM`) y Rhythm Doctor, con tests contra archivos de referencia |
-| W13.12 | **Detector de BPM en vivo con el micrófono:** el navegador escucha unos segundos y propone un BPM, sin subir nada, para chequeos rápidos |
+| W13.1 | **Mapa de prueba jugable:** un `.osz` con un círculo en cada tiempo (o en cada 1/2) y hitsound en el primer tiempo del compás, para jugar el timing en osu! y sentir si está corrido (hecho en parte, 2026-10-28: una dificultad más, "Overtone test (1/1)" o "(1/2)", con combo nuevo y finish en el primer tiempo del compás y whistle en los medios tiempos, en el modo elegido; falta jugarla en osu!, que nadie hizo todavía) |
+| W13.2 | **Ajustar los objetos al timing nuevo:** al parchear un `.osu` propio, mover opcionalmente cada hit object al tick más cercano de la grilla nueva (1/1 a 1/16), con un informe de cuántos se movieron y cuánto (hecho, 2026-10-28: 1/1 a 1/16 con 1/3, 1/6 y 1/12; solo cambian el tiempo del objeto y el final de spinners y holds; los sliders conservan su largo en tiempos; informa movidos, máximo, mediana y los que quedaron en el mismo tick) |
+| W13.3 | **Divisor sugerido:** un histograma de a qué divisor caen los ataques (1/2, 1/3, 1/4, 1/6, 1/8) para elegir `BeatDivisor`, que se escribe en el `.osu` (hecho, 2026-10-28: por red line y para toda la canción en el resultado; el divisor más grueso que junta el 90 % de los ataques en la grilla va como `BeatDivisor` del `.osz`, con 16 ataques como mínimo; no se escribe en el `.osu` parcheado, que solo cambia lo que se pide) |
+| W13.4 | **Pausas sugeridas:** los silencios largos como `Break` en `[Events]`, opcionales (hecho, 2026-10-28: silencios de 5 s o más en la envolvente de onsets entre el primer y el último ataque, con los márgenes de osu! de 200 y 450 ms y 650 ms de mínimo; apagado por defecto; falta verlo en una canción real con un silencio) |
+| W13.5 | **Modo y dificultades:** elegir osu!, taiko, catch o mania en el `.osz`, y crear varias dificultades vacías (Easy a Expert) con el mismo timing (hecho, 2026-10-28: `Mode` en cada dificultad, mania con 4K a 10K como `CircleSize`; Easy a Expert como `.osu` vacíos con HP, CS, OD y AR de partida; falta abrir el set en osu!) |
+| W13.6 | **Bandas en el mapa:** graves, medios y agudos (bombo, caja, platillos) como carriles de ataques, para ver qué instrumento marca el pulso<br>**Hecha el 2026-10-28** (`feature/site-listen-plus`): tres carriles (30-150 Hz, 200-4000 Hz, 5-11 kHz) calculados en un Web Worker con una STFT del audio del lector, prendidos por defecto; en batería sintética cada banda oye solo lo suyo. **Falta:** verlos sobre canciones reales y en pantalla (el panel estaba oculto) |
+| W13.7 | **Espectrograma** opcional bajo la forma de onda, con el mismo zoom<br>**Hecho el 2026-10-28** (`feature/site-listen-plus`): 80 filas logarítmicas de 40 Hz a 11 kHz, del mismo worker, en caché por análisis, pintado en un canvas offscreen; apagado por defecto. Seis minutos: 1,3 s en node, 2,4 s en el worker del navegador (build de desarrollo). **Falta:** verlo en pantalla y en un teléfono |
+| W13.8 | **Modo práctica:** repetir un tramo cada vez más rápido (0,5 → 1,0) con conteo previo, para practicar el ritmo<br>**Hecho el 2026-10-28** (`feature/site-listen-plus`): el loop marcado o la sección bajo el cabezal, de 3 a 8 veces de 0,5× a 1×, con un compás de conteo; cada vuelta es su propia fuente en el reloj de audio. **Falta:** oírlo con una canción real |
+| W13.9 | **Calculadora de timing:** BPM ↔ ms por tiempo, ms ↔ divisor, offset entre dos red lines, y "¿a qué BPM se corre X ms en Y compases?" (hecho, 2026-10-28: `/tools/calculator`, con BPM desde dos marcas; enlazada desde el resultado, la paleta y el pie; las cuentas en `lib/calc.js`, con tests) |
+| W13.10 | **Exportar a DAWs:** un mapa de tempo MIDI (`.mid` con eventos de tempo y compás) y marcadores para Reaper y Ableton (hecho en parte, 2026-10-28: el `.mid` tipo 1 a 960 PPQ, leído de vuelta en los tests con cada cambio a menos de 0,5 ms, y un proyecto `.rpp` con la envolvente de tempo, marcadores y la canción; Ableton no importa mapas de tempo en texto, así que la página manda al `.mid` y lo dice; falta abrir los archivos en Reaper, Ableton u otro DAW) |
+| W13.11 | **Más juegos:** Beat Saber (eventos de BPM en `.dat`), A Dance of Fire and Ice (`.adofai`), Friday Night Funkin' (`.json` con `bpm` y `changeBPM`) y Rhythm Doctor, con tests contra archivos de referencia (hecho en parte, 2026-10-28: los cuatro, solo timing, en "Más descargas": Beat Saber v3 `bpmEvents`, `.adofai` con `SetSpeed`, el JSON legado de FNF y Psych Engine, `.rdlevel` con `SetBeatsPerMinute`; tests contra archivos hechos a mano y leídos con la aritmética de cada juego; falta abrirlos en cada juego) |
+| W13.12 | **Detector de BPM en vivo con el micrófono:** el navegador escucha unos segundos y propone un BPM, sin subir nada, para chequeos rápidos<br>**Hecho el 2026-10-28** (`feature/site-listen-plus`): `/tools/tap-mic`, 6 a 15 s por AudioWorklet, envolvente de onsets y autocorrelación en un worker, con confianza, octavas vecinas y sus límites en la página; clicks sintéticos a 90, 128 y 174 BPM dentro de 1 BPM, ruido blanco sin pulso. **Falta:** un micrófono real con una canción por parlante |
 | W13.13 | **Analizar en el navegador** las canciones cortas con el engine de Rust compilado a WebAssembly: sin cola y sin subir el audio. Se mide contra las puertas golden (27/27) antes de ofrecerlo |
 | W13.14 | **Votar los timings públicos:** "está bien" o "está corrido" con un BPM u offset propuesto; los votos con corrección van al staff y, con permiso, a los stages de W11<br>**Hecho el 2026-10-28** (`feature/site-community-plus`, docs/site.md "Votes, the mapper's badge, the bell, the staff panel and limit notices"): un voto por cuenta (no en el propio), "a tiempo" sin más o "corrido" con BPM (20-1000) y/o offset validados; los totales a la vista y nadie nombrado; las correcciones en la cola del staff (`/staff`), aceptar o descartar queda en el registro; el permiso para W11 es una casilla, se guarda y nada lo lee todavía. **Falta:** que los stages de W11 lean las correcciones con permiso |
 | W13.15 | **Comentarios con tiempo** en los timings públicos, anclados a un punto de la canción y marcados en el mapa de tempo<br>**Hecho el 2026-10-28:** los comentarios con tiempo se dibujan como marcas en una franja bajo el mapa, que sigue el zoom; pasar el puntero o enfocar muestra quién dijo qué, un clic lleva el reproductor ahí; las marcas cercanas se juntan en una |
@@ -853,7 +865,7 @@ miden; ninguna mueve la línea base sin pasar las puertas.
 | W13.21 | **Reconocer el mismo tema en otro formato:** una huella acústica (no el SHA-1) para decir "esta canción ya se timeó" aunque sea otro MP3; se evalúa su costo antes |
 | W13.22 | **Paquete para la comunidad:** un cliente de la API pública (W12.20) en JS y Python, y un ejemplo de bot |
 | W13.23 | **Overlay para streams:** una página para OBS que muestra el BPM y el pulso de la canción que suena |
-| W13.24 | **Acentos de la portada:** el color dominante de la portada tiñe la página del resultado, respetando el contraste |
+| W13.24 | **Acentos de la portada:** el color dominante de la portada tiñe la página del resultado, respetando el contraste<br>**Hecho el 2026-10-28** (`feature/site-listen-plus`): el encabezado del resultado y de la página pública, con el texto a 4,5:1 o más medido en los dos temas, apagado con alto contraste. **Falta:** verlo en pantalla con portadas reales |
 
 ---
 

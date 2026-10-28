@@ -803,6 +803,30 @@
       "part": "web"
     },
     {
+      "name": "@fontsource-variable/archivo",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "role": "runtime",
+      "direct": true,
+      "part": "web"
+    },
+    {
+      "name": "@fontsource-variable/geist",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "role": "runtime",
+      "direct": true,
+      "part": "web"
+    },
+    {
+      "name": "@fontsource-variable/geist-mono",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "role": "runtime",
+      "direct": true,
+      "part": "web"
+    },
+    {
       "name": "@tailwindcss/vite",
       "version": "4.3.3",
       "licence": "MIT",

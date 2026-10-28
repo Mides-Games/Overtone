@@ -11,7 +11,7 @@
  * is rows, and osu! sorts its timing points by time on save.
  */
 import { changesLines, exportLines } from './export-options.js'
-import { roundHalfEven } from './timing.js'
+import { isAdjusted, roundHalfEven } from './timing.js'
 
 /** The engine's `[TimingPoints]` rows, one per red line, or null when they do not line up one to one. */
 function engineRows(result) {
@@ -30,7 +30,7 @@ export const rowOf = (line) => `${roundHalfEven(line.timeMs)},${line.beatMs.toFi
  * a new line. Empty when nothing is picked.
  */
 export function timingRows(result, lines, adjustment = { factor: 1, nudgeMs: 0 }, positions = lines.map((_, i) => i), options = null) {
-  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const adjusted = isAdjusted(adjustment)
   // The export options (W12.8) shape every copy as they shape the whole block:
   // rounded BPM, an export offset, the first line only. `exportLines` keeps the
   // lines' order, so a row of the table is the same position in what is written.

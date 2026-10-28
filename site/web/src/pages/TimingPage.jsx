@@ -11,7 +11,7 @@ import { useDocumentMeta } from '../hooks/useDocumentMeta.js'
 import { commentMarks, ratingLabel } from '../lib/social.js'
 import { comparePath } from '../lib/compare.js'
 import { bpmLabel, checkTimingAudio, publicTiming, songLine } from '../lib/timings.js'
-import { Result } from './AnalysisResult.jsx'
+import { ACCENT_HEADER, accentWash, Result } from './AnalysisResult.jsx'
 
 /**
  * A published timing's own page (W3.27), for anyone: the song, who timed it
@@ -29,6 +29,8 @@ export default function TimingPage() {
   const { id } = useParams()
   const [timing, setTiming] = useState(null)
   const [error, setError] = useState(null)
+  // W13.24: the cover of the visitor's own copy of the song, once it is checked.
+  const [accent, setAccent] = useState(null)
   const [social, updateSocial] = useTimingSocial(id)
   const [votes, setVotes] = useTimingVotes(id)
   const [comments, setComments] = useState([])
@@ -95,9 +97,11 @@ export default function TimingPage() {
 
   return (
     <div className="space-y-8">
-      <header className="rise flex flex-wrap items-end justify-between gap-4">
+      <header className={`rise flex flex-wrap items-end justify-between gap-4 ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
         <div className="min-w-0 space-y-2">
-          <p className="label text-accent">{t('timings.page.eyebrow')}</p>
+          <p className="label text-accent" style={accent ? { color: accent.ink } : undefined}>
+            {t('timings.page.eyebrow')}
+          </p>
           <h1 className="font-display text-[clamp(1.5rem,1.2rem+1.2vw,2.1rem)] font-bold break-words">{timing.title ?? t('timings.untitled')}</h1>
           {timing.artist && <p className="text-body text-muted">{timing.artist}</p>}
           <div className="flex flex-wrap items-center gap-2 text-caption text-dim">
@@ -133,6 +137,7 @@ export default function TimingPage() {
           verify={verify}
           csvHref={`/api/v1/timings/${id}/timing.csv`}
           playerRef={playerRef}
+          onAccent={setAccent}
           marks={marks}
           onMark={onMark}
         />

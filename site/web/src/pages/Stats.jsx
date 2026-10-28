@@ -16,7 +16,7 @@ import { barScale, bucketName, shares } from '../lib/stats.js'
  * ResizeObserver), so their words stay at reading size from a phone to a
  * desktop instead of scaling with a viewBox. Each is a picture with a summary
  * for screen readers, and the histogram has its numbers as a table too. One
- * hue each, the theme's own tokens: the accent for the BPMs, and lavender
+ * hue each, the theme's own tokens: the accent for the BPMs, and tempo
  * (the site's tempo colour) beside it for the tempo changes, both always
  * labelled in text.
  */
@@ -130,7 +130,7 @@ function TempoChart({ single, variable }) {
   const number = (n) => n.toLocaleString(i18n.language)
   const parts = [
     { key: 'single', count: single, pct: pSingle, tone: 'bg-accent' },
-    { key: 'variable', count: variable, pct: pVariable, tone: 'bg-lavender' },
+    { key: 'variable', count: variable, pct: pVariable, tone: 'bg-tempo' },
   ]
 
   return (
@@ -147,7 +147,7 @@ function TempoChart({ single, variable }) {
                 </rect>
               )}
               {variable > 0 && (
-                <rect x={a + gap} y="0" width={width - a - gap} height="20" rx="3" className="fill-lavender">
+                <rect x={a + gap} y="0" width={width - a - gap} height="20" rx="3" className="fill-tempo">
                   <title>{`${t('siteStats.tempo.variable')}: ${number(variable)} (${pVariable} %)`}</title>
                 </rect>
               )}

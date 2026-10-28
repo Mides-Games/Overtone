@@ -5,19 +5,30 @@ import { gutter } from '../lib/gutter.js'
 import { REPO_URL } from '../lib/repo.js'
 import Logo from './Logo.jsx'
 import Mark from './Mark.jsx'
+import Icon from './ui/Icon.jsx'
+import { WaveRule } from './ui/Waveform.jsx'
 
-const link = 'text-label text-muted transition hover:text-text'
+/**
+ * The footer: no box, the page's own ground under one hairline with the
+ * waveform on it. The name and what it is on the left, then the site's
+ * places in five short columns with mono headings. An external link carries
+ * an arrow and says, to a screen reader, that it opens a new tab.
+ */
+const link = 'inline-flex items-center gap-1 py-0.5 text-label text-muted transition-colors duration-150 hover:text-text'
 
 function Column({ title, links }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3">
-      <h3 className="label">{title}</h3>
-      <ul className="space-y-2">
+      <h2 className="label">{title}</h2>
+      <ul className="space-y-1.5">
         {links.map((item) => (
           <li key={item.label}>
             {item.href ? (
               <a href={item.href} target="_blank" rel="noreferrer noopener" className={link}>
-                {item.label} <span className="text-dim">↗</span>
+                {item.label}
+                <Icon name="external" size={13} className="text-dim" />
+                <span className="sr-only">{t('common.newTab')}</span>
               </a>
             ) : (
               <Link to={item.to} className={link}>
@@ -35,12 +46,15 @@ export default function Footer() {
   const { t } = useTranslation()
 
   return (
-    <footer id="site-footer" className="border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-6xl gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr]" style={gutter}>
-        <div className="space-y-3">
+    <footer id="site-footer" className="mt-8">
+      <div className="mx-auto max-w-[76rem]" style={gutter}>
+        <WaveRule />
+      </div>
+      <div className="mx-auto grid max-w-[76rem] gap-x-8 gap-y-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.6fr_repeat(5,1fr)]" style={gutter}>
+        <div className="space-y-3 sm:col-span-2 lg:col-span-1">
           <div className="flex items-center gap-2.5">
-            <Mark size={20} />
-            <span className="font-display text-[14px] font-bold uppercase tracking-[0.16em]">Overtone</span>
+            <Mark size={22} />
+            <span className="wordmark">Overtone</span>
           </div>
           <p className="max-w-xs text-label text-muted">{t('footer.tagline')}</p>
         </div>
@@ -59,7 +73,9 @@ export default function Footer() {
             { label: t('learn.footer.how'), to: '/how-it-works' },
             { label: t('learn.footer.faq'), to: '/faq' },
             { label: t('learn.footer.glossary'), to: '/glossary' },
+            { label: t('calculator.title'), to: '/tools/calculator' },
             { label: t('learn.footer.stats'), to: '/stats' },
+            { label: t('tapMic.footer'), to: '/tools/tap-mic' },
           ]}
         />
         <Column
@@ -88,7 +104,7 @@ export default function Footer() {
         />
       </div>
       <div className="border-t border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 py-4 text-caption text-dim" style={gutter}>
+        <div className="mx-auto flex max-w-[76rem] flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5 text-caption text-dim" style={gutter}>
           <span className="readout">{t('footer.rights', { year: new Date().getFullYear() })}</span>
           <span className="flex items-center gap-2">
             <Logo size={16} />

@@ -668,8 +668,25 @@ components:
         analysisId: { type: string, pattern: '^[0-9a-f]{32}$', description: The reading it adjusts. }
         factor: { type: number, enum: [0.5, 1, 2] }
         nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+        lines: { $ref: '#/components/schemas/EditedLines' }
         label: { type: [string, 'null'], maxLength: 60 }
         createdAt: { type: string, format: date-time }
+
+    EditedLines:
+      type: array
+      description: |
+        An edited timing (W7): the owner's red lines from the page's editor,
+        before the factor and nudge, sorted, at least 1 ms apart. Each row is
+        `[timeMs, beatMs, meter, meterKnown, source]`: beat length 12 to 60000
+        ms (1 to 5000 BPM), meter 1 to 16, meterKnown 0 or 1, source the
+        engine red line it came from or -1 for one the owner added.
+      minItems: 1
+      maxItems: 512
+      items:
+        type: array
+        minItems: 5
+        maxItems: 5
+        items: { type: number }
   responses:
     Error:
       description: An error.
@@ -2197,10 +2214,12 @@ paths:
       summary: Save the adjustment being tried as a version
       description: |
         `factor` (x2, /2 or none) and `nudgeMs` (every red line moved by the
-        same whole number of ms) as the page applies them; one of them must
-        change something. The same adjustment saved again answers with the one
-        already saved (200). At most 20 a reading. Owner only, finished
-        timings only; rate limited (60 per 10 minutes, shared with delete).
+        same whole number of ms) as the page applies them, and `lines`, the
+        red lines the owner edited (W7); one of them must change something.
+        The same adjustment saved again answers with the one already saved
+        (200). At most 20 a reading. Owner only, finished timings only; rate
+        limited (60 per 10 minutes, shared with delete). The body may be up
+        to 48 kB.
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
       requestBody:
@@ -2213,6 +2232,7 @@ paths:
               properties:
                 factor: { type: number, enum: [0.5, 1, 2] }
                 nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+                lines: { $ref: '#/components/schemas/EditedLines' }
                 label: { type: [string, 'null'], maxLength: 60, description: Cleaned of control and bidi characters. }
       responses:
         '200':

@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { api } from '../../lib/api.js'
 import { formatBpm, formatClock } from '../../lib/timing.js'
 import {
+  adjustmentKey,
   adjustmentLabel,
   deleteVersion,
   diffLines,
@@ -13,6 +14,7 @@ import {
   isAdjusted,
   NO_ADJUSTMENT,
   saveVersion,
+  versionAdjustment,
   versionLines,
 } from '../../lib/versions.js'
 
@@ -23,7 +25,8 @@ const LABEL_MAX = 60
  * same audio (re-analyses), the adjustments saved on any of them, a button
  * that saves the one being tried, and the difference per red line between
  * any two. A saved version is its adjustment only; applying it sets the
- * page's ×2 / ÷2 and nudge, exactly as pressing them would.
+ * page's ×2 / ÷2 and nudge, exactly as pressing them would, and an edited
+ * timing's lines (W7) as one step of the editor's history.
  */
 export default function Versions({ analysis, adjustment, onApply }) {
   const { t, i18n } = useTranslation()
@@ -56,7 +59,7 @@ export default function Versions({ analysis, adjustment, onApply }) {
     const done = data.readings.filter((r) => r.status === 'done')
     const byId = new Map(done.map((r) => [r.id, r]))
     const list = done.map((r) => ({
-      key: `${r.id}:1:0`,
+      key: `${r.id}:${adjustmentKey(NO_ADJUSTMENT)}`,
       reading: r.id,
       adjustment: NO_ADJUSTMENT,
       name: `${readingName(r)} · ${t('platform.versions.engine')}${r.current ? ` (${t('platform.versions.thisOne')})` : ''}`,
@@ -64,22 +67,23 @@ export default function Versions({ analysis, adjustment, onApply }) {
     for (const v of data.adjustments) {
       const r = byId.get(v.analysisId)
       if (!r) continue
+      const adjustment = versionAdjustment(v)
       list.push({
-        key: `${v.analysisId}:${v.factor}:${v.nudgeMs}`,
+        key: `${v.analysisId}:${adjustmentKey(adjustment)}`,
         reading: v.analysisId,
-        adjustment: { factor: v.factor, nudgeMs: v.nudgeMs },
+        adjustment,
         name: `${readingName(r)} · ${adjustmentLabel(v)}${v.label ? ` · ${v.label}` : ''}`,
       })
     }
-    const nowKey = `${id}:${adjustment.factor}:${adjustment.nudgeMs}`
+    const nowKey = `${id}:${adjustmentKey(adjustment)}`
     if (!list.some((o) => o.key === nowKey)) {
       list.push({ key: nowKey, reading: id, adjustment, name: `${t('platform.versions.now')} · ${adjustmentLabel(adjustment) || t('platform.versions.engine')}` })
     }
     return list
   }, [data, adjustment, id, i18n.language])
 
-  const nowKey = `${id}:${adjustment.factor}:${adjustment.nudgeMs}`
-  const a = options.find((o) => o.key === (pick.a ?? `${id}:1:0`)) ?? null
+  const nowKey = `${id}:${adjustmentKey(adjustment)}`
+  const a = options.find((o) => o.key === (pick.a ?? `${id}:${adjustmentKey(NO_ADJUSTMENT)}`)) ?? null
   const b = options.find((o) => o.key === (pick.b ?? nowKey)) ?? null
 
   // The other readings' results, read once each when a comparison needs them.
@@ -122,7 +126,7 @@ export default function Versions({ analysis, adjustment, onApply }) {
   }
 
   const adjusted = isAdjusted(adjustment)
-  const savedAlready = data?.adjustments.some((v) => v.analysisId === id && v.factor === adjustment.factor && v.nudgeMs === adjustment.nudgeMs)
+  const savedAlready = data?.adjustments.some((v) => v.analysisId === id && adjustmentKey(versionAdjustment(v)) === adjustmentKey(adjustment))
 
   return (
     <section className="panel overflow-hidden" aria-labelledby="versions-title">
@@ -194,8 +198,8 @@ export default function Versions({ analysis, adjustment, onApply }) {
                           <button
                             type="button"
                             className="tool-btn h-6 px-1.5"
-                            aria-pressed={adjustment.factor === v.factor && adjustment.nudgeMs === v.nudgeMs}
-                            onClick={() => onApply({ factor: v.factor, nudgeMs: v.nudgeMs })}
+                            aria-pressed={adjustmentKey(versionAdjustment(v)) === adjustmentKey(adjustment)}
+                            onClick={() => onApply(versionAdjustment(v))}
                           >
                             {t('platform.versions.apply')}
                           </button>

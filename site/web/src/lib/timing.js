@@ -55,8 +55,15 @@ function osuRows(result) {
  * The red lines as the reader has them: `factor` 0.5, 1 or 2 scales every
  * BPM (display and export only; the offsets stay), `nudgeMs` moves every line
  * by the same amount. Each line keeps its index into the result's own lists.
+ *
+ * `edits` (W7, lib/editor.js), when the reader has edited the lines, replaces
+ * the engine's lines before both: `{ timeMs, beatMs, meter, meterKnown,
+ * source }` each. A line's `index` is then the engine line it came from (its
+ * section's confidence and level), -1 for one the reader added, and each
+ * line also says whether it was `edited` or `added`.
  */
-export function adjustLines(result, { factor = 1, nudgeMs = 0 } = {}) {
+export function adjustLines(result, { factor = 1, nudgeMs = 0, edits = null } = {}) {
+  if (edits) return editedLines(result, edits, factor, nudgeMs)
   const rows = osuRows(result)
   return (result?.red_lines ?? []).map((line, index) => {
     // The engine's beat length to 12 decimals when it is there; the line's own otherwise.
@@ -69,6 +76,30 @@ export function adjustLines(result, { factor = 1, nudgeMs = 0 } = {}) {
       beatMs,
       meter: Math.max(1, Math.min(16, Math.round(line.meter) || 4)),
       meterKnown: Boolean(line.meter_known),
+    }
+  })
+}
+
+const clampMeter = (meter) => Math.max(1, Math.min(16, Math.round(meter) || 4))
+
+function editedLines(result, edits, factor, nudgeMs) {
+  const engine = result?.red_lines ?? []
+  const rows = osuRows(result)
+  return edits.map((line) => {
+    const from = line.source >= 0 ? engine[line.source] : null
+    const written = from && rows ? Number(rows[line.source][1]) : NaN
+    const fromBeat = from ? (Number.isFinite(written) && written > 0 ? written : from.beat_length_ms) : NaN
+    const sameBeat = Math.abs(line.beatMs - fromBeat) <= 1e-9
+    return {
+      index: from ? line.source : -1,
+      timeMs: line.timeMs + nudgeMs,
+      // A line whose beat is still the engine's reads the engine's BPM, as it did before the edit.
+      bpm: (sameBeat ? from.bpm : 60000 / line.beatMs) * factor,
+      beatMs: line.beatMs / factor,
+      meter: line.meter,
+      meterKnown: Boolean(line.meterKnown),
+      edited: !from || !sameBeat || Math.abs(line.timeMs - from.time_ms) > 5e-4 || line.meter !== clampMeter(from.meter),
+      added: !from,
     }
   })
 }
@@ -178,16 +209,19 @@ export function lineDrift(onsets, drift, lines, durationMs) {
   })
 }
 
-/** A short note of an adjustment, for the exports' comment line and the page. */
-export function adjustmentNote({ factor, nudgeMs }) {
+/** Whether the reader has changed the lines at all: ×2 / ÷2, a nudge, or an edit (W7). */
+export const isAdjusted = (adjustment) =>
+  Boolean(adjustment) && ((adjustment.factor ?? 1) !== 1 || (adjustment.nudgeMs ?? 0) !== 0 || Boolean(adjustment.edits))
+
+/** A short note of an adjustment, for the exports' comment line and the page. English, as the exports are. */
+export function adjustmentNote({ factor = 1, nudgeMs = 0, edits = null }) {
   const parts = []
+  if (edits) parts.push(`edited: ${edits.length} red line${edits.length === 1 ? '' : 's'}`)
   if (factor === 2) parts.push('x2')
   if (factor === 0.5) parts.push('/2')
   if (nudgeMs) parts.push(`${nudgeMs > 0 ? '+' : ''}${nudgeMs} ms`)
   return parts.join(', ')
 }
-
-const isAdjusted = ({ factor, nudgeMs }) => factor !== 1 || nudgeMs !== 0
 
 /**
  * The `[TimingPoints]` block, CRLF, as the API's timing.txt sends it. Not
@@ -204,9 +238,11 @@ export function timingText(result, lines = [], adjustment = { factor: 1, nudgeMs
   if (isAdjusted(adjustment) || changesLines(options)) {
     const header = rows.filter((row) => row.startsWith('//'))
     const notes = [adjustmentNote(adjustment), optionsNote(options)].filter(Boolean).join(', ')
+    // An edited timing says so first (W7): its red lines are the reader's, not the engine's.
+    const verb = adjustment?.edits ? 'Edited' : isAdjusted(adjustment) ? 'Adjusted' : 'Exported'
     rows = [
       ...header,
-      `// ${isAdjusted(adjustment) ? 'Adjusted' : 'Exported'} on the Overtone site (${notes}): check it by ear`,
+      `// ${verb} on the Overtone site (${notes}): check it by ear`,
       ...lines.map((line) => `${roundHalfEven(line.timeMs)},${line.beatMs.toFixed(12)},${line.meter},1,0,100,1,0`),
     ]
   }
@@ -248,7 +284,7 @@ export function summaryText({ filename, result, lines, adjustment = { factor: 1,
   out.push(`Meter      ${result.meter ?? '–'}`)
   out.push(`Red lines  ${lines.length}`)
   out.push(`Length     ${formatClock((result.duration_s ?? 0) * 1000)}`)
-  if (isAdjusted(adjustment)) out.push(`Adjusted   ${adjustmentNote(adjustment)} (on the site, by the reader: check it by ear)`)
+  if (isAdjusted(adjustment)) out.push(`${adjustment.edits ? 'Edited  ' : 'Adjusted'}   ${adjustmentNote(adjustment)} (on the site, by the reader: check it by ear)`)
   out.push('', 'Time        BPM       Meter  Confidence  Level')
   lines.forEach((line) => {
     const section = result.sections?.[line.index] ?? {}

@@ -58,6 +58,9 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
+    // The browser's own chrome follows the site's theme, not only the system's
+    // (index.html's two metas are the first guess, by the system's).
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.setAttribute('content', dark ? '#0a0b0d' : '#f6f7f8')
   }, [dark])
 
   useEffect(() => {

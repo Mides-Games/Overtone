@@ -1,0 +1,21 @@
+{
+  "song": {
+    "song": "Song",
+    "notes": [
+      { "lengthInSteps": 12, "sectionBeats": 3, "typeOfSection": 0, "mustHitSection": true, "changeBPM": false, "bpm": 145.867099, "altAnim": false, "sectionNotes": [] },
+      { "lengthInSteps": 16, "sectionBeats": 4, "typeOfSection": 0, "mustHitSection": true, "changeBPM": true, "bpm": 150, "altAnim": false, "sectionNotes": [] },
+      { "lengthInSteps": 16, "sectionBeats": 4, "typeOfSection": 0, "mustHitSection": true, "changeBPM": false, "bpm": 150, "altAnim": false, "sectionNotes": [] },
+      { "lengthInSteps": 9, "sectionBeats": 2.25, "typeOfSection": 0, "mustHitSection": true, "changeBPM": false, "bpm": 150, "altAnim": false, "sectionNotes": [] },
+      { "lengthInSteps": 16, "sectionBeats": 4, "typeOfSection": 0, "mustHitSection": true, "changeBPM": true, "bpm": 140, "altAnim": false, "sectionNotes": [] },
+      { "lengthInSteps": 16, "sectionBeats": 4, "typeOfSection": 0, "mustHitSection": true, "changeBPM": false, "bpm": 140, "altAnim": false, "sectionNotes": [] }
+    ],
+    "bpm": 145.867099,
+    "needsVoices": false,
+    "speed": 1,
+    "player1": "bf",
+    "player2": "dad",
+    "gfVersion": "gf",
+    "stage": "stage",
+    "validScore": true
+  }
+}

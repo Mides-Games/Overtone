@@ -142,3 +142,41 @@ test('a cover goes into the .osz as bg.<ext>, byte for byte', async () => {
   const odd = await buildOsz({ file, analysis, lines, adjustment: unadjusted, extras: { cover: { ext: 'gif', bytes: image } } })
   assert.equal(entries(odd.bytes).length, 2)
 })
+
+test('the W13 options: mode, keys, divisor and breaks in the .osu', () => {
+  const lines = adjustLines(result, unadjusted)
+  const base = { title: 'S', artist: 'A', creator: 'x', audioName: 'audio.mp3', lines, result, adjustment: unadjusted }
+  const plain = osuFile(base)
+  assert.match(plain, /\r\nMode: 0\r\n/)
+  assert.match(plain, /\r\nBeatDivisor: 4\r\n/)
+  assert.match(plain, /\r\nHPDrainRate:5\r\nCircleSize:4\r\nOverallDifficulty:5\r\nApproachRate:5\r\n/)
+  const mania = osuFile({ ...base, mode: 3, keys: 7, beatDivisor: 3, breaks: [{ startMs: 10200, endMs: 15550 }] })
+  assert.match(mania, /\r\nMode: 3\r\n/)
+  assert.match(mania, /\r\nCircleSize:7\r\n/)
+  assert.match(mania, /\r\nBeatDivisor: 3\r\n/)
+  assert.match(mania, /\r\n\/\/Break Periods\r\n2,10200,15550\r\n\r\n\[TimingPoints\]/)
+  assert.match(osuFile({ ...base, mode: 9, beatDivisor: 5 }), /\r\nMode: 0\r\n[\s\S]*\r\nBeatDivisor: 4\r\n/, 'out of range falls back to the defaults')
+})
+
+test('the .osz holds the chosen difficulties and the test map beside the Timing one', async () => {
+  const file = new File([new Uint8Array(10)], 'a.ogg')
+  const analysis = { filename: 'Band - Song.ogg', result: { ...result, duration_s: 3 } }
+  const lines = adjustLines(result, unadjusted)
+  const extras = { difficulties: ['Hard', 'Easy', 'Nope'], testSub: 1, mode: 1 }
+  const { bytes } = await buildOsz({ file, analysis, lines, adjustment: unadjusted, creator: 'me', extras })
+  const all = entries(bytes)
+  assert.deepEqual(
+    all.map((e) => e.name),
+    ['audio.ogg', 'Band - Song (me) [Timing].osu', 'Band - Song (me) [Easy].osu', 'Band - Song (me) [Hard].osu', 'Band - Song (me) [Overtone test (1-1)].osu'],
+  )
+  const [timing, easy, , testMap] = all.slice(1).map((e) => new TextDecoder().decode(e.data))
+  assert.match(easy, /\r\nVersion:Easy\r\nSource:/)
+  assert.match(easy, /\r\nHPDrainRate:2\r\nCircleSize:3\r\n/)
+  assert.match(easy, /\r\nMode: 1\r\n/)
+  assert.equal(timing.slice(timing.indexOf('[TimingPoints]')), easy.slice(easy.indexOf('[TimingPoints]')), 'the same timing, no objects')
+  assert.match(testMap, /\r\nVersion:Overtone test \(1\/1\)\r\n/)
+  // 400 ms to 3000 ms at 468.75 ms: 400, 868.75, 1337.5, 1806.25, 2275, 2743.75, rounded half to even.
+  const objects = testMap.slice(testMap.indexOf('[HitObjects]\r\n') + 14).split('\r\n').filter(Boolean)
+  assert.deepEqual(objects.map((row) => Number(row.split(',')[2])), [400, 869, 1338, 1806, 2275, 2744])
+  assert.equal(objects[0].split(',')[4], '4', 'the bar starts with a finish')
+})

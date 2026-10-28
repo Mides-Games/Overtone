@@ -218,17 +218,22 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
 
 ## Look
 
-The site uses the desktop app's "Console" look (`app/styles.css`), one step
-darker: violet graphite surfaces, one signal-cyan accent, flat panels with
-hairline borders, DIN headings (Bahnschrift on Windows, DIN Alternate on
-macOS), monospaced readouts, and the app's reserved colours (red = timing
-points, amber = check by ear, lavender = tempo). midesprojects.com was the
-reference for structure (ticker, navigation, footer, avatar, loader) and for
-the storage keys, `mides.theme` and `mides.lang`, which are shared across the
-ecosystem. Its palette and its Horizon headline font are not used. Horizon's
-licence is unknown and this repository is public, so dropping it also means
-no font file has to be kept out of git. Every face is a system face and
-nothing is fetched from the network.
+Since 2026-10-28 the site follows **docs/design.md**: a studio monitor, not a
+dashboard. Near-black, neutral cool surfaces; the logo's cyan as the one accent;
+colour only as signal, with the reserved meanings (red = timing points, amber =
+check by ear, tempo green = the tempo curve; it was lavender until then); panels
+only for what you operate, everything else on the page's ground separated by space
+and hairlines; the waveform with red lines as the signature. Type is Archivo (wide,
+for headings), Geist (text) and Geist Mono (every number), self-hosted from pinned
+`@fontsource-variable` packages: served from the site's own origin, so nothing is
+fetched from another one and the CSP's `font-src 'self'` holds. Their licence is the
+OFL, listed on the credits page. The tokens, the primitives (`index.css`,
+`components/ui/`), the motion rules and a guide for restyling a page are in that file.
+
+midesprojects.com was the reference for structure (ticker, navigation, footer,
+avatar, loader) and for the storage keys, `mides.theme` and `mides.lang`, which are
+shared across the ecosystem. Its palette and its Horizon headline font are not used:
+Horizon's licence is unknown and this repository is public.
 
 ## How it was checked (2026-10-26)
 
@@ -331,7 +336,7 @@ did, from the browser. Code: `site/web/src/pages/AnalysisResult.jsx`,
 - **The tempo map.** Two canvases sized to the device pixel ratio: the map,
   repainted when the view or the data change, and an overlay for the playhead,
   the hover cursor and the loop. Lanes: the red lines' chips (BPM, and the meter
-  where it changes), the tempo plot (local tempo in lavender, each line's BPM in
+  where it changes), the tempo plot (local tempo in the tempo colour, lavender before 2026-10-28, each line's BPM in
   red, each section's level along its foot, the half/double hints in amber), the
   waveform with the onsets as ticks and the beat and bar grid, the drift lane
   (each onset's distance from its line's nearest 1/1-1/4 tick, +-30 ms) and the
@@ -535,6 +540,67 @@ Not checked: a real song (only bench audio with a made-up loud stretch), any cov
 but FLAC in the browser (the others by node:test on built bytes), the archive opened in
 osu! itself, Firefox's and Safari's own download behaviour, and whether the suggestions
 are any good for mapping: they are loudness heuristics, and the page says so.
+
+### Mapping helpers (W13.1-W13.5, 2026-10-28)
+
+All of it is built in the browser from the red lines as the reader exports them (after
+the export options) and from what the engine already sent (`onsets`, `onset_envelope`);
+nothing is uploaded and the engine is not touched. The logic is `lib/mapping.js`, pure
+and under node:test; the page is `components/result/DivisorChart.jsx`, `MapSet.jsx`,
+two rows more in `OszOptions.jsx` and the snap in `MoreDownloads.jsx`.
+
+- **Where the attacks fall** (W13.3). Each attack is put under the red line it falls in
+  (one before the first line, under the first) and sorted into the *simplest* divisor
+  of the beat it sits on: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, or none. "Sits on" means within
+  a 48th of the beat, at most 15 ms: the tick sets of 1/6 and 1/8, the closest pair, are
+  a 24th of a beat apart, so no attack can be claimed by both. Each attack counts its
+  weight (0-100), so a faint one counts less. The result page shows the bars for the
+  whole song, and per red line (up to twelve) folded under them.
+- **The suggested `BeatDivisor`**: the coarsest of 1/2, 1/3, 1/4, 1/6 and 1/8 whose ticks
+  hold at least 90 % of the attacks on a tick (1/6 holds 1/1, 1/2, 1/3 and 1/6; 1/8 holds
+  1/1, 1/2, 1/4 and 1/8), else the one that holds most, the coarser on a tie. With fewer
+  than 16 attacks on a tick there is no suggestion and the `.osz` keeps osu!'s 4. It is
+  on by default under ".osz options": it only sets the editor's snapping. It is not
+  written into a patched `.osu`, which changes only what the reader asks for.
+- **Breaks** (W13.4), off by default. A stretch of the onset envelope at or under 5 (of
+  the song's 100) with no attack of weight 20 or more, between the first and the last
+  such attack (osu! has no break before the first object or after the last), at least
+  **5 s** long, is shrunk by osu!'s gaps (a break starts 200 ms after the object before
+  it and ends 450 ms before the next one, as osu!(lazer)'s `BreakPeriod` states them as
+  far as we know) and kept when it is still **650 ms** or longer, osu!'s minimum. The
+  5 s is our choice: osu! would take a 1.3 s pause, which a mapper maps around. Written
+  as `2,start,end` under `//Break Periods`, in every difficulty.
+- **The map set** (W13.5). The mode (osu!, taiko, catch, mania) is written as `Mode` in
+  every difficulty, and mania's key count (4K-10K) as `CircleSize`. Easy, Normal, Hard,
+  Insane and Expert are each their own `.osu` in the `.osz`, same timing and no objects,
+  with HP/CS/OD/AR rising from 2/3/2/3 to 6/4.2/9/9.4: a starting point, our choice. The
+  Timing difficulty stays in the set either way.
+- **A test map** (W13.1): "Overtone test (1/1)" or "(1/2)", a circle on every beat or
+  half beat from the first red line to the song's end (each line's ticks stop where the
+  next one starts, and a red line restarts the bar). The bar's first beat starts a combo
+  and plays a finish (a big don in taiko), a half beat a whistle (a kat). In osu! and
+  catch the bar draws a ring of radius 120 around the playfield's centre, its first beat
+  at the top; mania walks the columns. Nothing is placed inside a break or its gaps. The
+  file name writes "1/2" as "1-2"; the `Version` keeps the slash.
+- **Snapping a patched `.osu`** (W13.2), off by default: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8,
+  1/12 or 1/16. After the red lines are put in, each hit object's time goes to the
+  nearest tick of the **new** grid (the red line in force, counted from its own offset,
+  in whole ms rounded half to even like the red lines); a spinner's end and a mania
+  hold's end go to their own nearest tick, kept after the start. Only those numbers are
+  rewritten; every other byte of the row and of the file is untouched. A slider's end is
+  not in the file: osu! works it out from its length, the slider velocity and the beat,
+  so it keeps its length in beats and ends on the grid when it starts on it. The report
+  says how many moved, the largest and the median move, and how many now share a tick
+  with the object before them.
+
+Checked with Playwright in Chromium on 2026-10-28 against the e2e fake worker, at 375 px,
+EN and ES, dark and light, nothing past the edge: the chart (the fixture's attacks are
+all on the beat, so 1/1 at 100 % and 1/2 suggested), the set with mania 7K, the 1/2 test
+map, Easy and Expert, downloaded and read back (five entries; the test map `Mode: 3`,
+`CircleSize:7`, `BeatDivisor: 2`, columns walking and a finish on the bar), and a small
+`.osu` patched with a 1/4 snap (3 of 3 moved, the report shown). Not checked: any of it
+opened in osu! itself, a real song's breaks, and whether the suggested divisor matches
+what mappers pick on ranked maps (Corpus B could measure that; nobody has yet).
 
 ### The queue, moderated (W3.18, 2026-10-27)
 
@@ -1167,7 +1233,7 @@ page and action also matches its name in English and Spanish ("inicio" finds Hom
   do not scale.
 - **Colour-blind-safe palette**: the map already drew only with tokens; the one
   colour it hard-coded, the ink on a red chip, is now `--red-ink`. The palette
-  moves `--red`, `--amber` and `--lavender` on the whole site, so the map, the
+  moves `--red`, `--amber` and `--tempo` (`--lavender` before 2026-10-28) on the whole site, so the map, the
   table and the chips keep agreeing; the accent stays. The values came from a
   random search over hues near each meaning, scored by the smallest CIELAB distance
   between the map's four colours under Machado et al.'s (2009) simulation of
@@ -1799,3 +1865,271 @@ Not checked: the PostgreSQL stores (neither `check` nor the routes ran against a
 database here), a real worker's memory report (Windows has no /proc), a real osu!
 link's ranked count, a screen reader on the marks and the bell, a mark's hover with a
 real mouse (focus was used).
+
+### The studio rework: the foundation and the front page (2026-10-28)
+
+The site's look follows **docs/design.md** (the decision, its measurements and the guide
+for the pages still to be restyled). This branch laid the foundation and reworked the
+front page; the other pages took the new look in place, through their existing classes.
+
+- **Tokens** (`src/index.css`): the studio palette in both themes, `--tempo` for the
+  former `--lavender` (CSS, `draw.js`, the map image's fixed palette, every class), the
+  high-contrast and colour-blind sets re-derived, `--line-control` for a field's edge,
+  motion (`--ease-out-strong`, `--ease-in-out-strong`, `--dur-*`, `--stagger`), the type
+  scale (`text-caption` to `text-display`), `--bar-height` and `--space-section`.
+- **Fonts:** Archivo (with its width axis), Geist and Geist Mono from pinned
+  `@fontsource-variable` packages, split by `unicode-range`; the Latin Archivo the hero
+  uses is preloaded. Credited with the npm packages (`scripts/credits.mjs`).
+- **Primitives:** the old classes (`btn-primary`, `btn-ghost`, `tool-btn`, `field`,
+  `panel`, `label`, `readout`, `chip-*`) restyled in place; new ones beside them
+  (`btn-quiet`, `btn-sm`, `btn-lg`, `icon-btn`, `eyebrow`, `heading-*`, `lede`, `unit`,
+  `link`, `chip-red`, `chip-tempo`, `chip-neutral`, `panel-well`, `menu`, `menu-item`,
+  `skeleton`, `pop-in`, `sheet-in`) and `components/ui/` (`Icon`, `Waveform` and
+  `WaveRule`, `SectionHeader`, `EmptyState`, `Skeleton` and `SkeletonRows`, `Reveal`);
+  `hooks/useReducedMotion.js` shared by the strip and `Reveal`.
+- **Shell:** the bar is one 56 px sticky row; below 1024 px the places, the palette and
+  the sign-in move into a sheet (Escape closes it and returns focus, as do a click
+  outside and a followed link). The ticker is a still status line above the bar that
+  scrolls away and is not drawn on a phone. The footer sits on the page's ground under a
+  waveform rule; its external links say they open a new tab (`common.newTab`, ten
+  languages). The tray enters from its corner and moves its progress by transform. The
+  `theme-color` meta follows the site's theme switch.
+- **Front page:** the same sections, strings and requests. An asymmetric hero (text and
+  the example strip side by side from 1024 px), the live numbers as readouts, the
+  benefits as a spec sheet under a sticky heading, the steps along one ruler, the FAQ
+  and the closing call without boxes, the page ending on the waveform. Groups below the
+  fold rise in on scroll (`Reveal`), never with reduced motion.
+
+Checked: `site/web` 258/258 (2 new in `test/design.test.js`: design.md's colour table is
+`index.css`'s tokens, and every `var(--…)` the source names is declared), `site/api`
+174/174, the build and `scripts/budget.mjs` (initial JS 163.8 of 200 kB gzip). axe
+(`site/e2e/tests/a11y.spec.js`): 50/50 clean, every public page and the result page in
+dark and light. In the browser pane (web 5231, API 3061, `OVERTONE_WORKER=0`): Home and
+the shell at 1440, 1024, 900 and 375 px, dark and light, in en, es, de and ja; no
+element past the viewport at 375 px; a keyboard walk of the shell and Home (every stop
+shows the ring, none hides under the bar); the sheet's Escape returning focus; the
+places measured in all ten languages at 1024 px (383-563 px against 566-593 free).
+`/analyze` and `/terms`, untouched, read with the new type, fields and panels.
+
+Not checked: a screen reader over the sheet and the sections; Safari, Firefox and a real
+phone; the reveal's entrance while the pane was hidden (a hidden pane runs no
+`IntersectionObserver` callbacks; it was seen working with the pane drawn); a signed-in
+bar; the recent-timings list on Home (no timings were published on the dev API).
+`site/e2e/tests/site.spec.js` has two language tests that still look for the EN/ES
+toggle's "Switch to English" button, which the ten-language selector replaced before
+this branch; master's bar has no such button either, so they fail there too (read, not\nrun), and were left to the selector's owner.
+
+### Bands, spectrogram, practice, the microphone and the cover's accent (W13.6, W13.7, W13.8, W13.12, W13.24, 2026-10-28)
+
+Five additions to listening, none of them the engine: everything below is computed in the
+reader's browser from the reader's own file or microphone, and nothing is sent.
+
+- **One spectral library** (`lib/spectral.js`), pure and tested in node: a radix-2 FFT
+  run two frames at a time (one real, one imaginary, split by symmetry), a 1024-point
+  Hann STFT with a 256 hop on the song downmixed to mono and halved in rate (about
+  22 kHz, 46 ms windows, 11.6 ms frames), log-compressed spectral flux per band, and a
+  peak picker (the highest frame within ±35 ms, a fifth of the band's 99th percentile
+  over the mean of the 100 ms around it, 50 ms apart at least). The same code runs in a
+  module worker (`lib/spectral.worker.js`); `lib/song-spectra.js` is the page's side:
+  it downmixes in half-million-sample slices with a breath between (the AudioBuffer
+  lives on the main thread), transfers the result, and keeps four songs' results per
+  analysis id for the session.
+- **Bands (W13.6).** Three rows under the waveform, low at the bottom: 30-150 Hz,
+  200-4000 Hz and 5-11 kHz, where a kick, a snare's crack and cymbals usually sit. The
+  page says a band is a range, not an instrument. Each tick is as tall and as dark as
+  its attack is strong in its own band. The button **Bands** in the map's toolbar
+  toggles it; it starts **on**, since it costs the page nothing but a worker's second
+  (decided here: the roadmap leaves it open). On synthetic drums the three bands report
+  every kick, snare and hat once each, and nothing else, within 25 ms
+  (`test/spectral.test.js`).
+- **Spectrogram (W13.7).** 80 log-spaced rows from 40 Hz to 11 kHz, dB under the
+  song's loudest cell, 72 dB deep, as bytes (2.4 MB for six minutes). Painted at the
+  map's zoom into an offscreen canvas, one column a pixel, in the theme's text colour
+  with the level as its opacity (so it reads in both themes and under the colour-blind
+  palette), then scaled onto the lane; zoomed out it reads from a 4096-column copy of
+  the song, and a repaint that did not move the view is one `drawImage`. **Off** by
+  default, as asked. The choice of lanes is kept in this browser
+  (`overtone.map.layers`).
+- **Practice (W13.8)**, under the transport: the drawn loop, or the red line's section
+  under the playhead, played 3 to 8 times from 0.5× to 1× in even steps, after one bar
+  counted in at the first speed (`lib/practice.js`, tested). The player schedules each
+  repetition as its own buffer source on the audio clock, starting where the last one
+  ends, so the speed steps exactly at the seam and the clicks follow each speed. The
+  count-in goes through its own bus, heard even with the clicks off. Playing, seeking,
+  a rate or a loop ends it. Like the rate buttons, a slower speed lowers the pitch.
+- **The microphone (W13.12)** at `/tools/tap-mic` (in the sitemap and the footer):
+  6, 10 or 15 seconds, asked for only on **Listen**, with echo cancelling, noise
+  suppression and gain control off. An AudioWorklet (`lib/mic-recorder.worklet.js`,
+  emitted as a file of its own: `script-src 'self'` refuses a data: worklet) hands the
+  samples to the page, the worker reads them (`lib/mic-tempo.js`): the onset envelope,
+  its autocorrelation scored at the first four multiples of each period with a gentle
+  pull towards 120 BPM, the faster octave preferred when it explains the envelope at
+  least 80 % as well, and a confidence of the winning score over the median one. Under
+  25 % it proposes nothing; silence and fewer than four seconds are said as such; the
+  half and double are shown beside the reading. The page lists its limits. Synthetic
+  clicks at 90, 128 and 174 BPM read within 1 BPM; white noise reads as no pulse.
+- **The cover's accent (W13.24).** The cover the `.osz` already takes (`readCover`) is
+  decoded at 32 px by `createImageBitmap` (no blob: URL, so nothing for `img-src`),
+  and its dominant hue, weighted by how coloured each pixel is (greys count for
+  nothing; a mostly grey cover has no accent), washes the result page's header and the
+  public timing page's from the left, at 14 % (light) or 18 % (dark). The eyebrow takes
+  the hue with its lightness walked until it reads at 4.5:1 on both the wash and the
+  page; the wash thins until `--text`, `--muted` and `--dim` all keep 4.5:1, and an
+  accent that cannot is dropped (`lib/cover-accent.js`, tested over eight covers in
+  both themes). Off under high contrast, by the setting or the system's.
+
+Measured (`node site/web/scripts/spectral-cost.mjs`, a synthetic six-minute stereo
+44.1 kHz song, this machine): the downmix 135-218 ms (in slices on the page), the
+bands and spectrogram in one pass 1.30 s, a 1200-column view of the whole song 10-16 ms
+(once per view) and of ten seconds 1-2 ms. In the browser (Vite dev build, the pane
+hidden): 2.42 s in the worker, 2.65 s from the request to the result, and the page's
+longest gap between timers 27 ms meanwhile. A 40-second song: 0.4 s. The budget passes:
+the worker is a 2.9 kB chunk, the microphone page 2.4 kB, the result page 21.5 kB of
+its 30.
+
+Seen in the browser (web 5244, API 3074, `OVERTONE_WORKER=0`, a 40 s FLAC of synthetic
+drums with a PNG cover, its job finished by hand through `/api/internal`): the bands
+computed and drawn, the spectrogram on, both painted in dark and light (counted from
+the canvas's pixels), the header washed in the cover's purple, practice counting in
+and then playing time 1 of 4 at 0.50×, `/tools/tap-mic` in English and Spanish, and the
+worker reading 10 s of synthetic clicks at 128 BPM as 127.84 with 99 % confidence.
+**Not seen:** any of it on screen (the shared pane was hidden, so no screenshot), the
+map at 375 px with the new lanes (the resize was not delivered to a hidden pane), a
+real microphone and a real song through a speaker, a phone's timing, Safari and
+Firefox, and a screen reader.
+
+### The timing calculator, DAW tempo maps and four more games (W13.9-W13.11, 2026-10-28)
+
+**The calculator** (`/tools/calculator`, `pages/Calculator.jsx`, the arithmetic in
+`lib/calc.js`): BPM ↔ ms per beat (two linked fields), ms ↔ ticks of a beat divisor
+(1/1 to 1/16, with the nearest whole tick and how far past it), where a second red line
+falls on the first one's grid (gap in ms, beats and bars, nearest beat, how far off,
+and the first grid's earliest offset), drift between two BPMs over some bars and the
+BPMs that stay within a drift you accept (so "how precise must this BPM be"), and the
+BPM from two timestamps and a beat count. Every result is live, fixed decimals (3 for
+ms, 6 for BPM) and a button that copies its number. Keyboard first: the first field
+has the focus, the arrows step the field in hand (Shift ×10, Alt ×0.1), a comma is a
+decimal point. The result page links to it with the first red line's BPM and offset
+filled in (`?bpm=&offset=`, timing only, never the file name); the palette and the
+footer's Learn column list it; it is in the sitemap. Nothing is sent or kept.
+
+**DAW tempo maps** (`lib/daw-exports.js`, `components/result/DawExports.jsx`), in
+"More downloads" after the games, built from the lines as exported:
+
+- A Standard MIDI File, format 1 with one conductor track, 960 PPQ: Set Tempo
+  (whole µs per quarter) and Time Signature (n/4) at each red line. Tick 0 is the
+  audio's start, so a lead-in bar reaches the first line's first downbeat (the Clone
+  Hero rule). A change between ticks gets the nearest tick, and the tempo before it is
+  fitted only when keeping it would land the change more than 0.25 ms off; each span
+  starts where the file put the last change, so nothing accumulates. The tests parse
+  the file back by the spec and time every line through its tempo map: under 0.5 ms
+  on 40 changes off the grid; the page prints the worst.
+- Reaper: a small `.rpp` project rather than a list, chosen because it is the one text
+  route that carries tempo (the region/marker manager's CSV import has no tempo): the
+  master tempo envelope (`PT`, square, time signatures packed as num + 65536 × den), a
+  marker per red line, and the song as an item on a track when its type is one Reaper
+  names (mp3, ogg, wav, flac, opus).
+- Ableton Live: no file. Live has no tempo-map text format, so the page sends its users
+  to the MIDI file and says how, rather than inventing one.
+
+**Four more games** (`lib/game-formats.js`; its comment holds each format's rules and
+where we are least sure): Beat Saber v3 `bpmEvents` in `ExpertStandard.dat` (beats
+accumulated; beat 0 the audio's start, so a lead-in beat; the page names the BPM for
+Info.dat; v3 chosen because v2 has no official BPM event of its own), A Dance of Fire
+and Ice `.adofai` (a straight path, a tile a beat, `SetSpeed` by BPM; a span that is not
+whole beats ends on one odd tile at its own speed, rather than an angled tile whose
+direction we could get backwards untested), Friday Night Funkin' legacy chart JSON
+(sections of 16 steps with `changeBPM`, `lengthInSteps` and Psych's `sectionBeats`; a
+lead-in and odd sections of whole steps), Rhythm Doctor `.rdlevel` (`PlaySong` with BPM
+and offset, `SetBeatsPerMinute`, `SetCrotchetsPerBar` where a meter starts a bar). Every
+position is worked from where the file puts the change before it, so roundings never
+accumulate. The page counts the odd tiles and sections and the meters Rhythm Doctor
+cannot place. Tests: `game-formats-more.test.js`, against hand-written files in
+`test/fixtures/games` and read back by each game's own arithmetic.
+
+Checked in the browser pane (5243/3073, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the calculator at 375 px in
+ES and EN, dark and light, nothing past the edge, the link's BPM and offset filled in,
+Shift+↑ and Alt+↓ stepping a field (174.3 → 184.2); the result page's "More downloads"
+at 375 px with the eight game buttons, the two DAW buttons and their notes; the six new
+files caught in the page and read (the MIDI header, the Reaper envelope with the 3/4
+packed as 262147, the JSON files). Not checked: any file opened in its game or DAW
+(none was run), the clipboard copy in a real click, Safari and Firefox.
+
+### The timing editor and the offset lab (W7, W12.17, 2026-10-28)
+
+The result page's tempo map has an **Edit** mode (the ✎ button in its header, or E).
+The desktop app's Timing section is the reference (tags `v3-desktop-app`,
+`v3-desktop-full`): its pure editing functions are still in `python/overtone.py` and
+are ported to `site/web/src/lib/editor.js`.
+
+- **What edits.** A red line drags on the map, snapped to the nearest attack or beat
+  within 8 px (Alt: free), with its landing time drawn as it moves; a double-click adds
+  one with the BPM and bar of the line before it. Under the map, the selected line's
+  time and BPM are typed and its bar (1-16 beats) picked; it moves by ∓10 / ∓1 / +1 /
+  +10 ms; a line is added at the playhead or deleted (never the first); a section
+  splits at the playhead, merges with the next, or doubles or halves. Split and merge
+  refit the BPM to the section's attacks as the desktop did (`_refit_section` over
+  `_grade_span`): under 8 attacks, or a grid explaining under 40 % of their weight,
+  keeps the BPM and says why.
+- **Keys** while editing: ← → move the selected line 1 ms (Shift 10 ms), N adds at the
+  playhead, Delete or Backspace deletes; Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and
+  redo anywhere on the page outside a field, once there is a history. The map's own ← →
+  (a beat) give way while a line is selected. Every action is also a button, so all of
+  it is reachable by Tab; `?` lists the editor's keys.
+- **History.** Every edit is a named step ("Red line 3 moved +10 ms"); the list is in
+  view, the current step marked (`aria-current`), and any step can be gone back to; 200
+  at most. Each edit, undo, redo and refusal (`editor.errors.*`) is spoken through a
+  polite live region. The selected line carries an accent focus band the full height of
+  the map, and edited lines a ✎ on their chip and in the table.
+- **The edits are the reader's.** `adjustment` gains `edits`: the edited lines before
+  the ×2 / ÷2 and the nudge (`toBase`), so either still applies after an edit.
+  `adjustLines(result, adjustment)` reads them, so the clicks, the A/B (whose engine
+  side stays the engine's), the copy, the copied rows, the .osz, the CSV, the summary,
+  the other games' formats, the image and the click track follow, exactly as the nudge
+  does. The `[TimingPoints]` comment reads `// Edited on the Overtone site (edited: 3
+  red lines, x2): check it by ear`; the summary says `Edited`. The JSON download stays
+  the engine's result. Edits that come back to the engine's lines are no edit.
+- **Kept** in this browser per analysis (`overtone.edits.<id>`, restored on reload as a
+  step that undoes to the engine's reading), and, for the owner, as a **version**
+  (W12.21): `POST /analyses/:id/versions` takes `lines`, up to 512 packed rows
+  `[timeMs, beatMs, meter, meterKnown, source]`, checked line by line by
+  `version.service.js` `parseLines` (numbers only, BPM 1-5000, meter 1-16, sorted at
+  least 1 ms apart). The table gains `lines jsonb` and `lines_key` (their SHA-256), so
+  the same edit saved twice is one version and an edit can be saved with no factor or
+  nudge; the old check and uniqueness on factor and nudge are dropped and replaced. That
+  route's JSON body may be 48 kB (the rest of the API keeps 16 kB). Applying a version
+  puts its edits in force as one undoable step. A visitor on a published timing can
+  edit too; it stays in their browser.
+- **Refused on purpose.** Two red lines under 1 ms apart (osu! reads them as one), more
+  than 512 lines, a BPM outside 1-5000, a rescale outside 30-600 (the desktop's bound).
+  The "compare with adjusted" link is hidden for an edited timing: its lines do not fit
+  in a link.
+- **Held to the Python.** `test/fixtures/editor-golden.py` runs the desktop's helpers on
+  16 fixed cases (splits that fit, one read at 1/3, one with too few attacks and a weak
+  one, refused splits, a merge, the plain edits) and writes `editor-golden.json`;
+  `test/editor.test.js` matches every line to 1e-6 ms and BPM and every share to 1e-9.
+  Two differences, stated in `editor.js`: the site's lines are already where the engine
+  shows them (the worker writes them after `snap_timing_points`), and above 5000 attacks
+  in one span the refit keeps the strongest with ties broken by time, where numpy's
+  unstable sort breaks them its own way.
+
+**The offset lab** (`components/result/OffsetLab.jsx`, `lib/offset-lab.js`), inside the
+editor, ported from the desktop's: the MP3's own gapless numbers (the LAME tag's encoder
+delay and padding, read in the browser from the first 8 kB of the reader's file), and the
+blind test: each of ±10, ±20 and ±30 ms against none, three times, shuffled; each trial
+plays the same 6 s twice (the reader's loop, else from the first red line) with the clicks
+shifted by a hidden amount (`Player.setClickShift`, never saved or exported), and the
+reader picks the one in time. The report is a win rate per shift with a Wilson 95 %
+interval; the preferred shift (best rate above one half, the smaller on a tie) can be
+applied as the page's nudge. It asks for the song, 100 % speed and the clicks on. The
+desktop's other half, the first attack through Python's and Rust's decoders side by side,
+needs both engines and the file on one machine and is not ported.
+
+Seen in the browser (web 5241, API 3071 with `site/e2e/serve-api.mjs`'s fake worker): an
+uploaded WAV's result in Spanish at desktop width and at 375 px (no horizontal scroll);
+nudges by key, undo, merge, split at the playhead, a double-click add, the spoken
+messages, saving the edit as a version and its diff, and the edits restored after a
+reload. Not seen: a drag with a real mouse (the pointer path was driven by script), the
+blind test played through, the light theme properly (only toggled by script), a screen
+reader, Safari and Firefox.

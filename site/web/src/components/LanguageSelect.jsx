@@ -101,7 +101,7 @@ export default function LanguageSelect({ className = '' }) {
         aria-controls={open ? `${id}-list` : undefined}
         aria-label={t('nav.language', { name: current.name })}
         title={t('nav.changeLanguage')}
-        className="flex h-8 items-center gap-1.5 rounded-control px-1.5 font-display text-caption font-semibold tracking-wider text-muted transition hover:bg-surface-3 hover:text-text"
+        className="icon-btn gap-1.5 px-2 font-mono text-caption font-medium tracking-wide"
       >
         <Flag code={current.flag} size={18} />
         <span>{short(current.code)}</span>
@@ -115,7 +115,7 @@ export default function LanguageSelect({ className = '' }) {
           aria-label={t('nav.changeLanguage')}
           aria-activedescendant={`${id}-${active}`}
           onKeyDown={onListKey}
-          className="rise fixed right-4 top-14 z-50 sm:absolute sm:right-0 sm:top-full sm:mt-2 max-h-[min(26rem,calc(100dvh-5rem))] w-64 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-panel border border-line-strong bg-surface p-1.5 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.6)] outline-none"
+          className="menu pop-in fixed right-4 top-14 sm:absolute sm:right-0 sm:top-full sm:mt-2 max-h-[min(26rem,calc(100dvh-5rem))] w-64 max-w-[calc(100vw-2rem)] overflow-y-auto outline-none"
         >
           {LANGS.map((lang, i) => {
             const selected = lang.code === current.code
@@ -128,12 +128,13 @@ export default function LanguageSelect({ className = '' }) {
                 aria-selected={selected}
                 onClick={() => choose(lang.code)}
                 onMouseMove={() => active !== i && setActive(i)}
-                className={`flex cursor-pointer items-center gap-2.5 rounded-control px-3 py-2 text-label transition ${i === active ? 'bg-surface-3' : ''} ${selected ? 'font-semibold text-accent' : i === active ? 'text-text' : 'text-muted'}`}
+                data-active={i === active}
+                className={`menu-item cursor-pointer ${selected ? 'font-semibold text-accent' : ''}`}
               >
                 <Flag code={lang.flag} size={20} />
                 <span className="min-w-0 flex-1 truncate">{lang.name}</span>
                 <span className="readout text-caption text-dim">{lang.code.toUpperCase()}</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className={selected ? '' : 'invisible'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className={selected ? '' : 'invisible'}>
                   <path d="M5 12l5 5L20 7" />
                 </svg>
               </li>

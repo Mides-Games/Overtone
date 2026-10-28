@@ -16,8 +16,8 @@ import { formatBpm, formatRuler } from './timing.js'
 
 /** The dark theme's tokens (index.css), for an image made away from the page. */
 export const DARK = Object.freeze({
-  bg: '#0d0b12', lane: '#19161f', line: '#26222f', lineStrong: '#353044', text: '#efecf5', dim: '#8f88a1',
-  accent: '#3fd0dc', red: '#ff5d6c', amber: '#f5b44a', lavender: '#a996ff', grid: 'rgba(255, 255, 255, 0.06)',
+  bg: '#0a0b0d', lane: '#16191d', line: '#22262c', lineStrong: '#2f343b', text: '#eceef1', dim: '#848a93',
+  accent: '#3fd0dc', red: '#ff5d6c', amber: '#f5b44a', tempo: '#8fd16a', grid: 'rgba(255, 255, 255, 0.055)',
 })
 
 const esc = (text) =>
@@ -86,7 +86,7 @@ export function mapSvg({ lines, sections = [], beats = null, durationS, factor =
   const bb = beats?.bpm ?? []
   if (bt.length > 1 && bb.length === bt.length) {
     const points = decimate(bt, bb, compact ? 400 : 1500)
-    out.push(`<polyline fill="none" stroke="${c.lavender}" stroke-width="1.4" stroke-linejoin="round" points="${points.map(([t, b]) => `${n(X(t / 1000))},${n(Y(b * factor))}`).join(' ')}"/>`)
+    out.push(`<polyline fill="none" stroke="${c.tempo}" stroke-width="1.4" stroke-linejoin="round" points="${points.map(([t, b]) => `${n(X(t / 1000))},${n(Y(b * factor))}`).join(' ')}"/>`)
   }
 
   // Each red line's BPM as a step over its section, its confidence along the foot.

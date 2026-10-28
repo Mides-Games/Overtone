@@ -100,7 +100,7 @@ export default function AnalysisResult() {
 
   return (
     <div className="space-y-8">
-      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
+      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${ACCENT_HEADER}`} style={accentWash(accent)}>
         <div className="min-w-0 flex-1 space-y-3">
           <p className="eyebrow" style={accent ? { color: accent.ink } : undefined}>
             {t('result.eyebrow')}
@@ -160,10 +160,13 @@ export function ResultSkeleton() {
 
 /**
  * The header's tint from the cover (W13.24): a wash of its colour fading to
- * the page, laid out so the text does not move when it arrives.
+ * the page. The box is there with or without a cover, so the text does not
+ * move when the wash arrives. No negative bottom margin: Tailwind 4's space-y
+ * sets margin-block-end at zero specificity, so a -mb won and slid the wash
+ * over the card below.
  * hooks/useCoverAccent.js has already checked every text on it for AA.
  */
-export const ACCENT_HEADER = '-mx-3 rounded-panel px-3 py-3 -my-3 sm:-mx-4 sm:px-4'
+export const ACCENT_HEADER = '-mx-3 -mt-3 rounded-panel px-3 py-3 sm:-mx-4 sm:px-4'
 export const accentWash = (accent) => (accent ? { backgroundImage: `linear-gradient(100deg, ${accent.wash}, transparent 85%)` } : undefined)
 
 /**

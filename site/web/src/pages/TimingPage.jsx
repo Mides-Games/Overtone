@@ -108,7 +108,7 @@ export default function TimingPage() {
 
   return (
     <div className="space-y-8">
-      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
+      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${ACCENT_HEADER}`} style={accentWash(accent)}>
         <div className="min-w-0 flex-1 space-y-3">
           <p className="eyebrow" style={accent ? { color: accent.ink } : undefined}>
             {t('timings.page.eyebrow')}

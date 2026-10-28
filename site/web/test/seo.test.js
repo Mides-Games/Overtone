@@ -12,8 +12,12 @@ const app = read('../src/App.jsx')
 const sitemap = read('../public/sitemap.xml')
 const robots = read('../public/robots.txt')
 
-/** Pages nobody should land on from a search: a result is its uploader's, sign-in is a step. */
-const PRIVATE = ['analyze/:id', 'history', 't/:id', 'login', 'login/callback', 'profile', '*']
+/**
+ * Pages nobody should land on from a search: a result is its uploader's, sign-in is a step.
+ * And the pages with an id in their path (a timing, a timer's profile, a
+ * collection): public, but no fixed URL a static sitemap could list.
+ */
+const PRIVATE = ['analyze/:id', 'history', 't/:id', 'u/:username', 'c/:id', 'login', 'login/callback', 'profile', '*']
 
 const routes = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
 const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+(\/[^<]*)<\/loc>/g)].map((m) => m[1])

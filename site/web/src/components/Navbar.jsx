@@ -21,6 +21,7 @@ const LINKS = [
   { to: '/queue', key: 'nav.queue' },
   { to: '/community', key: 'community.nav' },
   { to: '/recent', key: 'timings.nav.recent' },
+  { to: '/timers', key: 'social.nav.timers' },
   { to: '/profile', key: 'nav.profile' },
 ]
 

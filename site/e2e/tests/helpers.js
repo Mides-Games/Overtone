@@ -17,6 +17,8 @@ export const PUBLIC_PAGES = [
   '/faq',
   '/glossary',
   '/settings',
+  '/timers',
+  '/developers',
   '/login',
   '/status',
   '/terms',

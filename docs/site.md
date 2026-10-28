@@ -1703,3 +1703,61 @@ page's demo, which clips in every language. Spot checks of ja and ru at 375 px. 
 all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
+
+### The timing calculator, DAW tempo maps and four more games (W13.9-W13.11, 2026-10-28)
+
+**The calculator** (`/tools/calculator`, `pages/Calculator.jsx`, the arithmetic in
+`lib/calc.js`): BPM ↔ ms per beat (two linked fields), ms ↔ ticks of a beat divisor
+(1/1 to 1/16, with the nearest whole tick and how far past it), where a second red line
+falls on the first one's grid (gap in ms, beats and bars, nearest beat, how far off,
+and the first grid's earliest offset), drift between two BPMs over some bars and the
+BPMs that stay within a drift you accept (so "how precise must this BPM be"), and the
+BPM from two timestamps and a beat count. Every result is live, fixed decimals (3 for
+ms, 6 for BPM) and a button that copies its number. Keyboard first: the first field
+has the focus, the arrows step the field in hand (Shift ×10, Alt ×0.1), a comma is a
+decimal point. The result page links to it with the first red line's BPM and offset
+filled in (`?bpm=&offset=`, timing only, never the file name); the palette and the
+footer's Learn column list it; it is in the sitemap. Nothing is sent or kept.
+
+**DAW tempo maps** (`lib/daw-exports.js`, `components/result/DawExports.jsx`), in
+"More downloads" after the games, built from the lines as exported:
+
+- A Standard MIDI File, format 1 with one conductor track, 960 PPQ: Set Tempo
+  (whole µs per quarter) and Time Signature (n/4) at each red line. Tick 0 is the
+  audio's start, so a lead-in bar reaches the first line's first downbeat (the Clone
+  Hero rule). A change between ticks gets the nearest tick, and the tempo before it is
+  fitted only when keeping it would land the change more than 0.25 ms off; each span
+  starts where the file put the last change, so nothing accumulates. The tests parse
+  the file back by the spec and time every line through its tempo map: under 0.5 ms
+  on 40 changes off the grid; the page prints the worst.
+- Reaper: a small `.rpp` project rather than a list, chosen because it is the one text
+  route that carries tempo (the region/marker manager's CSV import has no tempo): the
+  master tempo envelope (`PT`, square, time signatures packed as num + 65536 × den), a
+  marker per red line, and the song as an item on a track when its type is one Reaper
+  names (mp3, ogg, wav, flac, opus).
+- Ableton Live: no file. Live has no tempo-map text format, so the page sends its users
+  to the MIDI file and says how, rather than inventing one.
+
+**Four more games** (`lib/game-formats.js`; its comment holds each format's rules and
+where we are least sure): Beat Saber v3 `bpmEvents` in `ExpertStandard.dat` (beats
+accumulated; beat 0 the audio's start, so a lead-in beat; the page names the BPM for
+Info.dat; v3 chosen because v2 has no official BPM event of its own), A Dance of Fire
+and Ice `.adofai` (a straight path, a tile a beat, `SetSpeed` by BPM; a span that is not
+whole beats ends on one odd tile at its own speed, rather than an angled tile whose
+direction we could get backwards untested), Friday Night Funkin' legacy chart JSON
+(sections of 16 steps with `changeBPM`, `lengthInSteps` and Psych's `sectionBeats`; a
+lead-in and odd sections of whole steps), Rhythm Doctor `.rdlevel` (`PlaySong` with BPM
+and offset, `SetBeatsPerMinute`, `SetCrotchetsPerBar` where a meter starts a bar). Every
+position is worked from where the file puts the change before it, so roundings never
+accumulate. The page counts the odd tiles and sections and the meters Rhythm Doctor
+cannot place. Tests: `game-formats-more.test.js`, against hand-written files in
+`test/fixtures/games` and read back by each game's own arithmetic.
+
+Checked in the browser pane (5243/3073, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the calculator at 375 px in
+ES and EN, dark and light, nothing past the edge, the link's BPM and offset filled in,
+Shift+↑ and Alt+↓ stepping a field (174.3 → 184.2); the result page's "More downloads"
+at 375 px with the eight game buttons, the two DAW buttons and their notes; the six new
+files caught in the page and read (the MIDI header, the Reaper envelope with the 3/4
+packed as 262147, the JSON files). Not checked: any file opened in its game or DAW
+(none was run), the clipboard copy in a real click, Safari and Firefox.

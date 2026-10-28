@@ -20,6 +20,36 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
+
+### Changed
+
+- `/tools/calculator` (W13.9): BPM ↔ ms, ms ↔ ticks, the gap between two red lines,
+  drift and the BPMs within an accepted drift, and the BPM from two timestamps. Keyboard
+  first; the result page opens it with its first red line filled in.
+- "More downloads" gains a MIDI tempo map (type 1, 960 PPQ) and a Reaper project (W13.10).
+  Ableton gets no file of its own: Live has no tempo-map text format, so the page sends
+  its users to the MIDI file and says so.
+- Four more games' timing files (W13.11): Beat Saber v3 `bpmEvents`, A Dance of Fire and
+  Ice `.adofai`, Friday Night Funkin' legacy chart JSON, Rhythm Doctor `.rdlevel`.
+
+### Measured
+
+- MIDI read back by an independent parser in the tests: every red line within 0.5 ms of
+  its time on 40 changes off the grid (the worst is printed on the page; 0.08 ms on the
+  browser check's two-line result). The games' files read back by each game's arithmetic,
+  all under 0.5 ms. `site/web` tests 264/264 (240 before), budget ok (AnalysisResult
+  24.6 of 30 kB, Calculator 2.5 kB). No file was opened in a game or a DAW.
+
+### Rejected / tried and dropped
+
+- ADOFAI changes off the beat by an angled tile (a fractional beat): exact, but which way
+  an angle counts is easy to get backwards untested, and a wrong guess would be silent.
+  An odd tile with its own speed is visible in the editor and right either way.
+- Fitting the whole span's BPM so a change lands on a whole tile or section (as Clone Hero
+  does between ticks): over a long span it moves the grid by up to half a beat against the
+  music before the change; the odd unit keeps the grid exact everywhere else.
+
 ## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
 
 ### Fixed

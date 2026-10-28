@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "본문으로 건너뛰기",
     "loading": "불러오는 중…",
-    "byMides": "Mides Projects의 도구"
+    "byMides": "Mides Projects의 도구",
+    "newTab": "(새 탭에서 열림)"
   },
   "nav": {
     "home": "홈",

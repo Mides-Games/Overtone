@@ -15,8 +15,9 @@
  *   - site/web and site/api package.json: the direct npm packages, and every
  *     package the runtime ones pull in, walked through node_modules, each
  *     with the licence its own package.json declares;
- *   - site/web/src/index.css: any @font-face (there is none today: the site
- *     uses the visitor's system fonts and downloads no font).
+ *   - site/web/src/index.css: any @font-face written there by hand (there is
+ *     none today: the three faces come from @fontsource-variable packages,
+ *     which are credited with the other npm packages, licence and all).
  *
  * A licence the metadata does not state comes out as "unknown", never a
  * guess. A missing virtualenv or node_modules stops the script instead of

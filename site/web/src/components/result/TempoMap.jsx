@@ -697,7 +697,7 @@ function Legend({ hints, swing, subdivision, other = null, bands = false, spectr
   const { t } = useTranslation()
   const items = [
     ['var(--red)', t('tempo.legend.lines')],
-    ['var(--lavender)', t('tempo.legend.tempo')],
+    ['var(--tempo)', t('tempo.legend.tempo')],
     ['var(--accent)', t('tempo.legend.onsets')],
     ['var(--line-strong)', t('tempo.legend.grid')],
     ...(subdivision > 1 ? [['var(--line)', t('listening.legendSubs', { n: subdivision })]] : []),
@@ -714,7 +714,7 @@ function Legend({ hints, swing, subdivision, other = null, bands = false, spectr
         </p>
       ))}
       {swing.map((s) => (
-        <p key={`s${s.start_ms}`} className="text-caption text-lavender">
+        <p key={`s${s.start_ms}`} className="text-caption text-tempo">
           {t('tempo.swing', { from: formatClock(s.start_ms), to: formatClock(s.end_ms), snap: s.snap ?? '–', late: s.late_ms ?? '–' })}
         </p>
       ))}

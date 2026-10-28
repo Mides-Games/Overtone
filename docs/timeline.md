@@ -20,6 +20,70 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The studio look: foundation and front page
+
+### Changed
+
+- The site follows a written design direction, `docs/design.md`: a studio monitor, not a
+  dashboard. Neutral cool ink instead of violet graphite, the logo's cyan as the one
+  accent, colour only as signal, and the waveform with red lines as the signature.
+- The tempo colour is green and its token `--tempo` (it was `--lavender`), everywhere the
+  site paints it: the map, the table, the chips, the stats, the map image.
+- Type is Archivo (wide, for headings), Geist (text) and Geist Mono (every number),
+  self-hosted from pinned packages; it was the visitor's system faces.
+- The old classes (`btn-primary`, `btn-ghost`, `tool-btn`, `field`, `panel`, `label`,
+  `readout`, `chip-*`) take the new look in place, so every page changed without its
+  markup; the new primitives and `components/ui/` are there for the pages' own rework.
+- The bar is one slim row; below 1024 px a sheet menu holds the places, the palette and
+  the sign-in. The ticker stands still and scrolls away. The footer and the front page
+  lose their boxes: sections are separated by space and hairlines.
+- The front page: an asymmetric hero with the example strip as the product shot, the
+  benefits as a spec sheet, the steps on one ruler, entrances staggered on scroll.
+
+### Fixed
+
+- The focus ring set `border-radius: 4px` on whatever it focused, squaring round
+  controls (the avatar) while focused; the outline now follows each element's rounding.
+- The tray's progress bar animated its width (a layout change every frame); it moves by
+  transform now.
+
+### Hardening
+
+- `test/design.test.js`: the design file's colour table must equal `index.css`'s tokens,
+  and every `var(--…)` the source names must be declared (a stale `--lavender` would fail).
+- Text fields have an edge at 3:1 on their panels (`--line-control`, WCAG 1.4.11); the
+  light signal colours read 4.6:1 or more on their own chip tints, red and tempo included.
+- External links in the footer and on the front page say, to a screen reader, that they
+  open a new tab; the `theme-color` meta follows the site's theme switch.
+
+### Measured
+
+- Contrast from the tokens: every text token 4.65:1 or more on every surface in dark and
+  4.76 in light (dim on the wells the lowest); high contrast 7.18 and 7.28. Colour-blind
+  separation: default light 3.7, dark 11.5 ΔE; colour-blind palette 32.6 and 42.2.
+- axe-core on every public page, the palette, a result page and the signed-in pages, dark
+  and light: 50/50 clean.
+- Fonts: 142,632 bytes of Latin woff2 for the three faces (Archivo 90,104, Geist 29,400,
+  Geist Mono 23,128), loaded by `unicode-range` as text needs them. Build against master:
+  CSS 52.7 → 66.1 kB (10.1 → 13.0 kB gzip), entry JS 390.7 → 397.9 kB (125.2 → 127.9
+  kB gzip); initial JS 163.8 kB gzip of the 200 kB budget.
+- At 1024 px the seven places need 383-563 px across the ten languages, against 566-593
+  free; below 1024 they do not fit, hence the sheet there.
+- site/web 258/258 (2 new), site/api 174/174; the build is clean.
+
+### Rejected / tried and dropped
+
+- The draft's 7/5 hero split: the strip's four readouts were cramped and it read small.
+- The sheet below 768 px as drafted: between 768 and 1023 px the places would have
+  scrolled inside the bar with nothing to show it.
+- A ticker that keeps scrolling: the only perpetual motion the rules allow is the hero's
+  playhead.
+- Holding entering content at opacity 0 by CSS alone: a page without its script, a
+  thumbnail or a print would show nothing. `Reveal` holds back only what starts below the
+  fold, and only once its script runs.
+
+---
+
 ## Unreleased — 2026-10-28 · The timing editor in the browser
 
 ### Changed

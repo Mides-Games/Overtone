@@ -12,7 +12,7 @@ export const STATES = ['open', 'review', 'planned', 'progress', 'done', 'rejecte
 export const STATE_TONE = {
   open: 'chip border-line-strong text-muted',
   review: 'chip-amber',
-  planned: 'chip border-lavender/40 bg-lavender/10 text-lavender',
+  planned: 'chip border-tempo/40 bg-tempo/10 text-tempo',
   progress: 'chip-accent',
   done: 'chip-accent',
   rejected: 'chip border-red/40 bg-red/10 text-red',

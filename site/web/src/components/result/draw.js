@@ -39,14 +39,14 @@ export function readPalette() {
     // The ink on a red chip: a token too, so a palette that moves the red can move its ink.
     redInk: v('--red-ink') || (dark ? '#22070b' : '#ffffff'),
     amber: v('--amber'),
-    lavender: v('--lavender'),
+    tempo: v('--tempo'),
     compare: v('--compare'),
     onset: v('--onset'),
     grid: v('--grid'),
   }
 }
 
-export const LEVEL_TONE = { high: 'accent', medium: 'lavender', check: 'amber' }
+export const LEVEL_TONE = { high: 'accent', medium: 'tempo', check: 'amber' }
 
 /**
  * Lane positions for a canvas `width` CSS pixels wide. `extra` adds the
@@ -271,13 +271,13 @@ export function paintMap(ctx, L, view, d, c) {
     if (started) {
       ctx.lineWidth = 1.6
       ctx.lineJoin = 'round'
-      ctx.strokeStyle = c.lavender
+      ctx.strokeStyle = c.tempo
       ctx.stroke()
       ctx.lineTo(X(bt[to - 1] / 1000), L.tempoBottom)
       ctx.lineTo(X(bt[from] / 1000), L.tempoBottom)
       ctx.closePath()
       ctx.globalAlpha = 0.1
-      ctx.fillStyle = c.lavender
+      ctx.fillStyle = c.tempo
       ctx.fill()
       ctx.globalAlpha = 1
     }
@@ -424,7 +424,7 @@ export function paintMap(ctx, L, view, d, c) {
     const a = Math.max(X(s.start_ms / 1000), x0)
     const b = Math.min(X(s.end_ms / 1000), x1)
     if (b <= a) continue
-    ctx.fillStyle = c.lavender
+    ctx.fillStyle = c.tempo
     ctx.fillRect(a, L.waveBottom - 3, b - a, 2)
     if (b - a > 70) ctx.fillText(`${s.feel}${s.snap ? ` ${s.snap}` : ''}`, a + 4, L.waveBottom - 6)
   }

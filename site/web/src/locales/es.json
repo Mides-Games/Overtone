@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "Saltar al contenido",
     "loading": "Cargando…",
-    "byMides": "Una herramienta de Mides Projects"
+    "byMides": "Una herramienta de Mides Projects",
+    "newTab": "(se abre en una pestaña nueva)"
   },
   "nav": {
     "home": "Inicio",

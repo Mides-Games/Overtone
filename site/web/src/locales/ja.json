@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "本文へスキップ",
     "loading": "読み込み中…",
-    "byMides": "Mides Projects のツール"
+    "byMides": "Mides Projects のツール",
+    "newTab": "（新しいタブで開きます）"
   },
   "nav": {
     "home": "ホーム",

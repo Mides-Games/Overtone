@@ -11,6 +11,7 @@ import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.j
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
 import BatchTools from '../components/BatchTools.jsx'
+import { sharedState, takeSharedAudio } from '../lib/pwa.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -74,6 +75,21 @@ export default function Analyze() {
       Promise.all([durationOf(item.file), readTags(item.file)]).then(([seconds, tags]) => update(item.key, { seconds, tags }))
     }
   }
+
+  // W12.23: an audio file shared to the installed app arrives here through
+  // the service worker (?shared=1): it goes on the list like a picked one,
+  // and the query goes, so a reload does not look for it again.
+  const [shared, setShared] = useState(null) // null | 'added' | 'none'
+  useEffect(() => {
+    const kind = sharedState(window.location.search)
+    if (!kind) return
+    navigate('/analyze', { replace: true })
+    if (kind === 'none') return setShared('none')
+    takeSharedAudio().then((file) => {
+      if (file) pickAudio([file])
+      setShared(file ? 'added' : 'none')
+    })
+  }, [])
 
   function problemWith({ file, seconds }) {
     if (!EXTENSIONS.includes(extensionOf(file))) return t('analyze.errors.UNSUPPORTED_FORMAT')
@@ -171,6 +187,11 @@ export default function Analyze() {
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="min-w-0 space-y-6">
           <form onSubmit={submit} className="panel min-w-0 space-y-5 p-5 sm:p-6">
+            {shared && (
+              <p role="status" className={`rounded-control border px-3 py-2 text-label ${shared === 'added' ? 'border-accent/40 bg-accent/5' : 'border-amber/40 bg-amber/10'}`}>
+                {shared === 'added' ? t('platform.pwa.sharedAdded') : t('platform.pwa.sharedNone')}
+              </p>
+            )}
             <label
               htmlFor="audio"
               onDragOver={(e) => {

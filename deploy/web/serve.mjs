@@ -46,6 +46,10 @@
  * frame-ancestors * and it has no X-Frame-Options. Every other response keeps
  * frame-ancestors 'none' and X-Frame-Options: DENY.
  *
+ * /sw.js, the service worker (W12.23), is served no-cache with
+ * Service-Worker-Allowed: /, and a POST to /share-target that no worker
+ * answered is a 303 to /analyze, its body never read.
+ *
  * PROXY_SECRET is the same value as the API's: every request forwarded to the
  * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
  * without it, because on the panel the API's own port is public too. A
@@ -455,18 +459,35 @@ async function serve(req, res) {
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
+  // W12.23: the service worker is checked on every visit, never kept stale by
+  // an HTTP cache, and its scope is the whole site (it sits at the root, so
+  // the header only says so outright).
+  const worker = rel === '/sw.js';
   res.writeHead(200, {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
-    'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'cache-control': immutable ? 'public, max-age=31536000, immutable' : worker ? 'no-cache, max-age=0' : 'no-cache',
+    ...(worker ? { 'service-worker-allowed': '/' } : {}),
     ...(await securityHeaders(EMBED_PAGE.test(rel))),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
 }
 
+// W12.23: the installed app's share target posts the shared audio to
+// /share-target, and the service worker answers it in the browser. When no
+// worker does (it was cleared, or not installed yet), the post reaches here:
+// the file is not read, and the visitor lands on the Analyze page, told to
+// pick it there.
+function shareWithoutWorker(req, res) {
+  req.resume();
+  res.writeHead(303, { location: '/analyze?shared=unavailable', connection: 'close', 'cache-control': 'no-store', 'content-length': 0 });
+  res.end();
+}
+
 const server = http.createServer((req, res) => {
   if (req.url === '/api' || req.url.startsWith('/api/')) return proxy(req, res);
+  if (req.method === 'POST' && /^\/share-target\/?(\?.*)?$/.test(req.url)) return shareWithoutWorker(req, res);
   serve(req, res).catch((err) => {
     console.error(`overtone-web: ${req.url}: ${err.message}`);
     if (!res.headersSent) res.writeHead(500);

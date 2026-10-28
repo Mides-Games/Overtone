@@ -270,6 +270,43 @@ test('only an embed card may be framed, by anyone; every other page by no one', 
   assert.equal(strip(embed.headers), strip((await get(port, '/')).headers));
 });
 
+/** POST `path` with `body` on `port`; resolves to `{ status, headers }`. */
+const post = (port, path, body) =>
+  new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': 'multipart/form-data; boundary=x' } }, (res) => {
+      res.resume();
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+
+test('the service worker is served fresh at the root, and a share no worker answered lands on Analyze', async () => {
+  const root = webRoot();
+  const pub = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'public');
+  await copyFile(join(pub, 'sw.js'), join(root, 'sw.js'));
+  await copyFile(join(pub, 'manifest.webmanifest'), join(root, 'manifest.webmanifest'));
+  const port = await serve(1, { WEB_ROOT: root });
+
+  const sw = await get(port, '/sw.js');
+  assert.equal(sw.status, 200);
+  assert.equal(sw.headers['content-type'], 'text/javascript; charset=utf-8');
+  assert.equal(sw.headers['cache-control'], 'no-cache, max-age=0');
+  assert.equal(sw.headers['service-worker-allowed'], '/');
+  assert.match(sw.body, /addEventListener\('fetch'/);
+  // Nothing else gets the header, and the assets keep their long cache.
+  assert.equal((await get(port, '/')).headers['service-worker-allowed'], undefined);
+
+  // The manifest's share target is the path this server answers.
+  const manifest = JSON.parse((await get(port, '/manifest.webmanifest')).body);
+  assert.equal(manifest.share_target.action, '/share-target');
+  const shared = await post(port, '/share-target', '--x\r\nContent-Disposition: form-data; name="audio"; filename="a.mp3"\r\n\r\nabc\r\n--x--\r\n');
+  assert.equal(shared.status, 303);
+  assert.equal(shared.headers.location, '/analyze?shared=unavailable');
+  // Any other POST to a page is still refused.
+  assert.equal((await post(port, '/analyze', '')).status, 405);
+});
+
 test('an API that answers is forwarded as before', async () => {
   const api = await upstream((_req, res) => res.end('{"ok":true}'));
   const port = await serve(api, { API_TIMEOUT_S: '1' });

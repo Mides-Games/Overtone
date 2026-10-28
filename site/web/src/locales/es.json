@@ -1829,6 +1829,10 @@
       "tooLarge": "Estas canciones suman {{mb}} MB, más de los {{max}} MB que entran en un zip acá. Bajá sus .osz de a uno desde sus páginas.",
       "oszFailed": "No se pudieron armar los .osz en este navegador.",
       "oszSome": "Quedaron afuera, no se pudo armar su .osz: {{names}}"
+    },
+    "pwa": {
+      "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
+      "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
   }
 }

@@ -806,7 +806,13 @@
     "filesTitle": "Files",
     "json": "Result (JSON)",
     "summary": "Summary (TXT)",
-    "filesNote": "The CSV and the summary follow your adjustments; the JSON is the engine's result as the server sent it."
+    "filesNote": "The CSV and the summary follow your adjustments; the JSON is the engine's result as the server sent it.",
+    "snapLabel": "Snap the hit objects to the new timing",
+    "snapOff": "Off",
+    "snapNote": "Each object moves to the nearest tick of the new grid at this divisor; only its time changes (and a spinner's or a hold's end). Sliders keep their length in beats. Off, the objects stay where they are.",
+    "snapped": "Snapped to {{divisor}}: {{moved}} of {{total}} objects moved, by at most {{max}} ms (median {{median}} ms).",
+    "snappedNone": "Snapped to {{divisor}}: none of the {{total}} objects had to move.",
+    "snapShared": "Objects now on the same tick as the one before them: {{n}}. Check them in the editor."
   },
   "community": {
     "nav": "Community",
@@ -1085,7 +1091,13 @@
     "openTipFirefox": "In Firefox, open Settings → General → Files and Applications, find the .osz type and set it to open with osu!. The next .osz goes straight to osu!.",
     "openTipOsu": "This needs osu! installed with .osz files opening in it, which its installer sets up. The site cannot open the file for you: a web page never runs what it downloads.",
     "openTipClose": "Got it",
-    "openTipNever": "Don't show again"
+    "openTipNever": "Don't show again",
+    "divisor": "Beat snap divisor",
+    "divisorAt": "{{divisor}}: the divisor the attacks fall on, written as the editor's BeatDivisor.",
+    "divisorNone": "Too few attacks on the grid: the editor keeps its 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Long silences between the attacks, inside osu!'s break gaps: {{spans}}.",
+    "breaksNone": "No silence of 5 s or more between the attacks."
   },
   "listening": {
     "subdivision": "Between beats",
@@ -2227,5 +2239,35 @@
       "sharedAdded": "The song you shared is on the list. Check it and press Analyze.",
       "sharedNone": "Nothing usable arrived from the share: share an MP3, OGG, WAV, FLAC, M4A or Opus file, or pick it below."
     }
+  },
+  "mapSet": {
+    "title": "The map set",
+    "mode": "Game mode",
+    "modeNote": "Written as Mode in every difficulty; for mania, the key count goes in CircleSize.",
+    "keys": "Keys",
+    "test": "Test map",
+    "off": "Off",
+    "testNote": "A playable difficulty, \"Overtone test\", with a circle on every beat or half beat: the bar's first beat starts a combo with a finish, the half beats whistle. Play it in osu! and feel whether the timing is off. It is for checking, not for ranking.",
+    "testBreaks": "Breaks it leaves empty: {{n}}.",
+    "difficulties": "Empty difficulties",
+    "difficultiesNote": "Each is its own .osu in the set, with the same timing and no objects. Their HP, CS, OD and AR are a starting point to change in the editor.",
+    "count": "Difficulties in the .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Where the attacks fall",
+    "all": "Whole song",
+    "perLine": "Under each red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "suggested {{divisor}}",
+    "none": "too few attacks to say",
+    "other": "none",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Each attack the engine heard, by the simplest divisor of the beat it sits on (within a 48th of a beat, at most 15 ms); faint attacks count less. It suggests the editor's beat snap divisor; it does not measure the timing."
   }
 }

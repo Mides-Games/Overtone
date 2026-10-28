@@ -806,7 +806,13 @@
     "filesTitle": "Dateien",
     "json": "Ergebnis (JSON)",
     "summary": "Zusammenfassung (TXT)",
-    "filesNote": "CSV und Zusammenfassung folgen deinen Anpassungen; das JSON ist das Ergebnis der Engine, so wie der Server es geschickt hat."
+    "filesNote": "CSV und Zusammenfassung folgen deinen Anpassungen; das JSON ist das Ergebnis der Engine, so wie der Server es geschickt hat.",
+    "snapLabel": "Hit-Objects am neuen Timing ausrichten",
+    "snapOff": "Aus",
+    "snapNote": "Jedes Objekt rückt auf den nächsten Tick des neuen Rasters mit diesem Divisor; nur seine Zeit ändert sich (und das Ende eines Spinners oder Holds). Slider behalten ihre Länge in Schlägen. Ohne Ausrichten bleiben die Objekte, wo sie sind.",
+    "snapped": "Auf {{divisor}} ausgerichtet: {{moved}} von {{total}} Objekten verschoben, um höchstens {{max}} ms (Median {{median}} ms).",
+    "snappedNone": "Auf {{divisor}} ausgerichtet: Keins der {{total}} Objekte musste sich bewegen.",
+    "snapShared": "Objekte, die jetzt auf demselben Tick liegen wie das vorige: {{n}}. Prüf sie im Editor."
   },
   "community": {
     "nav": "Community",
@@ -1085,7 +1091,13 @@
     "openTipFirefox": "Öffne in Firefox Einstellungen → Allgemein → Dateien und Anwendungen, such den .osz-Typ und stell ihn auf „Mit osu! öffnen“. Die nächste .osz geht direkt an osu!.",
     "openTipOsu": "Dafür muss osu! installiert sein und .osz-Dateien öffnen, was sein Installer einrichtet. Die Seite kann die Datei nicht für dich öffnen: Eine Webseite führt nie aus, was sie herunterlädt.",
     "openTipClose": "Verstanden",
-    "openTipNever": "Nicht mehr zeigen"
+    "openTipNever": "Nicht mehr zeigen",
+    "divisor": "Beat-Snap-Divisor",
+    "divisorAt": "{{divisor}}: der Divisor, auf den die Anschläge fallen, als BeatDivisor des Editors geschrieben.",
+    "divisorNone": "Zu wenige Anschläge auf dem Raster: Der Editor behält sein 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Lange Stille zwischen den Anschlägen, innerhalb der Break-Abstände von osu!: {{spans}}.",
+    "breaksNone": "Keine Stille von 5 s oder mehr zwischen den Anschlägen."
   },
   "listening": {
     "subdivision": "Zwischen den Beats",
@@ -2227,5 +2239,35 @@
       "sharedAdded": "Der Song, den du geteilt hast, steht auf der Liste. Prüf ihn und drück auf Analysieren.",
       "sharedNone": "Aus dem Teilen kam nichts Brauchbares an: Teile eine MP3-, OGG-, WAV-, FLAC-, M4A- oder Opus-Datei oder wähl sie unten aus."
     }
+  },
+  "mapSet": {
+    "title": "Das Mapset",
+    "mode": "Spielmodus",
+    "modeNote": "In jeder Schwierigkeit als Mode geschrieben; bei mania steht die Tastenzahl in CircleSize.",
+    "keys": "Tasten",
+    "test": "Testmap",
+    "off": "Aus",
+    "testNote": "Eine spielbare Schwierigkeit, „Overtone test“, mit einem Kreis auf jedem Schlag oder halben Schlag: Der erste Schlag des Takts beginnt eine Combo mit Finish, die halben Schläge klingen mit Whistle. Spiel sie in osu! und spür, ob das Timing verschoben ist. Sie ist zum Prüfen da, nicht zum Ranken.",
+    "testBreaks": "Breaks, die sie leer lässt: {{n}}.",
+    "difficulties": "Leere Schwierigkeiten",
+    "difficultiesNote": "Jede ist eine eigene .osu im Set, mit demselben Timing und ohne Objekte. HP, CS, OD und AR sind ein Ausgangspunkt, den du im Editor änderst.",
+    "count": "Schwierigkeiten in der .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Wo die Anschläge liegen",
+    "all": "Ganzer Song",
+    "perLine": "Unter jeder red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "Vorschlag {{divisor}}",
+    "none": "zu wenige Anschläge für eine Aussage",
+    "other": "keiner",
+    "aria": "{{divisor}}: {{pct}} %",
+    "note": "Jeder Anschlag, den die Engine gehört hat, nach dem einfachsten Divisor des Schlags, auf dem er liegt (innerhalb eines 48stel Schlags, höchstens 15 ms); schwache Anschläge zählen weniger. Das schlägt den Beat-Snap-Divisor des Editors vor; es misst nicht das Timing."
   }
 }

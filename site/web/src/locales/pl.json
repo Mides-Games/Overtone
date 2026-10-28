@@ -830,7 +830,13 @@
     "filesTitle": "Pliki",
     "json": "Wynik (JSON)",
     "summary": "Podsumowanie (TXT)",
-    "filesNote": "CSV i podsumowanie uwzględniają twoje poprawki; JSON to wynik silnika w postaci, w jakiej wysłał go serwer."
+    "filesNote": "CSV i podsumowanie uwzględniają twoje poprawki; JSON to wynik silnika w postaci, w jakiej wysłał go serwer.",
+    "snapLabel": "Przyciągnij obiekty do nowego timingu",
+    "snapOff": "Wył.",
+    "snapNote": "Każdy obiekt przesuwa się na najbliższy tick nowej siatki z tym dzielnikiem; zmienia się tylko jego czas (i koniec spinnera lub holda). Slidery zachowują długość w beatach. Bez przyciągania obiekty zostają na miejscu.",
+    "snapped": "Przyciągnięto do {{divisor}}: przesunięto {{moved}} z {{total}} obiektów, najwyżej o {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Przyciągnięto do {{divisor}}: żaden z {{total}} obiektów nie musiał się ruszyć.",
+    "snapShared": "Obiekty, które teraz leżą na tym samym ticku co poprzedni: {{n}}. Sprawdź je w edytorze."
   },
   "community": {
     "nav": "Społeczność",
@@ -1133,7 +1139,13 @@
     "openTipFirefox": "W Firefoksie otwórz Ustawienia → Ogólne → Pliki i aplikacje, znajdź typ .osz i ustaw otwieranie w osu!. Następny .osz trafi prosto do osu!.",
     "openTipOsu": "Wymaga to zainstalowanego osu!, w którym otwierają się pliki .osz, co ustawia jego instalator. Strona nie może otworzyć pliku za ciebie: strona internetowa nigdy nie uruchamia tego, co pobiera.",
     "openTipClose": "Rozumiem",
-    "openTipNever": "Nie pokazuj ponownie"
+    "openTipNever": "Nie pokazuj ponownie",
+    "divisor": "Dzielnik snapu",
+    "divisorAt": "{{divisor}}: dzielnik, na który padają uderzenia, zapisany jako BeatDivisor edytora.",
+    "divisorNone": "Za mało uderzeń na siatce: edytor zostaje przy swoim 1/4.",
+    "breaks": "Przerwy",
+    "breaksAt": "Długie cisze między uderzeniami, w odstępach, jakich osu! wymaga dla przerwy: {{spans}}.",
+    "breaksNone": "Brak ciszy 5 s lub dłuższej między uderzeniami."
   },
   "listening": {
     "subdivision": "Między beatami",
@@ -2335,5 +2347,35 @@
       "sharedAdded": "Udostępniony utwór jest na liście. Sprawdź go i naciśnij Analizuj.",
       "sharedNone": "Z udostępnienia nie dotarło nic użytecznego: udostępnij plik MP3, OGG, WAV, FLAC, M4A lub Opus albo wybierz go poniżej."
     }
+  },
+  "mapSet": {
+    "title": "Zestaw mapy",
+    "mode": "Tryb gry",
+    "modeNote": "Zapisany jako Mode w każdej trudności; w mania liczba klawiszy trafia do CircleSize.",
+    "keys": "Klawisze",
+    "test": "Mapa testowa",
+    "off": "Wył.",
+    "testNote": "Grywalna trudność „Overtone test” z kółkiem na każdym uderzeniu lub półuderzeniu: pierwsze uderzenie taktu zaczyna combo z finishem, półuderzenia grają whistle. Zagraj ją w osu! i poczuj, czy timing jest przesunięty. Służy do sprawdzania, nie do rankowania.",
+    "testBreaks": "Przerwy, które zostawia puste: {{n}}.",
+    "difficulties": "Puste trudności",
+    "difficultiesNote": "Każda to osobny .osu w zestawie, z tym samym timingiem i bez obiektów. HP, CS, OD i AR to punkt wyjścia do zmiany w edytorze.",
+    "count": "Trudności w .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Gdzie padają uderzenia",
+    "all": "Cały utwór",
+    "perLine": "Pod każdą red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "propozycja {{divisor}}",
+    "none": "za mało uderzeń, by coś powiedzieć",
+    "other": "żaden",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Każde uderzenie, które usłyszał silnik, według najprostszego dzielnika beatu, na który pada (w granicach 1/48 beatu, najwyżej 15 ms); słabe uderzenia liczą się mniej. To propozycja dzielnika snapu w edytorze, nie pomiar timingu."
   }
 }

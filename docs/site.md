@@ -1595,6 +1595,66 @@ worker in a browser (the preview pane refused to register any worker), so instal
 reading a result offline and a real phone's share sheet were not seen; a batch near the
 1 GiB cap; how forums actually frame the embed; Safari and Firefox.
 
+### Budgets, accessibility, end-to-end tests and the review routine (W10.1, W10.2, W10.5-W10.7, 2026-10-27)
+
+**Bundle (W10.1).** Every page but home and the 404 is a `React.lazy` chunk (`App.jsx`);
+the Spanish strings are a chunk loaded by a small i18next backend (`i18n.js`) only for a
+Spanish visitor, and `main.jsx` awaits the stored language before the first frame. A
+language added to `LANGS` needs its own `import()` there. `pnpm --dir site/web budget`
+builds and runs `scripts/budget.mjs`: the entry plus its modulepreloads must stay under
+200 kB gzip, and every on-demand chunk under its budget (`CHUNK_KB`, 12 kB by default);
+exit 1 names the chunk. Today 162.3 kB initial (276.4 kB for the same code all eager).
+
+**Serving.** `deploy/web/serve.mjs` sends text files of 1 kB or more brotli or gzip
+compressed by `Accept-Encoding` (q=0 honoured, `Vary` set), each compressed once per
+path, size and mtime and kept in a 128-entry LRU. Hashed `/assets/` were already cached
+for a year. The page area (`Layout.jsx`) is at least a screen tall, so a page that fills
+in after a request no longer pushes a visible footer.
+
+**LCP and CLS.** `pnpm --dir site/e2e vitals` (after a build) serves `dist/` with
+`serve.mjs` in front of the e2e API, blocks the service worker, and loads nine pages
+three times each under Lighthouse's mobile profile (150 ms, 1.6 Mbit/s, CPU x4), reading
+LCP and CLS (largest session window) from a `PerformanceObserver`. A red CLS names the
+node that moved. `VITALS_DIST` / `VITALS_SERVE` measure another build beside this one.
+A measurement, not a gate: the numbers are in the timeline.
+
+**Accessibility (W10.2).** axe-core through Playwright (`site/e2e/tests/a11y.spec.js`,
+tags wcag2a/aa, 21a/aa, 22aa) on every public page, the result page while it runs and
+when done, the command palette open, and profile and history signed in, in dark and
+light. What it found and what changed: the light theme's accent and amber one step
+darker (only those two tokens), links inside a `p` or `dd` underlined (`index.css`),
+`/status`'s definition list, three unnamed progress bars, an inline link on
+`/developers`. The tempo map's canvas has `aria-describedby` pointing at the red-lines
+table (`RED_LINES_TABLE_ID`), its text alternative. A keyboard test checks that the skip
+link comes first and moves focus to `main`, and that the next stops show an outline. The
+progress panels were already `aria-live`.
+
+**End to end (W10.6).** `site/e2e`, one line, `pnpm --dir site/e2e test`, local only.
+`playwright.config.js` starts `serve-api.mjs` (the dev API in memory with
+`OVERTONE_WORKER=0`, quotas raised, and a fake worker in the same process that answers
+every job with `fixture.mjs`'s timing-result v1.1 after a second, eight seconds for a file
+named "slow") and Vite, on 3090/5290 (`E2E_API_PORT`, `E2E_WEB_PORT`), at 127.0.0.1, one
+worker. Chromium once per machine: `pnpm --dir site/e2e exec playwright install
+chromium`. It covers home, an upload of a generated WAV, the queue, the result page (map
+painted, table rows, the .osz downloaded from the held file, the CSV), the dev sign-in as
+staff and a suggestion posted, the legal pages, the 404, EN/ES (and a Spanish first
+visit), the theme, the palette, the keyboard, and 375 px without sideways scroll on 14
+pages and a result.
+
+**Skills and the review (W10.5, W10.7).** `.claude/skills/site-ui-check` (with
+`site/e2e/screens.mjs`: every page at 1366 and 375 px, dark and light, EN and ES, console
+errors and overflow), `release-checklist`, `security-review`; `docs/security-review.md`
+is the procedure.
+
+How it was checked: site/api 174/174, site/web 235/235, budget ok, e2e 76/76,
+`bench/facts.py` ok, `screens.mjs` 144 screenshots with no problem, vitals as in the
+timeline.
+
+Not checked: Lighthouse itself (Playwright with a `PerformanceObserver` stands in), a
+real phone or network, Safari and Firefox, a screen reader, brotli through Cloudflare.
+Four pages are over 2.5 s LCP on the emulated phone after the merge of `master`; that is
+left open in the roadmap.
+
 ### Ten languages and the selector (W12.16, 2026-10-28)
 
 English, Español, Français, Deutsch, Italiano, Polski, Português do Brasil, 日本語, 한국어

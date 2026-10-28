@@ -109,11 +109,18 @@ Every mode reads the golden vectors, so a new golden fixture must pass all five.
 And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (173 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (238 on 2026-10-28)
-pnpm --dir site/web build                              # the site builds
+pnpm --dir site/api test                               # all pass (174 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (240 on 2026-10-27)
+pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
+pnpm --dir site/e2e test                               # 76 pass in Chromium: the main paths, axe on every page in both themes
 pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
 ```
+
+`site/e2e` starts its own API (in memory, with a fake worker) and Vite on 3090 and 5290
+(`E2E_API_PORT`, `E2E_WEB_PORT`), never in CI. Chromium is installed once per machine
+with `pnpm --dir site/e2e exec playwright install chromium`. A measurement, not a gate:
+`pnpm --dir site/e2e vitals` (after a build) prints each page's LCP and CLS on the built site
+under Lighthouse's mobile profile (docs/site.md, W10.1).
 
 `bench/facts.py` counts the `test(` calls in `site/api/test`, `site/web/test` and `bot/test`
 and holds the number stated here to them, so a test that lands without its count moving is named.

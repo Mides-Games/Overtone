@@ -17,6 +17,11 @@ import Tray from './Tray.jsx'
  * The page sits in an error boundary keyed by its path (W10.4): a page that
  * throws shows the error page inside the frame, and going anywhere else from
  * the navigation bar starts clean.
+ *
+ * The page area is at least a screen tall (W10.1), so the footer starts below
+ * the fold. Pages fill in after a request (a lazy chunk, a list, a result),
+ * and a footer in view was pushed down each time: layout shifts of 0.19-1.0
+ * on a phone (site/e2e/vitals.mjs), against the 0.1 budget.
  */
 export default function Layout() {
   const { t } = useTranslation()
@@ -33,7 +38,7 @@ export default function Layout() {
           <TickerBar />
           <Navbar />
         </div>
-        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 py-10 outline-none sm:py-14" style={gutter}>
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-6xl min-h-[100svh] flex-1 py-10 outline-none sm:py-14" style={gutter}>
           <ErrorBoundary key={pathname}>
             <Outlet />
           </ErrorBoundary>

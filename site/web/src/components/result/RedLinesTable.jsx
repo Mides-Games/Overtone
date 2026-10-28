@@ -11,6 +11,13 @@ export const LEVELS = {
   check: { tone: 'var(--amber)', key: 'strip.check' },
 }
 
+/**
+ * The table's id. It is the tempo map's text alternative (W10.2): the map's
+ * canvas names it in aria-describedby, so a screen reader that meets the
+ * picture is pointed at the same red lines as rows. One result per page.
+ */
+export const RED_LINES_TABLE_ID = 'red-lines-table'
+
 const ms1 = (value) => (value === null || value === undefined ? '–' : value.toFixed(1))
 
 /**
@@ -55,7 +62,7 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="label">
+        <h2 id={`${RED_LINES_TABLE_ID}-title`} className="label">
           <Term id="redLine">{t('result.redLines')}</Term>
         </h2>
         {copyRows && (
@@ -79,7 +86,7 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
         )}
       </div>
       <div ref={box} className="relative max-h-[28rem] overflow-auto rounded-panel border border-line">
-        <table className="w-full min-w-[46rem] text-left text-label">
+        <table id={RED_LINES_TABLE_ID} aria-labelledby={`${RED_LINES_TABLE_ID}-title`} className="w-full min-w-[46rem] text-left text-label">
           <thead className="sticky top-0 z-[1] bg-surface-2">
             <tr className="label">
               {copyRows && (

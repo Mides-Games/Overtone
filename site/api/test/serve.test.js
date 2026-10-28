@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 
 // deploy/web/serve.mjs run as the panel runs it, in front of a stand-in API.
 const SERVE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'deploy', 'web', 'serve.mjs');
@@ -184,6 +185,56 @@ test('robots.txt, the sitemap and the manifest are served as themselves, with th
 
   // A missing file with an extension is a 404, never the app shell.
   assert.equal((await get(port, '/sitemap-2.xml')).status, 404);
+});
+
+test('text files go out brotli or gzip compressed when asked, and as they are otherwise', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'overtone-serve-'));
+  running.push(() => rm(root, { recursive: true, force: true }));
+  const script = `export const lines = ${JSON.stringify(Array.from({ length: 400 }, (_, i) => `red line ${i}`))}\n`;
+  await mkdir(join(root, 'assets'));
+  await writeFile(join(root, 'assets', 'app-AbCd1234.js'), script);
+  await writeFile(join(root, 'assets', 'tiny-AbCd1234.js'), 'export {}\n');
+  await writeFile(join(root, 'assets', 'logo-AbCd1234.png'), Buffer.alloc(4096, 7));
+  await writeFile(join(root, 'index.html'), '<!doctype html><title>app</title>');
+  const port = await serve(1, { WEB_ROOT: root });
+
+  const raw = (path, headers = {}, method = 'GET') =>
+    new Promise((resolve, reject) => {
+      http
+        .request({ host: '127.0.0.1', port, path, headers, method }, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+        })
+        .on('error', reject)
+        .end();
+    });
+
+  const br = await raw('/assets/app-AbCd1234.js', { 'accept-encoding': 'gzip, deflate, br' });
+  assert.equal(br.headers['content-encoding'], 'br');
+  assert.equal(br.headers.vary, 'Accept-Encoding');
+  assert.equal(Number(br.headers['content-length']), br.body.length);
+  assert.ok(br.body.length < script.length / 3);
+  assert.equal(brotliDecompressSync(br.body).toString(), script);
+  assert.match(br.headers['cache-control'], /immutable/);
+
+  const gz = await raw('/assets/app-AbCd1234.js', { 'accept-encoding': 'gzip, br;q=0' });
+  assert.equal(gz.headers['content-encoding'], 'gzip');
+  assert.equal(gunzipSync(gz.body).toString(), script);
+
+  const plain = await raw('/assets/app-AbCd1234.js');
+  assert.equal(plain.headers['content-encoding'], undefined);
+  assert.equal(plain.body.toString(), script);
+
+  const head = await raw('/assets/app-AbCd1234.js', { 'accept-encoding': 'br' }, 'HEAD');
+  assert.equal(head.headers['content-length'], br.headers['content-length']);
+  assert.equal(head.body.length, 0);
+
+  // Too small to be worth it, and an image that is compressed already.
+  assert.equal((await raw('/assets/tiny-AbCd1234.js', { 'accept-encoding': 'br' })).headers['content-encoding'], undefined);
+  const png = await raw('/assets/logo-AbCd1234.png', { 'accept-encoding': 'br' });
+  assert.equal(png.headers['content-encoding'], undefined);
+  assert.equal(png.body.length, 4096);
 });
 
 /** A WEB_ROOT holding an index.html shaped like the built one. */

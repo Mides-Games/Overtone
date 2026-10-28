@@ -81,6 +81,73 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W10: budgets, accessibility, end-to-end tests and the review routine
+
+### Changed
+
+- **Every page but home and the 404 is its own chunk** (`React.lazy`), and the Spanish
+  strings load only for a Spanish visitor (a lazy i18next backend; `main.jsx` waits for
+  the stored language, so nothing flashes half-translated).
+- **`deploy/web/serve.mjs` compresses** text files of 1 kB or more, brotli (q 11) or
+  gzip (9) by `Accept-Encoding`, once per file version, in a 128-entry LRU, with `Vary`.
+- **The page area is at least a screen tall**, so the footer starts below the fold: on
+  a short page (404, sign-in) it is one scroll away.
+- Light theme only: `--accent` `#0a737f` → `#076672`, `--amber` `#8f5e08` → `#835606`;
+  links inside a `p` or `dd` are underlined. Nothing else restyled.
+- New one-line checks: `pnpm --dir site/web budget` (gate) and `pnpm --dir site/e2e test`
+  (gate, 76 tests); `pnpm --dir site/e2e vitals` (measurement). New dev dependencies,
+  pinned: `@playwright/test` 1.64.0 and `@axe-core/playwright` 4.13.0 (`site/e2e`, not
+  shipped).
+- `docs/security-review.md` (W10.7) and three project skills in `.claude/skills/`
+  (W10.5): `site-ui-check` (with `site/e2e/screens.mjs`), `release-checklist`,
+  `security-review`.
+
+### Fixed
+
+- Accessibility (axe-core, WCAG 2.2 AA tags): contrast of accent and amber on their own
+  tints in light (4.15-4.45:1 → 4.6-5:1); links told from their sentence by colour only;
+  `/status`'s `dl` with its `dt` nested in a `div`; the merged `/developers` page's
+  inline link. Three progress bars got names; the tempo map's canvas names the red-lines
+  table, its text alternative, in `aria-describedby`.
+- Layout shifts: pages that fill in after a request pushed a visible footer (CLS
+  0.19-1.0 on a phone).
+
+### Measured
+
+- **Initial JS, gzip** (`scripts/budget.mjs`): 181.5 → 143.3 kB with the split, before
+  the merges. After merging experimental (first time): 235.7 kB for experimental as it
+  was (every page eager) → 148.8 kB here. After the second merge and `master`: 276.4 →
+  162.3 kB. Budget 200 kB; on-demand chunks each under their own budget (12 kB default;
+  result page 30, changelog 16, shared result player 20, upload form 20, API reference
+  24, Spanish 36).
+- **axe:** before, 46 nodes in 19 of 32 audits (color-contrast 22, link-in-text-block 16,
+  definition-list 2, dlitem 6); after, 0 in every audit: 22 pages, a result page running
+  and done, the palette open, profile and history signed in, each in dark and light.
+- **e2e:** `pnpm --dir site/e2e test` 76/76 in 3.7 min.
+- **LCP and CLS** (`vitals.mjs`: the build behind `serve.mjs`, Lighthouse's mobile
+  profile, 150 ms, 1.6 Mbit/s, CPU x4, median of 3, service worker blocked):
+  - experimental at the first merge (one bundle, no compression): LCP 5.0-5.9 s on
+    every page; CLS 0.561 on `/credits` and a result page;
+  - this branch then: LCP 1.9-2.8 s (home 1.92 s, a result page 2.76 s), CLS
+    0.000-0.024 after the footer fix;
+  - after merging `master` (the new front page, analysis options, PWA): LCP home 2.85 s,
+    `/analyze` 4.18 s, `/queue` 2.93 s, a result page 3.27 s, the others 2.16-2.48 s;
+    CLS 0.000-0.024. Over 2.5 s on four pages: what the merged features add to the first
+    paint was not investigated here.
+- site/api 174/174 (1 new), site/web 235/235 (2 new), `bench/facts.py` ok. The Python
+  suite, the benchmark and the gates were not run (owner's rule: they run on the server;
+  no engine code changed).
+
+### Rejected / tried and dropped
+
+- **A screen-tall loader instead of a screen-tall page.** It fixed the lazy chunks' shift
+  (`/terms` 0.561 → 0) but not the pages that fill in after their own request (`/queue`
+  0.364, a result page 1.016): the footer moved each time.
+- **Counting e2e tests in `bench/facts.py`.** The specs make tests in loops, so counting
+  `test(` calls would be wrong; the run prints its own count.
+
+---
+
 ## Unreleased — 2026-10-27 · Releases carry executables, built in one line
 
 ### Changed

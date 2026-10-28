@@ -24,7 +24,7 @@ export const LANGS = [
 export const CODES = LANGS.map((lang) => lang.code)
 
 /** Bundled with the page; the others are fetched when chosen. */
-export const BUNDLED = ['en', 'es']
+export const BUNDLED = ['en']
 
 export const DEFAULT = 'en'
 

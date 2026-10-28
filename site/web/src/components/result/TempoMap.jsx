@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { pageKeyIgnored } from '../../lib/keys.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, paintMap, paintOverview, readPalette } from './draw.js'
+import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
 
 /** The closest zoom, seconds across the whole map. */
 const MIN_SPAN_S = 0.5
@@ -484,6 +485,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
           style={{ touchAction: 'pan-y' }}
           role="img"
           aria-label={t('tempo.canvasLabel', { count: data.lines.length })}
+          aria-describedby={RED_LINES_TABLE_ID}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

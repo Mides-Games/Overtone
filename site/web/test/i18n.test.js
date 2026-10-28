@@ -86,7 +86,7 @@ test('the list names ten languages, each with its locale file, a flag and a dire
     assert.ok(new RegExp(`^  ${lang.flag}: `, 'm').test(flags), `Flag.jsx draws ${lang.flag}`)
     assert.ok(['ltr', 'rtl'].includes(lang.dir), lang.code)
   }
-  assert.deepEqual(BUNDLED, ['en', 'es'])
+  assert.deepEqual(BUNDLED, ['en'])
 })
 
 test("index.html's early script knows the same ten codes", () => {

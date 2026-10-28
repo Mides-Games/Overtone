@@ -365,6 +365,8 @@ export function useTimingSocial(id) {
   const [social, setSocial] = useState(null)
   const { account } = useAuth()
   useEffect(() => {
+    // No id: a timing with no votes or comments (not published) asks for none.
+    if (!id) return undefined
     let alive = true
     setSocial(null)
     timingSocial(id)

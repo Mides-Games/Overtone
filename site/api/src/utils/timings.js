@@ -217,12 +217,17 @@ export const recentEntry = (row) => ({
   variable: isVariable(row.result),
   uploader: uploaderOf(row),
   anonymous: !row.uploader,
-  publishedAt: new Date(row.publishedAt).toISOString(),
+  publishedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : null,
 });
 
-/** A published timing's own page (W3.27): the list's fields, when it was analysed, and the result. */
+/**
+ * A timing's own page (W3.27): the list's fields, when it was analysed, and
+ * the result. `published` is false for an anonymous upload opened from the
+ * queue, which has no votes or comments.
+ */
 export const publicTiming = (row) => ({
   ...recentEntry(row),
+  published: Boolean(row.publishedAt),
   createdAt: new Date(row.createdAt).toISOString(),
   result: publicResult(row.result),
 });

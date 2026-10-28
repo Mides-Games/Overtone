@@ -194,7 +194,7 @@
       "CACHE_LIMIT": "Du hast heute {{count}} gespeicherte Ergebnisse geöffnet. Der Zähler wird um 00:00 UTC zurückgesetzt."
     },
     "private": "Nicht in der öffentlichen Warteschlange zeigen",
-    "privateHint": "Die Warteschlange zeigt dann nur, dass etwas analysiert wird: kein Song, kein Dateiname, kein Uploader.",
+    "privateHint": "Die Warteschlange zeigt dann nur, dass etwas analysiert wird: kein Song, kein Dateiname, kein Uploader. Bleibt ein Upload ohne Anmeldung öffentlich, kann er nach dem Abschluss samt Timing auch über die Warteschlange geöffnet werden.",
     "folder": "Ordner wählen",
     "atOnce_one": "Bis zu {{count}} Song gleichzeitig in der Warteschlange",
     "atOnce_other": "Bis zu {{count}} Songs gleichzeitig in der Warteschlange",
@@ -1029,6 +1029,8 @@
     "page": {
       "eyebrow": "Veröffentlichtes Timing",
       "published": "veröffentlicht am {{date}}",
+      "analysed": "analysiert am {{date}}, nicht veröffentlicht",
+      "fromQueue": "Ohne Konto hochgeladen und nicht privat gestellt, daher über die Warteschlange sichtbar. Niemand hat es veröffentlicht, also gibt es keine Stimmen oder Kommentare.",
       "yourOwn": "Deinen eigenen Song timen",
       "notFoundTitle": "Timing nicht gefunden",
       "notFound": "Dieses Timing existiert nicht, oder wer es veröffentlicht hat, hat es zurückgezogen.",

@@ -226,6 +226,8 @@ export function useTimingVotes(id) {
   const { account } = useAuth()
   const [votes, setVotes] = useState(null)
   useEffect(() => {
+    // No id: a timing with no votes or comments (not published) asks for none.
+    if (!id) return undefined
     let alive = true
     setVotes(null)
     timingVotes(id)

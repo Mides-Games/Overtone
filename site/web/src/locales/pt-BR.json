@@ -194,7 +194,7 @@
       "CACHE_LIMIT": "Você abriu {{count}} resultados guardados hoje. A contagem zera às 00:00 UTC."
     },
     "private": "Não mostrar na fila pública",
-    "privateHint": "A fila então mostra só que algo está sendo analisado: sem música, sem nome de arquivo, sem quem enviou.",
+    "privateHint": "A fila então mostra só que algo está sendo analisado: sem música, sem nome de arquivo, sem quem enviou. Se ficar público, um envio feito sem entrar na conta também pode ser aberto pela fila quando terminar, com o timing.",
     "folder": "Escolher uma pasta",
     "atOnce_one": "Até {{count}} música na fila ao mesmo tempo",
     "atOnce_other": "Até {{count}} músicas na fila ao mesmo tempo",
@@ -1029,6 +1029,8 @@
     "page": {
       "eyebrow": "Timing publicado",
       "published": "publicado em {{date}}",
+      "analysed": "analisado em {{date}}, não publicado",
+      "fromQueue": "Enviado sem conta e sem ser marcado como privado, então pode ser visto pela fila. Ninguém o publicou, então não tem votos nem comentários.",
       "yourOwn": "Faça o timing da sua música",
       "notFoundTitle": "Timing não encontrado",
       "notFound": "Este timing não existe, ou quem o publicou o retirou.",

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -125,6 +126,26 @@ test('images load only from this origin, data: and Mides\' own origins', async (
     "img-src 'self' data: https://mides.example https://cdn.mides.example",
   );
   await assert.rejects(serve(1, { MIDES_IMAGE_ORIGINS: 'https://cdn.mides.example/avatars' }), /not an http\(s\) origin/);
+});
+
+test('the site\'s own early script, and only it, is allowed inline, by its hash', async () => {
+  // The real index.html: its script applies the theme and the settings before the first
+  // frame (W12.15), and a policy that left it out would block it without a sound.
+  const root = await mkdtemp(join(tmpdir(), 'overtone-serve-'));
+  running.push(() => rm(root, { recursive: true, force: true }));
+  const index = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'index.html');
+  await copyFile(index, join(root, 'index.html'));
+  const html = await readFile(index, 'utf8');
+  const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  assert.equal(inline.length, 1);
+  assert.match(inline[0], /overtone\.settings/);
+  const port = await serve(1, { WEB_ROOT: root });
+  const page = await get(port, '/settings');
+  const scriptSrc = page.headers['content-security-policy'].split('; ').find((d) => d.startsWith('script-src'));
+  const hash = createHash('sha256').update(inline[0], 'utf8').digest('base64');
+  assert.equal(scriptSrc, `script-src 'self' 'sha256-${hash}'`);
+  // No 'unsafe-inline' anywhere: the hash is the only way in.
+  assert.equal(page.headers['content-security-policy'].includes('unsafe-inline'), false);
 });
 
 test('an API that does not answer is cut after API_TIMEOUT_S with a 504', async () => {

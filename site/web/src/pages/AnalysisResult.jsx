@@ -4,6 +4,8 @@ import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import CompareWithMap from '../components/compare/CompareWithMap.jsx'
+import Term from '../components/Term.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
@@ -12,12 +14,15 @@ import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
+import Listening from '../components/result/Listening.jsx'
 import Transport from '../components/result/Transport.jsx'
+import { useExportOptions } from '../components/result/ExportOptions.jsx'
 import Versions from '../components/result/Versions.jsx'
 import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { checkSpans } from '../lib/check-spans.js'
+import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
 import { tracker, useAnalysis } from '../lib/tracking.js'
@@ -37,10 +42,7 @@ export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
   const reading = useAnalysis(id)
-  // What publishing changed (W3.27): a finished analysis is not read again,
-  // so the page keeps the change itself, for this id only.
-  const [changed, setChanged] = useState({ id: null })
-  const analysis = reading?.data ? { ...reading.data, ...(changed.id === id ? changed.fields : {}) } : null
+  const analysis = reading?.data ?? null
   const error = reading?.error ?? null
   // The file's name names the tab: it never leaves this browser that way.
   usePageMeta(analysis?.filename || t('result.eyebrow'))
@@ -90,7 +92,7 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
-      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => setChanged((c) => ({ id, fields: { ...(c.id === id ? c.fields : {}), ...next } }))} />}
+      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
     </div>
   )
@@ -255,6 +257,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
+  // W12.24: a copied row is written as the whole block is (W12.8's options).
+  const exportOptions = useExportOptions()
   const [selected, setSelected] = useState(null)
   const [hovered, setHovered] = useState(null)
   const audio = useSongAudio(id, analysis.sha1, verify)
@@ -264,12 +268,23 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
   const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
   const [checking, setChecking] = useState(null)
   const [focus, setFocus] = useState(null)
+  // W12.10: a map the reader picked to compare with, held here only, and which timing the clicks play.
+  const [map, setMap] = useState(null)
+  const [clickSource, setClickSource] = useState('a')
 
   const durationS = result.duration_s ?? 0
   const sections = useMemo(() => result.sections ?? [], [result])
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
   const lines = useMemo(() => adjustLines(result, adjustment), [result, adjustment])
+  // The beats alone, for the map, the arrow keys and the taps; the clicks add the subdivisions the reader asked for (W12.6).
   const grid = useMemo(() => clickGrid(lines, durationS), [lines, durationS])
+  const subdivision = snapshot.subdivision
+  const clicks = useMemo(() => (subdivision > 1 ? clickGrid(lines, durationS, { subdivision }) : grid), [lines, durationS, subdivision, grid])
+  // The engine's own lines' clicks, for the A/B (W12.5): only when the reader has moved them.
+  const engineClicks = useMemo(
+    () => (adjusted ? clickGrid(adjustLines(result), durationS, { subdivision }) : null),
+    [adjusted, result, durationS, subdivision],
+  )
   const attacks = useMemo(() => attackDrift(result.onsets?.t_ms ?? [], lines), [result, lines])
   // The worker's own per-line drift as it came; recomputed here once the reader moves the lines.
   const drift = useMemo(
@@ -287,7 +302,12 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
     [lines, durationS],
   )
 
-  useEffect(() => player.setGrid(grid), [player, grid])
+  const mapGrid = useMemo(() => (map ? clickGrid(map.lines, durationS) : null), [map, durationS])
+  // The map's grid when the reader asked for its clicks (W12.10); otherwise the result's, with its A/B (W12.5).
+  useEffect(
+    () => (clickSource === 'b' && mapGrid ? player.setGrid(mapGrid, null) : player.setGrid(clicks, engineClicks)),
+    [player, clicks, engineClicks, mapGrid, clickSource],
+  )
   useEffect(() => player.setSections(spans), [player, spans])
   useEffect(() => {
     if (audio.kind === 'ready') player.setBuffer(audio.song.buffer)
@@ -299,6 +319,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
       lines,
       sections,
       grid,
+      clicks,
+      subdivision,
       beats: result.beats ?? null,
       onsets: result.onsets ?? null,
       drift: attacks,
@@ -308,9 +330,11 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
       hints: result.pulse_hints ?? [],
       factor: adjustment.factor,
       durationS,
-      range: tempoRange(lines, result.beats, adjustment.factor),
+      range: tempoRange(map ? [...lines, ...map.lines] : lines, result.beats, adjustment.factor),
+      other: map?.lines ?? null,
+      otherLabel: t('compare.map'),
     }),
-    [lines, sections, grid, result, attacks, audio.kind, audio.song, adjustment.factor, durationS],
+    [lines, sections, grid, clicks, subdivision, result, attacks, audio.kind, audio.song, adjustment.factor, durationS, map, t],
   )
 
   const playFrom = (i) => {
@@ -341,10 +365,10 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
 
   const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
-    { label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
-    { label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
-    { label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
-    { label: t('result.redLines'), value: String(lines.length) },
+    { term: 'bpm', label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
+    { term: 'offset', label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
+    { term: 'meter', label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
+    { term: 'redLine', label: t('result.redLines'), value: String(lines.length) },
   ]
 
   return (
@@ -353,7 +377,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
         <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
           {readouts.map((r) => (
             <div key={r.label} className="space-y-1 bg-surface px-4 py-3">
-              <dt className="label">{r.label}</dt>
+              <dt className="label">
+                <Term id={r.term}>{r.label}</Term>
+              </dt>
               <dd className="readout text-title text-text">
                 {r.value}
                 {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
@@ -363,6 +389,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
         </dl>
         <div className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
+            <li className="label">
+              <Term id="confidence">{t('strip.confidence')}</Term>
+            </li>
             {Object.entries(LEVELS).map(([key, level]) => (
               <li key={key} className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />
@@ -387,6 +416,15 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+        <Listening
+          player={player}
+          snapshot={snapshot}
+          lines={lines}
+          grid={grid}
+          adjusted={adjusted}
+          nudgeMs={adjustment.nudgeMs}
+          onAdjust={setAdjustment}
+        />
       </TempoMap>
 
       <CheckHere
@@ -395,12 +433,38 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
         active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
         canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
 
+      <CompareWithMap
+        lines={lines}
+        durationS={durationS}
+        adjusted={adjusted}
+        filename={analysis.filename}
+        map={map}
+        onMap={(next) => {
+          setMap(next)
+          if (!next) setClickSource('a')
+        }}
+        clicks={clickSource}
+        onClicks={setClickSource}
+        // A second early, so the line is heard coming in.
+        onPlayAt={snapshot.ready ? (ms) => player.play(Math.max(0, ms / 1000 - 1), { range: null, loopOn: false }) : null}
+      >
+        <Link to={comparePath({ id })} className="btn-ghost h-8 px-3 text-caption">
+          {t('compare.withAnother')}
+        </Link>
+        {adjusted && (
+          <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost h-8 px-3 text-caption">
+            {t('compare.withAdjusted')}
+          </Link>
+        )}
+      </CompareWithMap>
+
       <AdjustExport
         analysis={analysis}
         lines={lines}
         adjustment={adjustment}
         onAdjust={setAdjustment}
         audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+        songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
       >
         <MoreDownloads
           id={id}
@@ -408,6 +472,7 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
           lines={lines}
           adjustment={adjustment}
           grid={grid}
+          clicks={clicks}
           durationS={durationS}
           songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
           player={player}
@@ -431,7 +496,7 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
         canPlay={snapshot.ready}
         onPlayFrom={playFrom}
         onLoop={loopLine}
-        copyRows={(positions) => timingRows(result, lines, adjustment, positions)}
+        copyRows={(positions) => timingRows(result, lines, adjustment, positions, exportOptions)}
       />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">

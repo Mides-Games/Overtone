@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import { exportLines } from '../src/lib/export-options.js'
 import { rowOf, timingRows, toggleSelection } from '../src/lib/osu-copy.js'
 import { adjustLines, timingText } from '../src/lib/timing.js'
 import { adjustmentLabel, diffLines, diffSummary, isAdjusted, versionLines } from '../src/lib/versions.js'
@@ -34,6 +35,17 @@ test('copy as rows: adjusted, the rows follow the page\'s lines as the whole blo
   assert.equal(timingRows(result, lines, adjustment), `${block.join('\r\n')}\r\n`)
   // A half ms rounds as the engine does, half to even.
   assert.equal(rowOf({ timeMs: 402.5, beatMs: 500, meter: 4 }), '402,500.000000000000,4,1,0,100,1,0')
+})
+
+test('copy as rows: the export options shape a copied row as they shape the whole block', () => {
+  const lines = adjustLines(result)
+  const options = { offsetDecimals: 3, bpmDecimals: 0, firstLineOnly: false, globalOffsetMs: 10 }
+  // 142 rounds to 142, its beat length then 60000 / 142; the export offset is added.
+  assert.equal(timingRows(result, lines, undefined, [1], options), `30410,${(60000 / 142).toFixed(12)},3,1,0,100,1,0\r\n`)
+  const block = timingText(result, exportLines(lines, options), undefined, options).split('\r\n').filter((r) => r && !r.startsWith('[') && !r.startsWith('//'))
+  assert.equal(timingRows(result, lines, undefined, undefined, options), `${block.join('\r\n')}\r\n`)
+  // The first line only: the second row of the table has nothing to copy.
+  assert.equal(timingRows(result, lines, undefined, [1], { ...options, firstLineOnly: true }), '')
 })
 
 test('copy as rows: rows whose engine text does not line up are built from the lines', () => {

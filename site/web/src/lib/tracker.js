@@ -369,6 +369,17 @@ export function createTracker({ load, session = null, local = null, now = Date.n
       }
     },
 
+    /**
+     * Something the page changed on the server and already knows the answer
+     * of (publishing, W3.27): merged into the reading every viewer of `id`
+     * shows, without asking the API again. Nothing to merge into, nothing done.
+     */
+    patch(id, fields) {
+      if (!live[id]?.data || !fields || typeof fields !== 'object') return
+      live = { ...live, [id]: { ...live[id], data: { ...live[id].data, ...fields } } }
+      emit()
+    },
+
     /** The visitor cancelled it (CancelButton): it is final, and no notice is due. */
     cancelled(id) {
       const entry = entryOf(id)

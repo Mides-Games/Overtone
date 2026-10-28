@@ -51,17 +51,17 @@ export const CHUNK_KB = {
   // Each language's strings, loaded only for its visitors (Spanish was 28 kB
   // on 2026-10-27, before W12; the ten files are ~110-120 kB raw each on
   // 2026-10-28). They grow with every page; the CJK and Cyrillic files
-  // compress less.
-  es: 45,
-  fr: 45,
-  de: 45,
-  it: 45,
-  pl: 45,
-  'pt-BR': 45,
-  ja: 50,
-  ko: 50,
-  // Cyrillic is two bytes a letter before compression: Russian is the largest file, 50.8 kB with the editor (W7).
-  ru: 55,
+  // compress less. Raised on 2026-10-28 with W13's strings, when Russian
+  // reached 50.3 kB and French and Polish 43-44 kB of their 45.
+  es: 50,
+  fr: 50,
+  de: 50,
+  it: 50,
+  pl: 50,
+  'pt-BR': 50,
+  ja: 56,
+  ko: 56,
+  ru: 58,
 }
 
 const kb = (bytes) => bytes / 1000

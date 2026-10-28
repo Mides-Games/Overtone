@@ -389,7 +389,27 @@
     "reset": "Reset",
     "adjusted": "These numbers are adjusted by you: the copy and the downloads carry the adjustment and say so in a comment line. Check it by ear before you use it.",
     "hint": "From {{from}} to {{to}} the onsets thin out to every other beat: the engine reads this as possible half- or double-time inside one red line (the amber mark). Evidence, not a red line: listen to it.",
-    "swing": "From {{from}} to {{to}} the off-beat eighth lands late, about {{late}} ms ({{snap}} of the beat): swing. Snap those notes by ear."
+    "swing": "From {{from}} to {{to}} the off-beat eighth lands late, about {{late}} ms ({{snap}} of the beat): swing. Snap those notes by ear.",
+    "bands": {
+      "toggle": "Bands",
+      "hint": "Low, mid and high attacks under the waveform: which band carries the pulse",
+      "legend": "Attacks per band: low, mid, high",
+      "note": "A band is a range of frequencies, not an instrument: a kick usually sits in the low one, a snare's crack in the middle and cymbals in the high one, but a bass line or a voice lands there too.",
+      "lowShort": "Low",
+      "midShort": "Mid",
+      "highShort": "High"
+    },
+    "spectrogram": {
+      "toggle": "Spectrogram",
+      "hint": "The song's frequencies over time under the waveform, 40 Hz to 11 kHz, at the map's zoom",
+      "legend": "Spectrogram, 40 Hz–11 kHz (stronger ink is louder)"
+    },
+    "layers": {
+      "needSong": "The bands and the spectrogram are read from the song itself: load it below to see them.",
+      "working": "Reading the song's bands and spectrogram in the background… {{percent}}%",
+      "failed": "This browser could not read the song's bands and spectrogram.",
+      "done": "Read in {{seconds}} s in this browser; nothing was sent."
+    }
   },
   "moderation": {
     "staff": "Staff",
@@ -2367,6 +2387,60 @@
       "bpm": "BPM",
       "beat": "One beat"
     }
+  },
+  "practice": {
+    "title": "Practice",
+    "reps": "Times",
+    "countIn": "Count in a bar",
+    "start": "Start practice",
+    "stop": "Stop practice",
+    "counting": "Counting in…",
+    "status": "Time {{rep}} of {{reps}} · {{rate}}×",
+    "noStretch": "Nothing to practise here: draw a loop (Shift-drag on the map) or move the playhead into a red line's section.",
+    "hint": "Plays the loop you drew, or the section under the playhead, {{reps}} times from {{from}}× to {{to}}×, a little faster each time. The pitch moves with the speed; the clicks follow it."
+  },
+  "tapMic": {
+    "footer": "BPM from the microphone",
+    "eyebrow": "Tool",
+    "title": "BPM from the microphone",
+    "description": "Let the browser listen for a few seconds and get a BPM with its confidence. Nothing is uploaded.",
+    "intro": "Play the song near your device, press Listen and let the browser hear it for a few seconds. It proposes a BPM and says how sure it is. The sound never leaves this page: it is read here and dropped.",
+    "length": "Listen for",
+    "seconds": "{{n}} s",
+    "listen": "Listen",
+    "again": "Listen again",
+    "stop": "Stop and read",
+    "permission": "The browser asks for the microphone when you press Listen, not before.",
+    "asking": "Waiting for the microphone permission…",
+    "listening": "Listening… {{percent}}%",
+    "listeningLabel": "Listening",
+    "level": "Input level",
+    "quiet": "Very quiet: turn the song up or move closer.",
+    "reading": "Reading the pulse…",
+    "errors": {
+      "unsupported": "This browser cannot record from a microphone here.",
+      "denied": "The microphone was not allowed. You can allow it in the browser's site settings and try again.",
+      "noMic": "No microphone was found, or another app is using it.",
+      "failed": "Something went wrong while listening. Try again."
+    },
+    "result": {
+      "short": "Too short to read a tempo: listen for a few more seconds.",
+      "silent": "Nothing heard: the microphone picked up only silence.",
+      "noPulse": "No steady pulse heard. A song with a clear beat, played louder or closer, reads better; noise and speech have none."
+    },
+    "confidence": "{{percent}}% confident",
+    "alternatives": "Could also be {{list}}: a microphone hears the pulse, not which octave of it the song is counted in.",
+    "heard": "From {{seconds}} s of sound, read in this browser.",
+    "limitsTitle": "What it can and cannot do",
+    "limits": {
+      "private": "Nothing is uploaded or saved: the recording stays in this page and is gone once it is read.",
+      "precision": "A few seconds give a tempo within about a BPM at best; a longer listen is steadier. It is a quick check, not a timing.",
+      "octave": "It may read half or double the tempo a mapper would pick; the other octaves are shown with it.",
+      "changes": "It assumes one steady tempo: a song that speeds up, slows down or changes meter reads as an average, or not at all.",
+      "room": "Echo, noise, talking and a phone speaker's thin bass all blur the attacks it listens for.",
+      "offset": "It gives no offset and no red lines: for those, the song's file goes through the engine."
+    },
+    "forTiming": "For a full timing with red lines and an offset, analyse the file itself."
   },
   "editor": {
     "edit": "Edit",

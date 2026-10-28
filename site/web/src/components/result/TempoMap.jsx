@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { pageKeyIgnored } from '../../lib/keys.js'
 import { snapTo } from '../../lib/editor.js'
+import { forgetProgress, readLayers, songSpectra, writeLayers } from '../../lib/song-spectra.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, MONO, paintMap, paintOverview, readPalette } from './draw.js'
 import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
@@ -21,6 +22,11 @@ const OVERVIEW_H = 34
  * the playhead following the song. Two canvases: the map, repainted when the
  * view or the data change, and an overlay for what moves every frame.
  *
+ * `song` ({ id, buffer }, once the reader's file is decoded) feeds the two
+ * optional lanes, the bands (W13.6) and the spectrogram (W13.7): worked out
+ * in a worker (lib/song-spectra.js) the first time either is on, and kept for
+ * the session.
+ *
  * Editing (W7, `editing`): a red line drags, snapped to the nearest attack or
  * beat (Alt: free), and lands through `onMoveLine`; a double-click adds one
  * through `onAddAt`; ← → are the editor's for the selected line
@@ -36,6 +42,7 @@ export default function TempoMap({
   onHover,
   clockRef,
   focus,
+  song = null,
   editing = false,
   onToggleEdit = null,
   onMoveLine = null,
@@ -43,6 +50,40 @@ export default function TempoMap({
   children,
 }) {
   const { t } = useTranslation()
+  const [layers, setLayers] = useState(readLayers)
+  const [spectra, setSpectra] = useState(null)
+  // null, a fraction while the worker runs, or 'error'.
+  const [spectraState, setSpectraState] = useState(null)
+  const specCache = useRef({})
+  const wanted = layers.bands || layers.spectrogram
+  const songId = song?.id ?? null
+  const songBuffer = song?.buffer ?? null
+  useEffect(() => {
+    setSpectra(null)
+    if (!wanted || !songBuffer) return setSpectraState(null)
+    let live = true
+    const onProgress = (done) => live && setSpectraState(done)
+    setSpectraState(0)
+    songSpectra(songId, songBuffer, onProgress).then(
+      (result) => {
+        if (!live) return
+        setSpectra(result)
+        setSpectraState(null)
+      },
+      () => live && setSpectraState('error'),
+    )
+    return () => {
+      live = false
+      forgetProgress(songId, onProgress)
+    }
+  }, [wanted, songId, songBuffer])
+  const toggleLayer = (key) =>
+    setLayers((now) => {
+      const next = { ...now, [key]: !now[key] }
+      writeLayers(next)
+      return next
+    })
+  const bandLabels = useMemo(() => ({ low: t('tempo.bands.lowShort'), mid: t('tempo.bands.midShort'), high: t('tempo.bands.highShort') }), [t])
   const wrapRef = useRef(null)
   const mapRef = useRef(null)
   const overlayRef = useRef(null)
@@ -59,7 +100,9 @@ export default function TempoMap({
   const [viewLabel, setViewLabel] = useState(null)
   const [tip, setTip] = useState(null)
 
-  const L = useMemo(() => (width ? layout(width) : null), [width])
+  const showBands = layers.bands && Boolean(spectra)
+  const showSpec = layers.spectrogram && Boolean(spectra)
+  const L = useMemo(() => (width ? layout(width, { bands: showBands, spectrogram: showSpec }) : null), [width, showBands, showSpec])
   const duration = Math.max(data.durationS, MIN_SPAN_S)
 
   // The theme's class lands on <html> in the provider's own effect, after this
@@ -111,7 +154,14 @@ export default function TempoMap({
     const c = palette
     const top = L.tempoTop
     const foot = L.driftBottom
-    const band = drag.current?.kind === 'loop' && drag.current.to !== null ? span(drag.current.from, drag.current.to) : snapshot.loopOn ? (snapshot.range ?? (snapshot.playing ? player.loop : null)) : null
+    const band =
+      drag.current?.kind === 'loop' && drag.current.to !== null
+        ? span(drag.current.from, drag.current.to)
+        : snapshot.practice
+          ? snapshot.practice
+          : snapshot.loopOn
+            ? (snapshot.range ?? (snapshot.playing ? player.loop : null))
+            : null
     if (band) {
       const x = Math.max(X(band.a), L.x0)
       const w = Math.min(X(band.b), L.x1) - x
@@ -206,12 +256,13 @@ export default function TempoMap({
   const paint = useCallback(() => {
     if (!L || !mapRef.current) return
     const ctx = sizeCanvas(mapRef.current, L.width, L.height)
-    geometry.current = paintMap(ctx, L, view.current, { ...data, selected, hovered, editing }, palette)
+    const lanes = { spectra, specCache: specCache.current, bandLabels }
+    geometry.current = paintMap(ctx, L, view.current, { ...data, ...lanes, selected, hovered, editing }, palette)
     const { a, b } = view.current
     const zoomed = b - a < duration - 1e-6
     setViewLabel((old) => (!zoomed ? null : old && old.a === a && old.b === b ? old : { a, b }))
     paintOverlay()
-  }, [L, data, selected, hovered, editing, palette, paintOverlay, duration])
+  }, [L, data, selected, hovered, editing, palette, paintOverlay, duration, spectra, bandLabels])
 
   // The overview's base, once per data and size.
   useEffect(() => {
@@ -553,6 +604,13 @@ export default function TempoMap({
           <button type="button" className="tool-btn px-2.5" aria-pressed={follow} onClick={() => setFollow((on) => !on)} title={t('tempo.followHint')}>
             {t('tempo.follow')}
           </button>
+          <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
+          <button type="button" className="tool-btn px-2.5" aria-pressed={layers.bands} onClick={() => toggleLayer('bands')} title={t('tempo.bands.hint')}>
+            {t('tempo.bands.toggle')}
+          </button>
+          <button type="button" className="tool-btn px-2.5" aria-pressed={layers.spectrogram} onClick={() => toggleLayer('spectrogram')} title={t('tempo.spectrogram.hint')}>
+            {t('tempo.spectrogram.toggle')}
+          </button>
           {onToggleEdit && (
             <button type="button" className="tool-btn px-2.5" aria-pressed={editing} onClick={() => onToggleEdit()} aria-keyshortcuts="E" title={t('editor.toggleHint')}>
               ✎ {t('editor.edit')}
@@ -560,6 +618,15 @@ export default function TempoMap({
           )}
         </div>
       </div>
+      {wanted && (spectraState !== null || !songBuffer) && (
+        <p className="border-b border-line px-3 py-1.5 text-caption text-dim" role="status">
+          {!songBuffer
+            ? t('tempo.layers.needSong')
+            : spectraState === 'error'
+              ? t('tempo.layers.failed')
+              : t('tempo.layers.working', { percent: Math.round(spectraState * 100) })}
+        </p>
+      )}
 
       <div ref={wrapRef} className="relative select-none" style={{ height: L ? L.height : 300 }}>
         <canvas ref={mapRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
@@ -602,7 +669,15 @@ export default function TempoMap({
       />
 
       {children}
-      <Legend hints={data.hints} swing={data.swing} subdivision={data.subdivision ?? 1} other={data.other?.length ? data.otherLabel ?? t('compare.other') : null} />
+      <Legend
+        hints={data.hints}
+        swing={data.swing}
+        subdivision={data.subdivision ?? 1}
+        other={data.other?.length ? data.otherLabel ?? t('compare.other') : null}
+        bands={showBands}
+        spectrogram={showSpec}
+        spectraSeconds={spectra?.totalMs ? spectra.totalMs / 1000 : null}
+      />
     </section>
   )
 }
@@ -618,7 +693,7 @@ function Row({ k, v }) {
 
 const span = (from, to) => (to === null || from === to ? null : { a: Math.min(from, to), b: Math.max(from, to) })
 
-function Legend({ hints, swing, subdivision, other = null }) {
+function Legend({ hints, swing, subdivision, other = null, bands = false, spectrogram = false, spectraSeconds = null }) {
   const { t } = useTranslation()
   const items = [
     ['var(--red)', t('tempo.legend.lines')],
@@ -628,6 +703,8 @@ function Legend({ hints, swing, subdivision, other = null }) {
     ...(subdivision > 1 ? [['var(--line)', t('listening.legendSubs', { n: subdivision })]] : []),
     ['var(--amber)', t('tempo.legend.drift')],
     ...(other ? [['var(--compare)', other]] : []),
+    ...(spectrogram ? [['var(--muted)', t('tempo.spectrogram.legend')]] : []),
+    ...(bands ? [['var(--text)', t('tempo.bands.legend')]] : []),
   ]
   return (
     <div className="space-y-1 border-t border-line px-3 py-2">
@@ -649,6 +726,11 @@ function Legend({ hints, swing, subdivision, other = null }) {
           </li>
         ))}
       </ul>
+      {(bands || spectrogram) && (
+        <p className="text-caption text-dim">
+          {bands && t('tempo.bands.note')} {spectraSeconds !== null && t('tempo.layers.done', { seconds: spectraSeconds.toFixed(1) })}
+        </p>
+      )}
       <p className="hidden text-caption text-dim sm:block">{t('tempo.howTo')}</p>
       <p className="text-caption text-dim sm:hidden">{t('tempo.howToTouch')}</p>
     </div>

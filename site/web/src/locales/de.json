@@ -389,7 +389,27 @@
     "reset": "Zurücksetzen",
     "adjusted": "Diese Zahlen hast du angepasst: Kopie und Downloads enthalten die Anpassung und vermerken sie in einer Kommentarzeile. Prüf sie nach Gehör, bevor du sie nutzt.",
     "hint": "Von {{from}} bis {{to}} dünnen die Onsets auf jeden zweiten Beat aus: Die Engine liest das als mögliches Half- oder Double-Time innerhalb einer red line (die gelbe Markierung). Ein Hinweis, keine red line: Hör es dir an.",
-    "swing": "Von {{from}} bis {{to}} kommt die Off-Beat-Achtel spät, etwa {{late}} ms ({{snap}} des Beats): Swing. Snap diese Noten nach Gehör."
+    "swing": "Von {{from}} bis {{to}} kommt die Off-Beat-Achtel spät, etwa {{late}} ms ({{snap}} des Beats): Swing. Snap diese Noten nach Gehör.",
+    "bands": {
+      "toggle": "Bänder",
+      "hint": "Tiefe, mittlere und hohe Attacks unter der Wellenform: welches Band den Puls trägt",
+      "legend": "Attacks pro Band: tief, mittel, hoch",
+      "note": "Ein Band ist ein Frequenzbereich, kein Instrument: Die Kick liegt meist im tiefen, der Knall der Snare im mittleren und die Becken im hohen, aber auch eine Basslinie oder eine Stimme landen dort.",
+      "lowShort": "Tief",
+      "midShort": "Mitt",
+      "highShort": "Hoch"
+    },
+    "spectrogram": {
+      "toggle": "Spektrogramm",
+      "hint": "Die Frequenzen des Songs über die Zeit unter der Wellenform, 40 Hz bis 11 kHz, im Zoom der Karte",
+      "legend": "Spektrogramm, 40 Hz–11 kHz (kräftiger heißt lauter)"
+    },
+    "layers": {
+      "needSong": "Bänder und Spektrogramm werden aus dem Song selbst gelesen: Lade ihn unten, um sie zu sehen.",
+      "working": "Bänder und Spektrogramm des Songs werden im Hintergrund gelesen… {{percent}} %",
+      "failed": "Dieser Browser konnte Bänder und Spektrogramm des Songs nicht lesen.",
+      "done": "In {{seconds}} s in diesem Browser gelesen; nichts wurde gesendet."
+    }
   },
   "moderation": {
     "staff": "Staff",
@@ -2367,6 +2387,60 @@
       "bpm": "BPM",
       "beat": "Ein Schlag"
     }
+  },
+  "practice": {
+    "title": "Üben",
+    "reps": "Mal",
+    "countIn": "Einen Takt einzählen",
+    "start": "Üben starten",
+    "stop": "Üben beenden",
+    "counting": "Einzählen…",
+    "status": "Durchgang {{rep}} von {{reps}} · {{rate}}×",
+    "noStretch": "Hier gibt es nichts zu üben: Zieh einen Loop (Shift-Ziehen auf der Karte) oder setz den Abspielkopf in den Abschnitt einer Red Line.",
+    "hint": "Spielt den gezogenen Loop oder den Abschnitt unter dem Abspielkopf {{reps}}-mal von {{from}}× bis {{to}}×, jedes Mal etwas schneller. Die Tonhöhe folgt dem Tempo; die Klicks folgen mit."
+  },
+  "tapMic": {
+    "footer": "BPM per Mikrofon",
+    "eyebrow": "Werkzeug",
+    "title": "BPM per Mikrofon",
+    "description": "Der Browser hört ein paar Sekunden zu und schlägt ein BPM mit seiner Sicherheit vor. Nichts wird hochgeladen.",
+    "intro": "Spiel den Song in der Nähe deines Geräts, drück auf Zuhören und lass den Browser ein paar Sekunden mithören. Er schlägt ein BPM vor und sagt, wie sicher er ist. Der Ton verlässt diese Seite nie: Er wird hier gelesen und verworfen.",
+    "length": "Zuhören für",
+    "seconds": "{{n}} s",
+    "listen": "Zuhören",
+    "again": "Noch einmal zuhören",
+    "stop": "Stoppen und lesen",
+    "permission": "Der Browser fragt nach dem Mikrofon, wenn du auf Zuhören drückst, nicht vorher.",
+    "asking": "Warte auf die Mikrofon-Erlaubnis…",
+    "listening": "Hört zu… {{percent}} %",
+    "listeningLabel": "Hört zu",
+    "level": "Eingangspegel",
+    "quiet": "Sehr leise: Dreh den Song auf oder geh näher ran.",
+    "reading": "Puls wird gelesen…",
+    "errors": {
+      "unsupported": "Dieser Browser kann hier nicht vom Mikrofon aufnehmen.",
+      "denied": "Das Mikrofon wurde nicht erlaubt. Du kannst es in den Website-Einstellungen des Browsers erlauben und es erneut versuchen.",
+      "noMic": "Kein Mikrofon gefunden, oder eine andere App benutzt es.",
+      "failed": "Beim Zuhören ist etwas schiefgegangen. Versuch es noch einmal."
+    },
+    "result": {
+      "short": "Zu kurz für ein Tempo: Hör ein paar Sekunden länger zu.",
+      "silent": "Nichts gehört: Das Mikrofon hat nur Stille aufgenommen.",
+      "noPulse": "Kein gleichmäßiger Puls zu hören. Ein Song mit klarem Beat, lauter oder näher gespielt, liest sich besser; Rauschen und Sprache haben keinen."
+    },
+    "confidence": "{{percent}} % sicher",
+    "alternatives": "Könnte auch {{list}} sein: Ein Mikrofon hört den Puls, nicht in welcher Oktave der Song gezählt wird.",
+    "heard": "Aus {{seconds}} s Ton, in diesem Browser gelesen.",
+    "limitsTitle": "Was es kann und was nicht",
+    "limits": {
+      "private": "Nichts wird hochgeladen oder gespeichert: Die Aufnahme bleibt auf dieser Seite und ist weg, sobald sie gelesen ist.",
+      "precision": "Ein paar Sekunden ergeben bestenfalls ein Tempo auf etwa ein BPM genau; längeres Zuhören ist stabiler. Ein schneller Check, kein Timing.",
+      "octave": "Es kann das halbe oder doppelte Tempo lesen, das ein Mapper wählen würde; die anderen Oktaven stehen daneben.",
+      "changes": "Es nimmt ein gleichmäßiges Tempo an: Ein Song, der schneller oder langsamer wird oder die Taktart wechselt, liest sich als Durchschnitt oder gar nicht.",
+      "room": "Echo, Rauschen, Gerede und der dünne Bass eines Handylautsprechers verwischen die Attacks, auf die es hört.",
+      "offset": "Es liefert keinen Offset und keine Red Lines: Dafür geht die Datei des Songs durch die Engine."
+    },
+    "forTiming": "Für ein vollständiges Timing mit Red Lines und Offset analysiere die Datei selbst."
   },
   "editor": {
     "edit": "Bearbeiten",

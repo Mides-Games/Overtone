@@ -11,13 +11,14 @@ same checklist in the form an agent session follows.
 
 ## When
 
-- **Before every release from `experimental` to `master`.** The review covers the diff
-  between the two branches (`git diff origin/master...origin/experimental`), with the
-  five areas below as the checklist, and the whole of an area when the diff touches it.
+- **Before every release** (a version tag on `master`, the only long-lived branch since
+  2026-10-27). The review covers the diff since the last release
+  (`git diff <last tag>...origin/master`), with the five areas below as the checklist,
+  and the whole of an area when the diff touches it.
 - **After any feature that touches the API, uploads or the worker:** a new route, a
   change to a middleware, the upload path, the spool, `worker/`, `deploy/web/serve.mjs`,
   `deploy/` or `schema.sql`. Then the review covers that feature's diff, before its
-  branch is merged into `experimental`.
+  branch is merged into `master`.
 - **Whenever a dependency is added** to `site/api`, `site/web` (runtime) or the worker:
   area 5 at least.
 

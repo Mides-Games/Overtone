@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Review the Overtone site (site/api, site/web, worker/, deploy/) for security problems along the five areas of the 2026-10-27 reviews. Use before a release from experimental to master, after any change to the API, uploads, the worker or the deploy, when a dependency is added, or whenever asked to "review security" or "audit" this repository. Gives the checklist, the files to read for each area, and how findings are written down.
+description: Review the Overtone site (site/api, site/web, worker/, deploy/) for security problems along the five areas of the 2026-10-27 reviews. Use before a release, after any change to the API, uploads, the worker or the deploy, when a dependency is added, or whenever asked to "review security" or "audit" this repository. Gives the checklist, the files to read for each area, and how findings are written down.
 ---
 
 # Security review of the Overtone site
@@ -12,8 +12,8 @@ server, hardened"): their findings are the best guide to what goes wrong here.
 
 ## 1. Name the scope
 
-- Release: `git diff origin/master...origin/experimental --stat`.
-- Feature: the branch's diff against `origin/experimental`.
+- Release: `git diff <last release tag>...origin/master --stat`.
+- Feature: the branch's diff against `origin/master`.
 - Write down which of the five areas the diff touches. An untouched area is skipped and
   the write-up says so.
 

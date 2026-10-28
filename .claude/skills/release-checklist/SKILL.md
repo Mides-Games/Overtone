@@ -1,6 +1,6 @@
 ---
 name: release-checklist
-description: The checks to run and what a pull request must say before Overtone work is merged, and before experimental is released to master. Use when finishing a branch, opening a PR with gh, preparing a release, or when asked which gates apply to a change. Covers the site's local checks, where the engine's gates run, the commit and PR rules, and the docs a change must update.
+description: The checks to run and what a pull request must say before Overtone work is merged, and before a release is tagged on master. Use when finishing a branch, opening a PR with gh, preparing a release, or when asked which gates apply to a change. Covers the site's local checks, where the engine's gates run, the commit and PR rules, and the docs a change must update.
 ---
 
 # Release checklist
@@ -11,12 +11,13 @@ them in the order you use them. When they disagree with this file, they win: fix
 ## Branches
 
 - Work on a branch named `type/short-topic` (`feature/`, `fix/`, `perf/`, `test/`,
-  `docs/`, `chore/`, `refactor/`, `bench/`), cut from `origin/experimental`. Never commit
-  in-progress work on `experimental` or `master`.
-- Features merge into `experimental` (staging; a push there updates the owner's server).
-  A release is a PR from `experimental` to `master`.
-- Merge `origin/experimental` into your branch before you finish, and run the checks
-  again after the merge.
+  `docs/`, `chore/`, `refactor/`, `bench/`), cut from `origin/master`, the only
+  long-lived branch (owner's decision, 2026-10-27). Never commit in-progress work on
+  `master`.
+- Features reach `master` through a PR. A release is a version tag on `master`
+  (`docs/release.md`).
+- Merge `origin/master` into your branch before you finish, and run the checks again
+  after the merge.
 
 ## Checks
 
@@ -51,8 +52,8 @@ baseline (24/24 within 0.05 BPM and 5 ms) does not move without a reason written
 Update the counts in CLAUDE.md and AGENTS.md together (they must stay byte-identical).
 
 **Security:** a change to the API, uploads, the worker or the deploy gets the
-`security-review` skill on its diff (`docs/security-review.md`). A release to `master`
-gets it on the whole `master...experimental` diff.
+`security-review` skill on its diff (`docs/security-review.md`). A release gets it on the
+whole diff since the last release tag.
 
 ## Commits
 
@@ -88,5 +89,5 @@ description answers three things:
 3. **The checklist**, ticked: one logical change per commit; checks green with numbers;
    `bench/facts.py` clean; timeline entry; roadmap updated.
 
-Do not merge your own feature PR unless the owner said so; a release PR to `master`
-names the security review it had.
+Do not merge your own feature PR unless the owner said so; a release names the
+security review it had.

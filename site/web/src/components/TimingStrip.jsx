@@ -32,7 +32,7 @@ const SPAN = spanOf(LINES)
 const GRID = gridOf(LINES)
 const xOf = (time) => X0 + ((time - SPAN.start) / (SPAN.end - SPAN.start)) * (X1 - X0)
 
-const LEVEL_TONE = { high: 'var(--accent)', medium: 'var(--lavender)', check: 'var(--amber)' }
+const LEVEL_TONE = { high: 'var(--accent)', medium: 'var(--tempo)', check: 'var(--amber)' }
 
 // A seeded generator, so the drawing is the same on every load and in tests.
 function mulberry32(seed) {

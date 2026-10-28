@@ -18,7 +18,7 @@ import { groupOperations, prose } from '../lib/openapi-view.js'
  */
 const METHOD_TONE = {
   GET: 'text-accent',
-  POST: 'text-lavender',
+  POST: 'text-tempo',
   DELETE: 'text-red',
   PUT: 'text-amber',
   PATCH: 'text-amber',

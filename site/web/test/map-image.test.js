@@ -23,7 +23,7 @@ test('the SVG holds every red line, its BPM, the tempo curve, the levels and the
   assert.equal((svg.match(/stroke="#ff5d6c" stroke-width="1.2"/g) ?? []).length, 2, 'one vertical per red line')
   assert.match(svg, />128<\/text>/)
   assert.match(svg, />142<\/text>/)
-  assert.match(svg, /<polyline fill="none" stroke="#a996ff"/)
+  assert.match(svg, /<polyline fill="none" stroke="#8fd16a"/)
   assert.match(svg, new RegExp(`fill="${DARK.accent}"`), 'the high section')
   assert.match(svg, new RegExp(`fill="${DARK.amber}"`), 'the check section')
   assert.match(svg, />0:00<\/text>/)

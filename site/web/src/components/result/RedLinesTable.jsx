@@ -7,7 +7,7 @@ import Term from '../Term.jsx'
 
 export const LEVELS = {
   high: { tone: 'var(--accent)', key: 'strip.high' },
-  medium: { tone: 'var(--lavender)', key: 'strip.medium' },
+  medium: { tone: 'var(--tempo)', key: 'strip.medium' },
   check: { tone: 'var(--amber)', key: 'strip.check' },
 }
 

@@ -203,7 +203,7 @@ test('high contrast puts every text colour at 7:1 or more on every surface, and 
     ['light', LIGHT, { ...LIGHT, ...tokens(':root:not(.dark).contrast-more') }],
     ['dark', DARK, { ...DARK, ...tokens('.dark.contrast-more') }],
   ]) {
-    for (const ink of ['text', 'muted', 'dim', 'accent', 'red', 'amber', 'lavender']) {
+    for (const ink of ['text', 'muted', 'dim', 'accent', 'red', 'amber', 'tempo']) {
       for (const ground of ['bg', 'surface', 'surface-2', 'surface-3']) {
         const ratio = contrast(more[ink], more[ground])
         assert.ok(ratio >= 7, `${name} ${ink} on ${ground}: ${ratio.toFixed(2)}:1`)
@@ -255,7 +255,7 @@ function lab(h, matrix) {
 
 /** The smallest distance between any two of the map's four signal colours, under every deficiency. */
 function closest(t) {
-  const colours = ['accent', 'red', 'amber', 'lavender'].map((name) => t[name])
+  const colours = ['accent', 'red', 'amber', 'tempo'].map((name) => t[name])
   let min = Infinity
   for (const matrix of Object.values(DEFICIENCIES)) {
     const points = colours.map((h) => lab(h, matrix))
@@ -269,7 +269,7 @@ function closest(t) {
 test('the colour-blind palette keeps the map\'s colours further apart than the default, in both themes', () => {
   const lightCb = { ...LIGHT, ...tokens(':root:not(.dark).palette-cb') }
   const darkCb = { ...DARK, ...tokens('.dark.palette-cb') }
-  // Measured 2026-10-27: default light 14.1, dark 30.4; colour-blind light 33.7, dark 42.1.
+  // Measured 2026-10-28, the studio palette (docs/design.md): default light 3.7, dark 11.5; colour-blind light 32.6, dark 42.2.
   assert.ok(closest(lightCb) >= 30, `light: ${closest(lightCb).toFixed(1)}`)
   assert.ok(closest(darkCb) >= 30, `dark: ${closest(darkCb).toFixed(1)}`)
   assert.ok(closest(lightCb) > closest(LIGHT) + 10, `light: ${closest(lightCb).toFixed(1)} against ${closest(LIGHT).toFixed(1)}`)
@@ -279,6 +279,6 @@ test('the colour-blind palette keeps the map\'s colours further apart than the d
     [lightCb, LIGHT.surface],
     [darkCb, DARK.surface],
   ]) {
-    for (const name of ['red', 'amber', 'lavender']) assert.ok(contrast(t[name], ground) >= 4.5, `${name} ${t[name]} on ${ground}`)
+    for (const name of ['red', 'amber', 'tempo']) assert.ok(contrast(t[name], ground) >= 4.5, `${name} ${t[name]} on ${ground}`)
   }
 })

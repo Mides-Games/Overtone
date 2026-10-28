@@ -1,75 +1,81 @@
 @import 'tailwindcss';
 
 /*
- * Overtone on the web: the desktop app's "Console" (app/styles.css), one step
- * darker. The panel of a measuring instrument: violet graphite, one
- * signal-cyan accent, flat panels with hairline borders instead of lifted
- * cards, squarer controls, DIN headings and small-caps labels. The app's
- * reserved meanings hold here too: red = timing points (osu!'s red lines),
- * amber = something to check by ear, lavender = tempo.
- *
- * Layout: a slim instrument bar on top, content in one 72rem column, panels
- * separated by hairlines rather than shadows.
+ * Overtone on the web: a studio monitor, not a dashboard (docs/design.md).
+ * Near-black, quiet surfaces in a neutral, slightly cool ink; numbers set like
+ * readouts; colour used only as signal. The reserved meanings hold on every
+ * page: red = timing points (osu!'s red lines), amber = something to check by
+ * ear, tempo (green) = the tempo curve, accent (the logo's cyan) = action and
+ * signal.
  *
  * Every colour is a token below and every component reads the token, so the
  * light theme is a second set of values, not a second stylesheet. Dark is the
  * default (class on <html>, stored as `mides.theme` like the rest of Mides).
- * Nothing is fetched: system faces only, like the app.
+ * Both themes are designed, not inverted: the light one has its own darker
+ * signal colours, so each still reads as text on its panels.
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   color-scheme: light;
-  --bg: #f5f4f8;
+  --bg: #f6f7f8;
   --surface: #ffffff;
-  --surface-2: #faf9fc;
-  --surface-3: #ebe8f1;
-  --line: #e0dce8;
-  --line-strong: #cdc7da;
-  --line-hover: #b3acc3;
-  --text: #1a1724;
-  --muted: #58526a;
-  --dim: #686279;
-  /* Accent and amber are one step darker than they were (2026-10-27, W10.2):
-     on their own 10-15 % tints (a pressed tool button, a chip, a "to be set"
-     box) the old ones read 4.15-4.45:1, under AA's 4.5. Now 4.6-5:1. */
+  --surface-2: #f0f2f4;
+  --surface-3: #e6e9ec;
+  --line: #e1e4e8;
+  --line-strong: #c9ced5;
+  --line-hover: #aab0b8;
+  /* An input's edge: the one line that identifies a control, so 3:1 on its panel (WCAG 1.4.11). */
+  --line-control: #868b92;
+  --text: #0e1013;
+  --muted: #4a515b;
+  --dim: #5f6670;
+  /* The signal colours are dark enough to read on their own 10-15 % tints (a
+     pressed tool button, a chip, a "to be set" box), not only on the panels:
+     4.6:1 or more there (W10.2, 2026-10-27; red and tempo since the studio
+     palette). */
   --accent: #076672;
   --accent-hover: #05545d;
   --accent-ink: #ffffff;
-  --red: #c42e3b;
+  --red: #ad2834;
   --amber: #835606;
-  --lavender: #5b45d6;
+  --tempo: #356b18;
   /* The other timing on a comparison's map (W12.10, W12.11). */
   --compare: #1565c0;
-  --onset: #bdb6cc;
+  --onset: #c3c8cf;
   --red-ink: #ffffff;
-  --grid: rgba(26, 23, 36, 0.09);
-  --scrim: rgba(245, 244, 248, 0.82);
+  --grid: rgba(14, 16, 19, 0.08);
+  --scrim: rgba(246, 247, 248, 0.86);
+  --shadow-panel: 0 1px 2px rgba(14, 16, 19, 0.04), 0 6px 20px -10px rgba(14, 16, 19, 0.12);
+  --shadow-pop: 0 18px 40px -14px rgba(14, 16, 19, 0.28);
 }
 
 .dark {
   color-scheme: dark;
-  --bg: #0d0b12;
-  --surface: #14121a;
-  --surface-2: #19161f;
-  --surface-3: #221e2b;
-  --line: #26222f;
-  --line-strong: #353044;
-  --line-hover: #4d4760;
-  --text: #efecf5;
-  --muted: #aaa3b8;
-  --dim: #8f88a1;
+  --bg: #0a0b0d;
+  --surface: #111316;
+  --surface-2: #16191d;
+  --surface-3: #1d2126;
+  --line: #22262c;
+  --line-strong: #2f343b;
+  --line-hover: #454b53;
+  --line-control: #62676e;
+  --text: #eceef1;
+  --muted: #a2a8b1;
+  --dim: #848a93;
   --accent: #3fd0dc;
   --accent-hover: #6fe0e9;
   --accent-ink: #06262a;
   --red: #ff5d6c;
   --amber: #f5b44a;
-  --lavender: #a996ff;
+  --tempo: #8fd16a;
   --compare: #5cb3ff;
-  --onset: #4a4360;
+  --onset: #3a3f47;
   --red-ink: #22070b;
-  --grid: rgba(255, 255, 255, 0.06);
-  --scrim: rgba(13, 11, 18, 0.82);
+  --grid: rgba(255, 255, 255, 0.055);
+  --scrim: rgba(10, 11, 13, 0.82);
+  --shadow-panel: none;
+  --shadow-pop: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
 }
 
 /*
@@ -80,34 +86,36 @@
  * reaches WCAG AAA (7:1) against every surface it sits on, down to the
  * darkest panel (--surface-3); the strong line reaches 3:1 against the page,
  * the non-text minimum. test/settings.test.js computes each ratio from the
- * values below, so a change that drops one fails there.
+ * values below, so a change that drops one fails there. The dark theme's
+ * accent, amber and tempo already pass, so they stay.
  */
 :root:not(.dark).contrast-more {
-  --line: #b3acc3;
-  --line-strong: #8a829c;
-  --line-hover: #6e6682;
-  --text: #0b0910;
-  --muted: #3d3850;
-  --dim: #48425a;
-  --accent: #05555e;
-  --accent-hover: #033f46;
-  --red: #8f1824;
-  --amber: #5e3d00;
-  --lavender: #3f2aa8;
-  --onset: #8a829c;
-  --grid: rgba(11, 9, 16, 0.18);
+  --line: #aab0b8;
+  --line-strong: #7c828a;
+  --line-hover: #61676f;
+  --line-control: #61676f;
+  --text: #050607;
+  --muted: #3e444c;
+  --dim: #43484f;
+  --accent: #07525b;
+  --accent-hover: #053f46;
+  --red: #8c1f2a;
+  --amber: #644205;
+  --tempo: #2a5313;
+  --onset: #7c828a;
+  --grid: rgba(5, 6, 7, 0.18);
 }
 
 .dark.contrast-more {
-  --line: #4d4760;
-  --line-strong: #6e6784;
-  --line-hover: #8f88a1;
+  --line: #3d424a;
+  --line-strong: #646a72;
+  --line-hover: #8a9098;
+  --line-control: #8a9098;
   --text: #ffffff;
-  --muted: #d0cadb;
-  --dim: #bdb6cb;
+  --muted: #c6cbd2;
+  --dim: #b1b6bd;
   --red: #ff8a95;
-  --lavender: #b9aaff;
-  --onset: #6e6784;
+  --onset: #646a72;
   --grid: rgba(255, 255, 255, 0.14);
 }
 
@@ -115,23 +123,45 @@
  * The colour-blind-safe palette: the three reserved meanings (red lines,
  * check by ear, tempo) moved apart for protanopia, deuteranopia and
  * tritanopia, on the whole site so the map, its table and the chips keep
- * agreeing. The accent stays. Found by a random search over hues near each
- * meaning, scored by the smallest CIELAB distance between the four map
- * colours under Machado et al.'s (2009) simulation of each deficiency, with
- * every colour at 5.5:1 or more against the panel; test/settings.test.js
- * recomputes the distances. Declared after high contrast with the same
- * weight, so with both on these three hues stay (AA rather than AAA).
+ * agreeing. The accent stays. Found by a seeded random search over hues near
+ * red and amber and over blue-to-indigo for tempo (green is what these
+ * deficiencies confuse with red and amber), scored by the smallest CIELAB
+ * distance between the four map colours under Machado et al.'s (2009)
+ * simulation of each deficiency, with every colour at 5.5:1 or more against
+ * the panel; test/settings.test.js recomputes the distances. Declared after
+ * high contrast with the same weight, so with both on these three hues stay
+ * (AA rather than AAA).
  */
 :root:not(.dark).palette-cb {
-  --red: #5a0f1d;
-  --amber: #756406;
-  --lavender: #9e0fc4;
+  --red: #4d1017;
+  --amber: #7f6311;
+  --tempo: #2b0181;
 }
 
 .dark.palette-cb {
-  --red: #fb6357;
-  --amber: #f2d901;
-  --lavender: #a170fe;
+  --red: #e17157;
+  --amber: #eadb20;
+  --tempo: #917bfe;
+}
+
+/*
+ * Motion (docs/design.md, section 5): strong ease-outs for what enters or
+ * reacts, one ease-in-out for what moves on screen, never ease-in. Short:
+ * 120-180 ms for small UI, 200-280 ms for panels and sheets; an exit is
+ * faster than its entry.
+ */
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 120ms;
+  --dur-fast: 160ms;
+  --dur-panel: 240ms;
+  --dur-exit: 160ms;
+  --stagger: 35ms;
+  /* The sticky bar's height, so a focused or linked element is never hidden under it. */
+  --bar-height: 56px;
+  /* Space between the front page's sections: 64 px on a phone, up to 128 on a wide screen. */
+  --space-section: clamp(64px, 3rem + 6vw, 128px);
 }
 
 @theme inline {
@@ -147,6 +177,7 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-line-hover: var(--line-hover);
+  --color-line-control: var(--line-control);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-dim: var(--dim);
@@ -155,27 +186,39 @@
   --color-accent-ink: var(--accent-ink);
   --color-red: var(--red);
   --color-amber: var(--amber);
-  --color-lavender: var(--lavender);
+  --color-tempo: var(--tempo);
   --color-compare: var(--compare);
   --color-onset: var(--onset);
   --color-red-ink: var(--red-ink);
 
-  /* The app's scale, a little larger for reading on a page, times the reader's
-     font size (W12.15: --font-scale, 0.9 to 1.3, set on <html>). The display
-     size is in rem, which the root's size already scales. */
-  --text-caption: calc(11.5px * var(--font-scale, 1));
-  --text-caption--letter-spacing: 0.08em;
-  --text-label: calc(12.5px * var(--font-scale, 1));
+  /* The type scale (docs/design.md, section 3): 12 / 13 / 15 / 17 / 20 / 24 /
+     32 / 44 / 60 px, times the reader's font size (W12.15: --font-scale, 0.9
+     to 1.3, set on <html>). The top three are fluid, in rem, which the root's
+     size already scales. The older names keep their places in the scale. */
+  --text-caption: calc(12px * var(--font-scale, 1));
+  --text-caption--letter-spacing: 0.06em;
+  --text-label: calc(13px * var(--font-scale, 1));
   --text-body: calc(15px * var(--font-scale, 1));
   --text-body--line-height: 1.6;
+  --text-lead: calc(17px * var(--font-scale, 1));
+  --text-lead--line-height: 1.55;
   --text-title: calc(20px * var(--font-scale, 1));
-  --text-display: clamp(2.1rem, 1.4rem + 3vw, 3.6rem);
-  --text-display--line-height: 1.02;
+  --text-title--line-height: 1.3;
+  --text-heading: calc(24px * var(--font-scale, 1));
+  --text-heading--line-height: 1.2;
+  --text-section: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+  --text-section--line-height: 1.1;
+  --text-headline: clamp(2rem, 1.3rem + 2.6vw, 2.75rem);
+  --text-headline--line-height: 1.05;
+  --text-display: clamp(2.5rem, 1.5rem + 3.6vw, 3.75rem);
+  --text-display--line-height: 1;
 
   --radius-control: 6px;
   --radius-panel: 10px;
 
-  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: var(--ease-out-strong);
+  --ease-out: var(--ease-out-strong);
+  --ease-in-out: var(--ease-in-out-strong);
 }
 
 html,
@@ -188,6 +231,7 @@ body,
    and a line keeps its measure; the px sizes above take the same factor. */
 html {
   font-size: calc(100% * var(--font-scale, 1));
+  scroll-padding-top: calc(var(--bar-height) + 16px);
 }
 
 body {

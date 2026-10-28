@@ -16,7 +16,7 @@ const PATHS = {
   // Two red lines over a tempo plot that steps up.
   variable: (
     <>
-      <path d="M3 17h6v-5h6V8h6" stroke="var(--lavender)" />
+      <path d="M3 17h6v-5h6V8h6" stroke="var(--tempo)" />
       <path d="M9 4v16M15 4v16" stroke="var(--red)" />
     </>
   ),

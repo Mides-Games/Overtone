@@ -143,9 +143,9 @@ function UserMenu({ account }) {
 function Places({ className = '' }) {
   const { t } = useTranslation()
   const tab = ({ isActive }) =>
-    `relative flex h-full shrink-0 items-center px-3 font-display text-label font-semibold uppercase tracking-[0.08em] transition ${
+    `relative flex h-full shrink-0 items-center px-2.5 font-display xl:px-3 text-label font-semibold uppercase tracking-[0.08em] transition ${
       isActive
-        ? 'text-text after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent'
+        ? 'text-text after:absolute after:inset-x-2.5 xl:after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent'
         : 'text-dim hover:text-text'
     }`
   return (
@@ -165,7 +165,7 @@ export default function Navbar() {
 
   return (
     <header id="site-navbar" className="border-b border-line bg-[var(--scrim)] backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-6" style={gutter}>
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 xl:gap-6" style={gutter}>
         <Link to="/" className="flex shrink-0 items-center gap-2.5" aria-label="Overtone">
           <Mark size={22} />
           <span className="font-display text-[15px] font-bold uppercase tracking-[0.16em] text-text">Overtone</span>

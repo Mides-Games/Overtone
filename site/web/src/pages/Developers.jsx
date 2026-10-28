@@ -33,7 +33,7 @@ const METHOD_TONE = {
 }
 
 /** The community clients (W13.22): clients/js and clients/python in the repository. Code, so not translated. */
-const CLIENTS_URL = 'https://github.com/Mides-Projects/Overtone/tree/master/clients'
+const CLIENTS_URL = 'https://github.com/Mides-Games/Overtone/tree/master/clients'
 const CLIENTS = [
   {
     key: 'clientsJs',

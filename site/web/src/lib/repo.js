@@ -1,5 +1,5 @@
 /** The public repository, where the docs a page cites can be read. */
-export const REPO_URL = 'https://github.com/Mides-Projects/Overtone'
+export const REPO_URL = 'https://github.com/Mides-Games/Overtone'
 
 /**
  * A file of the repository on GitHub, for a page that cites where something

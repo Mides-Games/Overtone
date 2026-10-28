@@ -192,7 +192,7 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'en') || a.version.localeC
 export function collect({ venv }) {
   const npm = [...npmPackages('web').map((p) => ({ ...p, part: 'web' })), ...npmPackages('api').map((p) => ({ ...p, part: 'api' }))]
   return {
-    overtone: { ...readLicenceFile(readFileSync(join(REPO, 'LICENSE'), 'utf8')), url: 'https://github.com/Mides-Projects/Overtone' },
+    overtone: { ...readLicenceFile(readFileSync(join(REPO, 'LICENSE'), 'utf8')), url: 'https://github.com/Mides-Games/Overtone' },
     model: model(),
     python: pythonPackages(venv).sort(byName),
     npm: npm.sort((a, b) => a.part.localeCompare(b.part) || byName(a, b)),

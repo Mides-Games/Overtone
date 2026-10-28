@@ -5,7 +5,7 @@ import Icon from '../components/ui/Icon.jsx'
 import credits from '../data/credits.json'
 import usePageMeta from '../hooks/usePageMeta.js'
 
-const REPO_URL = 'https://github.com/Mides-Projects/Overtone'
+const REPO_URL = 'https://github.com/Mides-Games/Overtone'
 
 /**
  * Credits and licences (W4.8). Everything below the team comes from
@@ -127,7 +127,7 @@ export default function Credits() {
 
           <Section id="overtone" title={t('credits.overtone')}>
             <p className="prose">
-              {t('credits.overtoneBody', credits.overtone)} <External href={credits.overtone.url}>Mides-Projects/Overtone</External>
+              {t('credits.overtoneBody', credits.overtone)} <External href={credits.overtone.url}>Mides-Games/Overtone</External>
             </p>
           </Section>
 

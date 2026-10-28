@@ -486,11 +486,11 @@ were what was missing.
 
 > **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). The hitsound engine (P-1 to P-6, H1 to H7) left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
 
-All of [`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md). **In the app since 2026-09-24/25:**
+All of [`06-hitsound-engine.md`](https://github.com/Mides-Games/Overtone/blob/v3-desktop-full/docs/06-hitsound-engine.md). **In the app since 2026-09-24/25:**
 the copier, the Hitsounds section, the consistency check in the mod report and the
 decision engine's proposals, with detection and decision in Rust behind `overtone-cli`.
 The order of work, and what has to land first, is
-[`15-hitsound-plan.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
+[`15-hitsound-plan.md`](https://github.com/Mides-Games/Overtone/blob/v3-desktop-full/docs/15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
 the copier, the section, the check, the decision engine, the editor.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |

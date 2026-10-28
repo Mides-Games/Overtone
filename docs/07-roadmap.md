@@ -1372,6 +1372,60 @@ pulse.
 Most of the anime-variable gain rests on 27.3, most of the octave gain on 27.2 and 27.4.
 A step that does not move its stage on held out is rejected, however good dev looks.
 
+## Phase 28 — Live bands to 80 % (proposed 2026-10-28)
+
+The owner's priority: bands. bands-variable stands at 51.1 % dev / 59.9 % held out tempo
+ok, ~70 % of beats within 10 ms, ~83 % octave. The aim is 80 % on what a player feels
+(beats within 10 ms) and 65–72 % on the strict tempo bar, which a drummer's drift and a
+mapper's dozen red lines cap: two good mappers do not write the same twelve lines.
+Each step is an experiment on the server, kept only if held out moves too.
+
+28.0 **Measure what a player feels.** Report beats within 10 and 20 ms
+     (`beat_f10`, `beat_f20`) as bands' headline beside tempo ok and tempo_near. Done.
+
+28.1 **A drums-only grid, cheap first** (`PERCUSSIVE_INPUT`, built 2026-10-28): HPSS's
+     percussive part feeds the attack detector and the Rust engine; Beat This! keeps
+     the mix. Margins 1 and 3 measured. If it moves bands, the separated-drums road is
+     open and 28.3 is worth its cost.
+
+28.2 **The octave rule** (`OCTAVE_RULE`, built 2026-10-28): fast punk read at half and
+     slow songs read at double, decided on the off-beat weight. Then re-fit it on the
+     drums-only evidence (the hi-hat and snare carry the decision there).
+
+28.3 **Real stem separation.** Demucs (htdemucs) as ONNX on onnxruntime, which the
+     server already runs for Beat This!; drums stem only, ~0.2–1.5× the song's length on
+     CPU. **First confirm the weights' licence in facebookresearch/demucs** — mirrors
+     disagree (MIT vs CC BY-NC); if it is non-commercial, Open-Unmix or Spleeter (MIT)
+     instead. Cache the stem per audio hash; run Beat This! on both mix and drums.
+
+28.4 **Two sources, one answer.** The oracle study (docs/18) found no gain in choosing
+     between today's configurations because they share one core and fail together. The
+     drums stem is the different source that study lacked: fit on the mix and on the
+     drums, keep the grid whose attacks fit better, and re-run the oracle study with it.
+
+28.5 **Follow the drummer.** Tempo from the kick drum (B-Keeper's method: update on each
+     kick whose interval fits a metrical division), smoothed as a hidden state (a Kalman
+     filter on the tempo curve: perceived beat is smoother than the onsets), and the
+     DBN of 27.6 with its range opened, all on the drums stem. Replaces the tracker path
+     only where bands measure better.
+
+28.6 **Change points** (`CHANGE_POINTS`, built 2026-10-28): the one-line case split where
+     the attacks change tempo, on the drums stem once 28.3 exists.
+
+28.7 **Write lines as bands mappers do.** From the server's ~25 000 maps, learn how live
+     songs are timed: lines per minute, whole vs .5 vs two-decimal BPMs, lines on section
+     starts. Place and round red lines to that habit where the attacks allow.
+
+28.8 **A model of our own** (27.8), trained on bands maps' tempo and octave, as a judge.
+
+### Targets (not claims)
+
+| bands-variable | Now (dev / held out) | After 28.1–28.6 |
+|---|---|---|
+| Beats within 10 ms | ~70 % | 80–85 % |
+| Tempo ok (0.05 BPM, every line) | 51.1 / 59.9 | 65–72 % |
+| Octave ×1 | 83.5 / 82.4 | ~92 % |
+
 ## Rejected ideas
 
 | Idea | Verdict |

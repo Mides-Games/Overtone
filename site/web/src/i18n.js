@@ -8,7 +8,9 @@ import en from './locales/en.json'
  * needs. English stays bundled, as the default and every key's fallback.
  * i18next asks this backend for any language it lacks, and changeLanguage
  * waits for it, so a switch to Spanish never shows a half-translated page;
- * main.jsx waits for the first language before it renders.
+ * main.jsx waits for the first language before it renders. A language added
+ * to LANGS gets its own `import()` here, and its own budget in
+ * scripts/budget.mjs.
  */
 const lazyLocales = {
   type: 'backend',

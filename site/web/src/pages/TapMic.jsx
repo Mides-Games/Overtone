@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
 
+import { NextLinks } from '../components/ui/Doc.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 // A file of its own, never inlined: the site's policy (script-src 'self') refuses a data: worklet.
 import workletUrl from '../lib/mic-recorder.worklet.js?url&no-inline'
@@ -115,101 +116,139 @@ export default function TapMic() {
 
   const busy = state.kind === 'asking' || state.kind === 'listening' || state.kind === 'reading'
   const reading = state.kind === 'done' ? state.reading : null
+  const listening = state.kind === 'listening'
+  const done = listening ? state.done : 0
 
   return (
-    <article className="rise mx-auto max-w-[72ch] space-y-8">
-      <header className="space-y-3">
-        <p className="label text-accent">{t('tapMic.eyebrow')}</p>
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('tapMic.title')}</h1>
-        <p className="text-body leading-relaxed text-muted">{t('tapMic.intro')}</p>
+    <article className="rise space-y-10">
+      <header className="max-w-[70ch] space-y-4">
+        <p className="eyebrow">{t('tapMic.eyebrow')}</p>
+        <h1 className="heading-headline">{t('tapMic.title')}</h1>
+        <p className="lede">{t('tapMic.intro')}</p>
       </header>
 
-      <section className="panel space-y-4 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('tapMic.length')}>
-            <span className="label mr-1">{t('tapMic.length')}</span>
-            {DURATIONS.map((s) => (
-              <button key={s} type="button" className="tool-btn px-2.5" aria-pressed={seconds === s} disabled={busy} onClick={() => setSeconds(s)}>
-                {t('tapMic.seconds', { n: s })}
-              </button>
-            ))}
-          </div>
-          {state.kind === 'listening' ? (
-            <button type="button" className="btn-primary h-10 min-w-28" onClick={stop}>
-              {t('tapMic.stop')}
-            </button>
-          ) : (
-            <button type="button" className="btn-primary h-10 min-w-28" onClick={listen} disabled={busy}>
-              {reading ? t('tapMic.again') : t('tapMic.listen')}
-            </button>
-          )}
-        </div>
-
-        <div aria-live="polite" className="space-y-3">
-          {state.kind === 'idle' && <p className="text-label text-dim">{t('tapMic.permission')}</p>}
-          {state.kind === 'asking' && <p className="text-label text-dim">{t('tapMic.asking')}</p>}
-          {state.kind === 'listening' && (
-            <div className="space-y-2">
-              <p className="text-label text-text">{t('tapMic.listening', { percent: Math.round(state.done * 100) })}</p>
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={t('tapMic.listeningLabel')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.done * 100)}>
-                <div className="h-full bg-accent" style={{ width: `${Math.max(2, state.done * 100)}%` }} />
-              </div>
-              <div className="flex items-center gap-2 text-caption text-dim">
-                <span>{t('tapMic.level')}</span>
-                <span className="h-1.5 w-32 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
-                  <span className="block h-full bg-lavender transition-[width] duration-100" style={{ width: `${Math.round(level * 100)}%` }} />
-                </span>
-                {level < 0.05 && <span className="text-amber">{t('tapMic.quiet')}</span>}
-              </div>
+      <div className="grid items-start gap-x-10 gap-y-10 lg:grid-cols-12">
+        <section aria-label={t('tapMic.title')} className="panel overflow-hidden lg:col-span-7">
+          {/* The controls: the length, then one button that is Listen, Stop and Again in turn, so the
+              keyboard's focus stays on it through a whole reading (Space starts, Space stops). */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-4 py-3.5 sm:px-5">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t('tapMic.length')}>
+              <span className="label mr-1.5">{t('tapMic.length')}</span>
+              {DURATIONS.map((s) => (
+                <button key={s} type="button" className="tool-btn readout px-2.5" aria-pressed={seconds === s} disabled={busy} onClick={() => setSeconds(s)}>
+                  {t('tapMic.seconds', { n: s })}
+                </button>
+              ))}
             </div>
-          )}
-          {state.kind === 'reading' && <p className="text-label text-dim">{t('tapMic.reading')}</p>}
-          {state.kind === 'error' && (
-            <p role="alert" className="text-label text-red">
-              {t(`tapMic.errors.${state.code}`)}
-            </p>
-          )}
-          {reading && <Reading reading={reading} />}
-        </div>
-      </section>
+            <button
+              type="button"
+              className={`${listening ? 'btn-ghost' : 'btn-primary'} min-w-32`}
+              onClick={() => {
+                if (listening) stop()
+                else if (!busy) listen()
+              }}
+              aria-disabled={busy && !listening ? 'true' : undefined}
+            >
+              <Icon name={listening ? 'stop' : 'mic'} size={18} />
+              {listening ? t('tapMic.stop') : reading ? t('tapMic.again') : t('tapMic.listen')}
+            </button>
+          </div>
 
-      <section className="space-y-3">
-        <h2 className="label">{t('tapMic.limitsTitle')}</h2>
-        <ul className="list-disc space-y-1.5 pl-5 text-label leading-relaxed text-muted marker:text-dim">
-          {['private', 'precision', 'octave', 'changes', 'room', 'offset'].map((key) => (
-            <li key={key}>{t(`tapMic.limits.${key}`)}</li>
-          ))}
-        </ul>
-        <p className="text-label text-muted">
-          {t('tapMic.forTiming')}{' '}
-          <Link to="/analyze" className="text-accent hover:underline">
-            {t('nav.analyze')} →
-          </Link>
-        </p>
-      </section>
+          {/* The display: what the microphone hears while it listens, the reading after. */}
+          <div className="p-4 sm:p-5">
+            <div aria-live="polite" className="panel-well flex min-h-56 flex-col justify-between gap-6 p-4 sm:p-5">
+              {state.kind === 'idle' && <p className="text-label text-muted">{t('tapMic.permission')}</p>}
+              {state.kind === 'asking' && <p className="text-label text-muted">{t('tapMic.asking')}</p>}
+              {listening && (
+                <div className="space-y-5">
+                  <p className="readout text-label text-text">{t('tapMic.listening', { percent: Math.round(done * 100) })}</p>
+                  <div
+                    className="h-1 overflow-hidden rounded-full bg-line-strong"
+                    role="progressbar"
+                    aria-label={t('tapMic.listeningLabel')}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(done * 100)}
+                  >
+                    <div className="h-full origin-left bg-accent transition-transform duration-100 ease-out" style={{ transform: `scaleX(${Math.max(0.02, done)})` }} />
+                  </div>
+                  <LevelMeter level={level} />
+                </div>
+              )}
+              {state.kind === 'reading' && <p className="text-label text-muted">{t('tapMic.reading')}</p>}
+              {state.kind === 'error' && (
+                <p role="alert" className="text-label text-red">
+                  {t(`tapMic.errors.${state.code}`)}
+                </p>
+              )}
+              {reading && <Reading reading={reading} />}
+              {!reading && (
+                <p aria-hidden="true" className="readout text-display font-medium leading-none text-dim">
+                  –<span className="unit">BPM</span>
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="tap-mic-limits" className="min-w-0 space-y-4 lg:col-span-5">
+          <h2 id="tap-mic-limits" className="heading-title">
+            {t('tapMic.limitsTitle')}
+          </h2>
+          <ul className="prose text-label">
+            {['private', 'precision', 'octave', 'changes', 'room', 'offset'].map((key) => (
+              <li key={key}>{t(`tapMic.limits.${key}`)}</li>
+            ))}
+          </ul>
+          <div className="border-t border-line pt-4">
+            <p className="text-label text-muted">{t('tapMic.forTiming')}</p>
+            <NextLinks links={[{ to: '/analyze', label: t('nav.analyze') }]} className="mt-1" />
+          </div>
+        </section>
+      </div>
     </article>
+  )
+}
+
+/** The input level as a row of segments, like a channel meter; the quiet warning beside it. */
+const SEGMENTS = 24
+function LevelMeter({ level }) {
+  const { t } = useTranslation()
+  const lit = Math.round(level * SEGMENTS)
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption">
+      <span className="label">{t('tapMic.level')}</span>
+      <span className="flex h-3 items-stretch gap-[3px]" aria-hidden="true">
+        {Array.from({ length: SEGMENTS }, (_, i) => (
+          <span key={i} className={`w-1.5 rounded-[1px] ${i < lit ? 'bg-accent' : 'bg-line-strong'}`} />
+        ))}
+      </span>
+      {level < 0.05 && <span className="text-amber">{t('tapMic.quiet')}</span>}
+    </div>
   )
 }
 
 function Reading({ reading }) {
   const { t } = useTranslation()
   if (reading.kind !== 'tempo') {
-    return <p className="text-label text-amber">{t(`tapMic.result.${reading.kind}`)}</p>
+    return <p className="callout callout-amber text-text">{t(`tapMic.result.${reading.kind}`)}</p>
   }
   const confidence = Math.round(reading.confidence * 100)
   return (
-    <div className="space-y-2">
-      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="readout font-display text-[2.4rem] font-bold leading-none text-text">{formatBpm(Number(reading.bpm.toFixed(1)))}</span>
-        <span className="label">BPM</span>
-        <span className={`readout text-label ${confidence >= 60 ? 'text-accent' : 'text-amber'}`}>{t('tapMic.confidence', { percent: confidence })}</span>
+    <div className="space-y-4">
+      <p className="flex flex-wrap items-end gap-x-4 gap-y-2">
+        <span className="readout text-display font-medium leading-none text-text">
+          {formatBpm(Number(reading.bpm.toFixed(1)))}
+          <span className="unit">BPM</span>
+        </span>
+        <span className={confidence >= 60 ? 'chip-accent' : 'chip-amber'}>{t('tapMic.confidence', { percent: confidence })}</span>
       </p>
       {reading.alternatives.length > 0 && (
-        <p className="text-label text-muted">
+        <p className="readout text-label text-muted">
           {t('tapMic.alternatives', { list: reading.alternatives.map((b) => formatBpm(Number(b.toFixed(1)))).join(' · ') })}
         </p>
       )}
-      <p className="text-caption text-dim">{t('tapMic.heard', { seconds: reading.seconds.toFixed(1) })}</p>
+      <p className="readout text-caption text-dim">{t('tapMic.heard', { seconds: reading.seconds.toFixed(1) })}</p>
     </div>
   )
 }

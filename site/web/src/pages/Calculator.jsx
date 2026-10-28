@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router'
 
+import Icon from '../components/ui/Icon.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import {
   arrowStep,
@@ -42,13 +43,18 @@ export default function Calculator() {
   const seed = useMemo(() => calculatorSeed(search), [search])
 
   return (
-    <article className="rise mx-auto max-w-5xl space-y-6">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('calculator.title')}</h1>
-        <p className="max-w-[72ch] text-body leading-relaxed text-muted">{t('calculator.intro')}</p>
-        <p className="max-w-[72ch] text-caption text-dim">{t('calculator.keys')}</p>
+    <article className="rise space-y-10">
+      <header className="max-w-[70ch] space-y-4">
+        <p className="eyebrow">{t('tapMic.eyebrow')}</p>
+        <h1 className="heading-headline">{t('calculator.title')}</h1>
+        <p className="lede">{t('calculator.intro')}</p>
+        <p className="callout flex items-start gap-2.5">
+          <Icon name="keyboard" size={18} className="mt-0.5 shrink-0 text-dim" />
+          <span>{t('calculator.keys')}</span>
+        </p>
       </header>
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Two columns from a tablet up; each calculator keeps its own height, so a short one does not stretch. */}
+      <div className="grid items-start gap-4 md:grid-cols-2 lg:gap-6">
         <BpmMs seed={seed} />
         <Ticks seed={seed} />
         <TwoLines seed={seed} />
@@ -62,14 +68,14 @@ export default function Calculator() {
 function Panel({ title, intro, children }) {
   const id = useId()
   return (
-    <section aria-labelledby={id} className="panel space-y-4 p-4">
-      <div className="space-y-1">
-        <h2 id={id} className="font-display text-title font-bold">
+    <section aria-labelledby={id} className="panel">
+      <div className="space-y-1 border-b border-line px-4 py-3.5 sm:px-5">
+        <h2 id={id} className="heading-title">
           {title}
         </h2>
-        {intro && <p className="text-caption text-dim">{intro}</p>}
+        {intro && <p className="text-label text-muted">{intro}</p>}
       </div>
-      {children}
+      <div className="space-y-4 p-4 sm:p-5">{children}</div>
     </section>
   )
 }
@@ -87,7 +93,8 @@ function Field({ label, value, onChange, unit, step = 1, autoFocus = false }) {
       <label htmlFor={id} className="label block">
         {label}
       </label>
-      <div className="flex items-center gap-2">
+      {/* The unit sits inside the field's right edge, like a meter's legend. */}
+      <div className="relative">
         <input
           ref={ref}
           id={id}
@@ -97,15 +104,20 @@ function Field({ label, value, onChange, unit, step = 1, autoFocus = false }) {
           spellCheck={false}
           value={value}
           aria-invalid={bad || undefined}
+          aria-describedby={unit ? `${id}-unit` : undefined}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
             e.preventDefault()
             onChange(stepValue(value, (e.key === 'ArrowUp' ? 1 : -1) * arrowStep(e, step)))
           }}
-          className={`field readout min-w-0 ${bad ? 'border-red' : ''}`}
+          className={`field readout min-w-0 text-right ${unit ? 'pr-12' : ''}`}
         />
-        {unit && <span className="shrink-0 text-caption text-dim">{unit}</span>}
+        {unit && (
+          <span id={`${id}-unit`} className="label pointer-events-none absolute inset-y-0 right-3 flex items-center">
+            {unit}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -123,7 +135,7 @@ function Readout({ label, value, digits = 3, unit, note }) {
     return () => clearTimeout(timer)
   }, [copied])
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-3 border-t border-line pt-2">
+    <div className="flex min-w-0 items-center justify-between gap-3 py-2">
       <span className="min-w-0 text-label text-muted">
         {label}
         {note && <span className="block text-caption text-dim">{note}</span>}
@@ -140,16 +152,17 @@ function Readout({ label, value, digits = 3, unit, note }) {
             // No clipboard (an insecure page, a refusal): the number is on screen to select.
           }
         }}
-        className="readout shrink-0 rounded-control px-1.5 py-0.5 text-right text-body text-text transition hover:bg-surface-2 disabled:cursor-default disabled:text-dim disabled:hover:bg-transparent"
+        className="readout -mr-1.5 inline-flex min-h-8 shrink-0 items-baseline rounded-control px-1.5 py-0.5 text-right text-lead font-medium text-text transition-colors duration-150 hover:bg-surface-2 disabled:cursor-default disabled:text-dim disabled:hover:bg-transparent"
       >
         {copied ? (
-          <span className="text-accent" role="status">
+          <span className="inline-flex items-center gap-1.5 text-label text-accent" role="status">
+            <Icon name="check" size={15} strokeWidth={2} />
             {t('calculator.copied')}
           </span>
         ) : (
           <>
             {text}
-            {unit && text !== '–' && <span className="ml-1 text-caption text-dim">{unit}</span>}
+            {unit && text !== '–' && <span className="unit">{unit}</span>}
           </>
         )}
       </button>
@@ -187,7 +200,7 @@ function BpmMs({ seed }) {
           }}
         />
       </div>
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.bpmMs.beat')} value={beat} unit="ms" />
         <Readout label={t('calculator.bpmMs.exactBpm')} value={beat === null ? null : bpmFromMs(beat)} digits={6} unit="BPM" />
         <Readout label={t('calculator.bpmMs.bar')} value={beat === null ? null : beat * 4} unit="ms" />
@@ -224,7 +237,7 @@ function Ticks({ seed }) {
         <Field label={t('calculator.ticks.span')} unit="ms" value={span} onChange={setSpan} />
         <Field label={t('calculator.ticks.count')} value={count} onChange={setCount} />
       </div>
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.ticks.tick')} value={tickMs(num(bpm), divisor)} unit="ms" />
         <Readout label={t('calculator.ticks.ticks')} value={out.ticks} digits={4} />
         <Readout label={t('calculator.ticks.nearest')} value={out.nearest} digits={0} note={t('calculator.ticks.off', { ms: readout(out.offMs, 3) })} />
@@ -249,7 +262,7 @@ function TwoLines({ seed }) {
         <Field label={t('calculator.lines.to')} unit="ms" value={to} onChange={setTo} />
         <Field label={t('calculator.lines.meter')} value={meter} onChange={setMeter} />
       </div>
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.lines.span')} value={out.spanMs} unit="ms" />
         <Readout label={t('calculator.lines.beats')} value={out.beats} digits={4} />
         <Readout label={t('calculator.lines.bars')} value={out.bars} digits={4} />
@@ -278,12 +291,12 @@ function Drift({ seed }) {
         <Field label={t('calculator.drift.bars')} value={bars} onChange={setBars} />
         <Field label={t('calculator.drift.meter')} value={meter} onChange={setMeter} />
       </div>
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.drift.total')} value={out.driftMs} unit="ms" note={t('calculator.drift.sign')} />
         <Readout label={t('calculator.drift.perBar')} value={out.perBarMs} unit="ms" />
       </div>
       <Field label={t('calculator.drift.allowed')} unit="ms" value={allowed} onChange={setAllowed} />
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.drift.slower')} value={range.slower} digits={6} unit="BPM" />
         <Readout label={t('calculator.drift.faster')} value={range.faster} digits={6} unit="BPM" />
         <Readout label={t('calculator.drift.precision')} value={range.bpmDelta} digits={6} unit="BPM" />
@@ -305,7 +318,7 @@ function FromSpan() {
         <Field label={t('calculator.span.end')} unit="ms" value={end} onChange={setEnd} />
         <Field label={t('calculator.span.beats')} value={beats} onChange={setBeats} />
       </div>
-      <div className="space-y-2">
+      <div className="panel-well divide-y divide-line px-3">
         <Readout label={t('calculator.span.bpm')} value={out.bpm} digits={6} unit="BPM" />
         <Readout label={t('calculator.span.beat')} value={out.beatMs} unit="ms" />
       </div>

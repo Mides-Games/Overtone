@@ -92,6 +92,19 @@ const PATHS = {
       <path d="M6 6l12 12" />
     </>
   ),
+  keyboard: (
+    <>
+      <rect x="2.75" y="6" width="18.5" height="12" rx="2" />
+      <path d="M6.5 9.5h1M10 9.5h1M13.5 9.5h1M17 9.5h.5M6.5 12h1M10 12h1M13.5 12h1M17 12h.5M8 15h8" />
+    </>
+  ),
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+    </>
+  ),
+  stop: <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />,
 }
 
 export const ICONS = Object.keys(PATHS)

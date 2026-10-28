@@ -747,6 +747,67 @@ body {
     text-decoration-color: currentColor;
   }
 
+  /* Long-form reading (components/ui/Doc.jsx): the legal pages, how it works,
+     the FAQ. A measure of about 70 characters inside the wide layout, a
+     looser line than UI copy, and the rhythm set here once so each page only
+     says what its blocks are. Lists keep their markers (the preflight drops
+     them) in the label colour. */
+  .prose {
+    max-width: 70ch;
+    font-size: var(--text-body);
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .prose :where(p, ul, ol) {
+    text-wrap: pretty;
+  }
+  .prose > :where(* + *) {
+    margin-top: 1rem;
+  }
+  .prose :where(ul) {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .prose :where(ol) {
+    list-style: decimal;
+    padding-left: 1.5rem;
+  }
+  .prose :where(li + li) {
+    margin-top: 0.5rem;
+  }
+  .prose :where(li)::marker {
+    color: var(--dim);
+  }
+  .prose :where(strong) {
+    color: var(--text);
+    font-weight: 600;
+  }
+  /* A long-form section's heading: the display face at the title size, a
+     mono number before it when the sections are steps. */
+  .doc-heading {
+    font-family: var(--font-display);
+    font-stretch: 112%;
+    font-size: var(--text-title);
+    font-weight: 750;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
+    text-wrap: balance;
+    color: var(--text);
+  }
+  /* A note set apart from the prose (the draft, the translation, "check by
+     ear"): a rule in its colour down the left, the text in the body colour. */
+  .callout {
+    border-left: 2px solid var(--line-strong);
+    padding: 0.125rem 0 0.125rem 1rem;
+    font-size: var(--text-label);
+    line-height: 1.6;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .callout-amber {
+    border-color: var(--amber);
+  }
+
   /* A loading block (components/ui/Skeleton.jsx): a slow breath, never a spinner. */
   .skeleton {
     border-radius: 4px;

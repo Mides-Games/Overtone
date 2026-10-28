@@ -25,6 +25,8 @@ export const PUBLIC_PAGES = [
   '/privacy',
   '/disclaimer',
   '/credits',
+  '/tools/calculator',
+  '/tools/tap-mic',
   '/no-such-page',
 ]
 

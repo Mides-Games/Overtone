@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import BrandLoader from '../components/BrandLoader.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { nextDelay } from '../lib/backoff.js'
 
@@ -15,24 +15,26 @@ import { nextDelay } from '../lib/backoff.js'
  * often (lib/backoff.js), so a tab left open during an outage does not keep
  * knocking at the same pace. A hidden tab does not ask at all.
  */
+// The chips of docs/design.md, section 6. Down and unreachable are red, as
+// the site's errors are; "not seen yet" is amber, something to look at.
 const TONE = {
-  ok: 'border-accent/40 bg-accent/10 text-accent',
-  none: 'border-line-strong bg-surface-2 text-muted',
-  unknown: 'border-amber/40 bg-amber/10 text-amber',
-  down: 'border-red/40 bg-red/10 text-red',
-  unreachable: 'border-red/40 bg-red/10 text-red',
+  ok: 'chip-accent',
+  none: 'chip-neutral',
+  unknown: 'chip-amber',
+  down: 'chip-red',
+  unreachable: 'chip-red',
 }
 
 function Row({ name, state, note }) {
   const { t } = useTranslation()
   return (
-    <div className="flex flex-col gap-2 bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-b border-line py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
       {/* The term holds the name and its note: a <dl>'s row is dt + dd, nothing nested between. */}
-      <dt className="space-y-0.5">
-        <span className="block font-display text-label font-semibold uppercase">{t(`status.${name}`)}</span>
-        <span className="block text-caption text-dim">{note}</span>
+      <dt className="min-w-0 space-y-1">
+        <span className="heading-title block">{t(`status.${name}`)}</span>
+        <span className="block text-label text-muted">{note}</span>
       </dt>
-      <dd className={`chip shrink-0 self-start sm:self-auto ${TONE[state]}`}>
+      <dd className={`shrink-0 self-start sm:self-auto ${TONE[state]}`}>
         <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
         {t(`status.states.${state}`)}
       </dd>
@@ -95,17 +97,18 @@ export default function Status() {
         : t('status.notes.unreachable')
 
   return (
-    <div className="rise space-y-6">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('status.title')}</h1>
-        <p className="leading-relaxed text-muted">{t('status.intro')}</p>
+    <div className="rise space-y-10">
+      <header className="max-w-[70ch] space-y-4">
+        <p className="eyebrow">{t('footer.site')}</p>
+        <h1 className="heading-headline">{t('status.title')}</h1>
+        <p className="lede">{t('status.intro')}</p>
       </header>
 
       {!reading ? (
-        <BrandLoader className="py-16" />
+        <SkeletonRows rows={3} label={t('status.checking')} className="max-w-[52rem] border-t border-line" />
       ) : (
-        <section aria-live="polite" className="space-y-3">
-          <dl className="grid gap-px overflow-hidden rounded-panel border border-line bg-line">
+        <section aria-live="polite" className="max-w-[52rem] space-y-4">
+          <dl className="border-t border-line">
             <Row name="api" state={reached ? 'ok' : 'unreachable'} note={t('status.notes.api')} />
             <Row name="database" state={database} note={reached ? t('status.notes.database') : t('status.notes.unreachable')} />
             <Row name="worker" state={worker} note={workerNote} />
@@ -114,7 +117,7 @@ export default function Status() {
             <p className="readout text-caption text-dim">
               {t('status.checked', { time: reading.at.toLocaleTimeString(i18n.language, { timeStyle: 'medium' }) })}
             </p>
-            <button type="button" className="btn-ghost h-9" onClick={check} disabled={checking}>
+            <button type="button" className="btn-ghost btn-sm" onClick={check} disabled={checking}>
               {checking ? t('status.checking') : t('status.retry')}
             </button>
           </div>

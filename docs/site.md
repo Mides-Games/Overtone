@@ -2194,3 +2194,59 @@ messages, saving the edit as a version and its diff, and the edits restored afte
 reload. Not seen: a drag with a real mouse (the pointer path was driven by script), the
 blind test played through, the light theme properly (only toggled by script), a screen
 reader, Safari and Firefox.
+
+### The studio rework: the content and tool pages (2026-10-28)
+
+The long-form, chart and tool pages follow **docs/design.md** section 11, after the
+foundation. No route, string key or behaviour changed; two bugs were fixed on the way.
+
+- **Long-form** (`components/ui/Doc.jsx`; `.prose`, `.doc-heading`, `.callout` in
+  `index.css`): the legal pages, the credits, how it works, the FAQ and the glossary
+  open on an eyebrow, a sentence-case `h1` and a lede, then the text at a 70ch measure
+  inside the wide layout, with a sticky contents list beside it from 1024 px that marks
+  the section in view (`aria-current="location"`). The draft and translation notes and
+  "check by ear" are callouts with a rule on the left, not boxes; links onward are quiet
+  buttons with the arrow icon instead of a `→` character.
+- **How it works:** the pipeline is a signal chain in HTML (six across from 1280 px,
+  three, then two on a phone) under a waveform whose red line falls at Sections; each
+  step's heading carries its number as a readout, the locale's "1." dropped from the
+  text. The cited files are a mono reference line with the external icon.
+- **FAQ and glossary:** the questions beside the answers (above them below 1024 px); the
+  glossary is one hairline row per term, the word left, the definitions right. The
+  `<Term>` popover is a `menu` that pops in from its word, its link and Close as buttons.
+- **Statistics:** the totals are a row of readouts on hairlines; the histogram has
+  quarter guides and mono, tabular, slashed-zero labels; its table has a caption and
+  header cells; the page loads as a skeleton of its own shape.
+- **Status:** hairline rows with the chips (`chip-accent`, `chip-neutral`, `chip-amber`,
+  `chip-red`), and a skeleton while the first answer comes.
+- **Calculator:** each calculator a panel with a header strip; the units sit inside the
+  fields (named to a screen reader by `aria-describedby`), numbers right-aligned; the
+  results are a well of readouts that copy on Enter or a click and show a check.
+- **BPM from the microphone:** one button that is Listen, Stop and Again in turn, so the
+  focus stays on it for a whole reading (the button was replaced under the focus
+  before); the display is a well with the BPM as a large readout, the input as a
+  24-segment meter, the progress moved by `scaleX`.
+- **404, the error page, the embed:** the 404 shows the waveform with no red line on it;
+  the error page is set like it with nothing beyond the stylesheet; the embed's red-line
+  marks are drawn, not a `▍` character, and its link has the external icon.
+- **Fixed:** a legal page's section anchors kept `a-z0-9` only, so a Russian or Japanese
+  page gave every section the same empty id (React logged duplicate keys, and the links
+  went nowhere); other scripts are kept now, and an empty or repeated one falls back to
+  the section's number. The microphone's level meter used `bg-lavender`, a class the
+  `--tempo` rename left without a colour, so it was invisible. The credits said "no
+  fonts downloaded" though the site now ships three faces: the Fonts section lists the
+  `@fontsource-variable` packages when there is no hand-written `@font-face`.
+- `site/e2e/tests/helpers.js` lists `/tools/calculator` and `/tools/tap-mic`, so axe
+  covers them in both themes.
+
+Checked: `site/web` 314/314 on the branch and 326/326 on master's tip, the build and
+`scripts/budget.mjs` (ok), `bench/facts.py` (ok).
+`pnpm --dir site/e2e test` on ports 3083/5253: 78 of 80, axe clean on every public page
+in both themes, the two tools included; the two failures are `site.spec.js`'s EN/ES
+toggle tests, which predate the ten-language selector and fail on master too.
+Screenshots (Playwright on `127.0.0.1:5253`) of every page here at 375, 1024 and 1440
+px, dark and light, in en, de, ja and ru: no sideways scroll, no console error.
+
+Not checked: the statistics charts with data (the dev API had no finished analysis),
+the `<Term>` popover and the glossary's highlighted entry by eye, the microphone tool
+listening (no microphone in the headless browser), a screen reader, Safari, Firefox.

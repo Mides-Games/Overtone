@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { GLOSSARY } from '../lib/glossary.js'
+import Icon from './ui/Icon.jsx'
 
 const WIDTH = 288 // 18rem
 const MARGIN = 8
@@ -48,7 +49,7 @@ export default function Term({ id, children }) {
     const below = box.bottom + 6
     const above = box.top - 6 - height
     const top = below + height > window.innerHeight - MARGIN && above > MARGIN ? above : below
-    setPlace({ top, left, width })
+    setPlace({ top, left, width, above: top === above })
   }, [open])
 
   // Once placed: a hidden element cannot take the focus.
@@ -125,17 +126,22 @@ export default function Term({ id, children }) {
             role="region"
             aria-label={name}
             tabIndex={-1}
-            className="fixed z-50 space-y-2 rounded-panel border border-line-strong bg-surface p-3 text-left text-label leading-relaxed text-muted shadow-lg outline-none"
-            style={place ? { top: place.top, left: place.left, width: place.width } : { visibility: 'hidden', top: 0, left: 0, width: WIDTH }}
+            className={`menu fixed space-y-2 p-4 text-left text-label leading-relaxed text-muted outline-none ${place ? 'pop-in' : ''}`}
+            style={
+              place
+                ? { top: place.top, left: place.left, width: place.width, '--origin': place.above ? 'bottom left' : 'top left' }
+                : { visibility: 'hidden', top: 0, left: 0, width: WIDTH }
+            }
             onKeyDown={onPanelKey}
           >
-            <p className="font-display font-semibold text-text">{name}</p>
+            <p className="heading-title text-body">{name}</p>
             <p>{t(`learn.glossary.terms.${id}.short`)}</p>
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <Link to={`/glossary#${id}`} className="text-accent hover:underline" onClick={() => close(false)}>
-                {t('learn.term.more')} →
+            <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+              <Link to={`/glossary#${id}`} className="btn-quiet btn-sm -ml-2.5" onClick={() => close(false)}>
+                {t('learn.term.more')}
+                <Icon name="arrow-right" size={15} />
               </Link>
-              <button type="button" className="tool-btn px-2" onClick={() => close(true)}>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => close(true)}>
                 {t('learn.term.close')}
               </button>
             </div>

@@ -25,6 +25,7 @@ const Credits = lazy(() => import('./pages/Credits.jsx'))
 // tokens page is for the few who script.
 const Developers = lazy(() => import('./pages/Developers.jsx'))
 const Embed = lazy(() => import('./pages/Embed.jsx'))
+const Overlay = lazy(() => import('./pages/Overlay.jsx'))
 const Faq = lazy(() => import('./pages/Faq.jsx'))
 const Glossary = lazy(() => import('./pages/Glossary.jsx'))
 const History = lazy(() => import('./pages/History.jsx'))
@@ -61,8 +62,10 @@ const page = (Page) => (
 export default function App() {
   return (
     <Routes>
-      {/* W12.18: a published timing's card for other sites to frame; outside the layout, and the one framable path. */}
+      {/* W12.18: a published timing's card for other sites to frame; outside the layout, and framable by any site, as the overlay below is. */}
       <Route path="embed/:id" element={page(Embed)} />
+      {/* W13.23: a stream overlay, transparent and outside the layout like the embed. */}
+      <Route path="overlay/:id" element={page(Overlay)} />
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="analyze" element={page(Analyze)} />

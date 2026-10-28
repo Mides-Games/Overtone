@@ -1,0 +1,23 @@
+{
+  "name": "overtone-client",
+  "version": "0.1.0",
+  "description": "A dependency-free client for the Overtone public API (personal tokens): upload a song and wait for its timing, read your analyses and the published timings.",
+  "type": "module",
+  "main": "overtone.mjs",
+  "exports": {
+    ".": "./overtone.mjs"
+  },
+  "files": [
+    "overtone.mjs",
+    "README.md",
+    "examples/"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
+  },
+  "keywords": ["osu", "timing", "bpm", "overtone"],
+  "license": "MIT"
+}

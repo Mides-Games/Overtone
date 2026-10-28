@@ -2206,7 +2206,13 @@
       "required": "Pflicht",
       "body": "Body",
       "responses": "Antworten",
-      "schemas": "Schemas"
+      "schemas": "Schemas",
+      "clientsTitle": "Clients",
+      "clientsIntro": "Zwei kleine Clients im Repository der Seite kümmern sich für dich um das Token, die Fehler, das Warten nach einem 429 und die Timeouts. Keiner braucht mehr als die Sprache selbst.",
+      "clientsJs": "JavaScript: ein ES-Modul auf fetch, für Node 18+ und Browser.",
+      "clientsPython": "Python: ein Modul auf der Standardbibliothek, Python 3.9+.",
+      "clientsBot": "Ein Beispiel im Discord-Stil postet jedes Ergebnis über einen Webhook, den du anlegst, in einen Kanal.",
+      "clientsLink": "Die Clients auf GitHub"
     },
     "versions": {
       "title": "Versionen",
@@ -2255,7 +2261,9 @@
       "preview": "Einbettung ansehen",
       "failed": "Das Bild konnte in diesem Browser nicht erstellt werden. Das SVG funktioniert vielleicht trotzdem.",
       "note": "Das PNG ist die Map oben für den ganzen Song, das SVG eine einfachere Zeichnung der red lines und des Tempos. Die Einbettung zeigt die Karte dieses Timings auf einer anderen Seite, mit einem Link hierher zurück.",
-      "notePrivate": "Das PNG ist die Map oben für den ganzen Song, das SVG eine einfachere Zeichnung der red lines und des Tempos. Veröffentliche das Timing, um es auf einer anderen Seite einzubetten."
+      "notePrivate": "Das PNG ist die Map oben für den ganzen Song, das SVG eine einfachere Zeichnung der red lines und des Tempos. Veröffentliche das Timing, um es auf einer anderen Seite einzubetten.",
+      "overlay": "Stream-Overlay (OBS)",
+      "overlayNote": "Das Stream-Overlay ist eine transparente Seite für die Browserquelle in OBS: das BPM, die red line und ein Puls auf jedem Schlag. Es kann den Stream nicht hören: Starte es mit der Leertaste, wenn der Song beginnt, oder mit ?t0= in der Adresse."
     },
     "embed": {
       "title": "Timing",
@@ -2283,6 +2291,18 @@
     "pwa": {
       "sharedAdded": "Der Song, den du geteilt hast, steht auf der Liste. Prüf ihn und drück auf Analysieren.",
       "sharedNone": "Aus dem Teilen kam nichts Brauchbares an: Teile eine MP3-, OGG-, WAV-, FLAC-, M4A- oder Opus-Datei oder wähl sie unten aus."
+    },
+    "overlay": {
+      "title": "Stream-Overlay",
+      "line": "Red line {{index}} von {{total}}",
+      "bar": "Schläge des Takts",
+      "countIn_one": "Startet in {{count}} Sekunde",
+      "countIn_other": "Startet in {{count}} Sekunden",
+      "ended": "Der Song ist zu Ende. Drück die Leertaste, um neu zu starten.",
+      "cannotHear": "Dieses Overlay kann deinen Stream nicht hören. Es zählt die Schläge ab dem Moment, in dem du es startest – starte es also, wenn der Song beginnt.",
+      "howToStart": "Drück die Leertaste oder S, wenn der Song beginnt (in OBS: Rechtsklick auf die Quelle, Interagieren), oder häng ?t0= mit der Startzeit in Epoch-Millisekunden an die Adresse.",
+      "keys": "Leertaste / S starten · ← → um 10 ms verschieben · Esc stoppen",
+      "nudged": "Um {{ms}} ms verschoben"
     }
   },
   "mapSet": {

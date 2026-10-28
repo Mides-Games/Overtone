@@ -51,6 +51,11 @@
         if (s.reducedMotion === 'reduce' || s.reducedMotion === 'allow') root.classList.add('motion-' + s.reducedMotion)
         if (typeof s.fontScale === 'number' && s.fontScale >= 0.9 && s.fontScale <= 1.3) root.style.setProperty('--font-scale', String(s.fontScale))
       } catch {}
+      try {
+        // W13.23: the stream overlay is see-through from its first frame
+        // (index.css, html.overlay); no other path is.
+        if (/^\/overlay\/[0-9a-f]{32}\/?$/.test(location.pathname)) document.documentElement.classList.add('overlay')
+      } catch {}
     </script>
   </head>
   <body>

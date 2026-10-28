@@ -165,6 +165,24 @@ test('index.html applies the stored settings before the first frame as the libra
     assert.ok(Math.abs(Number(early.prop('--font-scale') ?? 1) - settings.fontScale) < 0.006, JSON.stringify(stored))
     assert.equal(early.lang, stored['mides.lang'] === 'es' ? 'es' : 'en')
   }
+
+  // W13.23: the stream overlay's path, and only it, is marked see-through before the first frame.
+  const marked = (pathname) => {
+    const root = fakeRoot(['dark'])
+    vm.runInNewContext(scripts[0], {
+      document: { documentElement: root },
+      localStorage: { getItem: () => null },
+      matchMedia: () => ({ matches: false }),
+      location: { pathname },
+      JSON,
+      String,
+    })
+    return root.classes().includes('overlay')
+  }
+  const id = 'a'.repeat(32)
+  assert.equal(marked(`/overlay/${id}`), true)
+  assert.equal(marked(`/overlay/${id}/`), true)
+  for (const path of ['/', `/embed/${id}`, `/t/${id}`, '/overlay', `/overlay/${id}/x`, `/x/overlay/${id}`]) assert.equal(marked(path), false, path)
 })
 
 // ---- index.css's colour claims ----

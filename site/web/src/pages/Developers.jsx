@@ -24,6 +24,29 @@ const METHOD_TONE = {
   PATCH: 'text-amber',
 }
 
+/** The community clients (W13.22): clients/js and clients/python in the repository. Code, so not translated. */
+const CLIENTS_URL = 'https://github.com/Mides-Projects/Overtone/tree/master/clients'
+const CLIENTS = [
+  {
+    key: 'clientsJs',
+    snippet: [
+      "import { Overtone } from './overtone.mjs'",
+      'const overtone = new Overtone({ token: process.env.OVERTONE_TOKEN })',
+      "const analysis = await overtone.analyzeFile('song.mp3')",
+      'console.log(analysis.result.global_bpm)',
+    ].join('\n'),
+  },
+  {
+    key: 'clientsPython',
+    snippet: [
+      'from overtone_client import Overtone',
+      'overtone = Overtone(os.environ["OVERTONE_TOKEN"])',
+      'analysis = overtone.analyze_file("song.mp3")',
+      'print(analysis["result"]["global_bpm"])',
+    ].join('\n'),
+  },
+]
+
 export default function Developers() {
   const { t } = useTranslation()
   usePageMeta(t('platform.developers.title'), t('platform.developers.intro'))
@@ -62,6 +85,26 @@ export default function Developers() {
           <li>{t('platform.developers.ruleBrowser')}</li>
           <li>{t('platform.developers.ruleAudio')}</li>
         </ul>
+      </section>
+
+      {/* W13.22: the clients kept in the repository, so a script need not start from curl. */}
+      <section className="panel space-y-4 p-5 sm:p-6">
+        <div className="space-y-1">
+          <h2 className="label">{t('platform.developers.clientsTitle')}</h2>
+          <p className="max-w-[68ch] text-label text-muted">{t('platform.developers.clientsIntro')}</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {CLIENTS.map((client) => (
+            <div key={client.key} className="min-w-0 space-y-2">
+              <p className="text-label text-text">{t(`platform.developers.${client.key}`)}</p>
+              <code className="readout block overflow-x-auto whitespace-pre rounded-control bg-surface-3 px-3 py-2 text-caption">{client.snippet}</code>
+            </div>
+          ))}
+        </div>
+        <p className="text-caption text-dim">{t('platform.developers.clientsBot')}</p>
+        <a href={CLIENTS_URL} target="_blank" rel="noopener" className="inline-block text-label text-accent underline underline-offset-2">
+          {t('platform.developers.clientsLink')} ↗
+        </a>
       </section>
 
       <section className="space-y-4">

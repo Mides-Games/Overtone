@@ -20,6 +20,59 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · Clients for the API, a stream overlay, and a fingerprint study
+
+### Changed
+
+- `clients/js` and `clients/python` (W13.22): dependency-free clients for the token API,
+  covering the token-scoped routes (upload and wait, your analyses and their exports,
+  published timings), with typed errors carrying the API's codes, `Retry-After` honoured
+  on 429, timeouts on every call, READMEs and examples, one of them a Discord-style
+  webhook script. `/developers` has a Clients section.
+- `/overlay/<id>` (W13.23): a transparent stream overlay of a published timing for OBS,
+  with the BPM, the red line and a pulse on every beat. It cannot hear the stream and
+  says so: it is started with Space/S or `?t0=<epoch ms>`, and nudged with the arrows.
+  Linked from the result page's "Image and embed" panel. Ten languages.
+- W13.21 is a study, `docs/19-fingerprint-study.md`, with `proto/fingerprint_study.py`:
+  a Chromaprint-like chroma fingerprint. **Not shipped**; see Rejected.
+
+### Hardening
+
+- Only `/overlay/<id>` joins `/embed/<id>` as framable (`serve.mjs`, tested on look-alike
+  paths), and only that path is see-through: the early script marks it before the first
+  frame and the CSS clears the background under that class alone.
+- The clients never print the token (not an enumerable field in JS, not in Python's
+  `repr`), and wait out only a 429 that says how long; a quota 429 is thrown at once.
+
+### Measured
+
+- Fingerprint, 80 library songs (first 45 s) and 24 synthetic tracks, 10 variants each:
+  every re-encode within BER 0.080 of its original (MP3 80-320 kbps, Vorbis, Opus,
+  48 kHz, -6 dB, 0.3-1 s of silence added or cut); 0 false matches among 9,480
+  real-song pairs at 0.30 (closest 0.321, one true duplicate aside); drum-only synthetic
+  tracks collide (136 of 276 pairs under 0.30). 0.5-0.7 s of Python per audio minute,
+  1.9 kB a minute, about 1 ms a pair with a ±5 s search (96 s for 100k timings unindexed).
+- `clients/js` 13/13, `clients/python` 10/10 (both against the real API in memory);
+  site/web 261/261 after the merge, site/api 174/174; `pnpm --dir site/web budget` ok
+  (overlay chunk 0.67 kB); `bench/facts.py` ok, now counting the clients' tests.
+- Not measured: the overlay inside OBS itself, the clients against production.
+
+### Rejected / tried and dropped
+
+- Shipping the "already timed?" hint now. The numbers separate re-encodes from other real
+  songs, but the different-song tail was measured on 9.5k pairs where one live lookup at
+  scale is 100k comparisons, drum-only audio cannot be told apart without a guard nobody
+  has built, rate and pitch edits and other cuts were not measured, and it would need a
+  bit-exact JS port, a table, an index and a route for a hint the SHA-1 lookup already
+  covers for identical files. Next: 500+ songs on the owner's server, then decide.
+- A 150-song run of the study: its output was buffered and it showed no progress for 25
+  minutes, so it was stopped and the 80-song run above taken instead.
+- Retrying the client's requests on 5xx in general: only the wait for an analysis polls
+  through a passing 502/503/504; a single call fails at once, as an upload retried
+  blindly could be counted twice.
+
+---
+
 ## Unreleased — 2026-10-28 · W11.2: the oracle study, and no room for a router
 
 ### Changed

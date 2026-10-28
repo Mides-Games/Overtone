@@ -2206,7 +2206,13 @@
       "required": "required",
       "body": "Body",
       "responses": "Responses",
-      "schemas": "Schemas"
+      "schemas": "Schemas",
+      "clientsTitle": "Clients",
+      "clientsIntro": "Two small clients, kept in the site's own repository, handle the token, the errors, the waits after a 429 and the timeouts for you. Neither needs anything installed beyond the language itself.",
+      "clientsJs": "JavaScript: one ES module on fetch, for Node 18+ and browsers.",
+      "clientsPython": "Python: one module on the standard library, Python 3.9+.",
+      "clientsBot": "A Discord-style example posts each result to a channel through a webhook you create.",
+      "clientsLink": "The clients on GitHub"
     },
     "versions": {
       "title": "Versions",
@@ -2255,7 +2261,9 @@
       "preview": "See the embed",
       "failed": "The image could not be made in this browser. The SVG may still work.",
       "note": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. The embed shows this timing's card on another site, with a link back here.",
-      "notePrivate": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. Publish the timing to embed it on another site."
+      "notePrivate": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. Publish the timing to embed it on another site.",
+      "overlay": "Stream overlay (OBS)",
+      "overlayNote": "The stream overlay is a transparent page for OBS's browser source: the BPM, the red line and a pulse on every beat. It cannot hear the stream: start it with Space as the song starts, or with ?t0= in the address."
     },
     "embed": {
       "title": "Timing",
@@ -2283,6 +2291,18 @@
     "pwa": {
       "sharedAdded": "The song you shared is on the list. Check it and press Analyze.",
       "sharedNone": "Nothing usable arrived from the share: share an MP3, OGG, WAV, FLAC, M4A or Opus file, or pick it below."
+    },
+    "overlay": {
+      "title": "Stream overlay",
+      "line": "Red line {{index}} of {{total}}",
+      "bar": "Beats of the bar",
+      "countIn_one": "Starts in {{count}} second",
+      "countIn_other": "Starts in {{count}} seconds",
+      "ended": "The song has ended. Press Space to start again.",
+      "cannotHear": "This overlay cannot hear your stream. It counts beats from the moment you start it, so start it as the song starts.",
+      "howToStart": "Press Space or S when the song starts (in OBS: right-click the source, Interact), or add ?t0= to the address with the start time in epoch milliseconds.",
+      "keys": "Space / S start · ← → nudge 10 ms · Esc stop",
+      "nudged": "Nudged {{ms}} ms"
     }
   },
   "mapSet": {

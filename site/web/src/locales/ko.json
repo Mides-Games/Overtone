@@ -2152,7 +2152,13 @@
       "required": "필수",
       "body": "본문",
       "responses": "응답",
-      "schemas": "스키마"
+      "schemas": "스키마",
+      "clientsTitle": "클라이언트",
+      "clientsIntro": "사이트와 같은 저장소에 있는 작은 클라이언트 두 개가 토큰, 오류, 429 이후의 대기, 타임아웃을 대신 처리해요. 둘 다 언어 자체 외에는 아무것도 설치할 필요가 없어요.",
+      "clientsJs": "JavaScript: fetch 기반 ES 모듈 하나, Node 18 이상과 브라우저용.",
+      "clientsPython": "Python: 표준 라이브러리만 쓰는 모듈 하나, Python 3.9 이상.",
+      "clientsBot": "Discord 스타일 예제는 직접 만든 웹후크로 각 결과를 채널에 올려요.",
+      "clientsLink": "GitHub의 클라이언트"
     },
     "versions": {
       "title": "버전",
@@ -2200,7 +2206,9 @@
       "preview": "임베드 보기",
       "failed": "이 브라우저에서 이미지를 만들 수 없었어요. SVG는 될 수도 있어요.",
       "note": "PNG는 위의 맵을 곡 전체로 그린 것이고, SVG는 red line과 템포를 더 단순하게 그린 거예요. 임베드는 다른 사이트에 이 타이밍의 카드를 이곳으로 돌아오는 링크와 함께 보여줘요.",
-      "notePrivate": "PNG는 위의 맵을 곡 전체로 그린 것이고, SVG는 red line과 템포를 더 단순하게 그린 거예요. 다른 사이트에 임베드하려면 타이밍을 게시하세요."
+      "notePrivate": "PNG는 위의 맵을 곡 전체로 그린 것이고, SVG는 red line과 템포를 더 단순하게 그린 거예요. 다른 사이트에 임베드하려면 타이밍을 게시하세요.",
+      "overlay": "방송용 오버레이 (OBS)",
+      "overlayNote": "방송용 오버레이는 OBS 브라우저 소스용 투명 페이지로, BPM, red line, 박마다 펄스를 보여줘요. 방송 소리는 들을 수 없으니 곡이 시작될 때 Space로 시작하거나 주소에 ?t0= 를 붙이세요."
     },
     "embed": {
       "title": "타이밍",
@@ -2226,6 +2234,17 @@
     "pwa": {
       "sharedAdded": "공유한 곡이 목록에 추가됐어요. 확인하고 분석을 누르세요.",
       "sharedNone": "공유로 쓸 수 있는 게 오지 않았어요: MP3, OGG, WAV, FLAC, M4A, Opus 파일을 공유하거나 아래에서 선택하세요."
+    },
+    "overlay": {
+      "title": "방송용 오버레이",
+      "line": "red line {{index}} / {{total}}",
+      "bar": "마디의 박",
+      "countIn_other": "{{count}}초 후 시작",
+      "ended": "곡이 끝났어요. Space를 눌러 다시 시작하세요.",
+      "cannotHear": "이 오버레이는 방송 소리를 들을 수 없어요. 시작한 순간부터 박을 세니까, 곡이 시작될 때 시작하세요.",
+      "howToStart": "곡이 시작될 때 Space나 S를 누르거나(OBS에서는 소스를 우클릭하고 상호작용), 시작 시각을 에포크 밀리초로 ?t0= 에 넣어 주소에 붙이세요.",
+      "keys": "Space / S 시작 · ← → 10 ms 이동 · Esc 정지",
+      "nudged": "{{ms}} ms 이동함"
     }
   },
   "mapSet": {

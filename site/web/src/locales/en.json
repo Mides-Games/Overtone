@@ -2033,7 +2033,11 @@
       "delete": "Delete",
       "deleteConfirm": "Delete your comment?",
       "deleteYes": "Delete",
-      "openTiming": "Open its timing"
+      "openTiming": "Open its timing",
+      "marks": "Timed comments on the map: {{count}}",
+      "markLabel": "Comments at {{at}} ({{count}}): show, or play from here",
+      "moreMarks": "+{{count}} more in the list below",
+      "markHint": "Click to play from here."
     },
     "errors": {
       "TOO_LONG": "That is too long.",
@@ -2553,5 +2557,139 @@
     "best": "Preferred: {{shift}} ms ({{lo}}-{{hi}} % preferred over no shift).",
     "none": "Nothing beats no shift: the clicks sit where they are.",
     "apply": "Set the nudge to {{ms}} ms"
+  },
+  "votes": {
+    "title": "Is it on time?",
+    "onCount": "On time: {{count}}",
+    "offCount": "Off: {{count}}",
+    "on": "On time",
+    "off": "It's off",
+    "takeBack": "Take my vote back",
+    "own": "This is your timing: you cannot vote on it.",
+    "signIn": "Sign in to vote",
+    "yourCorrection": "You proposed {{bpm}} BPM, offset {{offset}} ms.",
+    "review": {
+      "pending": "Waiting for staff",
+      "accepted": "Accepted",
+      "dismissed": "Dismissed"
+    },
+    "offHint": "Optional: the BPM or the offset (where the first red line should be, in ms) you think is right. A correction goes to staff to look at.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "Overtone may use my correction as data to test and improve its analysis. Nothing is shared outside the site.",
+    "sendOff": "Send",
+    "privacy": "Votes are anonymous: the page shows only the counts. If your linked osu! account has ranked maps, an \"on time\" vote shows your name as the mapper who verified it.",
+    "queued": "Thanks. Your correction is waiting for staff.",
+    "saved": "Your vote is saved.",
+    "errors": {
+      "bad": "That vote was not accepted. Check the numbers.",
+      "bpm": "The BPM is a number from 20 to 1000.",
+      "offset": "The offset is whole milliseconds, from -10000 to the end of the song."
+    },
+    "verified": "Verified by a mapper",
+    "verifiedHint": "Someone whose linked osu! account has ranked maps said this timing is on time.",
+    "verifiedBy": "by",
+    "ranked": "{{name}} on osu!, ranked maps: {{count}}",
+    "andMore": "+{{count}} more"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "What happened to your suggestions, your published timings and your analyses while you were away.",
+    "bell": "Notifications, unread: {{count}}",
+    "allRead": "Mark all read",
+    "failed": "The notifications could not be loaded.",
+    "empty": "Nothing new.",
+    "seeAll": "See all notifications",
+    "unreadMark": "(unread)",
+    "proposed": "Proposed: {{bpm}} BPM, offset {{offset}} ms",
+    "signIn": "Sign in to see your notifications.",
+    "filter": "Which notifications",
+    "all": "All",
+    "unreadOnly": "Unread ({{count}})",
+    "kept": "The latest 200 are kept. Votes never name who voted, except a mapper who verified your timing.",
+    "text": {
+      "suggestion": "Your suggestion \"{{title}}\" is now {{to}}.",
+      "comment": "@{{user}} commented on \"{{title}}\".",
+      "use": "@{{user}} used your timing of \"{{title}}\".",
+      "verified": "@{{user}}, a mapper with ranked maps, verified \"{{title}}\" as on time.",
+      "voteOn": "Someone voted \"{{title}}\" on time.",
+      "voteOff": "Someone voted \"{{title}}\" off.",
+      "analysis": {
+        "done": "Your analysis of \"{{title}}\" is ready.",
+        "refused": "Your analysis of \"{{title}}\" ended without a BPM.",
+        "failed": "Your analysis of \"{{title}}\" failed."
+      },
+      "unknown": "Something happened."
+    }
+  },
+  "staff": {
+    "nav": "Staff panel",
+    "title": "Staff panel",
+    "subtitle": "The queue and the worker, recent failures, open reports, corrections from votes and the moderation log, in one place.",
+    "refresh": "Refresh",
+    "failed": "The staff panel could not be loaded.",
+    "readAt": "Read at {{time}}; read again every 30 seconds while this tab is open.",
+    "open": "Open",
+    "awaiting": {
+      "title": "Waiting for review",
+      "suggestions": "Open suggestions",
+      "reports": "Items with open reports",
+      "corrections": "Corrections waiting"
+    },
+    "queue": {
+      "title": "Queue and worker",
+      "moderate": "Remove or requeue on the queue page",
+      "running": "Analysing",
+      "waiting": "Waiting",
+      "oldest": "Longest wait"
+    },
+    "worker": {
+      "memory": "Memory: {{rss}} now, {{peak}} at the last job's peak, limit {{limit}}",
+      "memoryAgo": "reported {{seconds}} s ago",
+      "noMemory": "The worker has not reported its memory (it can only on Linux)."
+    },
+    "failures": {
+      "title": "Failures, last 7 days",
+      "none": "No failures.",
+      "codes": "too_heavy: out of memory · timeout: past its time limit · stale: the worker stopped answering · removed: by a moderator · failed: the engine's own error."
+    },
+    "corrections": {
+      "title": "Corrections from votes",
+      "hint": "Readers who voted a timing off with a BPM or an offset. Listen before deciding; a decision is logged.",
+      "none": "Nothing here.",
+      "change": "Now {{bpm}} BPM, offset {{offset}} ms → proposed {{newBpm}} BPM, offset {{newOffset}} ms",
+      "trainingOk": "May be used as data",
+      "trainingNo": "Not for data",
+      "by": "Decided by @{{moderator}}",
+      "accept": "Accept",
+      "dismiss": "Dismiss",
+      "acceptPrompt": "Accept this correction? Reason for the log (optional):",
+      "dismissPrompt": "Dismiss this correction? Reason for the log (optional):"
+    },
+    "did": {
+      "accept": "@{{moderator}} accepted a correction",
+      "dismiss": "@{{moderator}} dismissed a correction"
+    }
+  },
+  "limits": {
+    "title": "You can't send more right now",
+    "why": {
+      "anonymous_one": "Without an account you can analyse {{count}} song a day.",
+      "anonymous_other": "Without an account you can analyse {{count}} songs a day.",
+      "account_one": "Your account can analyse {{count}} song a day.",
+      "account_other": "Your account can analyse {{count}} songs a day.",
+      "cache_one": "You can open {{count}} stored result a day.",
+      "cache_other": "You can open {{count}} stored results a day.",
+      "pending_one": "You can have {{count}} song in the queue at a time.",
+      "pending_other": "You can have {{count}} songs in the queue at a time."
+    },
+    "free": "You can send again now.",
+    "resetIn": "You can send again in",
+    "resetAt": "at {{time}}",
+    "resetWhen": "the count resets at 00:00 UTC",
+    "whenFinished_one": "You can send another when your song in the queue finishes.",
+    "whenFinished_other": "You can send another when one of your {{count}} songs in the queue finishes.",
+    "seeQueue": "See the queue",
+    "signIn": "Sign in for a larger daily limit"
   }
 }

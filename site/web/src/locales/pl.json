@@ -2131,7 +2131,11 @@
       "delete": "Usuń",
       "deleteConfirm": "Usunąć twój komentarz?",
       "deleteYes": "Usuń",
-      "openTiming": "Otwórz jego timing"
+      "openTiming": "Otwórz jego timing",
+      "marks": "Komentarze z czasem na mapie: {{count}}",
+      "markLabel": "Komentarze w {{at}} ({{count}}): pokaż albo odtwórz od tego miejsca",
+      "moreMarks": "+{{count}} więcej na liście poniżej",
+      "markHint": "Kliknij, aby odtworzyć od tego miejsca."
     },
     "errors": {
       "TOO_LONG": "To jest za długie.",
@@ -2669,5 +2673,149 @@
     "best": "Preferowane: {{shift}} ms (preferowane nad brakiem przesunięcia w {{lo}}-{{hi}} %).",
     "none": "Nic nie wygrywa z brakiem przesunięcia: kliknięcia zostają, gdzie są.",
     "apply": "Ustaw globalny offset na {{ms}} ms"
+  },
+  "votes": {
+    "title": "Czy jest w czasie?",
+    "onCount": "W czasie: {{count}}",
+    "offCount": "Przesunięty: {{count}}",
+    "on": "W czasie",
+    "off": "Jest przesunięty",
+    "takeBack": "Cofnij mój głos",
+    "own": "To twój timing: nie możesz na niego głosować.",
+    "signIn": "Zaloguj się, aby głosować",
+    "yourCorrection": "Zaproponowałeś {{bpm}} BPM, offset {{offset}} ms.",
+    "review": {
+      "pending": "Czeka na zespół",
+      "accepted": "Przyjęta",
+      "dismissed": "Odrzucona"
+    },
+    "offHint": "Opcjonalnie: BPM albo offset (gdzie powinna być pierwsza red line, w ms), który uważasz za poprawny. Korekta trafia do zespołu do sprawdzenia.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "Overtone może użyć mojej korekty jako danych do testowania i ulepszania swojej analizy. Nic nie jest udostępniane poza stroną.",
+    "sendOff": "Wyślij",
+    "privacy": "Głosy są anonimowe: strona pokazuje tylko liczby. Jeśli twoje połączone konto osu! ma rankingowe mapy, głos „w czasie” pokazuje twoją nazwę jako mappera, który go zweryfikował.",
+    "queued": "Dzięki. Twoja korekta czeka na zespół.",
+    "saved": "Twój głos został zapisany.",
+    "errors": {
+      "bad": "Ten głos nie został przyjęty. Sprawdź liczby.",
+      "bpm": "BPM to liczba od 20 do 1000.",
+      "offset": "Offset to pełne milisekundy, od -10000 do końca utworu."
+    },
+    "verified": "Zweryfikowane przez mappera",
+    "verifiedHint": "Ktoś, czyje połączone konto osu! ma rankingowe mapy, stwierdził, że ten timing jest w czasie.",
+    "verifiedBy": "przez",
+    "ranked": "{{name}} na osu!, rankingowe mapy: {{count}}",
+    "andMore": "+{{count}} więcej"
+  },
+  "notifications": {
+    "title": "Powiadomienia",
+    "subtitle": "Co się stało z twoimi propozycjami, opublikowanymi timingami i analizami, gdy cię nie było.",
+    "bell": "Powiadomienia, nieprzeczytane: {{count}}",
+    "allRead": "Oznacz wszystkie jako przeczytane",
+    "failed": "Nie udało się wczytać powiadomień.",
+    "empty": "Nic nowego.",
+    "seeAll": "Zobacz wszystkie powiadomienia",
+    "unreadMark": "(nieprzeczytane)",
+    "proposed": "Zaproponowano: {{bpm}} BPM, offset {{offset}} ms",
+    "signIn": "Zaloguj się, aby zobaczyć swoje powiadomienia.",
+    "filter": "Które powiadomienia",
+    "all": "Wszystkie",
+    "unreadOnly": "Nieprzeczytane ({{count}})",
+    "kept": "Przechowywanych jest 200 najnowszych. Głosy nigdy nie mówią, kto głosował, poza mapperem, który zweryfikował twój timing.",
+    "text": {
+      "suggestion": "Twoja propozycja „{{title}}” ma teraz stan: {{to}}.",
+      "comment": "@{{user}} skomentował „{{title}}”.",
+      "use": "@{{user}} użył twojego timingu „{{title}}”.",
+      "verified": "@{{user}}, mapper z rankingowymi mapami, zweryfikował, że „{{title}}” jest w czasie.",
+      "voteOn": "Ktoś zagłosował, że „{{title}}” jest w czasie.",
+      "voteOff": "Ktoś zagłosował, że „{{title}}” jest przesunięty.",
+      "analysis": {
+        "done": "Twoja analiza „{{title}}” jest gotowa.",
+        "refused": "Twoja analiza „{{title}}” zakończyła się bez BPM.",
+        "failed": "Twoja analiza „{{title}}” nie powiodła się."
+      },
+      "unknown": "Coś się stało."
+    }
+  },
+  "staff": {
+    "nav": "Panel zespołu",
+    "title": "Panel zespołu",
+    "subtitle": "Kolejka i worker, ostatnie błędy, otwarte zgłoszenia, korekty z głosów i log moderacji, w jednym miejscu.",
+    "refresh": "Odśwież",
+    "failed": "Nie udało się wczytać panelu zespołu.",
+    "readAt": "Odczytano o {{time}}; odczytywane ponownie co 30 sekund, dopóki ta karta jest otwarta.",
+    "open": "Otwórz",
+    "awaiting": {
+      "title": "Czeka na sprawdzenie",
+      "suggestions": "Otwarte propozycje",
+      "reports": "Elementy z otwartymi zgłoszeniami",
+      "corrections": "Oczekujące korekty"
+    },
+    "queue": {
+      "title": "Kolejka i worker",
+      "moderate": "Usuń lub dodaj ponownie do kolejki na stronie kolejki",
+      "running": "W analizie",
+      "waiting": "Oczekujące",
+      "oldest": "Najdłuższe oczekiwanie"
+    },
+    "worker": {
+      "memory": "Pamięć: {{rss}} teraz, {{peak}} w szczycie ostatniego zadania, limit {{limit}}",
+      "memoryAgo": "zgłoszone {{seconds}} s temu",
+      "noMemory": "Worker nie zgłosił swojej pamięci (potrafi to tylko na Linuksie)."
+    },
+    "failures": {
+      "title": "Błędy, ostatnie 7 dni",
+      "none": "Brak błędów.",
+      "codes": "too_heavy: zabrakło pamięci · timeout: przekroczony limit czasu · stale: worker przestał odpowiadać · removed: przez moderatora · failed: własny błąd silnika."
+    },
+    "corrections": {
+      "title": "Korekty z głosów",
+      "hint": "Osoby, które zagłosowały, że timing jest przesunięty, podając BPM lub offset. Posłuchaj, zanim zdecydujesz; każda decyzja trafia do logu.",
+      "none": "Nic tu nie ma.",
+      "change": "Teraz {{bpm}} BPM, offset {{offset}} ms → proponowane {{newBpm}} BPM, offset {{newOffset}} ms",
+      "trainingOk": "Można użyć jako danych",
+      "trainingNo": "Nie do danych",
+      "by": "Zdecydował @{{moderator}}",
+      "accept": "Przyjmij",
+      "dismiss": "Odrzuć",
+      "acceptPrompt": "Przyjąć tę korektę? Powód do logu (opcjonalnie):",
+      "dismissPrompt": "Odrzucić tę korektę? Powód do logu (opcjonalnie):"
+    },
+    "did": {
+      "accept": "@{{moderator}} przyjął korektę",
+      "dismiss": "@{{moderator}} odrzucił korektę"
+    }
+  },
+  "limits": {
+    "title": "Na razie nie możesz wysłać więcej",
+    "why": {
+      "anonymous_one": "Bez konta możesz analizować {{count}} utwór dziennie.",
+      "anonymous_few": "Bez konta możesz analizować {{count}} utwory dziennie.",
+      "anonymous_many": "Bez konta możesz analizować {{count}} utworów dziennie.",
+      "anonymous_other": "Bez konta możesz analizować {{count}} utworu dziennie.",
+      "account_one": "Twoje konto może analizować {{count}} utwór dziennie.",
+      "account_few": "Twoje konto może analizować {{count}} utwory dziennie.",
+      "account_many": "Twoje konto może analizować {{count}} utworów dziennie.",
+      "account_other": "Twoje konto może analizować {{count}} utworu dziennie.",
+      "cache_one": "Możesz otworzyć {{count}} zapisany wynik dziennie.",
+      "cache_few": "Możesz otworzyć {{count}} zapisane wyniki dziennie.",
+      "cache_many": "Możesz otworzyć {{count}} zapisanych wyników dziennie.",
+      "cache_other": "Możesz otworzyć {{count}} zapisanego wyniku dziennie.",
+      "pending_one": "Możesz mieć naraz {{count}} utwór w kolejce.",
+      "pending_few": "Możesz mieć naraz {{count}} utwory w kolejce.",
+      "pending_many": "Możesz mieć naraz {{count}} utworów w kolejce.",
+      "pending_other": "Możesz mieć naraz {{count}} utworu w kolejce."
+    },
+    "free": "Możesz już wysłać ponownie.",
+    "resetIn": "Możesz wysłać ponownie za",
+    "resetAt": "o {{time}}",
+    "resetWhen": "licznik zeruje się o 00:00 UTC",
+    "whenFinished_one": "Możesz wysłać kolejny, gdy skończy się twój utwór w kolejce.",
+    "whenFinished_few": "Możesz wysłać kolejny, gdy skończy się jeden z twoich {{count}} utworów w kolejce.",
+    "whenFinished_many": "Możesz wysłać kolejny, gdy skończy się jeden z twoich {{count}} utworów w kolejce.",
+    "whenFinished_other": "Możesz wysłać kolejny, gdy skończy się jeden z twoich {{count}} utworu w kolejce.",
+    "seeQueue": "Zobacz kolejkę",
+    "signIn": "Zaloguj się, aby mieć wyższy dzienny limit"
   }
 }

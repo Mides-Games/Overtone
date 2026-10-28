@@ -1984,7 +1984,11 @@
       "delete": "삭제",
       "deleteConfirm": "댓글을 삭제할까요?",
       "deleteYes": "삭제",
-      "openTiming": "타이밍 열기"
+      "openTiming": "타이밍 열기",
+      "marks": "맵 위의 시간 지정 댓글: {{count}}",
+      "markLabel": "{{at}}의 댓글 ({{count}}): 보기, 또는 여기서부터 재생",
+      "moreMarks": "아래 목록에 {{count}}개 더",
+      "markHint": "누르면 여기서부터 재생돼요."
     },
     "errors": {
       "TOO_LONG": "너무 길어요.",
@@ -2495,5 +2499,134 @@
     "best": "선호: {{shift}} ms (이동 없음보다 {{lo}}-{{hi}} % 선호).",
     "none": "이동 없음을 이기는 것이 없어요: 클릭은 지금 자리에 있어요.",
     "apply": "전체 오프셋을 {{ms}} ms로"
+  },
+  "votes": {
+    "title": "타이밍이 맞나요?",
+    "onCount": "맞음: {{count}}",
+    "offCount": "어긋남: {{count}}",
+    "on": "맞아요",
+    "off": "어긋나요",
+    "takeBack": "내 투표 취소",
+    "own": "내 타이밍이라 투표할 수 없어요.",
+    "signIn": "로그인하고 투표하기",
+    "yourCorrection": "제안한 값: {{bpm}} BPM, 오프셋 {{offset}} ms.",
+    "review": {
+      "pending": "스태프 확인 대기 중",
+      "accepted": "수락됨",
+      "dismissed": "기각됨"
+    },
+    "offHint": "선택: 맞다고 생각하는 BPM 또는 오프셋(첫 red line이 있어야 할 위치, ms). 수정 제안은 스태프가 확인해요.",
+    "bpm": "BPM",
+    "offset": "오프셋 (ms)",
+    "trainingOk": "Overtone이 분석을 테스트하고 개선하는 데 내 수정 제안을 데이터로 사용해도 돼요. 사이트 밖으로는 아무것도 공유되지 않아요.",
+    "sendOff": "보내기",
+    "privacy": "투표는 익명이에요: 페이지에는 개수만 표시돼요. 연결된 osu! 계정에 랭크된 맵이 있으면, \"맞음\" 투표에 확인한 매퍼로 내 이름이 표시돼요.",
+    "queued": "감사합니다. 수정 제안이 스태프 확인을 기다리고 있어요.",
+    "saved": "투표가 저장됐어요.",
+    "errors": {
+      "bad": "그 투표는 받아들여지지 않았어요. 숫자를 확인하세요.",
+      "bpm": "BPM은 20에서 1000 사이의 숫자예요.",
+      "offset": "오프셋은 정수 밀리초로, -10000부터 곡의 끝까지예요."
+    },
+    "verified": "매퍼가 확인함",
+    "verifiedHint": "연결된 osu! 계정에 랭크된 맵이 있는 사람이 이 타이밍이 맞다고 했어요.",
+    "verifiedBy": "확인:",
+    "ranked": "osu!의 {{name}}, 랭크된 맵: {{count}}",
+    "andMore": "{{count}}명 더"
+  },
+  "notifications": {
+    "title": "알림",
+    "subtitle": "자리를 비운 사이 내 제안, 게시한 타이밍, 분석에 일어난 일.",
+    "bell": "알림, 읽지 않음: {{count}}",
+    "allRead": "모두 읽음으로 표시",
+    "failed": "알림을 불러올 수 없었어요.",
+    "empty": "새 소식이 없어요.",
+    "seeAll": "모든 알림 보기",
+    "unreadMark": "(읽지 않음)",
+    "proposed": "제안: {{bpm}} BPM, 오프셋 {{offset}} ms",
+    "signIn": "알림을 보려면 로그인하세요.",
+    "filter": "표시할 알림",
+    "all": "전체",
+    "unreadOnly": "읽지 않음 ({{count}})",
+    "kept": "최근 200개가 보관돼요. 투표는 누가 투표했는지 절대 밝히지 않아요. 단, 내 타이밍을 확인한 매퍼는 예외예요.",
+    "text": {
+      "suggestion": "내 제안 \"{{title}}\"의 상태가 이제 {{to}}이에요.",
+      "comment": "@{{user}} 님이 \"{{title}}\"에 댓글을 달았어요.",
+      "use": "@{{user}} 님이 \"{{title}}\"의 내 타이밍을 사용했어요.",
+      "verified": "랭크된 맵이 있는 매퍼 @{{user}} 님이 \"{{title}}\"의 타이밍이 맞다고 확인했어요.",
+      "voteOn": "누군가 \"{{title}}\"의 타이밍이 맞다고 투표했어요.",
+      "voteOff": "누군가 \"{{title}}\"의 타이밍이 어긋났다고 투표했어요.",
+      "analysis": {
+        "done": "\"{{title}}\" 분석이 준비됐어요.",
+        "refused": "\"{{title}}\" 분석이 BPM 없이 끝났어요.",
+        "failed": "\"{{title}}\" 분석에 실패했어요."
+      },
+      "unknown": "무슨 일이 있었어요."
+    }
+  },
+  "staff": {
+    "nav": "스태프 패널",
+    "title": "스태프 패널",
+    "subtitle": "대기열과 워커, 최근 실패, 처리되지 않은 신고, 투표에서 온 수정 제안, 모더레이션 기록을 한곳에서.",
+    "refresh": "새로고침",
+    "failed": "스태프 패널을 불러올 수 없었어요.",
+    "readAt": "{{time}}에 읽음. 이 탭이 열려 있는 동안 30초마다 다시 읽어요.",
+    "open": "열기",
+    "awaiting": {
+      "title": "검토 대기 중",
+      "suggestions": "열린 제안",
+      "reports": "처리되지 않은 신고가 있는 항목",
+      "corrections": "대기 중인 수정 제안"
+    },
+    "queue": {
+      "title": "대기열과 워커",
+      "moderate": "대기열 페이지에서 제거하거나 다시 넣기",
+      "running": "분석 중",
+      "waiting": "대기 중",
+      "oldest": "가장 긴 대기"
+    },
+    "worker": {
+      "memory": "메모리: 현재 {{rss}}, 마지막 작업의 최고치 {{peak}}, 한도 {{limit}}",
+      "memoryAgo": "{{seconds}}초 전에 보고됨",
+      "noMemory": "워커가 메모리를 보고하지 않았어요 (Linux에서만 가능해요)."
+    },
+    "failures": {
+      "title": "실패, 최근 7일",
+      "none": "실패가 없어요.",
+      "codes": "too_heavy: 메모리 부족 · timeout: 시간 제한 초과 · stale: 워커가 응답을 멈춤 · removed: 모더레이터가 제거 · failed: 엔진 자체의 오류."
+    },
+    "corrections": {
+      "title": "투표에서 온 수정 제안",
+      "hint": "BPM이나 오프셋과 함께 타이밍이 어긋났다고 투표한 사람들. 결정하기 전에 들어 보세요. 결정은 기록돼요.",
+      "none": "여기엔 아무것도 없어요.",
+      "change": "현재 {{bpm}} BPM, 오프셋 {{offset}} ms → 제안 {{newBpm}} BPM, 오프셋 {{newOffset}} ms",
+      "trainingOk": "데이터로 사용 가능",
+      "trainingNo": "데이터용 아님",
+      "by": "@{{moderator}} 님이 결정",
+      "accept": "수락",
+      "dismiss": "기각",
+      "acceptPrompt": "이 수정 제안을 수락할까요? 기록에 남길 사유(선택):",
+      "dismissPrompt": "이 수정 제안을 기각할까요? 기록에 남길 사유(선택):"
+    },
+    "did": {
+      "accept": "@{{moderator}} 님이 수정 제안을 수락했어요",
+      "dismiss": "@{{moderator}} 님이 수정 제안을 기각했어요"
+    }
+  },
+  "limits": {
+    "title": "지금은 더 보낼 수 없어요",
+    "why": {
+      "anonymous_other": "계정 없이는 하루에 {{count}}곡까지 분석할 수 있어요.",
+      "account_other": "내 계정은 하루에 {{count}}곡까지 분석할 수 있어요.",
+      "cache_other": "저장된 결과는 하루에 {{count}}개까지 열 수 있어요.",
+      "pending_other": "대기열에는 한 번에 {{count}}곡까지 넣을 수 있어요."
+    },
+    "free": "이제 다시 보낼 수 있어요.",
+    "resetIn": "다시 보낼 수 있기까지",
+    "resetAt": "{{time}}에",
+    "resetWhen": "횟수는 00:00 UTC에 초기화돼요",
+    "whenFinished_other": "대기열에 있는 내 곡 {{count}}개 중 하나가 끝나면 또 보낼 수 있어요.",
+    "seeQueue": "대기열 보기",
+    "signIn": "로그인하면 하루 한도가 늘어나요"
   }
 }

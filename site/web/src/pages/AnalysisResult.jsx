@@ -299,7 +299,7 @@ function Refused({ result }) {
  * `adjustLines(result, adjustment)`, so an edit reaches the clicks, the copy,
  * the .osz and the exports exactly as the nudge does.
  */
-export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false, onAccent = null }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false, onAccent = null, marks = null, onMark = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [frame, setFrame] = useState({ factor: 1, nudgeMs: 0 })
@@ -504,6 +504,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         onToggleEdit={lines.length ? () => setEditing((on) => !on) : null}
         onMoveLine={moveLine}
         onAddAt={addAt}
+        marks={marks}
+        onMark={onMark}
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />

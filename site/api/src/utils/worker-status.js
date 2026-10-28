@@ -23,6 +23,38 @@ export const workerSeen = (now = Date.now()) => {
   lastSeen = now;
 };
 
+/**
+ * W13.19: what the worker last said of its memory, when it says anything
+ * (worker/main.py sends it with each claim where it can read /proc): the
+ * analysis process's resident MB now, the last job's peak, and its limit.
+ * Each field a whole number of MB or null; anything else is dropped, never
+ * stored as sent. Shown on the staff panel only.
+ */
+let memoryReport = null;
+
+const mb = (value) => (Number.isInteger(value) && value >= 0 && value <= 1_048_576 ? value : null);
+
+export const reportMemory = (raw, now = Date.now()) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const report = { rssMb: mb(raw.rss_mb), peakMb: mb(raw.peak_mb), limitMb: mb(raw.limit_mb) };
+  if (report.rssMb === null && report.peakMb === null && report.limitMb === null) return;
+  memoryReport = { ...report, at: now };
+};
+
+/** The last memory report and how old it is, or null when the worker never sent one. */
+export const workerMemory = (now = Date.now()) =>
+  memoryReport && {
+    rssMb: memoryReport.rssMb,
+    peakMb: memoryReport.peakMb,
+    limitMb: memoryReport.limitMb,
+    secondsAgo: Math.max(0, Math.round((now - memoryReport.at) / 1000)),
+  };
+
+/** For the tests. */
+export const resetWorkerMemory = () => {
+  memoryReport = null;
+};
+
 /** `{ status, seenSecondsAgo }`, `seenSecondsAgo` null when never seen. */
 export const workerStatus = (now = Date.now(), seen = lastSeen) => {
   if (seen === null) return { status: 'unknown', seenSecondsAgo: null };

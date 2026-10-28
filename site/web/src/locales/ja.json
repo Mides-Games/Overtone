@@ -1984,7 +1984,11 @@
       "delete": "削除",
       "deleteConfirm": "コメントを削除しますか？",
       "deleteYes": "削除",
-      "openTiming": "タイミングを開く"
+      "openTiming": "タイミングを開く",
+      "marks": "譜面上の時刻付きコメント：{{count}}",
+      "markLabel": "{{at}} のコメント（{{count}}）：表示、またはここから再生",
+      "moreMarks": "ほか {{count}} 件は下のリストにあります",
+      "markHint": "クリックするとここから再生します。"
     },
     "errors": {
       "TOO_LONG": "長すぎます。",
@@ -2495,5 +2499,134 @@
     "best": "好まれたずれ: {{shift}} ms (ずれなしより {{lo}}-{{hi}} % 好まれました)。",
     "none": "ずれなしに勝つものはありません。クリックは今の位置のままです。",
     "apply": "全体オフセットを {{ms}} ms にする"
+  },
+  "votes": {
+    "title": "タイミングは合っていますか？",
+    "onCount": "合っている：{{count}}",
+    "offCount": "ずれている：{{count}}",
+    "on": "合っている",
+    "off": "ずれている",
+    "takeBack": "投票を取り消す",
+    "own": "これはあなたのタイミングなので投票できません。",
+    "signIn": "ログインして投票",
+    "yourCorrection": "あなたの提案：{{bpm}} BPM、オフセット {{offset}} ms。",
+    "review": {
+      "pending": "スタッフの確認待ち",
+      "accepted": "承認済み",
+      "dismissed": "却下"
+    },
+    "offHint": "任意：正しいと思う BPM またはオフセット（最初の red line があるべき位置、ms）。修正はスタッフが確認します。",
+    "bpm": "BPM",
+    "offset": "オフセット（ms）",
+    "trainingOk": "Overtone が解析のテストと改善のために、私の修正をデータとして使うことを許可します。サイトの外には何も共有されません。",
+    "sendOff": "送信",
+    "privacy": "投票は匿名で、ページには件数だけが表示されます。連携した osu! アカウントに Ranked 譜面がある場合、「合っている」への投票では、確認したマッパーとしてあなたの名前が表示されます。",
+    "queued": "ありがとうございます。修正はスタッフの確認待ちです。",
+    "saved": "投票を保存しました。",
+    "errors": {
+      "bad": "その投票は受け付けられませんでした。数値を確認してください。",
+      "bpm": "BPM は 20 から 1000 までの数値です。",
+      "offset": "オフセットは整数のミリ秒で、-10000 から曲の終わりまでです。"
+    },
+    "verified": "マッパーが確認済み",
+    "verifiedHint": "連携した osu! アカウントに Ranked 譜面がある人が、このタイミングは合っていると判断しました。",
+    "verifiedBy": "確認者：",
+    "ranked": "osu! の {{name}}、Ranked 譜面：{{count}}",
+    "andMore": "ほか {{count}}"
+  },
+  "notifications": {
+    "title": "通知",
+    "subtitle": "不在のあいだに、あなたの提案、公開したタイミング、解析に起きたこと。",
+    "bell": "通知、未読：{{count}}",
+    "allRead": "すべて既読にする",
+    "failed": "通知を読み込めませんでした。",
+    "empty": "新しいものはありません。",
+    "seeAll": "すべての通知を見る",
+    "unreadMark": "（未読）",
+    "proposed": "提案：{{bpm}} BPM、オフセット {{offset}} ms",
+    "signIn": "通知を見るにはログインしてください。",
+    "filter": "表示する通知",
+    "all": "すべて",
+    "unreadOnly": "未読（{{count}}）",
+    "kept": "最新の 200 件が保存されます。投票で誰が投票したかは表示されません。ただし、あなたのタイミングを確認したマッパーは除きます。",
+    "text": {
+      "suggestion": "あなたの提案「{{title}}」は {{to}} になりました。",
+      "comment": "@{{user}} さんが「{{title}}」にコメントしました。",
+      "use": "@{{user}} さんが「{{title}}」のあなたのタイミングを使いました。",
+      "verified": "@{{user}} さん（Ranked 譜面を持つマッパー）が「{{title}}」のタイミングは合っていると確認しました。",
+      "voteOn": "誰かが「{{title}}」は合っていると投票しました。",
+      "voteOff": "誰かが「{{title}}」はずれていると投票しました。",
+      "analysis": {
+        "done": "「{{title}}」の解析が完了しました。",
+        "refused": "「{{title}}」の解析は BPM なしで終了しました。",
+        "failed": "「{{title}}」の解析に失敗しました。"
+      },
+      "unknown": "何かが起きました。"
+    }
+  },
+  "staff": {
+    "nav": "スタッフパネル",
+    "title": "スタッフパネル",
+    "subtitle": "キューとワーカー、最近の失敗、未対応の報告、投票からの修正、モデレーションログを一か所で。",
+    "refresh": "更新",
+    "failed": "スタッフパネルを読み込めませんでした。",
+    "readAt": "{{time}} に読み込み。このタブを開いている間、30 秒ごとに再読み込みします。",
+    "open": "開く",
+    "awaiting": {
+      "title": "確認待ち",
+      "suggestions": "未対応の提案",
+      "reports": "未対応の報告がある項目",
+      "corrections": "確認待ちの修正"
+    },
+    "queue": {
+      "title": "キューとワーカー",
+      "moderate": "キューのページで削除または再投入",
+      "running": "解析中",
+      "waiting": "待機中",
+      "oldest": "最長の待ち時間"
+    },
+    "worker": {
+      "memory": "メモリ：現在 {{rss}}、直前のジョブのピーク {{peak}}、上限 {{limit}}",
+      "memoryAgo": "{{seconds}} 秒前に報告",
+      "noMemory": "ワーカーがメモリを報告していません（Linux でのみ可能です）。"
+    },
+    "failures": {
+      "title": "失敗（過去 7 日間）",
+      "none": "失敗はありません。",
+      "codes": "too_heavy：メモリ不足 · timeout：制限時間を超過 · stale：ワーカーが応答しなくなった · removed：モデレーターが削除 · failed：エンジン自体のエラー。"
+    },
+    "corrections": {
+      "title": "投票からの修正",
+      "hint": "BPM またはオフセットを添えて、タイミングがずれていると投票した人たち。決める前に聴いてください。決定はログに記録されます。",
+      "none": "ここには何もありません。",
+      "change": "現在 {{bpm}} BPM、オフセット {{offset}} ms → 提案 {{newBpm}} BPM、オフセット {{newOffset}} ms",
+      "trainingOk": "データとして使用可",
+      "trainingNo": "データには使用不可",
+      "by": "@{{moderator}} が決定",
+      "accept": "承認",
+      "dismiss": "却下",
+      "acceptPrompt": "この修正を承認しますか？ ログ用の理由（任意）：",
+      "dismissPrompt": "この修正を却下しますか？ ログ用の理由（任意）："
+    },
+    "did": {
+      "accept": "@{{moderator}} が修正を承認しました",
+      "dismiss": "@{{moderator}} が修正を却下しました"
+    }
+  },
+  "limits": {
+    "title": "今はこれ以上送信できません",
+    "why": {
+      "anonymous_other": "アカウントなしでは 1 日 {{count}} 曲まで解析できます。",
+      "account_other": "あなたのアカウントでは 1 日 {{count}} 曲まで解析できます。",
+      "cache_other": "保存済みの結果は 1 日 {{count}} 件まで開けます。",
+      "pending_other": "キューに同時に入れられるのは {{count}} 曲までです。"
+    },
+    "free": "もう一度送信できます。",
+    "resetIn": "再び送信できるまで",
+    "resetAt": "{{time}} に",
+    "resetWhen": "カウントは 00:00 UTC にリセットされます",
+    "whenFinished_other": "キューにある {{count}} 曲のうち 1 曲が終わると、もう 1 曲送信できます。",
+    "seeQueue": "キューを見る",
+    "signIn": "ログインすると 1 日の上限が増えます"
   }
 }

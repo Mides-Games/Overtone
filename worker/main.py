@@ -80,13 +80,16 @@ class Api:
             raw = response.read()
             return json.loads(raw) if raw else None
 
-    def claim(self, engine_hash: str, engine_hashes: dict | None = None) -> dict | None:
+    def claim(self, engine_hash: str, engine_hashes: dict | None = None, memory: dict | None = None) -> dict | None:
         """The next queued job, or None when the queue is empty (204).
         ``engine_hash`` is the normal mode's; ``engine_hashes`` names every
-        mode's, which the API keys each mode's cached results by."""
+        mode's, which the API keys each mode's cached results by. ``memory``
+        is the analysis process's report for the staff panel (W13.19)."""
         body = {"engine_hash": engine_hash}
         if engine_hashes:
             body["engine_hashes"] = engine_hashes
+        if memory:
+            body["memory"] = memory
         return self.call("POST", "/jobs/claim", body)
 
     def download(self, job_id: str, attempt: int, target: Path) -> None:
@@ -239,7 +242,7 @@ def main() -> int:
                 return 4
             print(f"[worker] a new analysis process is warm in {time.perf_counter() - started:.1f} s", flush=True)
         try:
-            job = api.claim(hash_, runner.hashes)
+            job = api.claim(hash_, runner.hashes, runner.memory_report())
             if unreachable:
                 print("[worker] the API answers again", flush=True)
                 unreachable = False

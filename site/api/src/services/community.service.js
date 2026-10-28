@@ -135,6 +135,12 @@ const memoryReview = (r) =>
 const memoryLog = (entry) =>
   memory.log.push({ fromState: null, toState: null, reason: null, ...entry, createdAt: new Date() });
 
+/** For the vote store's memory twin (W13.14): a staff decision on a correction goes to the same log. */
+export const memoryLogEntry = (entry) => memoryLog(entry);
+
+/** What the staff panel (W13.19) reads beside the queue's own log: every kind but the queue's. */
+export const STAFF_LOG_KINDS = [...KINDS, 'vote'];
+
 const byNewest = (a, b) => b.createdAt - a.createdAt || (b.seq ?? 0) - (a.seq ?? 0);
 let seq = 0;
 
@@ -246,8 +252,14 @@ const memoryStore = {
     return summarize([...memory.reviews.values()].filter((r) => !r.hidden).map((r) => ({ stars: r.stars, anonymous: !r.accountId })));
   },
 
-  async moderationLog(limit = LOG_LIMIT) {
-    return memory.log.slice(-limit).reverse();
+  async moderationLog(limit = LOG_LIMIT, kinds = KINDS) {
+    return memory.log.filter((e) => kinds.includes(e.kind)).slice(-limit).reverse();
+  },
+
+  async awaitingReview() {
+    const suggestions = [...memory.suggestions.values()].filter((s) => s.state === 'open' && !s.hidden).length;
+    const reports = new Set(memory.reports.filter((r) => r.state === 'open').map((r) => `${r.kind}:${r.publicId}`)).size;
+    return { suggestions, reports };
   },
 
   async openReportList(limit = LOG_LIMIT) {
@@ -513,13 +525,23 @@ const pgStore = {
     return summarize(rows.flatMap((r) => Array.from({ length: r.n }, () => ({ stars: r.stars, anonymous: r.anonymous }))));
   },
 
-  async moderationLog(limit = LOG_LIMIT) {
+  async moderationLog(limit = LOG_LIMIT, kinds = KINDS) {
     const { rows } = await query(
       `SELECT action, target_kind, target_ref, from_state, to_state, moderator, account_id, reason, created_at
          FROM moderation_log WHERE target_kind = ANY($2::text[]) ORDER BY id DESC LIMIT $1`,
-      [limit, KINDS],
+      [limit, kinds],
     );
     return rows.map(fromLog);
+  },
+
+  async awaitingReview() {
+    const { rows: [n] } = await query(
+      `SELECT (SELECT count(*) FROM suggestions WHERE state = 'open' AND NOT hidden)::int AS suggestions,
+              (SELECT count(DISTINCT (target_kind, target_id)) FROM reports
+                WHERE state = 'open' AND target_kind = ANY($1::text[]))::int AS reports`,
+      [KINDS],
+    );
+    return { suggestions: n.suggestions, reports: n.reports };
   },
 
   async openReportList(limit = LOG_LIMIT) {

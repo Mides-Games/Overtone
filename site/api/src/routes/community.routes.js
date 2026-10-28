@@ -7,6 +7,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { isStaff } from '../services/account.service.js';
 import { community, KINDS, newPublicId, PAGE_MAX, SORTS, STATES } from '../services/community.service.js';
+import { notify } from '../services/notification.service.js';
 import { social } from '../services/social.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { cleanText } from '../utils/text.js';
@@ -194,6 +195,10 @@ router.post('/community/suggestions/:id/state', staffLimit, requireSameOrigin, r
   if (to === 'rejected' && !reason) throw new HttpError(400, 'A rejection needs a reason.', 'REASON_REQUIRED');
   const changed = await community().setState(s.publicId, { to, reason, by: by(req, reason) });
   if (!changed) throw notFound();
+  // W13.17: its author hears of it; one notification per suggestion, the latest state.
+  await notify(s.accountId, 'suggestion', `suggestion:${s.publicId}`, {
+    suggestion: s.publicId, title: s.title, from: changed.from, to: changed.to, reason: reason ?? null,
+  }, { actorId: req.account.id });
   res.json({ from: changed.from, to: changed.to });
 });
 

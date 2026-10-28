@@ -13,5 +13,8 @@ Disallow: /compare
 Disallow: /settings
 Disallow: /embed/
 Disallow: /share-target
+# An account's notifications and the staff panel (W13.17, W13.19).
+Disallow: /notifications
+Disallow: /staff
 
 Sitemap: https://overtone.midesprojects.com/sitemap.xml

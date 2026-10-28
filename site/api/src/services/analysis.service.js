@@ -65,27 +65,47 @@ const statusOf = (result) => (result?.refused ? 'refused' : 'done');
 export const refusal = ({ mine, all, today, cachedToday }, limits, cached) => {
   const { scope } = limits;
   if (cached) {
-    return cachedToday >= limits.cacheDaily
-      ? new HttpError(429, `You have opened ${limits.cacheDaily} stored results today. The count resets at 00:00 UTC.`,
-        'CACHE_LIMIT', { limit: limits.cacheDaily, scope })
-      : null;
+    return cachedToday >= limits.cacheDaily ? limitRefusal('CACHE_LIMIT', { limit: limits.cacheDaily, scope }) : null;
   }
-  if (today >= limits.quota) {
-    return new HttpError(
-      429,
-      scope === 'account'
-        ? `You have used today's ${limits.quota} analyses. The count resets at 00:00 UTC.`
-        : `Without an account you can analyse ${limits.quota} songs a day. Sign in for more, or come back after 00:00 UTC.`,
-      'QUOTA_EXCEEDED',
-      { limit: limits.quota, scope },
-    );
-  }
-  if (mine >= limits.maxPending) {
-    return new HttpError(429, `You already have ${limits.maxPending} songs in the queue. Send more when one finishes.`,
-      'PENDING_LIMIT', { limit: limits.maxPending, scope });
-  }
+  if (today >= limits.quota) return limitRefusal('QUOTA_EXCEEDED', { limit: limits.quota, scope });
+  if (mine >= limits.maxPending) return limitRefusal('PENDING_LIMIT', { limit: limits.maxPending, scope, pending: mine });
   if (all >= limits.queueMax) return new HttpError(503, 'The queue is full. Try again in a few minutes.', 'QUEUE_FULL');
   return null;
+};
+
+/**
+ * W13.20: when a daily count frees up again, said with the refusal so the
+ * page can count down to it: the next 00:00 UTC, and the seconds until then
+ * (which the page counts from, so a visitor's wrong clock cannot skew it).
+ */
+export const dailyReset = (now = Date.now()) => {
+  const at = new Date(now);
+  const reset = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() + 1);
+  return { resetAt: new Date(reset).toISOString(), retryAfterS: Math.max(1, Math.ceil((reset - now) / 1000)) };
+};
+
+/**
+ * The three refusals a person's own limits give, each saying why and when it
+ * frees up (W13.20): the two daily counts at 00:00 UTC, with a Retry-After a
+ * polite client can wait for; the pending cap when one of their songs in the
+ * queue finishes (`frees: 'finish'`), which no clock can say.
+ */
+export const limitRefusal = (code, { limit, scope, pending = null }, now = Date.now()) => {
+  if (code === 'PENDING_LIMIT') {
+    return new HttpError(429, `You already have ${limit} songs in the queue. Send more when one finishes.`, code, {
+      limit, scope, pending: pending ?? limit, frees: 'finish',
+    });
+  }
+  const reset = dailyReset(now);
+  const message =
+    code === 'CACHE_LIMIT'
+      ? `You have opened ${limit} stored results today. The count resets at 00:00 UTC.`
+      : scope === 'account'
+        ? `You have used today's ${limit} analyses. The count resets at 00:00 UTC.`
+        : `Without an account you can analyse ${limit} songs a day. Sign in for more, or come back after 00:00 UTC.`;
+  const error = new HttpError(429, message, code, { limit, scope, frees: 'reset', ...reset });
+  error.headers = { 'Retry-After': String(reset.retryAfterS) };
+  return error;
 };
 
 /**
@@ -95,6 +115,23 @@ export const refusal = ({ mine, all, today, cachedToday }, limits, cached) => {
  */
 export const REMOVED = 'Removed from the queue by a moderator.';
 export const MODERATION_LOG_LIMIT = 50;
+/** The staff panel's recent failures (W13.19): the last week, at most this many. */
+export const FAILURE_LIMIT = 30;
+export const FAILURE_DAYS = 7;
+
+/**
+ * Why an analysis failed, as a code (W13.19): the worker writes `too_heavy:`
+ * or `timeout:` before its message (worker/isolate.py), a moderator's
+ * removal and the sweeper's time-out have fixed texts here, and anything
+ * else is the engine's own `failed`.
+ */
+export const failureCode = (error) => {
+  const text = String(error ?? '');
+  if (text === REMOVED) return 'removed';
+  if (text === 'The analysis took too long and was stopped.') return 'stale';
+  const prefix = /^([a-z_]{1,32}):\s/.exec(text);
+  return prefix ? prefix[1] : 'failed';
+};
 
 /** How long a finished analysis stays on the public queue, and how many of them. */
 export const RECENT_MINUTES = 60;
@@ -373,6 +410,16 @@ const memoryStore = {
 
   async moderationLog(limit = MODERATION_LOG_LIMIT) {
     return memory.log.slice(-limit).reverse();
+  },
+
+  /** W13.19: the latest failed analyses within FAILURE_DAYS, newest first, for the staff panel. */
+  async recentFailures(limit = FAILURE_LIMIT) {
+    const since = Date.now() - FAILURE_DAYS * 86_400_000;
+    return [...memory.analyses.values()]
+      .filter((a) => a.status === 'failed' && a.finishedAt && a.finishedAt.getTime() >= since)
+      .sort((x, y) => y.finishedAt - x.finishedAt)
+      .slice(0, limit)
+      .map((a) => ({ publicId: a.publicId, error: a.error, mode: a.mode ?? 'normal', audioSeconds: a.audioSeconds ?? null, finishedAt: a.finishedAt }));
   },
 
   // ── Published timings and history (W3.27, W5.1, W3.26) ──
@@ -953,6 +1000,18 @@ const pgStore = {
     return rows.map((r) => ({
       action: r.action, moderator: r.moderator, accountId: r.account_id, publicId: r.public_id?.trim() ?? null,
       reason: r.reason, createdAt: r.created_at,
+    }));
+  },
+
+  async recentFailures(limit = FAILURE_LIMIT) {
+    const { rows } = await query(
+      `SELECT public_id, error, mode, audio_seconds, finished_at FROM analyses
+        WHERE status = 'failed' AND finished_at >= now() - make_interval(days => $2)
+        ORDER BY finished_at DESC LIMIT $1`,
+      [limit, FAILURE_DAYS],
+    );
+    return rows.map((r) => ({
+      publicId: r.public_id.trim(), error: r.error, mode: r.mode ?? 'normal', audioSeconds: r.audio_seconds ?? null, finishedAt: r.finished_at,
     }));
   },
 

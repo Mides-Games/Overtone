@@ -22,7 +22,8 @@ import {
   TIMER_SORTS,
   USERNAME,
 } from '../utils/social.js';
-import { decodeOffset, listFilters, recentEntry } from '../utils/timings.js';
+import { decodeOffset, listFilters, recentEntry, songNames } from '../utils/timings.js';
+import { notify } from '../services/notification.service.js';
 import { field } from './community.routes.js';
 import { listPage } from './timings.routes.js';
 
@@ -145,7 +146,14 @@ router.put('/timings/:id/use', useLimit, requireSameOrigin, requireSession, asyn
   const row = await publishedTiming(req.params.id);
   notOwn(row, req);
   const beatmapUrl = beatmapUrlOf(req.body?.beatmapUrl);
+  const before = await social().usesOf(row.publicId, req.account.id, 0);
   await social().setUse(row.publicId, req.account.id, beatmapUrl);
+  // W13.17: the first time only; changing the link is not news.
+  if (!before.mine) {
+    await notify(row.accountId, 'use', `use:${row.publicId}:${req.account.id}`, {
+      timing: row.publicId, title: songNames(row).title ?? null, user: req.account.username,
+    }, { actorId: req.account.id });
+  }
   res.json({ uses: usesView(await social().usesOf(row.publicId, req.account.id)) });
 });
 
@@ -190,6 +198,10 @@ router.post('/timings/:id/comments', commentLimit, requireSameOrigin, requireSes
   const body = field(req.body?.body, 'body', 1, COMMENT_MAX, { multiline: true });
   const atMs = atMsOf(req.body?.atMs, Number(row.result?.duration_s));
   const comment = await social().addComment({ publicId: newPublicId(), timingId: row.publicId, accountId: req.account.id, body, atMs });
+  // W13.17: who and where, not what: a comment staff hide later must not live on in a bell.
+  await notify(row.accountId, 'comment', `comment:${comment.publicId}`, {
+    timing: row.publicId, title: songNames(row).title ?? null, user: req.account.username, comment: comment.publicId, atMs,
+  }, { actorId: req.account.id });
   res.status(201).json({ comment: commentView(comment, req) });
 });
 

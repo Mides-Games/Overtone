@@ -84,6 +84,50 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The timing editor in the browser
+
+### Changed
+
+- **W7, W12.17:** the result page's tempo map has an Edit mode. Red lines drag (snapped
+  to the attacks or the beats, Alt free), move by 1 or 10 ms on the arrow keys, are
+  added at the playhead or by double-click, deleted, retimed and re-barred by typing;
+  sections split at the playhead, merge, double and halve, refitted to their attacks as
+  the desktop app did. Undo and redo (Ctrl+Z, Ctrl+Shift+Z) with the history in view,
+  every step spoken to a screen reader. The edits feed the clicks, the copy, the .osz
+  and every export as the nudge does, marked `Edited`; the engine's reading stays as it
+  came. Kept per analysis in the browser and, for the owner, as a saved version.
+- The offset lab, the desktop's: the MP3's gapless delay read in the browser, and the
+  blind click-shift test with Wilson intervals, its answer applied as the nudge.
+- `POST /analyses/:id/versions` takes `lines` (up to 512 packed red lines);
+  `analysis_versions` gains `lines` and `lines_key`, and its uniqueness moves to
+  (factor, nudge, lines key). Ten languages.
+
+### Hardening
+
+- The saved lines are checked line by line (numbers only, BPM 1-5000, meter 1-16,
+  sorted at least 1 ms apart, at most 512); a body with lines that do not read is
+  refused, never saved without them. Only that route's JSON limit rises, to 48 kB.
+
+### Measured
+
+- The JS editor against the desktop's Python helpers on 16 fixed cases
+  (`site/web/test/fixtures/editor-golden.json`): every red line within 1e-6 ms and
+  BPM, every refit share within 1e-9, the same refusals. The engine is not touched: no
+  gate or benchmark run concerns it.
+- After merging `master`, the result page went to 31.4 kB gzip (budget 30): the editor
+  and its offset lab now load on their own (`TimingEditor` 5.1 kB). With the listening
+  lanes merged too, the page is 28.9 kB and the Russian file 52.6 kB (budget 58).
+
+### Rejected / tried and dropped
+
+- Baking the ×2 and the nudge into the edits on the first edit: it would have turned a
+  saved factor-and-nudge version into lines and made the ×2 unpressable after an edit.
+  The edits are kept before both instead.
+- The desktop's decoder comparison (Python's first attack against Rust's): the browser
+  has neither engine, and the server never sees the audio again.
+
+---
+
 ## Unreleased — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
 
 ### Changed

@@ -9,6 +9,7 @@ import { bearerToken } from './middlewares/token.js';
 import bot from './routes/bot.routes.js';
 import v1 from './routes/index.js';
 import internal from './routes/internal.routes.js';
+import { VERSION_BODY_LIMIT } from './services/version.service.js';
 
 /**
  * The Express application, without listening: `index.js` listens.
@@ -33,6 +34,10 @@ app.use(proxyGuard(env.proxySecret));
 app.use(`${INTERNAL_PREFIX}/bot`, bot);
 app.use(INTERNAL_PREFIX, internal);
 
+// A saved version may carry an edited timing (W7): up to 512 packed red lines,
+// about 25 kB, which the route caps and checks line by line. Parsed here first,
+// so the small limit below never sees that one body.
+app.use('/api/v1/analyses/:id/versions', express.json({ limit: VERSION_BODY_LIMIT }));
 // Small on purpose: JSON bodies here are a code or a form. Audio arrives as a
 // raw body that analyses.routes.js streams to disk itself.
 app.use(express.json({ limit: '16kb' }));

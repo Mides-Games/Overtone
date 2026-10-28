@@ -531,7 +531,8 @@ export function paintMap(ctx, L, view, d, c) {
     const x = Math.round(X(line.timeMs / 1000)) + 0.5
     if (x < x0 - 80 || x > x1 + 1) continue
     const meterChanged = i === 0 ? line.meter !== 4 : line.meter !== d.lines[i - 1].meter
-    const label = formatBpm(line.bpm) + (meterChanged ? ` · ${line.meter}/4` : '')
+    // A line the reader edited (W7) says so on its chip.
+    const label = (line.edited ? '✎ ' : '') + formatBpm(line.bpm) + (meterChanged ? ` · ${line.meter}/4` : '')
     const w = ctx.measureText(label).width + 12
     let row = -1
     if (x > right[0] + 3) row = 0
@@ -543,6 +544,18 @@ export function paintMap(ctx, L, view, d, c) {
     const chip = chips[i]
     if (!chip) continue
     const strong = i === d.selected || i === d.hovered
+    // Editing (W7): the selected line is the one the keys move, so it carries a focus ring the whole height of the map.
+    if (d.editing && i === d.selected) {
+      ctx.globalAlpha = 0.25
+      ctx.fillStyle = c.accent
+      ctx.fillRect(chip.x - 4, 0, 8, L.driftBottom)
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = c.accent
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([3, 3])
+      ctx.strokeRect(chip.x - 4.5, 0.75, 9, L.driftBottom - 1.5)
+      ctx.setLineDash([])
+    }
     ctx.strokeStyle = c.red
     ctx.lineWidth = strong ? 2.2 : 1.2
     ctx.beginPath()

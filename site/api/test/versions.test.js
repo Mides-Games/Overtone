@@ -171,3 +171,48 @@ test('at most MAX_PER_ANALYSIS saved versions a reading, and they go when the an
   assert.deepEqual(left.body.readings.map((r) => r.id), [sibling]);
   assert.deepEqual(left.body.adjustments, []);
 });
+
+test('parseLines takes packed red lines the page can apply, in range and sorted, and nothing else', async () => {
+  const { parseLines, MAX_LINES } = await import('../src/services/version.service.js');
+  const good = [[0, 500, 4, 1, 0], [1000.5, 461.538461538462, 3, 0, -1]];
+  assert.deepEqual(parseLines(good), good);
+  for (const bad of [
+    [], 'x', null, [[0, 500, 4, 1]], [[0, 500, 4, 1, 0, 'extra']], [['0', 500, 4, 1, 0]], [[0, 500, 4.5, 1, 0]], [[0, 500, 17, 1, 0]],
+    [[0, 5, 4, 1, 0]], [[0, 500, 4, 2, 0]], [[0, 500, 4, 1, -2]], [[0, 500, 4, 1, 0], [0.5, 500, 4, 1, 1]], [[1e12, 500, 4, 1, 0]],
+    Array.from({ length: MAX_LINES + 1 }, (_, i) => [i * 10, 500, 4, 1, i]),
+  ]) {
+    assert.equal(parseLines(bad), null, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.ok(parseLines(Array.from({ length: MAX_LINES }, (_, i) => [i * 10, 500, 4, 1, i])));
+});
+
+test('an edited timing saves as a version with its lines: once per edit, beside the same factor and nudge, capped and checked', async () => {
+  const id = await analysed(alice, 'song-edit');
+  const lines = [[0, 500, 4, 1, 0], [30_000, 461.538461538462, 3, 1, -1]];
+  // Only lines: no factor, no nudge.
+  const made = await save(id, alice, { factor: 1, nudgeMs: 0, lines, label: 'bridge' });
+  assert.equal(made.status, 201);
+  assert.deepEqual(made.body.lines, lines);
+  assert.equal(made.body.label, 'bridge');
+  // The same edit again is the same version; the same factor and nudge without the lines is another.
+  assert.equal((await save(id, alice, { factor: 1, nudgeMs: 0, lines })).body.id, made.body.id);
+  const plain = await save(id, alice, { factor: 2, nudgeMs: 0 });
+  const withLines = await save(id, alice, { factor: 2, nudgeMs: 0, lines });
+  assert.notEqual(plain.body.id, withLines.body.id);
+  assert.equal('lines' in plain.body, false);
+
+  const { body } = await versionsOf(id, alice);
+  assert.equal(body.adjustments.length, 3);
+  assert.deepEqual(body.adjustments.find((v) => v.id === made.body.id).lines, lines);
+
+  // Lines that do not read are refused, never saved without them.
+  assert.equal((await save(id, alice, { factor: 2, nudgeMs: 0, lines: [[0, 500, 4, 1]] })).body.error.code, 'BAD_ADJUSTMENT');
+  assert.equal((await save(id, alice, { factor: 1, nudgeMs: 0, lines: [] })).body.error.code, 'BAD_ADJUSTMENT');
+  // The most lines an edit holds fits the body limit; a body far past it does not.
+  const most = Array.from({ length: 512 }, (_, i) => [i * 1000.123 + 0.456, 461.538461538462, 4, 1, i]);
+  assert.equal((await save(id, alice, { factor: 1, nudgeMs: 0, lines: most })).status, 201);
+  const huge = await fetch(`${base}/analyses/${id}/versions`, {
+    method: 'POST', headers: { ...JSON_BODY, Cookie: alice }, body: JSON.stringify({ factor: 2, nudgeMs: 0, lines: most, pad: 'x'.repeat(60_000) }),
+  });
+  assert.equal(huge.status, 413);
+});

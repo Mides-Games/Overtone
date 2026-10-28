@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { SettingsProvider } from './context/SettingsContext.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 
 createRoot(document.getElementById('root')).render(
@@ -16,9 +17,11 @@ createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <BrowserRouter>
         <ThemeProvider>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
+          <SettingsProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </SettingsProvider>
         </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>

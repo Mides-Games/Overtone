@@ -29,12 +29,23 @@
     <meta name="twitter:image" content="https://overtone.midesprojects.com/og-image.png" />
     <title>Overtone · Mides Projects</title>
     <script>
-      // Theme and language before the first frame, so a light-mode visitor
-      // never sees a dark flash. Same keys as midesprojects.com; dark is the
-      // default there too.
+      // Theme, language and the settings page's choices before the first
+      // frame, so a light-mode visitor never sees a dark flash and a larger
+      // font never jumps. Same theme and language keys as midesprojects.com;
+      // dark is the default there too. `system` follows the OS. The settings
+      // are checked again by lib/settings.js once the app runs; this only
+      // sets what a valid value asks for. serve.mjs allows this script by its
+      // hash, computed from the built file, so editing it needs nothing else.
       try {
-        if (localStorage.getItem('mides.theme') === 'light') document.documentElement.classList.remove('dark')
-        if (localStorage.getItem('mides.lang') === 'es') document.documentElement.lang = 'es'
+        var root = document.documentElement
+        var theme = localStorage.getItem('mides.theme')
+        if (theme === 'light' || (theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches)) root.classList.remove('dark')
+        if (localStorage.getItem('mides.lang') === 'es') root.lang = 'es'
+        var s = JSON.parse(localStorage.getItem('overtone.settings') || '{}') || {}
+        if (s.contrast === 'more') root.classList.add('contrast-more')
+        if (s.palette === 'cb') root.classList.add('palette-cb')
+        if (s.reducedMotion === 'reduce' || s.reducedMotion === 'allow') root.classList.add('motion-' + s.reducedMotion)
+        if (typeof s.fontScale === 'number' && s.fontScale >= 0.9 && s.fontScale <= 1.3) root.style.setProperty('--font-scale', String(s.fontScale))
       } catch {}
     </script>
   </head>

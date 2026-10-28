@@ -797,6 +797,7 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 | W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos |
 | W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) |
 | W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor |
+| W12.25 | **Una portada que convenza** (hecho, 2026-10-27, pedido del owner): qué ganás, cómo funciona en tres pasos, recién timeadas, números en vivo de `/stats`, quiénes somos (Mides Projects, githalt, MIT, de escritorio a la web, sin relación con osu!/ppy), preguntas y un cierre; el ejemplo del inicio ahora tiene cuatro red lines (174, 186, un tramo en 3/4, 160) y sus lecturas siguen al cursor. Falta: verlo en Safari, Firefox y un teléfono real, y comprobar con el panel visible que el ejemplo se pausa fuera de pantalla (ver `docs/site.md`) |
 
 ---
 

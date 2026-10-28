@@ -1288,3 +1288,64 @@ Not checked: a screen reader on the popover and the charts; touch on a real phon
 `/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
 cache across several API processes (each keeps its own minute); the text against a
 mapper's reading, which only a mapper can give.
+
+### The front page (W12.25, 2026-10-27)
+
+`/` is now a landing page for a mapper deciding whether to try Overtone. Code:
+`site/web/src/pages/Home.jsx`, `components/home/` (the section heading, the line
+icons, the recent list, the live numbers), `lib/home.js` (the section keys and the
+stats reader), `components/TimingStrip.jsx` and `lib/strip.js` (the example).
+
+- **Sections, in order:** the hero (one line on what it does, "Analyze a song" and
+  "How it works", three facts: free, no account, audio deleted; the "check by ear"
+  chip with a link to `/disclaimer`), the live numbers, "What you gain" (five
+  benefits and a sixth cell that is the call to act), how it works in three steps
+  (linking `/how-it-works`), recently timed, who we are, five questions (linking
+  `/faq`), and a closing call with `/community` and `/recent`.
+- **Every claim is one the site keeps today**, read from this file and the result
+  page: the audio is deleted when its analysis ends or fails (only the timing and
+  the SHA-1 stay), clicks, loop and rates down to 0.5, the `.osz` with the song and
+  the red lines, no account needed and a higher limit with one, the six formats of
+  `AUDIO_EXTENSIONS` (a test reads that list against both FAQ answers), the
+  benchmark's 0.05 BPM / 5 ms on synthetic tracks and "a strong first draft" on real
+  ones. When the site changes, change the strings.
+- **Who we are:** Mides Projects, founded by githalt, open source (MIT) in one
+  repository, from the desktop app to this site, not affiliated with osu! or ppy.
+  The Mides mark (`Logo.jsx`) sits beside Overtone's (`Mark.jsx`) there.
+- **Requests:** two, both after the first paint and neither blocking anything above
+  them. `GET /timings?limit=5` shows three placeholder rows while it runs and hides
+  the section when it answers with none or fails. `GET /stats` (W12.13; `totals.done`
+  and `queue.queued + queue.running`) hides its block on any failure, and while no
+  analysis is done: "0 analyses done" sells nothing. Its answer is cached for a minute.
+- **The example strip** plays a made-up song of four red lines (offset 1284 ms at
+  174 BPM for 3 bars, 186 for 3, 186 in 3/4 for 2, 160 for 2), each a whole-ms
+  offset on the previous line's downbeat with `beatLength = 60000 / BPM`. A playhead
+  crosses it in real time and the readouts (BPM, offset, meter, confidence in its
+  level's colour), the header's "red line n of 4" and a `[TimingPoints]` row follow
+  the line under it. The playhead is one SVG element moved by a transform; React
+  renders again only when the line changes. It stops when the strip leaves the
+  screen (`IntersectionObserver`) or the tab is hidden, and resumes where it was.
+  With reduced motion (the system's, or `reducedMotion` in `overtone.settings`) it
+  does not sweep: it steps to the next line every 4 s. On a phone the red lines'
+  BPM flags are dropped (they would be 6 px text); the readouts carry the numbers.
+
+Checked:
+
+- `site/web` 194/194 (11 new: `test/home.test.js` for the section strings in both
+  languages, the FAQ's formats against the API's list, the stats reader and a 404;
+  `test/strip.test.js` for the example's osu! timing, its grid, the active line over
+  the loop, bar and beat, the readouts and `[TimingPoints]` row, the reduced-motion
+  steps), `site/api` 108/108, `vite build`.
+- In the browser pane (dev API in memory on 3041, five timings published by a
+  stand-in worker posting results to `/api/internal`): with none published and no
+  analyses, the recent and live sections are absent; with five, both show. 1366 px
+  and 375 px (no element past the edge), EN and ES, dark and light. The strip moving
+  and its readouts changing line; with `reducedMotion: reduce` stored, a still
+  playhead for 4 s, then the next line.
+
+Not checked: that the strip pauses off-screen. The pane was hidden for that run, and a
+hidden pane runs neither `requestAnimationFrame` nor `IntersectionObserver`
+callbacks, so neither the pause nor the resume could be observed (the code is the
+standard pair: an observer and `visibilitychange`). Safari, Firefox and a real phone;
+a screen reader over the sections; the `/how-it-works` and `/faq` pages the links
+lead to were not re-read for agreement with the teaser's answers.

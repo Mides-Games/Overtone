@@ -702,13 +702,17 @@ rules are tested), hearing the chime, a screen reader, Safari, a real worker run
   `https://overtone.midesprojects.com`; `test/seo.test.js` diffs it against
   `App.jsx`), `public/manifest.webmanifest`, Open Graph and Twitter tags in
   `index.html`, and `hooks/usePageMeta.js`, which every page calls to set its
-  `<title>` ("Name · Overtone") and description tags (`lib/meta.js`, tested). The PNG
-  icons (`favicon-32`, `apple-touch-icon` 180, `icon-192`, `icon-512`, a maskable 512
-  and a 1200x630 `og-image`) are drawn from `public/favicon.svg` by
-  `node site/web/scripts/icons.mjs`: Node's own zlib and a small rasterizer, no
-  package. It reads the SVG's rect, path, stroke and transform and refuses any shape
-  it does not draw; `test/icons.test.js` decodes the committed PNGs and compares them
-  pixel for pixel with a fresh render.
+  `<title>` ("Name · Overtone") and description tags (`lib/meta.js`, tested). The logo and every
+  icon (`favicon.svg`, `favicon-32`, `apple-touch-icon` 180, `icon-192`, `icon-512`, a
+  maskable 512 and a 1200x630 `og-image`) are Overtone's own mark, written by
+  `assets/logo.py` with the standard library beside the desktop app's icon (2026-10-27:
+  they had been a redrawn ring and the Mides mark, which the owner called an imitation).
+  The site uses its web variant (`render_web`, `assets/logo-web.svg`): the fundamental
+  alone, thicker and inset, and the red line as a rounded bar, because the full icon's
+  faint harmonics read as noise in a browser tab. `components/Mark.jsx` shows
+  `favicon.svg`; `test/logo.test.js` holds it equal to `assets/logo-web.svg` and every
+  PNG at its stated size. The Mides mark (`Logo.jsx`, the
+  same path as midesprojects.com's own component) stays only where Mides Projects is named.
 - **`deploy/web/serve.mjs`** serves `.xml` as `application/xml` (it fell to
   `application/octet-stream` before); `.txt` and `.webmanifest` already had their
   types, and the manifest needs nothing new in the CSP (`default-src 'self'`). A test

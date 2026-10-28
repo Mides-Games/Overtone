@@ -11,6 +11,14 @@ Outputs (all idempotent, byte for byte):
   assets/logo.png   256x256 RGBA, the GUI window icon
   assets/logo.ico   16/20/24/32/40/48/64 as 32-bit BMP entries plus 256 as
                     PNG: every size Windows asks for at 100-200 % scaling
+  assets/logo.svg   the same mark as vectors
+  assets/logo-web.svg  the website's cleaner mark (web_svg_text), = favicon.svg
+  site/web/public/  the website's icons: the web mark (render_web), the same idea
+                    cleaner for a browser tab: favicon.svg, favicon-32, apple-touch-icon (180, opaque),
+                    icon-192, icon-512, icon-maskable-512 (the mark inside the
+                    central 80 %) and og-image (1200x630, the mark on the
+                    page colour). The site shows Overtone's own logo, the one
+                    the desktop app had, never a redrawing of it (2026-10-27).
 
 Every size is drawn at its own size, not shrunk from 256: the geometry was
 fixed in 256-px units, so at 16 px the corner radius was larger than the icon
@@ -218,14 +226,174 @@ def ico_bytes(sizes):
     return b"".join(out)
 
 
+def svg_text():
+    """The 256-px design as SVG: the panel, the three waves as polylines (the
+    raster stamps round discs along the same curves, so the strokes are round
+    capped and joined) and the red line, all clipped to the rounded panel."""
+    def wave(harmonic, amp_frac, alpha, width):
+        steps = 256
+        points = " ".join(
+            f"{s * SIZE / steps:.2f},{SIZE / 2 + amp_frac * SIZE * math.sin(2 * math.pi * harmonic * s / steps):.2f}"
+            for s in range(steps + 1)
+        )
+        return (f'<polyline points="{points}" fill="none" stroke="{hex_rgb(ACCENT)}" '
+                f'stroke-opacity="{alpha:g}" stroke-width="{width:g}" stroke-linecap="round" stroke-linejoin="round"/>')
+    waves = [(0.30, 1.00, 14.0), (0.20, 0.55, 11.0), (0.13, 0.32, 9.0)]
+    left = int(round(SIZE * 0.36 - 7 / 2.0))
+    return "\n".join([
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SIZE} {SIZE}" role="img" aria-label="Overtone">',
+        f'<defs><clipPath id="panel"><rect width="{SIZE}" height="{SIZE}" rx="40"/></clipPath></defs>',
+        '<g clip-path="url(#panel)">',
+        f'<rect width="{SIZE}" height="{SIZE}" fill="{hex_rgb(BG)}"/>',
+        *(wave(h, *w) for h, w in enumerate(waves, start=1)),
+        f'<rect x="{left}" y="0" width="7" height="{SIZE}" fill="{hex_rgb(RED)}"/>',
+        "</g>",
+        "</svg>",
+        "",
+    ])
+
+
+def hex_rgb(color):
+    return "#" + "".join(f"{c:02x}" for c in color[:3])
+
+
+#: The website's page colour (site/web/src/index.css, dark theme): the og-image's ground.
+PAGE = (0x0A, 0x0A, 0x0F, 0xFF)
+
+
+def canvas_of(width, height, color):
+    return bytearray(bytes(color) * (width * height))
+
+
+def paste(canvas, width, rgba, size, left, top):
+    """Alpha-composites a rendered mark onto an opaque canvas."""
+    for y in range(size):
+        for x in range(size):
+            i = (y * size + x) * 4
+            a = rgba[i + 3] / 255.0
+            if a <= 0.0:
+                continue
+            o = ((top + y) * width + (left + x)) * 4
+            for c in range(3):
+                canvas[o + c] = int(round(rgba[i + c] * a + canvas[o + c] * (1.0 - a)))
+            canvas[o + 3] = 255
+
+
+def png_rect(rgba, width, height):
+    """png_bytes for a non-square image."""
+    raw = b"".join(b"\x00" + bytes(rgba[y * width * 4:(y + 1) * width * 4]) for y in range(height))
+
+    def chunk(tag, data):
+        out = struct.pack(">I", len(data)) + tag + data
+        return out + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+# The website's mark (2026-10-27, owner's request: the full icon read as busy in a
+# browser tab). The same idea, cleaner: the fundamental alone, thicker and inset from
+# the edges, and the red line as a rounded bar inside the panel. Every site icon and
+# the favicon use it; logo.png and logo.ico keep the desktop app's full mark.
+WEB_WAVE = dict(left=40.0, right=216.0, amp=60.0, width=22.0)
+WEB_LINE = dict(x=84.0, top=34.0, bottom=222.0, width=16.0)
+WEB_RADIUS = 56.0
+
+
+def web_wave_points(steps=96):
+    w = WEB_WAVE
+    return [
+        (w["left"] + (w["right"] - w["left"]) * s / steps,
+         SIZE / 2 - w["amp"] * math.sin(2.0 * math.pi * s / steps))
+        for s in range(steps + 1)
+    ]
+
+
+def web_svg_text():
+    points = " ".join(f"{x:.2f},{y:.2f}" for x, y in web_wave_points())
+    line = WEB_LINE
+    return "\n".join([
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SIZE} {SIZE}" role="img" aria-label="Overtone">',
+        f'<rect width="{SIZE}" height="{SIZE}" rx="{WEB_RADIUS:g}" fill="{hex_rgb(BG)}"/>',
+        f'<polyline points="{points}" fill="none" stroke="{hex_rgb(ACCENT)}" stroke-width="{WEB_WAVE["width"]:g}" '
+        'stroke-linecap="round" stroke-linejoin="round"/>',
+        f'<rect x="{line["x"]:g}" y="{line["top"]:g}" width="{line["width"]:g}" height="{line["bottom"] - line["top"]:g}" '
+        f'rx="{line["width"] / 2:g}" fill="{hex_rgb(RED)}"/>',
+        "</svg>",
+        "",
+    ])
+
+
+def render_web(size):
+    """web_svg_text() rasterised at `size` px, as render() draws the desktop mark."""
+    ss = supersample(size)
+    w = h = size * ss
+    k = size / SIZE * ss
+    canvas = bytearray(b"\x00\x00\x00\x00" * (w * h))
+    mask = rounded_rect(w, h, WEB_RADIUS * k)
+    for i, cover in enumerate(mask):
+        o = i * 4
+        canvas[o:o + 4] = bytes((BG[0], BG[1], BG[2], int(round(BG[3] * cover))))
+    radius = max(1.0, WEB_WAVE["width"] / 2 * k)
+    pts = web_wave_points(steps=max(96, w))
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        n = max(1, int(math.hypot(x1 - x0, y1 - y0) * k / max(1.0, radius / 2)))
+        for t in range(n + 1):
+            x = (x0 + (x1 - x0) * t / n) * k
+            y = (y0 + (y1 - y0) * t / n) * k
+            stamp(canvas, w, x, y, radius, (*ACCENT, 255))
+    line = WEB_LINE
+    half = line["width"] / 2 * k
+    cx = (line["x"] + line["width"] / 2) * k
+    y = (line["top"] + line["width"] / 2) * k
+    end = (line["bottom"] - line["width"] / 2) * k
+    while y <= end:
+        stamp(canvas, w, cx, y, half, RED)
+        y += max(1.0, half / 2)
+    stamp(canvas, w, cx, end, half, RED)
+    for i, cover in enumerate(mask):
+        o = i * 4 + 3
+        canvas[o] = int(round(canvas[o] * cover))
+    pixels, _, _ = downsample(bytes(canvas), w, h, ss)
+    return pixels
+
+
+def site_icons():
+    """The website's icon files, by name: what site/web/public serves. All of
+    them are the web mark (render_web), the favicon its SVG."""
+    icons = {"favicon.svg": web_svg_text().encode()}
+    for name, size in (("favicon-32.png", 32), ("icon-192.png", 192), ("icon-512.png", 512)):
+        icons[name] = png_bytes(render_web(size), size)
+    # iOS rounds the icon itself and shows transparency as black: the panel, square.
+    apple = canvas_of(180, 180, BG)
+    paste(apple, 180, render_web(180), 180, 0, 0)
+    icons["apple-touch-icon.png"] = png_rect(apple, 180, 180)
+    # A maskable icon is cut to any shape inside the central 80 %: the mark there, the panel to the edge.
+    mask = canvas_of(512, 512, BG)
+    paste(mask, 512, render_web(410), 410, 51, 51)
+    icons["icon-maskable-512.png"] = png_rect(mask, 512, 512)
+    og = canvas_of(1200, 630, PAGE)
+    paste(og, 1200, render_web(320), 320, 440, 155)
+    icons["og-image.png"] = png_rect(og, 1200, 630)
+    return icons
+
 def main():
     HERE.mkdir(parents=True, exist_ok=True)
     png = HERE / "logo.png"
     ico = HERE / "logo.ico"
+    svg = HERE / "logo.svg"
     png.write_bytes(png_bytes(render(SIZE), SIZE))
     ico.write_bytes(ico_bytes(ICO_SIZES))
-    print(f"wrote {png} ({png.stat().st_size} bytes)")
-    print(f"wrote {ico} ({ico.stat().st_size} bytes)")
+    svg.write_bytes(svg_text().encode())
+    web = HERE / "logo-web.svg"
+    web.write_bytes(web_svg_text().encode())
+    for path in (png, ico, svg, web):
+        print(f"wrote {path} ({path.stat().st_size} bytes)")
+    public = HERE.parent / "site" / "web" / "public"
+    if public.is_dir():
+        for name, data in site_icons().items():
+            (public / name).write_bytes(data)
+            print(f"wrote {public / name} ({len(data)} bytes)")
 
 
 if __name__ == "__main__":

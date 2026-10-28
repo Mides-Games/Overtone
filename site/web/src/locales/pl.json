@@ -243,6 +243,8 @@
     },
     "failedTitle": "Analiza się nie powiodła",
     "failed": "Overtone nie mógł odczytać tego pliku. Może być uszkodzony albo nie jest tym audio, na które wskazuje nazwa. Twój plik został usunięty.",
+    "failedTooHeavy": "Analiza potrzebowała więcej pamięci, niż serwer przydziela na jeden utwór, więc została przerwana. Twój plik został usunięty. Spróbuj ponownie za kilka minut albo przeanalizuj krótszy fragment utworu.",
+    "failedTimeout": "Analiza trwała dłużej, niż serwer pozwala dla utworu tej długości, więc została przerwana. Twój plik został usunięty. Spróbuj ponownie za kilka minut albo użyj trybu szybkiego.",
     "refusedTitle": "Brak BPM",
     "refusal": {
       "no_pulse": "Overtone nie znalazł w tym audio stałego pulsu, więc nie podaje BPM.",

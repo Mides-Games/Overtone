@@ -235,6 +235,8 @@
     },
     "failedTitle": "The analysis failed",
     "failed": "Overtone could not read this file. It may be damaged or not the audio its name says. Your file has been deleted.",
+    "failedTooHeavy": "The analysis needed more memory than the server allows for one song, so it was stopped. Your file has been deleted. Try again in a few minutes, or analyse a shorter stretch of the song.",
+    "failedTimeout": "The analysis took longer than the server allows for a song this long, so it was stopped. Your file has been deleted. Try again in a few minutes, or use the fast mode.",
     "refusedTitle": "No BPM",
     "refusal": {
       "no_pulse": "Overtone found no steady pulse in this audio, so it does not report a BPM.",

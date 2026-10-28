@@ -231,12 +231,20 @@ function Waiting({ analysis }) {
   )
 }
 
+/**
+ * The worker names why a job stopped at the start of its error
+ * (worker/isolate.py): running out of memory or time is the server's limit,
+ * not a damaged file, and the page says which.
+ */
+export const failureKey = (error) =>
+  /^too_heavy:/.test(error ?? '') ? 'result.failedTooHeavy' : /^timeout:/.test(error ?? '') ? 'result.failedTimeout' : 'result.failed'
+
 function Failed({ analysis }) {
   const { t } = useTranslation()
   return (
     <section role="alert" className="space-y-2 rounded-panel border border-red/40 bg-red/10 p-5">
       <h2 className="font-display text-[17px] font-semibold">{t('result.failedTitle')}</h2>
-      <p className="text-label text-text">{analysis.removed ? t('result.removed') : t('result.failed')}</p>
+      <p className="text-label text-text">{analysis.removed ? t('result.removed') : t(failureKey(analysis.error))}</p>
       {analysis.error && <p className="readout text-caption text-dim">{analysis.error}</p>}
     </section>
   )

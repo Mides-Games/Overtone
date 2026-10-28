@@ -1,6 +1,20 @@
 @import 'tailwindcss';
 
 /*
+ * The three faces, self-hosted from pinned packages (package.json): nothing
+ * is fetched from another origin, so the CSP's `font-src 'self'` holds
+ * (CLAUDE.md rule 6). Each @font-face is split by unicode-range, so a page
+ * downloads only the subsets its text uses: Latin is about 142 kB for all
+ * three (Archivo with its width axis 90, Geist 29, Geist Mono 23). Every face
+ * swaps in (font-display: swap); the hero's Latin Archivo is preloaded by
+ * index.html. Archivo has no Cyrillic: Russian headings fall to Geist, which
+ * does. Japanese and Korean fall to the system's own faces.
+ */
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/*
  * Overtone on the web: a studio monitor, not a dashboard (docs/design.md).
  * Near-black, quiet surfaces in a neutral, slightly cool ink; numbers set like
  * readouts; colour used only as signal. The reserved meanings hold on every
@@ -165,10 +179,16 @@
 }
 
 @theme inline {
-  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  /* DIN: Bahnschrift ships with Windows, DIN Alternate with macOS. */
-  --font-display: Bahnschrift, 'DIN Alternate', 'D-DIN', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, ui-monospace, monospace;
+  /* Text: Geist. Display: Archivo at a wide width (font-stretch, the wdth
+     axis). Numbers: Geist Mono. After each, the CJK faces the systems ship,
+     then the system's own sans: a glyph a face lacks falls through to them. */
+  --font-sans:
+    'Geist Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Hiragino Sans', 'Yu Gothic UI',
+    Meiryo, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-display:
+    'Archivo Variable', 'Geist Variable', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Hiragino Sans',
+    'Yu Gothic UI', Meiryo, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Cascadia Mono', 'SF Mono', Consolas, ui-monospace, monospace;
 
   --color-bg: var(--bg);
   --color-surface: var(--surface);

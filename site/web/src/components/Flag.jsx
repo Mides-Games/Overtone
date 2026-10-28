@@ -5,8 +5,8 @@
  * the flag's own colours. Decorative: the language's name always sits beside
  * it, so the flag is hidden from screen readers.
  *
- * Spanish is Argentina's flag, as the site's Spanish is rioplatense (vos);
- * English is the United Kingdom's; Portuguese is Brazil's.
+ * Spanish is Spain's flag (the owner's choice, 2026-10-28); English is the
+ * United Kingdom's; Portuguese is Brazil's.
  */
 
 const stripes = (colors, vertical = false) =>
@@ -47,12 +47,14 @@ const FLAGS = {
       <path d="M15 0V20M0 10H30" stroke="#C8102E" strokeWidth="3.4" />
     </>
   ),
-  // Argentina: sky blue, white, sky blue, the Sun of May as a gold disc with rays.
-  ar: (
+  // Spain: red, yellow twice as tall, red; the coat of arms as a small
+  // red-and-gold shield toward the hoist, which is what reads at 16 px.
+  es: (
     <>
-      {stripes(['#74ACDF', '#fff', '#74ACDF'])}
-      <circle cx="15" cy="10" r="2.6" fill="#F6B40E" opacity="0.55" />
-      <circle cx="15" cy="10" r="1.7" fill="#F6B40E" stroke="#85340A" strokeWidth="0.3" />
+      <rect width="30" height="20" fill="#AA151B" />
+      <rect y="5" width="30" height="10" fill="#F1BF00" />
+      <rect x="7" y="7.2" width="3.6" height="5" rx="0.6" fill="#AD1519" />
+      <rect x="7.6" y="7.8" width="2.4" height="2.2" fill="#F1BF00" opacity="0.85" />
     </>
   ),
   fr: stripes(['#0055A4', '#fff', '#EF4135'], true),

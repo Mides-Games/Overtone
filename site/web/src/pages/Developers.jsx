@@ -18,7 +18,7 @@ import { groupOperations, prose } from '../lib/openapi-view.js'
  */
 const METHOD_TONE = {
   GET: 'text-accent',
-  POST: 'text-lavender',
+  POST: 'text-tempo',
   DELETE: 'text-red',
   PUT: 'text-amber',
   PATCH: 'text-amber',
@@ -47,7 +47,8 @@ export default function Developers() {
         <ol className="list-decimal space-y-2 pl-5 text-label text-text marker:text-dim">
           <li>
             {t('platform.developers.step1')}{' '}
-            <Link to="/settings/tokens" className="text-accent hover:underline">
+            {/* Underlined: it sits inside the step's sentence (WCAG 1.4.1, index.css). */}
+            <Link to="/settings/tokens" className="text-accent underline underline-offset-2">
               {t('platform.developers.tokensLink')} →
             </Link>
           </li>

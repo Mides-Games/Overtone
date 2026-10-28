@@ -406,10 +406,26 @@ CREATE TABLE IF NOT EXISTS analysis_versions (
   factor          real NOT NULL CHECK (factor IN (0.5, 1, 2)),
   nudge_ms        smallint NOT NULL CHECK (nudge_ms BETWEEN -500 AND 500),
   label           text CHECK (char_length(label) <= 60),
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  CHECK (factor <> 1 OR nudge_ms <> 0),
-  UNIQUE (analysis_id, factor, nudge_ms)
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- An edited timing (W7): the owner's own red lines, packed rows checked by
+-- version.service.js `parseLines`, and a key of them so the same edit saved
+-- twice is one version. A version may now be an edit with no factor or
+-- nudge, so the check and the uniqueness the table first had (on factor and
+-- nudge alone) are dropped where they exist and replaced by these.
+ALTER TABLE analysis_versions ADD COLUMN IF NOT EXISTS lines jsonb
+  CHECK (lines IS NULL OR (jsonb_typeof(lines) = 'array' AND jsonb_array_length(lines) BETWEEN 1 AND 512));
+ALTER TABLE analysis_versions ADD COLUMN IF NOT EXISTS lines_key text NOT NULL DEFAULT ''
+  CHECK (lines_key ~ '^([0-9a-f]{64})?$');
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_check;
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_analysis_id_factor_nudge_ms_key;
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_changes_check;
+ALTER TABLE analysis_versions ADD CONSTRAINT analysis_versions_changes_check
+  CHECK (factor <> 1 OR nudge_ms <> 0 OR lines_key <> '');
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_lines_pair_check;
+ALTER TABLE analysis_versions ADD CONSTRAINT analysis_versions_lines_pair_check
+  CHECK ((lines IS NULL) = (lines_key = ''));
+CREATE UNIQUE INDEX IF NOT EXISTS analysis_versions_same_idx ON analysis_versions (analysis_id, factor, nudge_ms, lines_key);
 -- ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ───────────────
 
 -- The social tables above were drafted for `timings`, the rows people edit
@@ -483,3 +499,53 @@ CREATE UNIQUE INDEX IF NOT EXISTS collection_items_analysis_once ON collection_i
 ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_target_kind_check;
 ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_target_kind_check
   CHECK (target_kind IN ('analysis', 'suggestion', 'review', 'comment'));
+
+-- ── Votes on published timings and the notification bell (W13.14, W13.16, W13.17) ──
+
+-- A reader's verdict on a published timing (services/vote.service.js): "on"
+-- time or "off", one per account (`timing_votes_once`; a second is an edit).
+-- An "off" may propose a BPM and/or an offset; such a vote waits for staff
+-- (`review_state` pending until accepted or dismissed). `training_ok` is the
+-- voter's own permission for the correction to serve as data for the engine's
+-- stages (W11); stored only, nothing reads it yet.
+CREATE TABLE IF NOT EXISTS timing_votes (
+  id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id          char(32) NOT NULL UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$'),
+  analysis_id        bigint NOT NULL REFERENCES analyses (id) ON DELETE CASCADE,
+  account_id         uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  verdict            text NOT NULL CHECK (verdict IN ('on', 'off')),
+  proposed_bpm       double precision CHECK (proposed_bpm BETWEEN 20 AND 1000),
+  proposed_offset_ms integer CHECK (proposed_offset_ms BETWEEN -10000 AND 86400000),
+  training_ok        boolean NOT NULL DEFAULT false,
+  review_state       text CHECK (review_state IN ('pending', 'accepted', 'dismissed')),
+  reviewed_by        text CHECK (char_length(reviewed_by) <= 64),
+  reviewed_at        timestamptz,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT timing_votes_on_is_bare
+    CHECK (verdict = 'off' OR (proposed_bpm IS NULL AND proposed_offset_ms IS NULL)),
+  CONSTRAINT timing_votes_review_needs_correction
+    CHECK ((review_state IS NULL) = (proposed_bpm IS NULL AND proposed_offset_ms IS NULL)),
+  CONSTRAINT timing_votes_training_needs_correction
+    CHECK (NOT training_ok OR proposed_bpm IS NOT NULL OR proposed_offset_ms IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS timing_votes_once ON timing_votes (analysis_id, account_id);
+CREATE INDEX IF NOT EXISTS timing_votes_review_idx ON timing_votes (review_state, updated_at DESC) WHERE review_state IS NOT NULL;
+
+-- Staff accept or dismiss a correction through the same log as everything else.
+ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_target_kind_check;
+ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_target_kind_check
+  CHECK (target_kind IN ('analysis', 'suggestion', 'review', 'comment', 'vote'));
+ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_action_check;
+ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_action_check
+  CHECK (action IN ('remove', 'requeue', 'hide', 'unhide', 'state', 'accept', 'dismiss'));
+
+-- The bell (services/notification.service.js): the drafted table, now used.
+-- `public_id` names a row to the web; `dedupe_key` makes one row per account
+-- and thing (a vote changed twice is one notification, back to unread).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS public_id char(32) UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$');
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key text CHECK (char_length(dedupe_key) <= 100);
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_key_idx ON notifications (account_id, dedupe_key);
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check
+  CHECK (kind IN ('suggestion', 'comment', 'use', 'vote', 'analysis'));

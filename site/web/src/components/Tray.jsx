@@ -6,6 +6,7 @@ import { chime, unlockChime } from '../lib/chime.js'
 import { alertFor, isFinished, trayTitle } from '../lib/tracker.js'
 import { askToNotify, tracker, useTracker } from '../lib/tracking.js'
 import CancelButton from './CancelButton.jsx'
+import Icon from './ui/Icon.jsx'
 
 /**
  * The analysis tray (W3.22) and its notices (W3.23): a panel on every page,
@@ -83,11 +84,9 @@ export function TrayButton() {
       aria-controls={open ? PANEL_ID : undefined}
       aria-label={open ? t('tray.hide') : t('tray.showCount', { count: snapshot.count })}
       onClick={(event) => view.set(!open, event.currentTarget)}
-      className="flex h-8 min-w-8 items-center justify-center gap-1 rounded-control px-1.5 text-muted transition hover:bg-surface-3 hover:text-text md:hidden"
+      className="icon-btn gap-1 px-1.5 md:hidden"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-        <path d="M4 6h16M4 12h10M4 18h7" />
-      </svg>
+      <Icon name="list" />
       {snapshot.count > 0 && <span className="readout text-caption text-accent">{snapshot.count}</span>}
     </button>
   )
@@ -194,7 +193,7 @@ export default function Tray() {
           <section
             id={PANEL_ID}
             aria-label={t('tray.label')}
-            className="panel pointer-events-auto flex max-h-[min(60vh,34rem)] w-full flex-col overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.25)] md:max-h-[min(70vh,34rem)] md:w-[22rem]"
+            className="panel pop-in pointer-events-auto flex max-h-[min(60vh,34rem)] w-full flex-col overflow-hidden shadow-[var(--shadow-pop)] [--origin:bottom_right] md:max-h-[min(70vh,34rem)] md:w-[22rem]"
           >
             <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
               <h2 className="label whitespace-nowrap">{t('tray.label')}</h2>
@@ -216,9 +215,9 @@ export default function Tray() {
                   type="button"
                   onClick={() => view.set(false, 'escape')}
                   aria-label={t('tray.hide')}
-                  className="flex h-8 w-8 items-center justify-center rounded-control text-dim hover:bg-surface-3 hover:text-text md:hidden"
+                  className="icon-btn h-8 min-w-8 md:hidden"
                 >
-                  ×
+                  <Icon name="close" size={16} />
                 </button>
               </span>
             </header>
@@ -274,7 +273,7 @@ export default function Tray() {
           aria-expanded={open}
           aria-controls={open ? PANEL_ID : undefined}
           onClick={(event) => view.set(!open, event.currentTarget)}
-          className="pointer-events-auto hidden h-10 items-center gap-2 rounded-full border border-line-strong bg-surface px-3.5 text-label font-semibold text-text shadow-[0_4px_16px_rgba(0,0,0,0.2)] transition hover:border-line-hover md:flex"
+          className="btn-ghost pointer-events-auto hidden bg-surface shadow-[var(--shadow-pop)] md:inline-flex"
         >
           <span aria-hidden="true" className={`h-2 w-2 rounded-full ${count > 0 ? 'animate-pulse bg-accent' : 'bg-line-hover'}`} />
           <span>{open ? t('tray.hide') : t('tray.show')}</span>
@@ -319,9 +318,9 @@ function Row({ entry, reading }) {
             type="button"
             onClick={() => tracker.dismiss(id)}
             aria-label={t('tray.dismiss', { name })}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-dim hover:bg-surface-3 hover:text-text"
+            className="icon-btn h-7 min-w-7 shrink-0 text-dim"
           >
-            ×
+            <Icon name="close" size={14} />
           </button>
         )}
       </div>
@@ -334,7 +333,8 @@ function Row({ entry, reading }) {
       </div>
       {percent !== null && (
         <div className="h-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-          <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+          {/* A transform, not a width: the bar moves without laying the row out again. */}
+          <div className="h-full origin-left bg-accent transition-transform duration-300 ease-out" style={{ transform: `scaleX(${percent / 100})` }} />
         </div>
       )}
     </li>

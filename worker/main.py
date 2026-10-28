@@ -80,13 +80,16 @@ class Api:
             raw = response.read()
             return json.loads(raw) if raw else None
 
-    def claim(self, engine_hash: str, engine_hashes: dict | None = None) -> dict | None:
+    def claim(self, engine_hash: str, engine_hashes: dict | None = None, memory: dict | None = None) -> dict | None:
         """The next queued job, or None when the queue is empty (204).
         ``engine_hash`` is the normal mode's; ``engine_hashes`` names every
-        mode's, which the API keys each mode's cached results by."""
+        mode's, which the API keys each mode's cached results by. ``memory``
+        is the analysis process's report for the staff panel (W13.19)."""
         body = {"engine_hash": engine_hash}
         if engine_hashes:
             body["engine_hashes"] = engine_hashes
+        if memory:
+            body["memory"] = memory
         return self.call("POST", "/jobs/claim", body)
 
     def download(self, job_id: str, attempt: int, target: Path) -> None:
@@ -215,10 +218,10 @@ def main() -> int:
         return 4
     hash_ = runner.hash
     if runner.limited:
-        memory = f"{limits.memory_mb} MB address space"
+        memory = f"{limits.memory_mb} MB of resident memory per job"
     else:
-        memory = "no memory cap (" + ("off" if limits.memory_mb <= 0 else "no rlimit on this platform") + ")"
-    peak = f", {runner.peak_mb} MB used after warm-up" if runner.peak_mb else ""
+        memory = "no memory cap (" + ("off" if limits.memory_mb <= 0 else "no /proc on this platform") + ")"
+    peak = f", {runner.peak_mb} MB resident after warm-up" if runner.peak_mb else ""
     print(f"[worker] analysis process warm in {time.perf_counter() - started:.1f} s: {memory}{peak}; "
           f"a job stops after max({limits.timeout_min_s:g} s, {limits.timeout_factor:g} x the audio)", flush=True)
     # The egg's "done" line (deploy/eggs/egg.py): the panel shows the server
@@ -239,7 +242,7 @@ def main() -> int:
                 return 4
             print(f"[worker] a new analysis process is warm in {time.perf_counter() - started:.1f} s", flush=True)
         try:
-            job = api.claim(hash_, runner.hashes)
+            job = api.claim(hash_, runner.hashes, runner.memory_report())
             if unreachable:
                 print("[worker] the API answers again", flush=True)
                 unreachable = False

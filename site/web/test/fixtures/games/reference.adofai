@@ -1,0 +1,24 @@
+{
+  "angleData": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "settings": {
+    "version": 13,
+    "artist": "Artist",
+    "song": "Song",
+    "author": "mapper",
+    "levelDesc": "Timing from Overtone: tiles and speeds only. Check it by ear.",
+    "levelTags": "overtone",
+    "songFilename": "Artist - Song.ogg",
+    "bpm": 150,
+    "volume": 100,
+    "offset": 1234,
+    "pitch": 100,
+    "hitsound": "Kick",
+    "hitsoundVolume": 100,
+    "countdownTicks": 4
+  },
+  "actions": [
+    { "floor": 9, "eventType": "SetSpeed", "speedType": "Bpm", "beatsPerMinute": 120, "bpmMultiplier": 1 },
+    { "floor": 10, "eventType": "SetSpeed", "speedType": "Bpm", "beatsPerMinute": 140, "bpmMultiplier": 1 }
+  ],
+  "decorations": []
+}

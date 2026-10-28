@@ -14,6 +14,7 @@
  * controls, and the canvas asks `heardPosition()` once a frame.
  */
 import { readLatency, readListening, writeLatency, writeListening } from './listening.js'
+import { countIn, DEFAULT_REPS, MAX_STRETCH_S, MIN_STRETCH_S, practiceAt, practicePlan, practiceRates } from './practice.js'
 import { lowerBound, SUB } from './timing.js'
 
 const LOOKAHEAD_S = 0.15
@@ -103,6 +104,8 @@ export class Player {
     this.abEngine = false
     this.sections = []
     this.source = null
+    this.sources = [] // practice mode's repetitions, one source each (W13.8)
+    this.practice = null // { plan, rep, savedRate } while practising
     this.playing = false
     this.startCtx = 0
     this.startPos = 0
@@ -124,6 +127,7 @@ export class Player {
     this.subVolume = listening.subVolume
     this.shiftClicks = listening.shiftClicks
     this.latencyMs = readLatency()
+    this.clickShiftMs = 0
     this.listeners = new Set()
     this.snapshot = this.#snap()
   }
@@ -144,6 +148,9 @@ export class Player {
       latencyMs: this.latencyMs,
       abEngine: this.abEngine,
       hasEngineGrid: Boolean(this.engineGrid),
+      practice: this.practice
+        ? { rep: this.practice.rep, reps: this.practice.plan.reps.length, rate: this.rate, a: this.practice.plan.a, b: this.practice.plan.b }
+        : null,
     }
   }
 
@@ -172,6 +179,13 @@ export class Player {
       this.subBus = ctx.createGain()
       this.subBus.connect(this.clickBus)
     }
+    if (!this.countBus) {
+      // The count-in (W13.8) is heard even with the clicks off: it is how the
+      // reader knows when to come in. At the clicks' volume, never silent.
+      this.countBus = ctx.createGain()
+      this.countBus.connect(ctx.destination)
+    }
+    this.countBus.gain.value = Math.max(this.clickVolume, 0.1)
     this.songBus.gain.value = this.songVolume
     this.clickBus.gain.value = this.clicksOn ? this.clickVolume : 0
     this.subBus.gain.value = this.subVolume
@@ -249,9 +263,21 @@ export class Player {
     this.#emit()
   }
 
+  /**
+   * The offset lab's hidden shift (W7): the clicks played `ms` later (or
+   * earlier, negative) than the lines put them, for one blind presentation.
+   * Never saved and never in an export; 0 puts them back.
+   */
+  setClickShift(ms) {
+    const next = Number.isFinite(ms) ? ms : 0
+    if (next === this.clickShiftMs) return
+    this.clickShiftMs = next
+    this.#reschedule()
+  }
+
   /** How far ahead of the song the clicks run, in real seconds. */
   #clickLead() {
-    return this.shiftClicks ? this.latencyMs / 1000 : 0
+    return (this.shiftClicks ? this.latencyMs / 1000 : 0) - this.clickShiftMs / 1000
   }
 
   /** Drops the clicks already scheduled and schedules them again from now, the song playing on. */
@@ -313,6 +339,7 @@ export class Player {
 
   /** Song position `elapsed` context seconds after the start, at the rate, folded into the loop. */
   #songAt(elapsed) {
+    if (this.practice) return practiceAt(this.practice.plan, elapsed).pos
     const ahead = elapsed * this.rate
     if (!this.loop) return this.startPos + ahead
     const { a, b } = this.loop
@@ -349,6 +376,7 @@ export class Player {
 
   #tick = () => {
     if (!this.playing) return
+    if (this.practice) return this.#practiceTick()
     const ctx = audioContext()
     const { t, level } = this.abEngine && this.engineGrid ? this.engineGrid : this.grid
     const until = ctx.currentTime - this.startCtx + LOOKAHEAD_S
@@ -408,22 +436,107 @@ export class Player {
     this.#emit()
   }
 
-  /** Stops the song and every click already handed to the context. */
+  /** Stops the song and every click already handed to the context; a practice ends with it. */
   #halt() {
     if (!this.playing) return
     this.pos = this.position()
     this.playing = false
     clearInterval(this.timer)
-    try {
-      this.source.stop()
-    } catch {
-      // already stopped
+    for (const source of [this.source, ...this.sources]) {
+      try {
+        source?.stop()
+      } catch {
+        // already stopped
+      }
     }
     this.source = null
-    if (this.clickBus) {
-      this.clickBus.disconnect()
+    this.sources = []
+    if (this.practice) {
+      this.rate = this.practice.savedRate
+      this.practice = null
+    }
+    if (this.clickBus || this.countBus) {
+      this.clickBus?.disconnect()
       this.clickBus = null
+      this.countBus?.disconnect()
+      this.countBus = null
       this.#buses()
+    }
+  }
+
+  /**
+   * Practice mode (W13.8): the drawn loop (else the red line's section under
+   * the playhead) played `reps` times from half speed to full, after a bar
+   * counted in at the first speed when `withCount`. Each repetition is its
+   * own source, started on the audio clock where the last one ends, so the
+   * speed steps exactly at the loop's seam; the clicks follow each one's rate.
+   * Anything else the reader does with the player (play, seek, a rate, a
+   * loop) ends it. Returns false when there is no stretch to practise.
+   */
+  async practise({ reps = DEFAULT_REPS, withCount = true } = {}) {
+    if (!this.buffer) return false
+    const span = this.range ? { a: Math.max(0, this.range.a), b: Math.min(this.range.b, this.duration) } : this.#loopFor(this.position())
+    if (!span || span.b - span.a < MIN_STRETCH_S) return false
+    span.b = Math.min(span.b, span.a + MAX_STRETCH_S)
+    const ctx = this.#buses()
+    if (ctx.state === 'suspended') await ctx.resume()
+    this.#halt()
+    const plan = practicePlan({ ...span, rates: practiceRates(reps), count: withCount ? countIn(this.grid, span.a) : [] })
+    this.startCtx = ctx.currentTime + LEAD_S
+    this.sources = plan.reps.map((rep) => {
+      const source = ctx.createBufferSource()
+      source.buffer = this.buffer
+      source.playbackRate.value = rep.rate
+      source.connect(this.songBus)
+      // The offset and the duration are the buffer's own seconds, whatever the rate.
+      source.start(this.startCtx + rep.at, plan.a, plan.b - plan.a)
+      return source
+    })
+    for (const c of plan.counts) scheduleClick(ctx, this.countBus, this.startCtx + c.at, c.level)
+    this.practice = { plan, rep: -1, savedRate: this.rate }
+    this.rate = plan.reps[0].rate
+    this.loop = null
+    this.startPos = plan.a
+    this.sched = 0
+    this.playing = true
+    this.#tick()
+    this.timer = setInterval(this.#tick, TICK_MS)
+    this.#emit()
+    return true
+  }
+
+  /** The practice's clicks, a lookahead at a time, each repetition at its own rate; and its end. */
+  #practiceTick() {
+    const ctx = audioContext()
+    const { plan } = this.practice
+    const now = ctx.currentTime - this.startCtx
+    const until = now + LOOKAHEAD_S
+    const lead = this.#clickLead()
+    const { t, level } = this.abEngine && this.engineGrid ? this.engineGrid : this.grid
+    if (this.clicksOn) {
+      for (const rep of plan.reps) {
+        // The click for song second s sounds at rep.at + (s - a) / rate, `lead` early.
+        const lo = Math.max(this.sched, rep.at - lead)
+        const hi = Math.min(until, rep.end - lead)
+        if (hi <= lo) continue
+        const s0 = plan.a + (lo - rep.at + lead) * rep.rate
+        const s1 = plan.a + (hi - rep.at + lead) * rep.rate
+        for (let i = lowerBound(t, s0); i < t.length && t[i] < s1; i++) {
+          const when = this.startCtx + rep.at + (t[i] - plan.a) / rep.rate - lead
+          if (when >= ctx.currentTime) this.#click(when, level[i])
+        }
+      }
+    }
+    this.sched = Math.max(this.sched, until)
+    const at = practiceAt(plan, now)
+    if (at.done) {
+      this.#halt()
+      this.pos = plan.a
+      this.#emit()
+    } else if (at.rep !== this.practice.rep) {
+      this.practice.rep = at.rep
+      this.rate = at.rate
+      this.#emit()
     }
   }
 
@@ -449,9 +562,10 @@ export class Player {
   destroy() {
     this.#halt()
     this.listeners.clear()
-    for (const bus of [this.songBus, this.clickBus, this.subBus]) bus?.disconnect()
+    for (const bus of [this.songBus, this.clickBus, this.subBus, this.countBus]) bus?.disconnect()
     this.songBus = null
     this.clickBus = null
     this.subBus = null
+    this.countBus = null
   }
 }

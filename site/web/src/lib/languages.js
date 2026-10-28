@@ -6,11 +6,11 @@
  * `code` is the i18next code and the locale file's name
  * (`src/locales/<code>.json`), `name` the language's own name, `flag` the
  * id of its flag in components/Flag.jsx and `dir` the text direction. The
- * Spanish flag is Argentina's, as the site's Spanish is rioplatense.
+ * Spanish flag is Spain's (the owner's choice).
  */
 export const LANGS = [
   { code: 'en', name: 'English', flag: 'gb', dir: 'ltr' },
-  { code: 'es', name: 'Español', flag: 'ar', dir: 'ltr' },
+  { code: 'es', name: 'Español', flag: 'es', dir: 'ltr' },
   { code: 'fr', name: 'Français', flag: 'fr', dir: 'ltr' },
   { code: 'de', name: 'Deutsch', flag: 'de', dir: 'ltr' },
   { code: 'it', name: 'Italiano', flag: 'it', dir: 'ltr' },
@@ -24,7 +24,7 @@ export const LANGS = [
 export const CODES = LANGS.map((lang) => lang.code)
 
 /** Bundled with the page; the others are fetched when chosen. */
-export const BUNDLED = ['en', 'es']
+export const BUNDLED = ['en']
 
 export const DEFAULT = 'en'
 

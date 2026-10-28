@@ -470,6 +470,58 @@ components:
           properties:
             rating: { $ref: '#/components/schemas/RatingSummary' }
             uses: { type: integer, minimum: 0 }
+            verified: { type: boolean, description: 'W13.16: a mapper (a linked osu! profile with ranked maps) voted it on time.' }
+
+    Votes:
+      type: object
+      description: |
+        A published timing's votes (W13.14): the counts, the reader's own
+        vote, and the mappers who confirmed it (W13.16). Nobody else who voted
+        is named.
+      required: [on, off, mine, verified, verifiers, verifierCount, own]
+      properties:
+        on: { type: integer, minimum: 0 }
+        off: { type: integer, minimum: 0 }
+        mine:
+          type: [object, 'null']
+          properties:
+            verdict: { type: string, enum: [on, off] }
+            proposedBpm: { type: [number, 'null'] }
+            proposedOffsetMs: { type: [integer, 'null'] }
+            trainingOk: { type: boolean }
+            reviewState: { type: [string, 'null'], enum: [pending, accepted, dismissed, null] }
+        verified: { type: boolean }
+        verifiers:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            properties:
+              username: { type: string }
+              displayName: { type: [string, 'null'] }
+              avatarUrl: { type: [string, 'null'] }
+              osuUsername: { type: [string, 'null'] }
+              rankedCount: { type: integer, minimum: 1 }
+              profile: { type: boolean, description: 'Whether their profile is public, so the name may link to it.' }
+        verifierCount: { type: integer, minimum: 0 }
+        own: { type: boolean, description: The session account uploaded it (and so cannot vote). }
+
+    Notification:
+      type: object
+      description: |
+        One entry of the bell (W13.17). `kind` says what `payload` holds:
+        `suggestion` (suggestion, title, from, to, reason), `comment` (timing,
+        title, user, comment, atMs), `use` (timing, title, user), `vote`
+        (timing, title, verdict, proposedBpm, proposedOffsetMs, and `mapper`
+        only for a mapper's confirmation; a vote's voter is otherwise never
+        named) and `analysis` (analysis, name, status).
+      required: [id, kind, payload, createdAt, read]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        kind: { type: string, enum: [suggestion, comment, use, vote, analysis] }
+        payload: { type: object }
+        createdAt: { type: string, format: date-time }
+        read: { type: boolean }
 
     TimingPage:
       type: object
@@ -616,8 +668,25 @@ components:
         analysisId: { type: string, pattern: '^[0-9a-f]{32}$', description: The reading it adjusts. }
         factor: { type: number, enum: [0.5, 1, 2] }
         nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+        lines: { $ref: '#/components/schemas/EditedLines' }
         label: { type: [string, 'null'], maxLength: 60 }
         createdAt: { type: string, format: date-time }
+
+    EditedLines:
+      type: array
+      description: |
+        An edited timing (W7): the owner's red lines from the page's editor,
+        before the factor and nudge, sorted, at least 1 ms apart. Each row is
+        `[timeMs, beatMs, meter, meterKnown, source]`: beat length 12 to 60000
+        ms (1 to 5000 BPM), meter 1 to 16, meterKnown 0 or 1, source the
+        engine red line it came from or -1 for one the owner added.
+      minItems: 1
+      maxItems: 512
+      items:
+        type: array
+        minItems: 5
+        maxItems: 5
+        items: { type: number }
   responses:
     Error:
       description: An error.
@@ -883,6 +952,12 @@ paths:
             account; resets at 00:00 UTC), `PENDING_LIMIT` (that many of this
             person's songs are already waiting or running: `ANON_MAX_PENDING` or
             `USER_MAX_PENDING`; same details) or `RATE_LIMITED` (with Retry-After).
+            W13.20: each of the person's own limits says when it frees up.
+            `QUOTA_EXCEEDED` and the lookup's `CACHE_LIMIT` carry
+            `details.frees: reset`, `details.resetAt` (the next 00:00 UTC) and
+            `details.retryAfterS`, also sent as Retry-After; `PENDING_LIMIT`
+            carries `details.frees: finish` and `details.pending`, since it frees
+            when one of those songs finishes, which no clock can say.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -2139,10 +2214,12 @@ paths:
       summary: Save the adjustment being tried as a version
       description: |
         `factor` (x2, /2 or none) and `nudgeMs` (every red line moved by the
-        same whole number of ms) as the page applies them; one of them must
-        change something. The same adjustment saved again answers with the one
-        already saved (200). At most 20 a reading. Owner only, finished
-        timings only; rate limited (60 per 10 minutes, shared with delete).
+        same whole number of ms) as the page applies them, and `lines`, the
+        red lines the owner edited (W7); one of them must change something.
+        The same adjustment saved again answers with the one already saved
+        (200). At most 20 a reading. Owner only, finished timings only; rate
+        limited (60 per 10 minutes, shared with delete). The body may be up
+        to 48 kB.
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
       requestBody:
@@ -2155,6 +2232,7 @@ paths:
               properties:
                 factor: { type: number, enum: [0.5, 1, 2] }
                 nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+                lines: { $ref: '#/components/schemas/EditedLines' }
                 label: { type: [string, 'null'], maxLength: 60, description: Cleaned of control and bidi characters. }
       responses:
         '200':
@@ -2282,4 +2360,200 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/votes:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's votes and the mappers who confirmed it
+      responses:
+        '200':
+          description: The counts and the reader's own vote.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Votes' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/vote:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Vote it on time or off; one vote per account, a second is an edit
+      description: |
+        `on` carries nothing else. `off` may propose `proposedBpm` (20-1000,
+        kept to three decimals) and/or `proposedOffsetMs` (whole ms from
+        -10000 to the song's end); such a vote waits in the staff queue
+        (`/staff/corrections`), and goes back to pending if the correction
+        changes. `trainingOk` is the voter's permission for the correction to
+        be used as data by the engine's stages; it needs a correction. Anything
+        else is 400 `BAD_VOTE`. Not on your own timing (403 `OWN_TIMING`). 30
+        votes per ten minutes per address.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verdict]
+              properties:
+                verdict: { type: string, enum: [on, off] }
+                proposedBpm: { type: [number, 'null'], minimum: 20, maximum: 1000 }
+                proposedOffsetMs: { type: [integer, 'null'], minimum: -10000 }
+                trainingOk: { type: boolean }
+      responses:
+        '200':
+          description: The votes now, and `queued` when the vote carries a correction for staff.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Votes'
+                  - type: object
+                    properties:
+                      queued: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: 'No same-origin header, or `OWN_TIMING`.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Take your vote back
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The votes now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Votes' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/notifications:
+    get:
+      summary: Your notifications, newest first (W13.17)
+      description: An account keeps its newest 200.
+      security: [{ session: [] }]
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
+        - { name: unread, in: query, description: '`1` for unread ones only.', schema: { type: string, enum: ['1'] } }
+      responses:
+        '200':
+          description: One page and the unread count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, unread, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  total: { type: integer }
+                  unread: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/notifications/unread:
+    get:
+      summary: How many are unread; what the bell polls (once a minute at most)
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: '`{ unread }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/notifications/read:
+    post:
+      summary: Mark some, or all, read
+      description: Ids that are not yours mark nothing (`marked` says how many did).
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, pattern: '^[0-9a-f]{32}$' } }
+                all: { type: boolean, const: true }
+      responses:
+        '200':
+          description: '`{ marked, unread }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: integer }
+                  unread: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /staff/overview:
+    get:
+      summary: The staff panel (W13.19); a 404 for anyone but staff
+      description: |
+        The queue (counts, the oldest wait, the first 30 rows as staff see
+        them), the worker (as `/health` says, plus its last memory report when
+        it sends one), the last week's failures with their code (`too_heavy`,
+        `timeout`, `stale`, `removed` or `failed`), the open reports, the last
+        50 moderation actions of every kind, and the counts awaiting review
+        (open suggestions, open reports, pending corrections).
+      security: [{ session: [] }]
+      responses:
+        '200': { description: The panel's data. }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /staff/corrections:
+    get:
+      summary: Votes with a correction, by review state; staff only (else 404)
+      security: [{ session: [] }]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [pending, accepted, dismissed] } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+      responses:
+        '200': { description: 'A page: `{ state, items, total, offset, limit }`, each with the timing, the voter, the proposal and `trainingOk`.' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /staff/corrections/{correctionId}:
+    parameters:
+      - { name: correctionId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      - $ref: '#/components/parameters/sameOrigin'
+    post:
+      summary: Accept or dismiss a correction; staff only (else 404)
+      description: Written to the moderation log (kind `vote`) with the reason.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [accept, dismiss] }
+                reason: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200': { description: '`{ from, to }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: '`NO_CHANGE`: it is in that state already.' }
         '429': { $ref: '#/components/responses/Error' }

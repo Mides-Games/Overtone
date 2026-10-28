@@ -229,6 +229,34 @@ def fake_child(conn, threads, memory_mb, vote, self_test):
             conn.send(("result", {"ok": name, "threads": threads, "memory_mb": memory_mb}))
 
 
+class MemoryReportTests(unittest.TestCase):
+    """W13.19: the claim carries the analysis process's memory for the staff
+    panel, and nothing when there is nothing true to say."""
+
+    def test_a_runner_with_no_process_and_no_job_reports_nothing(self):
+        import isolate
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=1800), self_test=False)
+        self.assertIsNone(runner.memory_report())
+
+    def test_the_last_peak_is_reported_with_the_limit_when_it_applies(self):
+        import isolate
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=1800), self_test=False)
+        runner.job_peak_mb, runner.limited = 1234, True
+        self.assertEqual(runner.memory_report(), {"rss_mb": None, "peak_mb": 1234, "limit_mb": 1800})
+        runner.limited = False
+        self.assertEqual(runner.memory_report()["limit_mb"], None)
+
+    def test_the_claim_sends_the_report_only_when_there_is_one(self):
+        import main
+        sent = []
+        api = main.Api.__new__(main.Api)
+        api.call = lambda method, path, body=None: sent.append(body)
+        api.claim("0123456789abcdef", None, None)
+        api.claim("0123456789abcdef", None, {"rss_mb": 5, "peak_mb": None, "limit_mb": None})
+        self.assertNotIn("memory", sent[0])
+        self.assertEqual(sent[1]["memory"], {"rss_mb": 5, "peak_mb": None, "limit_mb": None})
+
+
 class IsolationTests(unittest.TestCase):
     """worker/isolate.py: a job that runs out of time or memory fails alone,
     and the next job is served by a fresh child."""
@@ -298,12 +326,43 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(isolate.kind_of(exc), "too_heavy")
         self.assertEqual(isolate.kind_of(ValueError("no pulse")), "failed")
 
-    def test_the_memory_cap_is_skipped_where_there_is_no_rlimit(self):
+    def test_the_memory_watch_is_skipped_where_there_is_no_proc_or_it_is_off(self):
+        self.assertFalse(self.isolate.can_watch_memory(0))
+        has_proc = Path("/proc/self/status").exists()
+        self.assertEqual(self.isolate.can_watch_memory(1800), has_proc)
+        if has_proc:
+            self.assertGreater(self.isolate.resident_mb("self"), 0)
+        else:
+            self.assertIsNone(self.isolate.resident_mb("self"))
+
+    def test_a_child_past_its_resident_limit_is_stopped_as_too_heavy(self):
+        # The child holds 64 MB live; a 16 MB limit stops it from outside.
+        isolate = self.isolate
+        if not isolate.can_watch_memory(16):
+            self.skipTest("no /proc here: the limit is Linux-only")
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=16), self_test=False, child=_hungry_child)
         try:
-            import resource  # noqa: F401
-        except ImportError:
-            self.assertFalse(self.isolate.limit_memory(1800))
-        self.assertFalse(self.isolate.limit_memory(0))
+            runner.start()
+            with self.assertRaises(isolate.JobFailed) as caught:
+                runner.analyse("ignored", max_seconds=60)
+            self.assertEqual(caught.exception.code, "too_heavy")
+            self.assertIn("16 MB limit", str(caught.exception))
+            self.assertFalse(runner.alive())
+        finally:
+            runner.close()
+
+
+def _hungry_child(conn, threads, memory_mb, vote_wanted, self_test):
+    """A stand-in analysis child: ready at once, then holds 64 MB resident and
+    waits, as an analysis that outgrows its limit would."""
+    conn.send(("ready", False, "0" * 16, True, None, {"normal": "0" * 16}))
+    if conn.recv()[0] != "analyse":
+        return
+    hoard = bytearray(64 * 1024 * 1024)
+    for i in range(0, len(hoard), 4096):
+        hoard[i] = 1
+    import time
+    time.sleep(30)
 
 
 class IsolatedEngineTests(unittest.TestCase):

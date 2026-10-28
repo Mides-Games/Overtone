@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "Pular para o conteúdo",
     "loading": "Carregando…",
-    "byMides": "Uma ferramenta da Mides Projects"
+    "byMides": "Uma ferramenta da Mides Projects",
+    "newTab": "(abre em uma nova aba)"
   },
   "nav": {
     "home": "Início",
@@ -235,6 +236,8 @@
     },
     "failedTitle": "A análise falhou",
     "failed": "O Overtone não conseguiu ler este arquivo. Ele pode estar danificado ou não ser o áudio que o nome indica. Seu arquivo foi apagado.",
+    "failedTooHeavy": "A análise precisou de mais memória do que o servidor permite por música, então foi interrompida. Seu arquivo foi apagado. Tente de novo em alguns minutos ou analise um trecho mais curto da música.",
+    "failedTimeout": "A análise demorou mais do que o servidor permite para uma música dessa duração, então foi interrompida. Seu arquivo foi apagado. Tente de novo em alguns minutos ou use o modo rápido.",
     "refusedTitle": "Sem BPM",
     "refusal": {
       "no_pulse": "O Overtone não encontrou um pulso estável neste áudio, então não informa um BPM.",
@@ -387,7 +390,27 @@
     "reset": "Redefinir",
     "adjusted": "Estes números foram ajustados por você: a cópia e os downloads levam o ajuste e o indicam em uma linha de comentário. Confira de ouvido antes de usar.",
     "hint": "De {{from}} a {{to}} os ataques ficam mais espaçados, um a cada duas batidas: o motor lê isso como possível half-time ou double-time dentro de uma red line (a marca âmbar). É evidência, não uma red line: ouça.",
-    "swing": "De {{from}} a {{to}} a colcheia no contratempo chega atrasada, cerca de {{late}} ms ({{snap}} da batida): swing. Posicione essas notas de ouvido."
+    "swing": "De {{from}} a {{to}} a colcheia no contratempo chega atrasada, cerca de {{late}} ms ({{snap}} da batida): swing. Posicione essas notas de ouvido.",
+    "bands": {
+      "toggle": "Bandas",
+      "hint": "Ataques graves, médios e agudos sob a forma de onda: qual banda marca o pulso",
+      "legend": "Ataques por banda: graves, médios, agudos",
+      "note": "Uma banda é uma faixa de frequências, não um instrumento: o bumbo costuma ficar nos graves, o estalo da caixa nos médios e os pratos nos agudos, mas uma linha de baixo ou uma voz também caem ali.",
+      "lowShort": "Grav",
+      "midShort": "Méd",
+      "highShort": "Agu"
+    },
+    "spectrogram": {
+      "toggle": "Espectrograma",
+      "hint": "As frequências da música ao longo do tempo sob a forma de onda, de 40 Hz a 11 kHz, com o zoom do mapa",
+      "legend": "Espectrograma, 40 Hz–11 kHz (tinta mais forte, mais alto)"
+    },
+    "layers": {
+      "needSong": "As bandas e o espectrograma são lidos da própria música: carregue-a abaixo para vê-los.",
+      "working": "Lendo as bandas e o espectrograma da música em segundo plano… {{percent}}%",
+      "failed": "Este navegador não conseguiu ler as bandas e o espectrograma da música.",
+      "done": "Lido em {{seconds}} s neste navegador; nada foi enviado."
+    }
   },
   "moderation": {
     "staff": "Equipe",
@@ -804,7 +827,13 @@
     "filesTitle": "Arquivos",
     "json": "Resultado (JSON)",
     "summary": "Resumo (TXT)",
-    "filesNote": "O CSV e o resumo seguem os seus ajustes; o JSON é o resultado do motor como o servidor o enviou."
+    "filesNote": "O CSV e o resumo seguem os seus ajustes; o JSON é o resultado do motor como o servidor o enviou.",
+    "snapLabel": "Encaixar os hit objects no timing novo",
+    "snapOff": "Não",
+    "snapNote": "Cada objeto vai para o tick mais próximo da grade nova com este divisor; só o tempo dele muda (e o fim de um spinner ou de um hold). Os sliders mantêm o comprimento em tempos. Sem encaixe, os objetos ficam onde estão.",
+    "snapped": "Encaixado em {{divisor}}: {{moved}} de {{total}} objetos movidos, no máximo {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Encaixado em {{divisor}}: nenhum dos {{total}} objetos precisou se mover.",
+    "snapShared": "Objetos agora no mesmo tick que o anterior: {{n}}. Confira no editor."
   },
   "community": {
     "nav": "Comunidade",
@@ -1056,7 +1085,17 @@
     "quaMeter_other": "O Quaver só conhece 4/4 e 3/4: {{count}} red lines em outra fórmula de compasso são escritas como 4/4.",
     "chartFitted_one": "{{count}} mudança de tempo cai entre os ticks do Clone Hero: o BPM anterior é ajustado de leve para que ela caia no tempo certo (com até {{ms}} ms).",
     "chartFitted_other": "{{count}} mudanças de tempo caem entre os ticks do Clone Hero: o BPM anterior a cada uma é ajustado de leve para que caiam no tempo certo (com até {{ms}} ms).",
-    "failed": "Não foi possível gerar esse arquivo com estas red lines."
+    "failed": "Não foi possível gerar esse arquivo com estas red lines.",
+    "beatSaber": "Beat Saber: uma dificuldade v3, ExpertStandard.dat, só com os eventos de BPM. Aponte para ela no seu Info.dat e dê ao Info.dat um BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: um caminho reto, um bloco por batida, com SetSpeed onde o tempo muda. Coloque a música ao lado.",
+    "fnf": "Friday Night Funkin’: o JSON de chart que o jogo antes da 0.3 e o Psych Engine leem, em seções de 16 steps com changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: um .rdlevel com PlaySong (BPM e offset), SetBeatsPerMinute e SetCrotchetsPerBar. Coloque a música ao lado.",
+    "adofaiOdd_one": "{{count}} mudança de tempo cai entre os blocos de A Dance of Fire and Ice: o bloco antes dela ganha uma velocidade própria, para a mudança cair no tempo certo.",
+    "adofaiOdd_other": "{{count}} mudanças de tempo caem entre os blocos de A Dance of Fire and Ice: o bloco antes de cada uma ganha uma velocidade própria, para elas caírem no tempo certo.",
+    "fnfOdd_one": "{{count}} mudança de tempo cai entre as seções de Friday Night Funkin’: uma seção mais curta antes dela, com velocidade própria, faz ela cair no tempo certo.",
+    "fnfOdd_other": "{{count}} mudanças de tempo caem entre as seções de Friday Night Funkin’: uma seção mais curta antes de cada uma, com velocidade própria, faz elas caírem no tempo certo.",
+    "rdMeter_one": "{{count}} mudança de compasso cai no meio de um compasso do Rhythm Doctor, onde não pode começar um: esses compassos mantêm a fórmula anterior.",
+    "rdMeter_other": "{{count}} mudanças de compasso caem no meio de um compasso do Rhythm Doctor, onde não podem começar um: esses compassos mantêm a fórmula anterior."
   },
   "oszPlus": {
     "title": "Opções do .osz",
@@ -1083,7 +1122,13 @@
     "openTipFirefox": "No Firefox, abra Configurações → Geral → Arquivos e aplicativos, encontre o tipo .osz e defina para abrir com o osu!. O próximo .osz vai direto para o osu!.",
     "openTipOsu": "Isso exige o osu! instalado com os arquivos .osz abrindo nele, o que o instalador já configura. O site não pode abrir o arquivo por você: uma página web nunca executa o que baixa.",
     "openTipClose": "Entendi",
-    "openTipNever": "Não mostrar de novo"
+    "openTipNever": "Não mostrar de novo",
+    "divisor": "Divisor de snap",
+    "divisorAt": "{{divisor}}: o divisor em que caem os ataques, escrito como BeatDivisor do editor.",
+    "divisorNone": "Poucos ataques na grade: o editor fica com o 1/4 dele.",
+    "breaks": "Breaks",
+    "breaksAt": "Silêncios longos entre os ataques, dentro das margens de um break do osu!: {{spans}}.",
+    "breaksNone": "Nenhum silêncio de 5 s ou mais entre os ataques."
   },
   "listening": {
     "subdivision": "Entre batidas",
@@ -1277,6 +1322,16 @@
         "loop": "Ativar ou desativar o loop da seleção",
         "clicks": "Ativar ou desativar os cliques",
         "follow": "Ativar ou desativar seguir o cursor de reprodução"
+      },
+      "editor": {
+        "title": "Editor de timing",
+        "toggle": "Editar as red lines",
+        "nudge": "Mover a red line escolhida 1 ms",
+        "nudge10": "Movê-la 10 ms",
+        "add": "Red line no cursor",
+        "delete": "Apagar a red line escolhida",
+        "undo": "Desfazer",
+        "redo": "Refazer"
       }
     }
   },
@@ -1978,7 +2033,11 @@
       "delete": "Apagar",
       "deleteConfirm": "Apagar seu comentário?",
       "deleteYes": "Apagar",
-      "openTiming": "Abrir o timing"
+      "openTiming": "Abrir o timing",
+      "marks": "Comentários com tempo no mapa: {{count}}",
+      "markLabel": "Comentários em {{at}} ({{count}}): mostrar, ou tocar a partir daqui",
+      "moreMarks": "+{{count}} na lista abaixo",
+      "markHint": "Clique para tocar a partir daqui."
     },
     "errors": {
       "TOO_LONG": "Isso está longo demais.",
@@ -2151,7 +2210,7 @@
     },
     "versions": {
       "title": "Versões",
-      "note": "Cada análise que você fez deste mesmo áudio, e os ajustes que você salvou. Uma versão salva guarda só o seu ×2 / ÷2 e deslocamento: o timing em si é o do motor.",
+      "note": "Cada análise que você fez deste mesmo áudio, e os ajustes que você salvou. Uma versão salva guarda o seu ×2 / ÷2, o deslocamento e as red lines que você editou (✎): a leitura do motor em si nunca muda.",
       "engine": "como o motor o leu",
       "thisOne": "esta",
       "now": "como aparece agora",
@@ -2159,7 +2218,7 @@
       "labelPlaceholder": "Uma nota para esta versão (opcional)",
       "save": "Salvar {{adjustment}} como versão",
       "saved": "Este ajuste está salvo como versão.",
-      "howToSave": "Experimente ×2, ÷2 ou um deslocamento acima, e depois salve aqui para guardá-lo.",
+      "howToSave": "Experimente ×2, ÷2, um deslocamento ou o editor acima, e depois salve aqui para guardá-lo.",
       "saveFailed": "Não foi possível salvar a versão. Tente de novo.",
       "limit": "Este timing já tem o máximo de versões salvas que pode guardar. Apague uma primeiro.",
       "loadFailed": "Não foi possível carregar as versões.",
@@ -2225,5 +2284,412 @@
       "sharedAdded": "A música que você compartilhou está na lista. Confira e clique em Analisar.",
       "sharedNone": "Nada utilizável chegou pelo compartilhamento: compartilhe um arquivo MP3, OGG, WAV, FLAC, M4A ou Opus, ou escolha-o abaixo."
     }
+  },
+  "mapSet": {
+    "title": "O set do mapa",
+    "mode": "Modo de jogo",
+    "modeNote": "Escrito como Mode em cada dificuldade; no mania, o número de teclas vai em CircleSize.",
+    "keys": "Teclas",
+    "test": "Mapa de teste",
+    "off": "Não",
+    "testNote": "Uma dificuldade jogável, \"Overtone test\", com um círculo em cada tempo ou meio tempo: o primeiro tempo do compasso abre um combo com finish e os meios tempos tocam whistle. Jogue no osu! e sinta se o timing está deslocado. É para conferir, não para rankear.",
+    "testBreaks": "Breaks que ele deixa vazios: {{n}}.",
+    "difficulties": "Dificuldades vazias",
+    "difficultiesNote": "Cada uma é um .osu próprio no set, com o mesmo timing e sem objetos. HP, CS, OD e AR são um ponto de partida para mudar no editor.",
+    "count": "Dificuldades no .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Onde caem os ataques",
+    "all": "A música toda",
+    "perLine": "Sob cada red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "sugerido {{divisor}}",
+    "none": "poucos ataques para dizer",
+    "other": "nenhum",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Cada ataque que o engine ouviu, pelo divisor mais simples do tempo em que cai (a menos de 1/48 de tempo, no máximo 15 ms); ataques fracos contam menos. Sugere o divisor de snap do editor; não mede o timing."
+  },
+  "daw": {
+    "title": "Softwares de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Um arquivo MIDI tipo 1 com 960 ticks por batida: um tempo e uma fórmula de compasso em cada red line, cada mudança a até {{ms}} ms do seu momento.",
+    "leadIn": "O compasso 1 é um compasso de entrada que termina no primeiro tempo forte da primeira red line, para os compassos seguintes baterem com a música.",
+    "reaperNote": "Reaper: um projeto com o tempo, um marcador em cada red line e a música numa faixa. Salve-o na pasta onde está {{file}}.",
+    "reaperNoAudio": "Reaper: um projeto com o tempo e um marcador em cada red line. Coloque você mesmo a música numa faixa.",
+    "ableton": "O Ableton Live não consegue ler um mapa de tempo a partir de texto, então aqui não há arquivo para o Live. Use o arquivo MIDI: arraste-o para o Arrangement e o Live pode pegar as mudanças de tempo e de compasso (dependendo da versão, ele pergunta, ou uma opção de importação ativa isso)."
+  },
+  "calculator": {
+    "title": "Calculadora de timing",
+    "description": "BPM e ms por batida, ticks, a distância entre duas red lines, o desvio e o BPM a partir de dois instantes: as contas de fazer o timing de um mapa, feitas no seu navegador.",
+    "intro": "As contas de fazer o timing de um mapa, calculadas enquanto você digita. Nada sai desta página.",
+    "keys": "Teclado: Tab passa de um campo para outro; ↑ e ↓ mudam o campo atual em 1, com Shift em 10, com Alt em 0,1. Escolha um resultado para copiar o número.",
+    "copy": "Copiar {{label}}: {{value}}",
+    "copied": "Copiado",
+    "fromResult": "Calculadora de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms por batida",
+      "bpm": "BPM",
+      "ms": "ms por batida",
+      "beat": "Uma batida",
+      "exactBpm": "BPM",
+      "bar": "Um compasso 4/4",
+      "quarter": "Um tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Divisor da batida",
+      "span": "Intervalo",
+      "count": "Ticks",
+      "tick": "Um tick",
+      "ticks": "O intervalo em ticks",
+      "nearest": "Tick inteiro mais próximo",
+      "off": "O intervalo passa dele em {{ms}} ms.",
+      "toMs": "Os ticks em ms"
+    },
+    "lines": {
+      "title": "Entre duas red lines",
+      "intro": "Onde a segunda linha cai na grade da primeira.",
+      "from": "Primeira red line",
+      "bpm": "O BPM dela",
+      "to": "Segunda red line",
+      "meter": "Batidas por compasso",
+      "span": "Distância",
+      "beats": "Distância em batidas",
+      "bars": "Distância em compassos",
+      "nearest": "Batida mais próxima da primeira grade",
+      "off": "Segunda linha em relação a essa batida",
+      "offNote": "Positivo: está atrasada.",
+      "earliest": "O offset mais cedo da primeira grade"
+    },
+    "drift": {
+      "title": "Desvio",
+      "intro": "O quanto uma grade num BPM se afasta de outra ao longo de alguns compassos, e os BPMs que ficam dentro de um desvio que você aceita.",
+      "right": "O BPM certo",
+      "mapped": "O BPM do mapa",
+      "bars": "Compassos",
+      "meter": "Batidas por compasso",
+      "total": "Desvio no último compasso",
+      "sign": "Positivo: a grade do mapa está atrasada.",
+      "perBar": "Desvio por compasso",
+      "allowed": "Desvio que você aceita",
+      "slower": "BPM mais lento dentro disso",
+      "faster": "BPM mais rápido dentro disso",
+      "precision": "Precisão de BPM necessária"
+    },
+    "span": {
+      "title": "BPM a partir de dois instantes",
+      "intro": "Dois momentos da música e o número de batidas entre eles.",
+      "start": "Primeiro instante",
+      "end": "Segundo instante",
+      "beats": "Batidas entre eles",
+      "bpm": "BPM",
+      "beat": "Uma batida"
+    }
+  },
+  "practice": {
+    "title": "Prática",
+    "reps": "Vezes",
+    "countIn": "Contar um compasso antes",
+    "start": "Começar a praticar",
+    "stop": "Parar a prática",
+    "counting": "Contando…",
+    "status": "Vez {{rep}} de {{reps}} · {{rate}}×",
+    "noStretch": "Nada para praticar aqui: marque um loop (Shift e arrastar no mapa) ou leve o cursor de reprodução até a seção de uma red line.",
+    "hint": "Toca o loop que você marcou, ou a seção sob o cursor de reprodução, {{reps}} vezes de {{from}}× a {{to}}×, um pouco mais rápido a cada vez. O tom muda com a velocidade; os cliques acompanham."
+  },
+  "tapMic": {
+    "footer": "BPM pelo microfone",
+    "eyebrow": "Ferramenta",
+    "title": "BPM pelo microfone",
+    "description": "O navegador escuta por alguns segundos e propõe um BPM com a sua confiança. Nada é enviado.",
+    "intro": "Toque a música perto do seu aparelho, aperte Ouvir e deixe o navegador escutar por alguns segundos. Ele propõe um BPM e diz o quanto tem certeza. O som nunca sai desta página: é lido aqui e descartado.",
+    "length": "Ouvir por",
+    "seconds": "{{n}} s",
+    "listen": "Ouvir",
+    "again": "Ouvir de novo",
+    "stop": "Parar e ler",
+    "permission": "O navegador pede o microfone quando você aperta Ouvir, não antes.",
+    "asking": "Esperando a permissão do microfone…",
+    "listening": "Ouvindo… {{percent}}%",
+    "listeningLabel": "Ouvindo",
+    "level": "Nível de entrada",
+    "quiet": "Muito baixo: aumente a música ou chegue mais perto.",
+    "reading": "Lendo o pulso…",
+    "errors": {
+      "unsupported": "Este navegador não consegue gravar de um microfone aqui.",
+      "denied": "O microfone não foi permitido. Você pode permitir nas configurações do site no navegador e tentar de novo.",
+      "noMic": "Nenhum microfone encontrado, ou outro app está usando.",
+      "failed": "Algo deu errado enquanto ouvia. Tente de novo."
+    },
+    "result": {
+      "short": "Curto demais para ler um tempo: ouça mais alguns segundos.",
+      "silent": "Nada ouvido: o microfone só captou silêncio.",
+      "noPulse": "Nenhum pulso estável ouvido. Uma música com batida clara, mais alta ou mais perto, se lê melhor; ruído e fala não têm."
+    },
+    "confidence": "{{percent}}% de confiança",
+    "alternatives": "Também pode ser {{list}}: um microfone ouve o pulso, não em qual oitava a música é contada.",
+    "heard": "A partir de {{seconds}} s de som, lido neste navegador.",
+    "limitsTitle": "O que dá e o que não dá",
+    "limits": {
+      "private": "Nada é enviado nem salvo: a gravação fica nesta página e some depois de lida.",
+      "precision": "Alguns segundos dão um tempo com cerca de um BPM de precisão, no melhor caso; ouvir mais é mais estável. É uma checagem rápida, não um timing.",
+      "octave": "Pode ler metade ou o dobro do tempo que um mapper escolheria; as outras oitavas aparecem junto.",
+      "changes": "Supõe um tempo estável: uma música que acelera, desacelera ou muda de compasso é lida como uma média, ou não é lida.",
+      "room": "Eco, ruído, conversa e o grave fraco do alto-falante de um celular borram os ataques que ele escuta.",
+      "offset": "Não dá offset nem red lines: para isso, o arquivo da música passa pelo engine."
+    },
+    "forTiming": "Para um timing completo com red lines e offset, analise o próprio arquivo."
+  },
+  "editor": {
+    "edit": "Editar",
+    "toggleHint": "Editar as red lines no mapa (E)",
+    "title": "Editando suas red lines",
+    "note": "Arraste uma red line (ela gruda num ataque ou num beat; com Alt ela se move livre), dê dois cliques para adicionar uma. A leitura do engine fica como veio: estas são suas, para conferir de ouvido.",
+    "done": "Pronto",
+    "open": "Editar",
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "reset": "Voltar à do engine",
+    "inForce_one": "Timing editado em uso: {{count}} red line",
+    "inForce_other": "Timing editado em uso: {{count}} red lines",
+    "closedHint": "Toque em Editar no mapa (ou E) para mover, adicionar, dividir ou apagar red lines.",
+    "lineOf": "Red line {{n}} de {{total}}",
+    "time": "Tempo (ms)",
+    "apply": "Aplicar",
+    "meter": "Beats por compasso",
+    "meterHint": "O tamanho do compasso desta red line até a próxima; o beat continua",
+    "move": "Mover",
+    "moveGroup": "Mover a red line escolhida",
+    "nudgeBy": "Movê-la {{ms}} ms",
+    "linesGroup": "Adicionar ou apagar red lines",
+    "addAtPlayhead": "Red line no cursor de reprodução",
+    "delete": "Apagar",
+    "section": "Seção",
+    "sectionGroup": "Ferramentas de seção",
+    "split": "Dividir no cursor",
+    "splitHint": "Uma red line no beat desta seção mais perto do cursor; as duas metades são reajustadas aos seus ataques",
+    "merge": "Juntar com a próxima",
+    "mergeHint": "Tira a próxima red line e reajusta o trecho inteiro a partir desta",
+    "halfSection": "Dividir por dois o BPM desta seção",
+    "doubleSection": "Dobrar o BPM desta seção",
+    "keysHint": "← → movem 1 ms (Shift: 10 ms) · N adiciona uma red line no cursor · Delete apaga · Ctrl+Z desfaz",
+    "selectHint": "Escolha uma red line no mapa, na tabela ou com [ e ].",
+    "keptOwner": "Guardado neste navegador para este timing. Salve como versão abaixo para guardar com o timing.",
+    "keptHere": "Guardado só neste navegador, para este timing.",
+    "history": "Histórico",
+    "editedLine": "editada por você",
+    "addedLine": "adicionada por você",
+    "nothingToUndo": "Nada para desfazer.",
+    "nothingToRedo": "Nada para refazer.",
+    "undone": "Desfeito: {{step}}",
+    "redone": "Refeito: {{step}}",
+    "wentTo": "De volta a: {{step}}",
+    "steps": {
+      "start": "A leitura do engine",
+      "restored": "Suas edições da última vez",
+      "version": "Uma versão salva aplicada",
+      "reset": "De volta à leitura do engine",
+      "move": "Red line {{n}} movida para {{time}}",
+      "nudge": "Red line {{n}} movida {{ms}} ms",
+      "offset": "Red line {{n}} colocada em {{ms}} ms",
+      "bpm": "Red line {{n}} colocada em {{bpm}} BPM",
+      "add": "Red line {{n}} adicionada em {{time}}",
+      "delete": "Red line {{n}} apagada",
+      "meter": "Red line {{n}}: {{meter}} beats por compasso",
+      "split": "Seção {{n}} dividida em {{time}}",
+      "merge": "Seções {{n}} e {{next}} juntadas",
+      "double": "Seção {{n}} dobrada para {{bpm}} BPM",
+      "half": "Seção {{n}} pela metade: {{bpm}} BPM"
+    },
+    "refit": {
+      "fit": "{{bpm}} BPM pelos seus ataques ({{share}} % na grade)",
+      "few": "ficou em {{bpm}} BPM: ataques de menos para reajustar",
+      "weak": "ficou em {{bpm}} BPM: seus ataques não seguem nenhuma grade ({{share}} %)"
+    },
+    "report": {
+      "split": "Antes de {{time}}: {{first}}. Depois: {{second}}.",
+      "merge": "O trecho inteiro: {{first}}."
+    },
+    "errors": {
+      "noLine": "Escolha uma red line primeiro.",
+      "tooClose": "Duas red lines ficariam a menos de 1 ms: o osu! lê as duas como uma.",
+      "badTime": "Esse tempo não é um número.",
+      "badBpm": "O BPM precisa ser um número maior que 0.",
+      "bpmRange": "O BPM precisa estar entre 1 e 5000.",
+      "tooMany": "Aqui um timing tem no máximo 512 red lines.",
+      "first": "A primeira red line ancora o mapa e não pode ser apagada.",
+      "badMeter": "Um compasso tem de 1 a 16 beats.",
+      "badFactor": "Uma seção dobra ou cai pela metade, nada mais.",
+      "rescaleRange": "A seção sairia de 30-600 BPM.",
+      "splitOutside": "Coloque o cursor dentro da seção, um beat ou mais depois da red line dela e antes da próxima.",
+      "noNext": "Não há uma próxima seção para juntar."
+    }
+  },
+  "lab": {
+    "title": "Laboratório de offset",
+    "sub": "O que o arquivo diz do próprio atraso, e um teste cego de onde os cliques soam no tempo.",
+    "headerNeedsAudio": "Escolha a música acima para ler o cabeçalho dela.",
+    "header": "{{encoder}}: {{delay}} amostras de atraso ({{delayMs}} ms), {{pad}} de preenchimento ({{padMs}} ms). Nem todo navegador pula isso.",
+    "noTag": "Sem tag gapless: este arquivo não informa o atraso.",
+    "testTitle": "Teste cego",
+    "testSub": "Ouça o mesmo trecho duas vezes ({{seconds}} s cada) com dois deslocamentos ocultos dos cliques e escolha o que está no tempo. Cada deslocamento disputa três vezes contra nenhum. Toca o seu loop, se você desenhou um; se não, a partir da primeira red line.",
+    "blocked": {
+      "noAudio": "Escolha a música acima primeiro.",
+      "rate": "Coloque a velocidade em 100 % para o teste.",
+      "clicks": "Ligue os cliques para o teste."
+    },
+    "start": "Começar",
+    "hear": "Ouvir {{n}}",
+    "vote": "{{n}} estava no tempo",
+    "again": "Recomeçar",
+    "cancel": "Cancelar",
+    "trial": "Rodada {{k}} de {{n}}",
+    "shift": "Deslocamento",
+    "wins": "Vitórias",
+    "interval": "Intervalo de 95 %",
+    "best": "Preferido: {{shift}} ms ({{lo}}-{{hi}} % de preferência sobre nenhum).",
+    "none": "Nada ganha de nenhum deslocamento: os cliques ficam onde estão.",
+    "apply": "Pôr o offset global em {{ms}} ms"
+  },
+  "votes": {
+    "title": "Está no tempo?",
+    "onCount": "No tempo: {{count}}",
+    "offCount": "Fora: {{count}}",
+    "on": "No tempo",
+    "off": "Está fora",
+    "takeBack": "Retirar meu voto",
+    "own": "Este timing é seu: você não pode votar nele.",
+    "signIn": "Entre para votar",
+    "yourCorrection": "Você propôs {{bpm}} BPM, offset {{offset}} ms.",
+    "review": {
+      "pending": "Esperando a staff",
+      "accepted": "Aceita",
+      "dismissed": "Descartada"
+    },
+    "offHint": "Opcional: o BPM ou o offset (onde a primeira red line deveria estar, em ms) que você acha certo. Uma correção vai para a staff analisar.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "O Overtone pode usar minha correção como dados para testar e melhorar a análise. Nada é compartilhado fora do site.",
+    "sendOff": "Enviar",
+    "privacy": "Os votos são anônimos: a página mostra só as contagens. Se a sua conta do osu! vinculada tem mapas ranqueados, um voto \"no tempo\" mostra o seu nome como o mapper que verificou.",
+    "queued": "Obrigado. Sua correção está esperando a staff.",
+    "saved": "Seu voto foi salvo.",
+    "errors": {
+      "bad": "Esse voto não foi aceito. Confira os números.",
+      "bpm": "O BPM é um número de 20 a 1000.",
+      "offset": "O offset é em milissegundos inteiros, de -10000 até o fim da música."
+    },
+    "verified": "Verificado por um mapper",
+    "verifiedHint": "Alguém cuja conta do osu! vinculada tem mapas ranqueados disse que este timing está no tempo.",
+    "verifiedBy": "por",
+    "ranked": "{{name}} no osu!, mapas ranqueados: {{count}}",
+    "andMore": "+{{count}}"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "subtitle": "O que aconteceu com suas sugestões, seus timings publicados e suas análises enquanto você estava fora.",
+    "bell": "Notificações, não lidas: {{count}}",
+    "allRead": "Marcar todas como lidas",
+    "failed": "Não foi possível carregar as notificações.",
+    "empty": "Nada novo.",
+    "seeAll": "Ver todas as notificações",
+    "unreadMark": "(não lida)",
+    "proposed": "Proposto: {{bpm}} BPM, offset {{offset}} ms",
+    "signIn": "Entre para ver suas notificações.",
+    "filter": "Quais notificações",
+    "all": "Todas",
+    "unreadOnly": "Não lidas ({{count}})",
+    "kept": "As 200 mais recentes são guardadas. Os votos nunca dizem quem votou, exceto um mapper que verificou o seu timing.",
+    "text": {
+      "suggestion": "Sua sugestão \"{{title}}\" agora está {{to}}.",
+      "comment": "@{{user}} comentou em \"{{title}}\".",
+      "use": "@{{user}} usou o seu timing de \"{{title}}\".",
+      "verified": "@{{user}}, um mapper com mapas ranqueados, verificou que \"{{title}}\" está no tempo.",
+      "voteOn": "Alguém votou que \"{{title}}\" está no tempo.",
+      "voteOff": "Alguém votou que \"{{title}}\" está fora.",
+      "analysis": {
+        "done": "Sua análise de \"{{title}}\" está pronta.",
+        "refused": "Sua análise de \"{{title}}\" terminou sem um BPM.",
+        "failed": "Sua análise de \"{{title}}\" falhou."
+      },
+      "unknown": "Algo aconteceu."
+    }
+  },
+  "staff": {
+    "nav": "Painel da staff",
+    "title": "Painel da staff",
+    "subtitle": "A fila e o worker, as falhas recentes, as denúncias abertas, as correções vindas dos votos e o registro de moderação, num só lugar.",
+    "refresh": "Atualizar",
+    "failed": "Não foi possível carregar o painel da staff.",
+    "readAt": "Lido às {{time}}; lido de novo a cada 30 segundos enquanto esta aba estiver aberta.",
+    "open": "Abrir",
+    "awaiting": {
+      "title": "Esperando revisão",
+      "suggestions": "Sugestões abertas",
+      "reports": "Itens com denúncias abertas",
+      "corrections": "Correções esperando"
+    },
+    "queue": {
+      "title": "Fila e worker",
+      "moderate": "Remover ou recolocar na fila na página da fila",
+      "running": "Em análise",
+      "waiting": "Esperando",
+      "oldest": "Maior espera"
+    },
+    "worker": {
+      "memory": "Memória: {{rss}} agora, {{peak}} no pico do último trabalho, limite {{limit}}",
+      "memoryAgo": "informado há {{seconds}} s",
+      "noMemory": "O worker não informou a memória (só consegue no Linux)."
+    },
+    "failures": {
+      "title": "Falhas, últimos 7 dias",
+      "none": "Nenhuma falha.",
+      "codes": "too_heavy: ficou sem memória · timeout: passou do limite de tempo · stale: o worker parou de responder · removed: por um moderador · failed: erro do próprio motor."
+    },
+    "corrections": {
+      "title": "Correções vindas dos votos",
+      "hint": "Pessoas que votaram um timing como fora com um BPM ou um offset. Ouça antes de decidir; cada decisão fica registrada.",
+      "none": "Nada aqui.",
+      "change": "Agora {{bpm}} BPM, offset {{offset}} ms → proposto {{newBpm}} BPM, offset {{newOffset}} ms",
+      "trainingOk": "Pode ser usada como dados",
+      "trainingNo": "Não é para dados",
+      "by": "Decidido por @{{moderator}}",
+      "accept": "Aceitar",
+      "dismiss": "Descartar",
+      "acceptPrompt": "Aceitar esta correção? Motivo para o registro (opcional):",
+      "dismissPrompt": "Descartar esta correção? Motivo para o registro (opcional):"
+    },
+    "did": {
+      "accept": "@{{moderator}} aceitou uma correção",
+      "dismiss": "@{{moderator}} descartou uma correção"
+    }
+  },
+  "limits": {
+    "title": "Você não pode enviar mais agora",
+    "why": {
+      "anonymous_one": "Sem conta você pode analisar {{count}} música por dia.",
+      "anonymous_other": "Sem conta você pode analisar {{count}} músicas por dia.",
+      "account_one": "Sua conta pode analisar {{count}} música por dia.",
+      "account_other": "Sua conta pode analisar {{count}} músicas por dia.",
+      "cache_one": "Você pode abrir {{count}} resultado salvo por dia.",
+      "cache_other": "Você pode abrir {{count}} resultados salvos por dia.",
+      "pending_one": "Você pode ter {{count}} música na fila de cada vez.",
+      "pending_other": "Você pode ter {{count}} músicas na fila de cada vez."
+    },
+    "free": "Você já pode enviar de novo.",
+    "resetIn": "Você pode enviar de novo em",
+    "resetAt": "às {{time}}",
+    "resetWhen": "a contagem zera às 00:00 UTC",
+    "whenFinished_one": "Você pode enviar outra quando a sua música na fila terminar.",
+    "whenFinished_other": "Você pode enviar outra quando uma das suas {{count}} músicas na fila terminar.",
+    "seeQueue": "Ver a fila",
+    "signIn": "Entre para ter um limite diário maior"
   }
 }

@@ -3,7 +3,6 @@ import { initReactI18next } from 'react-i18next'
 
 import { BUNDLED, CODES, DEFAULT, findLanguage, pickLanguage } from './lib/languages.js'
 import en from './locales/en.json'
-import es from './locales/es.json'
 
 /**
  * Ten languages (W12.16; EN/ES since W3.7). The choice is stored as
@@ -11,16 +10,17 @@ import es from './locales/es.json'
  * follows them across the ecosystem on the same browser. Without a stored
  * choice the browser's languages decide, and English when none matches.
  *
- * English and Spanish ship in the main bundle. The others are found by
- * convention, `src/locales/<code>.json`, and Vite splits each into its own
- * chunk, fetched the first time the language is chosen. A key a file lacks
- * reads in English.
+ * English ships in the main bundle, as the default and every key's fallback.
+ * The others, Spanish included (W10.1: 29 kB gzip an English visitor never
+ * needs), are found by convention, `src/locales/<code>.json`, and Vite splits
+ * each into its own chunk, fetched the first time the language is chosen; the
+ * first frame waits for the starting one. A key a file lacks reads in English.
  */
 export { LANGS } from './lib/languages.js'
 const KEY = 'mides.lang'
 
-const bundled = { en, es }
-const lazy = import.meta.glob(['./locales/*.json', '!./locales/en.json', '!./locales/es.json'])
+const bundled = { en }
+const lazy = import.meta.glob(['./locales/*.json', '!./locales/en.json'])
 
 /** An i18next backend that hands over the bundled files and imports the rest. */
 const localeFiles = {
@@ -71,7 +71,7 @@ export const ready = i18n
   .use(localeFiles)
   .use(initReactI18next)
   .init({
-    resources: { en: { translation: en }, es: { translation: es } },
+    resources: { en: { translation: en } },
     partialBundledLanguages: true,
     lng: pickLanguage(stored(), browser()),
     supportedLngs: CODES,

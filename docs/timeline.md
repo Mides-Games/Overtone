@@ -72,6 +72,303 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · Votes on timings, a mapper's badge, a notification bell and a staff panel
+
+### Changed
+
+- A published timing takes one vote per account (W13.14): "on time", or "off" with an
+  optional proposed BPM and offset. The page shows the counts and names nobody; a
+  correction waits for staff, and the voter may tick a box to let the engine's stages
+  use it as data (stored only).
+- A mapper's "on time" (an account whose linked osu! profile had ranked maps) puts a
+  "verified by a mapper" badge with their name on the timing and on `/recent` (W13.16).
+- Timed comments are marks on the tempo map: hover or focus shows them, a click plays
+  from there (W13.15).
+- A bell in the navbar and `/notifications` (W13.17): suggestion states, comments, a
+  first use, votes and analyses that ended unseen. Polled once a minute while the tab
+  is visible.
+- `/staff` (W13.19): the queue and the worker (with its memory, which the worker now
+  sends with each claim on Linux), the week's failures with their codes, open reports,
+  the corrections queue, the whole moderation log and what waits for review. A 404 for
+  everyone else, in the page and the API.
+- A refusal for the daily quota, the stored-results cap or the pending cap says why
+  and when it frees up, with a live countdown to 00:00 UTC (W13.20).
+
+### Hardening
+
+- Votes are anonymous except a verifying mapper's; a vote's notification never names
+  its voter. A comment's notification carries who and where, not the text. Every new
+  write has the same-origin guard and a per-address limit (30 votes in ten minutes);
+  another account's notification ids mark nothing.
+
+### Measured
+
+- site/api 189/189 (15 new), site/web 247/247 (7 new) on the branch; 191 and 321 after merging master; `budget` ok (Staff 3.3 kB,
+  Notifications 1.2 kB), 3 new worker tests run alone, `facts: ok`. In the browser at
+  375 px: the marks and their note, a vote with a correction, the bell, `/staff` (as
+  staff, and the 404 as a member), and both limit notices; ES and EN, dark and light.
+  Not measured: the PostgreSQL store (only the memory one ran), the worker's memory
+  report from a real Linux worker.
+
+---
+
+## Unreleased — 2026-10-28 · The studio look: foundation and front page
+
+### Changed
+
+- The site follows a written design direction, `docs/design.md`: a studio monitor, not a
+  dashboard. Neutral cool ink instead of violet graphite, the logo's cyan as the one
+  accent, colour only as signal, and the waveform with red lines as the signature.
+- The tempo colour is green and its token `--tempo` (it was `--lavender`), everywhere the
+  site paints it: the map, the table, the chips, the stats, the map image.
+- Type is Archivo (wide, for headings), Geist (text) and Geist Mono (every number),
+  self-hosted from pinned packages; it was the visitor's system faces.
+- The old classes (`btn-primary`, `btn-ghost`, `tool-btn`, `field`, `panel`, `label`,
+  `readout`, `chip-*`) take the new look in place, so every page changed without its
+  markup; the new primitives and `components/ui/` are there for the pages' own rework.
+- The bar is one slim row; below 1024 px a sheet menu holds the places, the palette and
+  the sign-in. The ticker stands still and scrolls away. The footer and the front page
+  lose their boxes: sections are separated by space and hairlines.
+- The front page: an asymmetric hero with the example strip as the product shot, the
+  benefits as a spec sheet, the steps on one ruler, entrances staggered on scroll.
+
+### Fixed
+
+- The focus ring set `border-radius: 4px` on whatever it focused, squaring round
+  controls (the avatar) while focused; the outline now follows each element's rounding.
+- The tray's progress bar animated its width (a layout change every frame); it moves by
+  transform now.
+
+### Hardening
+
+- `test/design.test.js`: the design file's colour table must equal `index.css`'s tokens,
+  and every `var(--…)` the source names must be declared (a stale `--lavender` would fail).
+- Text fields have an edge at 3:1 on their panels (`--line-control`, WCAG 1.4.11); the
+  light signal colours read 4.6:1 or more on their own chip tints, red and tempo included.
+- External links in the footer and on the front page say, to a screen reader, that they
+  open a new tab; the `theme-color` meta follows the site's theme switch.
+
+### Measured
+
+- Contrast from the tokens: every text token 4.65:1 or more on every surface in dark and
+  4.76 in light (dim on the wells the lowest); high contrast 7.18 and 7.28. Colour-blind
+  separation: default light 3.7, dark 11.5 ΔE; colour-blind palette 32.6 and 42.2.
+- axe-core on every public page, the palette, a result page and the signed-in pages, dark
+  and light: 50/50 clean.
+- Fonts: 142,632 bytes of Latin woff2 for the three faces (Archivo 90,104, Geist 29,400,
+  Geist Mono 23,128), loaded by `unicode-range` as text needs them. Build against master:
+  CSS 52.7 → 66.1 kB (10.1 → 13.0 kB gzip), entry JS 390.7 → 397.9 kB (125.2 → 127.9
+  kB gzip); initial JS 163.8 kB gzip of the 200 kB budget.
+- At 1024 px the seven places need 383-563 px across the ten languages, against 566-593
+  free; below 1024 they do not fit, hence the sheet there.
+- site/web 258/258 (2 new), site/api 174/174; the build is clean.
+
+### Rejected / tried and dropped
+
+- The draft's 7/5 hero split: the strip's four readouts were cramped and it read small.
+- The sheet below 768 px as drafted: between 768 and 1023 px the places would have
+  scrolled inside the bar with nothing to show it.
+- A ticker that keeps scrolling: the only perpetual motion the rules allow is the hero's
+  playhead.
+- Holding entering content at opacity 0 by CSS alone: a page without its script, a
+  thumbnail or a print would show nothing. `Reveal` holds back only what starts below the
+  fold, and only once its script runs.
+
+---
+
+## Unreleased — 2026-10-28 · The timing editor in the browser
+
+### Changed
+
+- **W7, W12.17:** the result page's tempo map has an Edit mode. Red lines drag (snapped
+  to the attacks or the beats, Alt free), move by 1 or 10 ms on the arrow keys, are
+  added at the playhead or by double-click, deleted, retimed and re-barred by typing;
+  sections split at the playhead, merge, double and halve, refitted to their attacks as
+  the desktop app did. Undo and redo (Ctrl+Z, Ctrl+Shift+Z) with the history in view,
+  every step spoken to a screen reader. The edits feed the clicks, the copy, the .osz
+  and every export as the nudge does, marked `Edited`; the engine's reading stays as it
+  came. Kept per analysis in the browser and, for the owner, as a saved version.
+- The offset lab, the desktop's: the MP3's gapless delay read in the browser, and the
+  blind click-shift test with Wilson intervals, its answer applied as the nudge.
+- `POST /analyses/:id/versions` takes `lines` (up to 512 packed red lines);
+  `analysis_versions` gains `lines` and `lines_key`, and its uniqueness moves to
+  (factor, nudge, lines key). Ten languages.
+
+### Hardening
+
+- The saved lines are checked line by line (numbers only, BPM 1-5000, meter 1-16,
+  sorted at least 1 ms apart, at most 512); a body with lines that do not read is
+  refused, never saved without them. Only that route's JSON limit rises, to 48 kB.
+
+### Measured
+
+- The JS editor against the desktop's Python helpers on 16 fixed cases
+  (`site/web/test/fixtures/editor-golden.json`): every red line within 1e-6 ms and
+  BPM, every refit share within 1e-9, the same refusals. The engine is not touched: no
+  gate or benchmark run concerns it.
+- After merging `master`, the result page went to 31.4 kB gzip (budget 30): the editor
+  and its offset lab now load on their own (`TimingEditor` 5.1 kB). With the listening
+  lanes merged too, the page is 28.9 kB and the Russian file 52.6 kB (budget 58).
+
+### Rejected / tried and dropped
+
+- Baking the ×2 and the nudge into the edits on the first edit: it would have turned a
+  saved factor-and-nudge version into lines and made the ×2 unpressable after an edit.
+  The edits are kept before both instead.
+- The desktop's decoder comparison (Python's first attack against Rust's): the browser
+  has neither engine, and the server never sees the audio again.
+
+---
+
+## Unreleased — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
+
+### Changed
+
+- The tempo map has two optional lanes under the waveform, both read from the reader's
+  own decoded song in a Web Worker: the attacks of three frequency bands (low, mid,
+  high; on by default) and a spectrogram at the map's zoom (off by default) (W13.6,
+  W13.7). Chosen once per browser.
+- Practice mode under the transport: the drawn loop or the section under the playhead,
+  3 to 8 times from 0.5× to 1×, after a bar counted in (W13.8).
+- `/tools/tap-mic`: the browser listens for 6 to 15 seconds and proposes a BPM with its
+  confidence and its octave neighbours, or says it heard no pulse (W13.12). Nothing is
+  uploaded; the microphone is asked for only on the button.
+- The cover in the song's tags tints the header of the result and public timing pages,
+  kept at AA, and not under high contrast (W13.24).
+
+### Hardening
+
+- The microphone's worklet is emitted as its own file (`?url&no-inline`): Vite would
+  have inlined it as a data: URL, which the site's `script-src 'self'` refuses.
+- The cover is decoded with `createImageBitmap`, not loaded from a blob: URL that
+  `img-src` does not allow.
+
+### Measured
+
+- Six minutes of stereo 44.1 kHz (`node site/web/scripts/spectral-cost.mjs`): bands and
+  spectrogram 1.30 s in one pass (2.6 s before two-frame FFTs, `sqrt` for `hypot` and
+  compressing only the bins a band reads), downmix 135-218 ms in slices. In the browser
+  (dev build): 2.42 s in the worker, 2.65 s end to end, the page's longest stall 27 ms.
+- Node tests: site/web 258/258 (18 new, on synthetic drums, clicks, noise, silence and
+  covers); the budget passes; `bench/facts.py` ok. Not measured: a real microphone, a
+  phone, Safari and Firefox; no screenshot (the shared browser pane was hidden).
+
+### Rejected / tried and dropped
+
+- A filter bank in an OfflineAudioContext for the bands: three renders of the song
+  where one STFT gives the bands and the spectrogram together.
+- Log compression of raw FFT magnitudes: a kick's spectral splatter lit the high band at
+  20 % of a hat. Magnitudes are now scaled by 2/N first, and the picker's floor is a
+  fifth of the band's loud end, not a tenth: each band then reports only its own
+  instrument on the synthetic drums.
+- The plain autocorrelation peak for the microphone: a click train at 128 BPM read as
+  64, its period falling between two frames. The envelope is smoothed, each candidate
+  refined to a twentieth of a frame, and the faster octave wins when it scores 80 % of
+  the slower.
+
+---
+
+## Unreleased — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
+
+### Changed
+
+- `/tools/calculator` (W13.9): BPM ↔ ms, ms ↔ ticks, the gap between two red lines,
+  drift and the BPMs within an accepted drift, and the BPM from two timestamps. Keyboard
+  first; the result page opens it with its first red line filled in.
+- "More downloads" gains a MIDI tempo map (type 1, 960 PPQ) and a Reaper project (W13.10).
+  Ableton gets no file of its own: Live has no tempo-map text format, so the page sends
+  its users to the MIDI file and says so.
+- Four more games' timing files (W13.11): Beat Saber v3 `bpmEvents`, A Dance of Fire and
+  Ice `.adofai`, Friday Night Funkin' legacy chart JSON, Rhythm Doctor `.rdlevel`.
+
+### Measured
+
+- MIDI read back by an independent parser in the tests: every red line within 0.5 ms of
+  its time on 40 changes off the grid (the worst is printed on the page; 0.08 ms on the
+  browser check's two-line result). The games' files read back by each game's arithmetic,
+  all under 0.5 ms. `site/web` tests 264/264 on the branch (240 before), 280/280 after merging master, budget ok (AnalysisResult
+  24.6 of 30 kB, Calculator 2.5 kB). No file was opened in a game or a DAW.
+
+### Rejected / tried and dropped
+
+- ADOFAI changes off the beat by an angled tile (a fractional beat): exact, but which way
+  an angle counts is easy to get backwards untested, and a wrong guess would be silent.
+  An odd tile with its own speed is visible in the editor and right either way.
+- Fitting the whole span's BPM so a change lands on a whole tile or section (as Clone Hero
+  does between ticks): over a long span it moves the grid by up to half a beat against the
+  music before the change; the odd unit keeps the grid exact everywhere else.
+
+---
+
+## Unreleased — 2026-10-28 · Mapping helpers on the result page
+
+### Changed
+
+- The `.osz` can carry more than the Timing difficulty (W13.1, W13.5): the game mode
+  (osu!, taiko, catch, mania with 4K-10K as `CircleSize`), empty Easy-to-Expert
+  difficulties with the same timing, and a playable "Overtone test (1/1)" or "(1/2)":
+  a circle on every beat or half beat, a combo and a finish on the bar's first beat, a
+  whistle on the half beats, so a mapper plays the timing and feels whether it is off.
+  All off until asked for: by default the `.osz` is still one Timing difficulty.
+- The result page shows where the attacks fall (W13.3): per red line and for the song,
+  the share on 1/1, 1/2, 1/3, 1/4, 1/6, 1/8 or none, and the suggested divisor, which the
+  `.osz` writes as `BeatDivisor` (on by default; it only sets the editor's snapping).
+- Long silences can go into the `.osz` as breaks (W13.4, off by default), inside osu!'s
+  gaps and minimum.
+- Patching your own `.osu` can also snap its hit objects to the new grid (W13.2, off by
+  default, 1/1 to 1/16): only the moved times change, spinners' and holds' ends with
+  them; the page says how many moved and by how much.
+
+### Hardening
+
+- The snap rewrites only the numbers it moves, row by row; the rest of the file keeps
+  its bytes (a test diffs everything before `[HitObjects]` against the plain patch).
+- A divisor osu! does not offer is no snap at all; a mode or divisor out of range falls
+  back to osu!'s defaults; the test map is capped at 20 000 objects.
+
+### Measured
+
+- site/web 256/256 (16 new: `test/mapping.test.js`, and the snap and the set in
+  `osu-patch.test.js` and `osz.test.js`); `pnpm --dir site/web budget` ok (the new
+  `mapping` chunk 1.75 kB); `bench/facts.py` ok.
+- Driven with Playwright at 375 px, EN and ES, dark and light, against the e2e fake
+  worker: the `.osz` read back with five entries, and a `.osu` snapped at 1/4.
+- Not measured: whether the suggested divisor and breaks agree with what mappers chose on
+  ranked maps (Corpus B could say), and none of it was opened in osu!.
+
+### Rejected / tried and dropped
+
+- **Keeping a slider's length in ms when the beat changes.** It would mean rewriting its
+  pixel length, which changes its shape on the playfield. Kept in beats instead: osu!
+  works the end out from the beat, so a slider that starts on the grid ends on it.
+- **Breaks from every 1.3 s pause**, osu!'s own minimum gap. Too many for a suggestion: a
+  pause that short is a rest a mapper maps around. Ours start at 5 s of silence.
+
+---
+
+## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
+
+### Fixed
+
+- A song on the staging site failed with `too_heavy` inside Beat This!'s Softmax. The
+  worker capped the analysis child's **address space** (`RLIMIT_AS`, 1800 MB), and ONNX
+  Runtime, numba and the thread pools reserve far more address space than they touch,
+  so an allocation hit the cap while the real use was well below it (W2.4 measured
+  ~1.2 GB resident for a 10-minute song with the vote). The worker now reads the
+  child's **resident** memory from /proc every 0.5 s and stops it past
+  `WORKER_MEMORY_MB`, with how much it used in the message; the container's OOM killer
+  stays the backstop.
+- The result page said a stopped job's file "may be damaged". A job stopped for memory
+  or time now says so, in all ten languages.
+
+### Measured
+
+- `tests/test_worker.py` `IsolationTests` 7/7 locally (the new over-the-limit test runs
+  only where /proc exists, so it was skipped on Windows); site/web 240/240. Not
+  measured: the failing song itself (it never reached this machine) and the server run.
+
+---
+
 ## Unreleased — 2026-10-28 · The site in ten languages, chosen by flag
 
 ### Changed
@@ -130,6 +427,73 @@ version is `v0.2.0-alpha`.
 ### Measured
 
 - `DeployScriptTests`: 6/6, one new (the move from experimental to master).
+
+---
+
+## Unreleased — 2026-10-27 · W10: budgets, accessibility, end-to-end tests and the review routine
+
+### Changed
+
+- **Every page but home and the 404 is its own chunk** (`React.lazy`), and the Spanish
+  strings load only for a Spanish visitor (a lazy i18next backend; `main.jsx` waits for
+  the stored language, so nothing flashes half-translated).
+- **`deploy/web/serve.mjs` compresses** text files of 1 kB or more, brotli (q 11) or
+  gzip (9) by `Accept-Encoding`, once per file version, in a 128-entry LRU, with `Vary`.
+- **The page area is at least a screen tall**, so the footer starts below the fold: on
+  a short page (404, sign-in) it is one scroll away.
+- Light theme only: `--accent` `#0a737f` → `#076672`, `--amber` `#8f5e08` → `#835606`;
+  links inside a `p` or `dd` are underlined. Nothing else restyled.
+- New one-line checks: `pnpm --dir site/web budget` (gate) and `pnpm --dir site/e2e test`
+  (gate, 76 tests); `pnpm --dir site/e2e vitals` (measurement). New dev dependencies,
+  pinned: `@playwright/test` 1.64.0 and `@axe-core/playwright` 4.13.0 (`site/e2e`, not
+  shipped).
+- `docs/security-review.md` (W10.7) and three project skills in `.claude/skills/`
+  (W10.5): `site-ui-check` (with `site/e2e/screens.mjs`), `release-checklist`,
+  `security-review`.
+
+### Fixed
+
+- Accessibility (axe-core, WCAG 2.2 AA tags): contrast of accent and amber on their own
+  tints in light (4.15-4.45:1 → 4.6-5:1); links told from their sentence by colour only;
+  `/status`'s `dl` with its `dt` nested in a `div`; the merged `/developers` page's
+  inline link. Three progress bars got names; the tempo map's canvas names the red-lines
+  table, its text alternative, in `aria-describedby`.
+- Layout shifts: pages that fill in after a request pushed a visible footer (CLS
+  0.19-1.0 on a phone).
+
+### Measured
+
+- **Initial JS, gzip** (`scripts/budget.mjs`): 181.5 → 143.3 kB with the split, before
+  the merges. After merging experimental (first time): 235.7 kB for experimental as it
+  was (every page eager) → 148.8 kB here. After the second merge and `master`: 276.4 →
+  162.3 kB. Budget 200 kB; on-demand chunks each under their own budget (12 kB default;
+  result page 30, changelog 16, shared result player 20, upload form 20, API reference
+  24, Spanish 36).
+- **axe:** before, 46 nodes in 19 of 32 audits (color-contrast 22, link-in-text-block 16,
+  definition-list 2, dlitem 6); after, 0 in every audit: 22 pages, a result page running
+  and done, the palette open, profile and history signed in, each in dark and light.
+- **e2e:** `pnpm --dir site/e2e test` 76/76 in 3.7 min.
+- **LCP and CLS** (`vitals.mjs`: the build behind `serve.mjs`, Lighthouse's mobile
+  profile, 150 ms, 1.6 Mbit/s, CPU x4, median of 3, service worker blocked):
+  - experimental at the first merge (one bundle, no compression): LCP 5.0-5.9 s on
+    every page; CLS 0.561 on `/credits` and a result page;
+  - this branch then: LCP 1.9-2.8 s (home 1.92 s, a result page 2.76 s), CLS
+    0.000-0.024 after the footer fix;
+  - after merging `master` (the new front page, analysis options, PWA): LCP home 2.85 s,
+    `/analyze` 4.18 s, `/queue` 2.93 s, a result page 3.27 s, the others 2.16-2.48 s;
+    CLS 0.000-0.024. Over 2.5 s on four pages: what the merged features add to the first
+    paint was not investigated here.
+- site/api 174/174 (1 new), site/web 235/235 (2 new), `bench/facts.py` ok. The Python
+  suite, the benchmark and the gates were not run (owner's rule: they run on the server;
+  no engine code changed).
+
+### Rejected / tried and dropped
+
+- **A screen-tall loader instead of a screen-tall page.** It fixed the lazy chunks' shift
+  (`/terms` 0.561 → 0) but not the pages that fill in after their own request (`/queue`
+  0.364, a result page 1.016): the footer moved each time.
+- **Counting e2e tests in `bench/facts.py`.** The specs make tests in loops, so counting
+  `test(` calls would be wrong; the run prints its own count.
 
 ---
 

@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "본문으로 건너뛰기",
     "loading": "불러오는 중…",
-    "byMides": "Mides Projects의 도구"
+    "byMides": "Mides Projects의 도구",
+    "newTab": "(새 탭에서 열림)"
   },
   "nav": {
     "home": "홈",
@@ -231,6 +232,8 @@
     },
     "failedTitle": "분석에 실패했어요",
     "failed": "Overtone이 이 파일을 읽지 못했어요. 손상되었거나 이름과 다른 오디오일 수 있어요. 파일은 삭제되었어요.",
+    "failedTooHeavy": "이 곡의 분석에 서버가 곡당 허용하는 것보다 많은 메모리가 필요해서 분석을 중단했어요. 파일은 삭제되었어요. 몇 분 뒤에 다시 시도하거나 곡의 더 짧은 구간만 분석해 보세요.",
+    "failedTimeout": "이 길이의 곡에 서버가 허용하는 시간을 넘겨서 분석을 중단했어요. 파일은 삭제되었어요. 몇 분 뒤에 다시 시도하거나 빠른 모드를 사용해 보세요.",
     "refusedTitle": "BPM 없음",
     "refusal": {
       "no_pulse": "Overtone이 이 오디오에서 일정한 펄스를 찾지 못해서 BPM을 알려주지 않아요.",
@@ -381,7 +384,27 @@
     "reset": "초기화",
     "adjusted": "이 수치는 직접 조정한 값이에요: 복사본과 다운로드에 조정이 반영되고 주석 줄에 그렇게 적혀요. 사용하기 전에 귀로 확인하세요.",
     "hint": "{{from}}부터 {{to}}까지 온셋이 한 비트 걸러 하나로 줄어들어요: 엔진은 이를 한 red line 안의 하프 타임 또는 더블 타임 가능성으로 봐요(주황색 표시). red line이 아니라 근거일 뿐이니 들어 보세요.",
-    "swing": "{{from}}부터 {{to}}까지 엇박 8분음표가 약 {{late}} ms(비트의 {{snap}}) 늦게 들어와요: 스윙이에요. 그 노트들은 귀로 스냅하세요."
+    "swing": "{{from}}부터 {{to}}까지 엇박 8분음표가 약 {{late}} ms(비트의 {{snap}}) 늦게 들어와요: 스윙이에요. 그 노트들은 귀로 스냅하세요.",
+    "bands": {
+      "toggle": "대역",
+      "hint": "파형 아래에 저음·중음·고음 어택: 어느 대역이 박을 이끄는지",
+      "legend": "대역별 어택: 저음, 중음, 고음",
+      "note": "대역은 주파수 범위이지 악기가 아니에요. 킥은 보통 저음, 스네어의 타격음은 중음, 심벌은 고음에 들어가지만, 베이스 라인이나 목소리도 거기에 들어가요.",
+      "lowShort": "저",
+      "midShort": "중",
+      "highShort": "고"
+    },
+    "spectrogram": {
+      "toggle": "스펙트로그램",
+      "hint": "파형 아래에 곡의 주파수 변화, 40 Hz~11 kHz, 지도와 같은 확대",
+      "legend": "스펙트로그램, 40 Hz~11 kHz (진할수록 큰 소리)"
+    },
+    "layers": {
+      "needSong": "대역과 스펙트로그램은 곡 자체에서 읽어요. 아래에서 곡을 불러오면 보여요.",
+      "working": "곡의 대역과 스펙트로그램을 백그라운드에서 읽는 중… {{percent}}%",
+      "failed": "이 브라우저에서 곡의 대역과 스펙트로그램을 읽지 못했어요.",
+      "done": "이 브라우저에서 {{seconds}}초 만에 읽었어요. 아무것도 보내지 않았어요."
+    }
   },
   "moderation": {
     "staff": "스태프",
@@ -792,7 +815,13 @@
     "filesTitle": "파일",
     "json": "결과 (JSON)",
     "summary": "요약 (TXT)",
-    "filesNote": "CSV와 요약은 조정한 값을 따르고, JSON은 서버가 보낸 엔진 결과 그대로예요."
+    "filesNote": "CSV와 요약은 조정한 값을 따르고, JSON은 서버가 보낸 엔진 결과 그대로예요.",
+    "snapLabel": "히트 오브젝트를 새 타이밍에 스냅",
+    "snapOff": "끔",
+    "snapNote": "각 오브젝트를 이 분할의 새 그리드에서 가장 가까운 틱으로 옮겨요. 바뀌는 건 시간뿐이에요(스피너와 홀드는 끝도). 슬라이더는 박 단위 길이를 유지해요. 끄면 오브젝트는 그대로예요.",
+    "snapped": "{{divisor}}에 스냅: 오브젝트 {{total}}개 중 {{moved}}개를 최대 {{max}} ms 옮겼어요(중앙값 {{median}} ms).",
+    "snappedNone": "{{divisor}}에 스냅: 오브젝트 {{total}}개 중 옮길 것이 없었어요.",
+    "snapShared": "이제 앞 오브젝트와 같은 틱에 놓인 오브젝트: {{n}}. 에디터에서 확인하세요."
   },
   "community": {
     "nav": "커뮤니티",
@@ -1032,7 +1061,14 @@
     "smMeter": ".sm에는 박자표가 없어서 마디가 4/4로 읽혀요. .ssc는 박자표를 유지해요.",
     "quaMeter_other": "Quaver는 4/4와 3/4만 알아요: 다른 박자의 red line {{count}}개는 4/4로 기록돼요.",
     "chartFitted_other": "템포 변화 {{count}}개가 Clone Hero의 틱 사이에 떨어져요: 제때 맞도록 각 변화 직전의 BPM을 아주 조금 조정해요({{ms}} ms 이내).",
-    "failed": "이 red line들로는 그 파일을 만들 수 없었어요."
+    "failed": "이 red line들로는 그 파일을 만들 수 없었어요.",
+    "beatSaber": "Beat Saber: BPM 이벤트만 담은 v3 난이도 파일 ExpertStandard.dat이에요. Info.dat에서 이 파일을 지정하고 Info.dat의 BPM을 {{bpm}}(으)로 하세요.",
+    "adofai": "A Dance of Fire and Ice: 한 박에 타일 하나인 곧은 길이고, 템포가 바뀌는 곳에 SetSpeed가 있어요. 곡을 옆에 두세요.",
+    "fnf": "Friday Night Funkin’: 0.3 이전 게임과 Psych Engine이 읽는 차트 JSON이에요. 16스텝 섹션과 changeBPM으로 되어 있어요.",
+    "rhythmDoctor": "Rhythm Doctor: PlaySong(BPM과 오프셋), SetBeatsPerMinute, SetCrotchetsPerBar가 든 .rdlevel이에요. 곡을 옆에 두세요.",
+    "adofaiOdd_other": "템포 변화 {{count}}개가 A Dance of Fire and Ice의 타일 사이에 떨어져요. 제때 오도록 그 앞 타일에 따로 속도를 줬어요.",
+    "fnfOdd_other": "템포 변화 {{count}}개가 Friday Night Funkin’의 섹션 사이에 떨어져요. 제때 오도록 그 앞에 따로 속도를 준 짧은 섹션을 넣었어요.",
+    "rdMeter_other": "박자 변화 {{count}}개가 Rhythm Doctor 마디 중간에 떨어져 거기서 마디를 시작할 수 없어요. 그 마디들은 앞의 박자를 유지해요."
   },
   "oszPlus": {
     "title": ".osz 옵션",
@@ -1059,7 +1095,13 @@
     "openTipFirefox": "Firefox에서 설정 → 일반 → 파일 및 애플리케이션을 열고, .osz 유형을 찾아 osu!로 열도록 설정하세요. 다음 .osz부터 바로 osu!로 가요.",
     "openTipOsu": "osu!가 설치되어 있고 .osz 파일이 osu!로 열리도록 되어 있어야 해요(설치 프로그램이 설정해 줘요). 사이트가 대신 파일을 열 수는 없어요: 웹 페이지는 다운로드한 것을 절대 실행하지 않아요.",
     "openTipClose": "알겠어요",
-    "openTipNever": "다시 보지 않기"
+    "openTipNever": "다시 보지 않기",
+    "divisor": "비트 스냅 분할",
+    "divisorAt": "{{divisor}}: 어택이 떨어지는 분할이에요. 에디터의 BeatDivisor로 써요.",
+    "divisorNone": "그리드 위의 어택이 너무 적어요: 에디터는 1/4 그대로예요.",
+    "breaks": "브레이크",
+    "breaksAt": "어택 사이의 긴 무음, osu! 브레이크 간격 안쪽: {{spans}}.",
+    "breaksNone": "어택 사이에 5초 이상의 무음이 없어요."
   },
   "listening": {
     "subdivision": "비트 사이",
@@ -1244,6 +1286,16 @@
         "loop": "선택 구간 반복 켜기/끄기",
         "clicks": "클릭 켜기/끄기",
         "follow": "재생 위치 따라가기 켜기/끄기"
+      },
+      "editor": {
+        "title": "timing 편집기",
+        "toggle": "red line 편집",
+        "nudge": "선택한 red line을 1 ms 이동",
+        "nudge10": "10 ms 이동",
+        "add": "재생 위치에 red line",
+        "delete": "선택한 red line 삭제",
+        "undo": "실행 취소",
+        "redo": "다시 실행"
       }
     }
   },
@@ -1932,7 +1984,11 @@
       "delete": "삭제",
       "deleteConfirm": "댓글을 삭제할까요?",
       "deleteYes": "삭제",
-      "openTiming": "타이밍 열기"
+      "openTiming": "타이밍 열기",
+      "marks": "맵 위의 시간 지정 댓글: {{count}}",
+      "markLabel": "{{at}}의 댓글 ({{count}}): 보기, 또는 여기서부터 재생",
+      "moreMarks": "아래 목록에 {{count}}개 더",
+      "markHint": "누르면 여기서부터 재생돼요."
     },
     "errors": {
       "TOO_LONG": "너무 길어요.",
@@ -2100,7 +2156,7 @@
     },
     "versions": {
       "title": "버전",
-      "note": "같은 오디오로 내가 한 모든 분석과 저장한 조정이에요. 저장된 버전은 ×2 / ÷2와 미세 조정만 보관해요: 타이밍 자체는 엔진의 것이에요.",
+      "note": "같은 오디오로 내가 한 모든 분석과 저장한 조정이에요. 저장된 버전은 ×2 / ÷2, 미세 조정, 그리고 편집한 red line(✎)을 보관해요: 엔진의 판독 자체는 절대 바뀌지 않아요.",
       "engine": "엔진이 읽은 그대로",
       "thisOne": "현재 버전",
       "now": "지금 표시된 대로",
@@ -2108,7 +2164,7 @@
       "labelPlaceholder": "이 버전에 대한 메모 (선택)",
       "save": "{{adjustment}}을(를) 버전으로 저장",
       "saved": "이 조정은 버전으로 저장되었어요.",
-      "howToSave": "위에서 ×2, ÷2 또는 미세 조정을 시도한 뒤, 여기서 저장해 보관하세요.",
+      "howToSave": "위에서 ×2, ÷2, 미세 조정이나 편집기를 시도한 뒤, 여기서 저장해 보관하세요.",
       "saveFailed": "버전을 저장할 수 없었어요. 다시 시도하세요.",
       "limit": "이 타이밍은 저장할 수 있는 최대 개수의 버전을 가지고 있어요. 먼저 하나를 삭제하세요.",
       "loadFailed": "버전을 불러올 수 없었어요.",
@@ -2171,5 +2227,406 @@
       "sharedAdded": "공유한 곡이 목록에 추가됐어요. 확인하고 분석을 누르세요.",
       "sharedNone": "공유로 쓸 수 있는 게 오지 않았어요: MP3, OGG, WAV, FLAC, M4A, Opus 파일을 공유하거나 아래에서 선택하세요."
     }
+  },
+  "mapSet": {
+    "title": "맵 세트",
+    "mode": "게임 모드",
+    "modeNote": "모든 난이도에 Mode로 써요. mania는 키 수를 CircleSize에 써요.",
+    "keys": "키",
+    "test": "테스트 맵",
+    "off": "끔",
+    "testNote": "플레이할 수 있는 난이도 \"Overtone test\"로, 박마다 또는 반 박마다 서클이 있어요. 마디의 첫 박은 피니시와 함께 콤보를 시작하고, 반 박은 휘슬이 나요. osu!에서 플레이하며 타이밍이 어긋났는지 느껴 보세요. 확인용이지 랭크용이 아니에요.",
+    "testBreaks": "비워 두는 브레이크: {{n}}.",
+    "difficulties": "빈 난이도",
+    "difficultiesNote": "각각 세트 안의 별도 .osu로, 타이밍은 같고 오브젝트는 없어요. HP, CS, OD, AR은 에디터에서 바꿀 출발점이에요.",
+    "count": ".osz의 난이도 수: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "어택이 떨어지는 곳",
+    "all": "곡 전체",
+    "perLine": "red line별",
+    "line": "red line {{n}} · {{time}}",
+    "suggested": "제안 {{divisor}}",
+    "none": "어택이 너무 적어 판단할 수 없어요",
+    "other": "없음",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "엔진이 들은 각 어택을, 그것이 놓인 박의 가장 단순한 분할로 셌어요(박의 1/48 이내, 최대 15 ms). 약한 어택은 덜 셉니다. 에디터의 비트 스냅 분할을 제안할 뿐, 타이밍을 측정하지는 않아요."
+  },
+  "daw": {
+    "title": "음악 소프트웨어 (템포 맵)",
+    "midi": "MIDI 템포 맵",
+    "midiNote": "한 박에 960틱인 타입 1 MIDI 파일이에요. red line마다 템포와 박자가 있고, 모든 변화가 제 시각에서 {{ms}} ms 안에 있어요.",
+    "leadIn": "1마디는 첫 red line의 강박에서 끝나는 도입 마디라서, 그 뒤의 마디가 곡과 맞아요.",
+    "reaperNote": "Reaper: 템포, red line마다 마커, 트랙 위의 곡이 든 프로젝트예요. {{file}}이(가) 있는 폴더에 저장하세요.",
+    "reaperNoAudio": "Reaper: 템포와 red line마다 마커가 든 프로젝트예요. 곡은 직접 트랙에 올리세요.",
+    "ableton": "Ableton Live는 텍스트에서 템포 맵을 읽지 못해서 여기엔 Live용 파일이 없어요. MIDI 파일을 쓰세요: 어레인지먼트로 끌어다 놓으면 Live가 템포와 박자 변화를 가져올 수 있어요(버전에 따라 물어보거나, 가져오기 옵션으로 켜져요)."
+  },
+  "calculator": {
+    "title": "타이밍 계산기",
+    "description": "BPM과 한 박의 ms, 틱, 두 red line 사이의 간격, 어긋남, 두 시점으로 구하는 BPM: 맵 타이밍에 필요한 계산을 브라우저에서 해요.",
+    "intro": "맵 타이밍에 필요한 계산을 입력하는 대로 해요. 이 페이지에서 아무것도 나가지 않아요.",
+    "keys": "키보드: Tab으로 필드를 옮기고, ↑와 ↓로 지금 필드를 1씩, Shift와 함께 10씩, Alt와 함께 0.1씩 바꿔요. 결과를 고르면 그 숫자가 복사돼요.",
+    "copy": "{{label}} 복사: {{value}}",
+    "copied": "복사됨",
+    "fromResult": "타이밍 계산기",
+    "bpmMs": {
+      "title": "BPM ↔ 한 박의 ms",
+      "bpm": "BPM",
+      "ms": "한 박의 ms",
+      "beat": "한 박",
+      "exactBpm": "BPM",
+      "bar": "4/4 한 마디",
+      "quarter": "1/4 틱 하나"
+    },
+    "ticks": {
+      "title": "ms ↔ 틱",
+      "bpm": "BPM",
+      "divisor": "비트 분할",
+      "span": "구간",
+      "count": "틱 수",
+      "tick": "틱 하나",
+      "ticks": "구간을 틱으로",
+      "nearest": "가장 가까운 정수 틱",
+      "off": "구간이 그보다 {{ms}} ms 더 길어요.",
+      "toMs": "틱 수를 ms로"
+    },
+    "lines": {
+      "title": "두 red line 사이",
+      "intro": "두 번째 선이 첫 번째 선의 그리드 어디에 떨어지는지.",
+      "from": "첫 번째 red line",
+      "bpm": "그 BPM",
+      "to": "두 번째 red line",
+      "meter": "한 마디의 박 수",
+      "span": "간격",
+      "beats": "간격 (박)",
+      "bars": "간격 (마디)",
+      "nearest": "첫 그리드에서 가장 가까운 박",
+      "off": "그 박에 대한 두 번째 선",
+      "offNote": "양수: 늦어요.",
+      "earliest": "첫 그리드의 가장 이른 오프셋"
+    },
+    "drift": {
+      "title": "어긋남",
+      "intro": "한 BPM의 그리드가 다른 BPM에서 몇 마디 동안 얼마나 어긋나는지, 그리고 받아들일 수 있는 어긋남 안에 드는 BPM.",
+      "right": "맞는 BPM",
+      "mapped": "맵의 BPM",
+      "bars": "마디 수",
+      "meter": "한 마디의 박 수",
+      "total": "마지막 마디까지의 어긋남",
+      "sign": "양수: 맵의 그리드가 늦어요.",
+      "perBar": "마디당 어긋남",
+      "allowed": "받아들일 어긋남",
+      "slower": "그 안에서 가장 느린 BPM",
+      "faster": "그 안에서 가장 빠른 BPM",
+      "precision": "필요한 BPM 정밀도"
+    },
+    "span": {
+      "title": "두 시점으로 구하는 BPM",
+      "intro": "곡의 두 순간과 그 사이의 박 수.",
+      "start": "첫 번째 시점",
+      "end": "두 번째 시점",
+      "beats": "사이의 박 수",
+      "bpm": "BPM",
+      "beat": "한 박"
+    }
+  },
+  "practice": {
+    "title": "연습",
+    "reps": "횟수",
+    "countIn": "한 마디 카운트인",
+    "start": "연습 시작",
+    "stop": "연습 중지",
+    "counting": "카운트인 중…",
+    "status": "{{reps}}번 중 {{rep}}번째 · {{rate}}×",
+    "noStretch": "여기에는 연습할 구간이 없어요. 루프를 그리거나(지도에서 Shift+드래그) 재생 위치를 레드 라인 구간 안으로 옮겨 주세요.",
+    "hint": "그린 루프나 재생 위치의 구간을 {{from}}×에서 {{to}}×까지 {{reps}}번, 매번 조금씩 빠르게 재생해요. 음높이는 속도에 따라 바뀌고, 클릭도 따라가요."
+  },
+  "tapMic": {
+    "footer": "마이크로 BPM",
+    "eyebrow": "도구",
+    "title": "마이크로 BPM",
+    "description": "브라우저가 몇 초 동안 듣고 신뢰도와 함께 BPM을 제안해요. 아무것도 업로드하지 않아요.",
+    "intro": "기기 가까이에서 곡을 틀고 듣기를 누른 뒤, 브라우저가 몇 초 동안 듣게 해 주세요. BPM을 제안하고 얼마나 확실한지 알려 줘요. 소리는 이 페이지를 떠나지 않아요. 여기서 읽고 버려요.",
+    "length": "듣는 시간",
+    "seconds": "{{n}}초",
+    "listen": "듣기",
+    "again": "다시 듣기",
+    "stop": "멈추고 읽기",
+    "permission": "마이크 권한은 듣기를 누를 때 요청해요. 그 전에는 요청하지 않아요.",
+    "asking": "마이크 권한을 기다리는 중…",
+    "listening": "듣는 중… {{percent}}%",
+    "listeningLabel": "듣는 중",
+    "level": "입력 레벨",
+    "quiet": "소리가 아주 작아요. 볼륨을 올리거나 더 가까이 가 주세요.",
+    "reading": "박을 읽는 중…",
+    "errors": {
+      "unsupported": "이 브라우저는 여기서 마이크로 녹음할 수 없어요.",
+      "denied": "마이크가 허용되지 않았어요. 브라우저의 사이트 설정에서 허용한 뒤 다시 시도해 주세요.",
+      "noMic": "마이크를 찾지 못했거나 다른 앱이 사용 중이에요.",
+      "failed": "듣는 동안 문제가 생겼어요. 다시 시도해 주세요."
+    },
+    "result": {
+      "short": "템포를 읽기에는 너무 짧아요. 몇 초 더 들려주세요.",
+      "silent": "아무것도 들리지 않았어요. 마이크에는 무음만 들어왔어요.",
+      "noPulse": "일정한 박이 들리지 않았어요. 비트가 분명한 곡을 더 크게, 더 가까이에서 틀면 잘 읽혀요. 잡음과 말소리에는 박이 없어요."
+    },
+    "confidence": "신뢰도 {{percent}}%",
+    "alternatives": "{{list}}일 수도 있어요. 마이크는 박을 들을 뿐, 곡이 어느 옥타브로 세어지는지는 듣지 못해요.",
+    "heard": "{{seconds}}초 분량의 소리로, 이 브라우저에서 읽었어요.",
+    "limitsTitle": "할 수 있는 것과 없는 것",
+    "limits": {
+      "private": "아무것도 업로드하거나 저장하지 않아요. 녹음은 이 페이지에만 있고 읽고 나면 사라져요.",
+      "precision": "몇 초로는 잘해야 1 BPM 정도의 정확도예요. 오래 들을수록 안정적이에요. 빠른 확인용이지 타이밍이 아니에요.",
+      "octave": "매퍼가 고를 템포의 절반이나 두 배로 읽을 수 있어요. 다른 옥타브도 함께 보여 줘요.",
+      "changes": "일정한 템포를 가정해요. 빨라지거나 느려지거나 박자가 바뀌는 곡은 평균으로 읽히거나 읽히지 않아요.",
+      "room": "울림, 잡음, 대화, 휴대폰 스피커의 얇은 저음은 듣는 어택을 흐리게 해요.",
+      "offset": "오프셋과 레드 라인은 주지 않아요. 그건 곡 파일을 엔진에 넣어야 해요."
+    },
+    "forTiming": "레드 라인과 오프셋까지 갖춘 타이밍은 파일 자체를 분석하세요."
+  },
+  "editor": {
+    "edit": "편집",
+    "toggleHint": "맵에서 red line 편집 (E)",
+    "title": "red line 편집 중",
+    "note": "red line을 끌면 어택이나 박자에 붙어요 (Alt를 누르면 자유롭게 움직여요). 두 번 클릭하면 하나를 추가해요. 엔진의 판독은 그대로 남아요. 이건 당신의 red line이니 귀로 확인하세요.",
+    "done": "완료",
+    "open": "편집",
+    "undo": "실행 취소",
+    "redo": "다시 실행",
+    "reset": "엔진의 판독으로 되돌리기",
+    "inForce_other": "편집한 timing 사용 중: red line {{count}}개",
+    "closedHint": "맵의 편집 버튼(또는 E)을 눌러 red line을 옮기고, 추가하고, 나누고, 지울 수 있어요.",
+    "lineOf": "red line {{n}} / {{total}}",
+    "time": "시간 (ms)",
+    "apply": "적용",
+    "meter": "마디당 박자 수",
+    "meterHint": "이 red line부터 다음까지 마디의 길이예요. 박자는 그대로예요",
+    "move": "이동",
+    "moveGroup": "선택한 red line 이동",
+    "nudgeBy": "{{ms}} ms 이동",
+    "linesGroup": "red line 추가 또는 삭제",
+    "addAtPlayhead": "재생 위치에 red line",
+    "delete": "삭제",
+    "section": "구간",
+    "sectionGroup": "구간 도구",
+    "split": "재생 위치에서 나누기",
+    "splitHint": "재생 위치에 가장 가까운 이 구간의 박자에 red line을 두고, 두 부분을 각자의 어택에 다시 맞춰요",
+    "merge": "다음과 합치기",
+    "mergeHint": "다음 red line을 지우고 이 red line부터 구간 전체를 다시 맞춰요",
+    "halfSection": "이 구간의 BPM을 절반으로",
+    "doubleSection": "이 구간의 BPM을 두 배로",
+    "keysHint": "← → 로 1 ms 이동 (Shift: 10 ms) · N 으로 재생 위치에 red line 추가 · Delete 로 삭제 · Ctrl+Z 로 실행 취소",
+    "selectHint": "맵이나 표에서, 또는 [ 와 ] 로 red line을 고르세요.",
+    "keptOwner": "이 timing을 위해 이 브라우저에 보관돼요. 아래에서 버전으로 저장하면 timing과 함께 남아요.",
+    "keptHere": "이 timing을 위해 이 브라우저에만 보관돼요.",
+    "history": "기록",
+    "editedLine": "내가 편집함",
+    "addedLine": "내가 추가함",
+    "nothingToUndo": "실행 취소할 것이 없어요.",
+    "nothingToRedo": "다시 실행할 것이 없어요.",
+    "undone": "실행 취소: {{step}}",
+    "redone": "다시 실행: {{step}}",
+    "wentTo": "돌아감: {{step}}",
+    "steps": {
+      "start": "엔진의 판독",
+      "restored": "지난번 편집",
+      "version": "저장한 버전 적용",
+      "reset": "엔진의 판독으로 되돌림",
+      "move": "red line {{n}}을 {{time}}로 이동",
+      "nudge": "red line {{n}}을 {{ms}} ms 이동",
+      "offset": "red line {{n}}을 {{ms}} ms로 설정",
+      "bpm": "red line {{n}}을 {{bpm}} BPM으로 설정",
+      "add": "red line {{n}}을 {{time}}에 추가",
+      "delete": "red line {{n}} 삭제",
+      "meter": "red line {{n}}: 마디당 {{meter}}박",
+      "split": "구간 {{n}}을 {{time}}에서 나눔",
+      "merge": "구간 {{n}}과 {{next}}을 합침",
+      "double": "구간 {{n}}을 {{bpm}} BPM으로 두 배",
+      "half": "구간 {{n}}을 {{bpm}} BPM으로 절반"
+    },
+    "refit": {
+      "fit": "어택 기준 {{bpm}} BPM (그리드 위 {{share}} %)",
+      "few": "{{bpm}} BPM 유지: 다시 맞추기엔 어택이 너무 적어요",
+      "weak": "{{bpm}} BPM 유지: 어택이 어떤 그리드에도 맞지 않아요 ({{share}} %)"
+    },
+    "report": {
+      "split": "{{time}} 이전: {{first}}. 이후: {{second}}.",
+      "merge": "구간 전체: {{first}}."
+    },
+    "errors": {
+      "noLine": "먼저 red line을 고르세요.",
+      "tooClose": "두 red line의 간격이 1 ms 미만이 돼요. osu!는 둘을 하나로 읽어요.",
+      "badTime": "그 시간은 숫자가 아니에요.",
+      "badBpm": "BPM은 0보다 큰 숫자여야 해요.",
+      "bpmRange": "BPM은 1에서 5000 사이여야 해요.",
+      "tooMany": "여기서 timing 하나의 red line은 최대 512개예요.",
+      "first": "첫 red line은 맵의 기준이라 지울 수 없어요.",
+      "badMeter": "한 마디는 1에서 16박이에요.",
+      "badFactor": "구간은 두 배나 절반으로만 바꿀 수 있어요.",
+      "rescaleRange": "구간이 30-600 BPM 범위를 벗어나요.",
+      "splitOutside": "재생 위치를 구간 안, 그 red line에서 한 박 이상 뒤이고 다음 red line보다 앞에 두세요.",
+      "noNext": "합칠 다음 구간이 없어요."
+    }
+  },
+  "lab": {
+    "title": "오프셋 실험실",
+    "sub": "파일이 스스로 밝히는 지연, 그리고 클릭이 어디서 박자에 맞게 들리는지 알아보는 블라인드 테스트.",
+    "headerNeedsAudio": "헤더를 읽으려면 위에서 곡을 고르세요.",
+    "header": "{{encoder}}: 지연 {{delay}} 샘플 ({{delayMs}} ms), 패딩 {{pad}} ({{padMs}} ms). 이걸 건너뛰는지는 브라우저마다 달라요.",
+    "noTag": "갭리스 태그 없음: 이 파일은 지연을 밝히지 않아요.",
+    "testTitle": "블라인드 테스트",
+    "testSub": "같은 부분을 두 번 (각 {{seconds}}초) 숨겨진 클릭 이동 두 가지로 듣고, 박자에 맞는 쪽을 고르세요. 각 이동은 이동 없음과 세 번씩 겨뤄요. 루프를 그렸다면 그 부분을, 아니면 첫 red line부터 재생해요.",
+    "blocked": {
+      "noAudio": "먼저 위에서 곡을 고르세요.",
+      "rate": "테스트를 위해 속도를 100 %로 맞추세요.",
+      "clicks": "테스트를 위해 클릭을 켜세요."
+    },
+    "start": "시작",
+    "hear": "{{n}} 듣기",
+    "vote": "{{n}}이 맞았어요",
+    "again": "다시 시작",
+    "cancel": "취소",
+    "trial": "{{n}}번 중 {{k}}번째",
+    "shift": "이동",
+    "wins": "승리",
+    "interval": "95 % 구간",
+    "best": "선호: {{shift}} ms (이동 없음보다 {{lo}}-{{hi}} % 선호).",
+    "none": "이동 없음을 이기는 것이 없어요: 클릭은 지금 자리에 있어요.",
+    "apply": "전체 오프셋을 {{ms}} ms로"
+  },
+  "votes": {
+    "title": "타이밍이 맞나요?",
+    "onCount": "맞음: {{count}}",
+    "offCount": "어긋남: {{count}}",
+    "on": "맞아요",
+    "off": "어긋나요",
+    "takeBack": "내 투표 취소",
+    "own": "내 타이밍이라 투표할 수 없어요.",
+    "signIn": "로그인하고 투표하기",
+    "yourCorrection": "제안한 값: {{bpm}} BPM, 오프셋 {{offset}} ms.",
+    "review": {
+      "pending": "스태프 확인 대기 중",
+      "accepted": "수락됨",
+      "dismissed": "기각됨"
+    },
+    "offHint": "선택: 맞다고 생각하는 BPM 또는 오프셋(첫 red line이 있어야 할 위치, ms). 수정 제안은 스태프가 확인해요.",
+    "bpm": "BPM",
+    "offset": "오프셋 (ms)",
+    "trainingOk": "Overtone이 분석을 테스트하고 개선하는 데 내 수정 제안을 데이터로 사용해도 돼요. 사이트 밖으로는 아무것도 공유되지 않아요.",
+    "sendOff": "보내기",
+    "privacy": "투표는 익명이에요: 페이지에는 개수만 표시돼요. 연결된 osu! 계정에 랭크된 맵이 있으면, \"맞음\" 투표에 확인한 매퍼로 내 이름이 표시돼요.",
+    "queued": "감사합니다. 수정 제안이 스태프 확인을 기다리고 있어요.",
+    "saved": "투표가 저장됐어요.",
+    "errors": {
+      "bad": "그 투표는 받아들여지지 않았어요. 숫자를 확인하세요.",
+      "bpm": "BPM은 20에서 1000 사이의 숫자예요.",
+      "offset": "오프셋은 정수 밀리초로, -10000부터 곡의 끝까지예요."
+    },
+    "verified": "매퍼가 확인함",
+    "verifiedHint": "연결된 osu! 계정에 랭크된 맵이 있는 사람이 이 타이밍이 맞다고 했어요.",
+    "verifiedBy": "확인:",
+    "ranked": "osu!의 {{name}}, 랭크된 맵: {{count}}",
+    "andMore": "{{count}}명 더"
+  },
+  "notifications": {
+    "title": "알림",
+    "subtitle": "자리를 비운 사이 내 제안, 게시한 타이밍, 분석에 일어난 일.",
+    "bell": "알림, 읽지 않음: {{count}}",
+    "allRead": "모두 읽음으로 표시",
+    "failed": "알림을 불러올 수 없었어요.",
+    "empty": "새 소식이 없어요.",
+    "seeAll": "모든 알림 보기",
+    "unreadMark": "(읽지 않음)",
+    "proposed": "제안: {{bpm}} BPM, 오프셋 {{offset}} ms",
+    "signIn": "알림을 보려면 로그인하세요.",
+    "filter": "표시할 알림",
+    "all": "전체",
+    "unreadOnly": "읽지 않음 ({{count}})",
+    "kept": "최근 200개가 보관돼요. 투표는 누가 투표했는지 절대 밝히지 않아요. 단, 내 타이밍을 확인한 매퍼는 예외예요.",
+    "text": {
+      "suggestion": "내 제안 \"{{title}}\"의 상태가 이제 {{to}}이에요.",
+      "comment": "@{{user}} 님이 \"{{title}}\"에 댓글을 달았어요.",
+      "use": "@{{user}} 님이 \"{{title}}\"의 내 타이밍을 사용했어요.",
+      "verified": "랭크된 맵이 있는 매퍼 @{{user}} 님이 \"{{title}}\"의 타이밍이 맞다고 확인했어요.",
+      "voteOn": "누군가 \"{{title}}\"의 타이밍이 맞다고 투표했어요.",
+      "voteOff": "누군가 \"{{title}}\"의 타이밍이 어긋났다고 투표했어요.",
+      "analysis": {
+        "done": "\"{{title}}\" 분석이 준비됐어요.",
+        "refused": "\"{{title}}\" 분석이 BPM 없이 끝났어요.",
+        "failed": "\"{{title}}\" 분석에 실패했어요."
+      },
+      "unknown": "무슨 일이 있었어요."
+    }
+  },
+  "staff": {
+    "nav": "스태프 패널",
+    "title": "스태프 패널",
+    "subtitle": "대기열과 워커, 최근 실패, 처리되지 않은 신고, 투표에서 온 수정 제안, 모더레이션 기록을 한곳에서.",
+    "refresh": "새로고침",
+    "failed": "스태프 패널을 불러올 수 없었어요.",
+    "readAt": "{{time}}에 읽음. 이 탭이 열려 있는 동안 30초마다 다시 읽어요.",
+    "open": "열기",
+    "awaiting": {
+      "title": "검토 대기 중",
+      "suggestions": "열린 제안",
+      "reports": "처리되지 않은 신고가 있는 항목",
+      "corrections": "대기 중인 수정 제안"
+    },
+    "queue": {
+      "title": "대기열과 워커",
+      "moderate": "대기열 페이지에서 제거하거나 다시 넣기",
+      "running": "분석 중",
+      "waiting": "대기 중",
+      "oldest": "가장 긴 대기"
+    },
+    "worker": {
+      "memory": "메모리: 현재 {{rss}}, 마지막 작업의 최고치 {{peak}}, 한도 {{limit}}",
+      "memoryAgo": "{{seconds}}초 전에 보고됨",
+      "noMemory": "워커가 메모리를 보고하지 않았어요 (Linux에서만 가능해요)."
+    },
+    "failures": {
+      "title": "실패, 최근 7일",
+      "none": "실패가 없어요.",
+      "codes": "too_heavy: 메모리 부족 · timeout: 시간 제한 초과 · stale: 워커가 응답을 멈춤 · removed: 모더레이터가 제거 · failed: 엔진 자체의 오류."
+    },
+    "corrections": {
+      "title": "투표에서 온 수정 제안",
+      "hint": "BPM이나 오프셋과 함께 타이밍이 어긋났다고 투표한 사람들. 결정하기 전에 들어 보세요. 결정은 기록돼요.",
+      "none": "여기엔 아무것도 없어요.",
+      "change": "현재 {{bpm}} BPM, 오프셋 {{offset}} ms → 제안 {{newBpm}} BPM, 오프셋 {{newOffset}} ms",
+      "trainingOk": "데이터로 사용 가능",
+      "trainingNo": "데이터용 아님",
+      "by": "@{{moderator}} 님이 결정",
+      "accept": "수락",
+      "dismiss": "기각",
+      "acceptPrompt": "이 수정 제안을 수락할까요? 기록에 남길 사유(선택):",
+      "dismissPrompt": "이 수정 제안을 기각할까요? 기록에 남길 사유(선택):"
+    },
+    "did": {
+      "accept": "@{{moderator}} 님이 수정 제안을 수락했어요",
+      "dismiss": "@{{moderator}} 님이 수정 제안을 기각했어요"
+    }
+  },
+  "limits": {
+    "title": "지금은 더 보낼 수 없어요",
+    "why": {
+      "anonymous_other": "계정 없이는 하루에 {{count}}곡까지 분석할 수 있어요.",
+      "account_other": "내 계정은 하루에 {{count}}곡까지 분석할 수 있어요.",
+      "cache_other": "저장된 결과는 하루에 {{count}}개까지 열 수 있어요.",
+      "pending_other": "대기열에는 한 번에 {{count}}곡까지 넣을 수 있어요."
+    },
+    "free": "이제 다시 보낼 수 있어요.",
+    "resetIn": "다시 보낼 수 있기까지",
+    "resetAt": "{{time}}에",
+    "resetWhen": "횟수는 00:00 UTC에 초기화돼요",
+    "whenFinished_other": "대기열에 있는 내 곡 {{count}}개 중 하나가 끝나면 또 보낼 수 있어요.",
+    "seeQueue": "대기열 보기",
+    "signIn": "로그인하면 하루 한도가 늘어나요"
   }
 }

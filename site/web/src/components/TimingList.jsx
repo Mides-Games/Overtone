@@ -28,7 +28,15 @@ function TimingRow({ timing }) {
     <Link to={timingPath(timing.id)} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
       <UploaderMark uploader={timing.uploader} />
       <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="truncate text-label font-semibold text-text">{timing.title ?? t('timings.untitled')}</p>
+        <p className="flex items-center gap-1.5 text-label font-semibold text-text">
+          <span className="truncate">{timing.title ?? t('timings.untitled')}</span>
+          {/* W13.16: a mapper with ranked maps said it is on time. */}
+          {timing.verified && (
+            <span className="chip-accent shrink-0 px-1.5 py-0 text-caption" title={t('votes.verifiedHint')}>
+              ✓ {t('votes.verified')}
+            </span>
+          )}
+        </p>
         <p className="truncate text-caption text-muted">{timing.artist ?? t('timings.unknownArtist')}</p>
         <p className="truncate text-caption text-dim">
           {uploaderName(t, timing)} · <time dateTime={timing.publishedAt}>{shortDate(timing.publishedAt, i18n.language)}</time>

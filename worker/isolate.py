@@ -9,12 +9,19 @@ worker only waits on it:
     - a wall-clock limit per job: ``max(WORKER_TIMEOUT_MIN_S, WORKER_TIMEOUT_FACTOR
       x the audio's length)``, 120 s and 3x by default. Past it the child is
       killed and the job fails with ``timeout``.
-    - on Linux, an address-space limit on the child (``RLIMIT_AS``) of
-      ``WORKER_MEMORY_MB``, 1800 by default (0 turns it off). An allocation past
-      it raises ``MemoryError`` in the child, which reports it and leaves; a
-      child the kernel kills instead (the container's OOM killer) is noticed
-      by its pipe closing. Either way the job fails with ``too_heavy``. Windows
-      has no rlimit: there the limit is skipped and said so.
+    - on Linux, a limit on the child's resident memory of ``WORKER_MEMORY_MB``,
+      1800 by default (0 turns it off). The worker reads the child's RSS from
+      /proc every half second and stops it past the limit; a child the kernel
+      kills first (the container's OOM killer) is noticed by its pipe closing.
+      Either way the job fails with ``too_heavy``. Windows has no /proc: there
+      the limit is skipped and said so.
+
+      Not an address-space limit (``RLIMIT_AS``), which this was until
+      2026-10-28: ONNX Runtime, numba and the thread pools reserve far more
+      address space than they ever touch, so a 1800 MB cap on it failed long
+      songs whose real use was well under that (a Softmax allocation inside
+      Beat This!), while the RSS of a 10-minute song with the vote peaks at
+      about 1.2 GB (docs/timeline.md, W2.4).
     - whatever happens to the child, the worker keeps serving: the next job
       starts a fresh child.
 
@@ -107,32 +114,34 @@ class WorkerBroken(Exception):
 # ── The child ───────────────────────────────────────────────────────────────
 
 
-def limit_memory(memory_mb: int) -> bool:
-    """Caps this process's address space at ``memory_mb``. False where there is
-    no rlimit (Windows) or the limit is off."""
-    if not memory_mb or memory_mb <= 0:
-        return False
-    try:
-        import resource
-    except ImportError:
-        return False
-    limit = int(memory_mb) * 1024 * 1024
-    _soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-    if hard != resource.RLIM_INFINITY:
-        limit = min(limit, hard)
-    resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
-    return True
+#: How often the worker reads the child's resident memory during a job.
+MEMORY_POLL_S = 0.5
 
 
-def address_space_mb() -> int | None:
-    """This process's peak address space (Linux), for the start-up log."""
+def _status_mb(pid, field: str) -> int | None:
+    """One ``kB`` field of /proc/<pid>/status, in MB; None without /proc."""
     try:
-        for line in Path("/proc/self/status").read_text().splitlines():
-            if line.startswith("VmPeak:"):
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith(field + ":"):
                 return int(line.split()[1]) // 1024
     except (OSError, ValueError, IndexError):
         pass
     return None
+
+
+def resident_mb(pid) -> int | None:
+    """A process's resident memory now (Linux), in MB."""
+    return _status_mb(pid, "VmRSS")
+
+
+def resident_peak_mb() -> int | None:
+    """This process's peak resident memory (Linux), for the start-up log."""
+    return _status_mb("self", "VmHWM")
+
+
+def can_watch_memory(memory_mb: int) -> bool:
+    """Whether the memory limit applies here: on, and /proc readable."""
+    return bool(memory_mb and memory_mb > 0 and resident_mb("self") is not None)
 
 
 def kind_of(exc: BaseException) -> str:
@@ -169,7 +178,8 @@ def _self_test(tr, vote: bool, hash_: str) -> None:
 
 
 def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | None, self_test: bool) -> None:
-    """The child's whole life: limit itself, warm up, then analyse on request.
+    """The child's whole life: warm up, then analyse on request. Its memory
+    is watched from outside (Runner), not limited from inside.
 
     Messages to the worker: ``("ready", vote, hash, limited, peak_mb, hashes)``
     (``hash`` is the normal mode's, ``hashes`` every mode's) or
@@ -181,7 +191,7 @@ def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | Non
     """
     # The panel's first ^C is for the worker: it lets the job in hand finish.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    limited = limit_memory(memory_mb)
+    limited = can_watch_memory(memory_mb)
     try:
         sys.path.insert(0, str(HERE))
         import timing_result as tr
@@ -196,7 +206,7 @@ def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | Non
     except BaseException as exc:  # noqa: BLE001 -- told to the worker, which decides
         conn.send(("broken", kind_of(exc), f"{type(exc).__name__}: {exc}"))
         return
-    conn.send(("ready", vote, hash_, limited, address_space_mb(), hashes))
+    conn.send(("ready", vote, hash_, limited, resident_peak_mb(), hashes))
 
     while True:
         try:
@@ -244,6 +254,7 @@ class Runner:
         self.hashes = {}
         self.limited = False
         self.peak_mb = None
+        self.job_peak_mb = None
         self.warmups = 0
         self._process = None
         self._conn = None
@@ -252,14 +263,25 @@ class Runner:
     def alive(self) -> bool:
         return self._process is not None and self._process.is_alive()
 
+    def memory_report(self) -> dict | None:
+        """What the API's staff panel shows of this worker's memory (W13.19):
+        the analysis process's resident MB now, the last job's peak and the
+        limit, in whole MB. None where /proc cannot be read (Windows), so the
+        panel says nothing rather than a guess."""
+        rss = resident_mb(self._process.pid) if self.alive() else None
+        if rss is None and self.job_peak_mb is None:
+            return None
+        limit = self.limits.memory_mb if self.limited and self.limits.memory_mb > 0 else None
+        return {"rss_mb": rss, "peak_mb": self.job_peak_mb, "limit_mb": limit}
+
     def start(self) -> None:
         """A ready child, starting one if there is none. Raises WorkerBroken."""
         if self.alive():
             return
         self._drop()
-        # glibc gives each thread its own 64 MB heap reservation; with the
-        # math libraries' pools that is most of an address-space limit before
-        # a byte is used. Two arenas cost nothing measurable here.
+        # glibc gives each thread its own 64 MB heap reservation, and freed
+        # arenas are slow to go back: two keep the resident size near what is
+        # in use. They cost nothing measurable here.
         os.environ.setdefault("MALLOC_ARENA_MAX", "2")
         ours, theirs = self._context.Pipe()
         self._process = self._context.Process(
@@ -273,8 +295,8 @@ class Runner:
         if message is None or message[0] != "ready":
             reason = message[2] if message and message[0] == "broken" else "it did not answer"
             if message and message[1] == "too_heavy":
-                reason += (f" (WORKER_MEMORY_MB={self.limits.memory_mb} leaves no room for the engine;"
-                           " raise it, or 0 turns the limit off)")
+                reason += (f" (the engine ran out of memory while warming up; WORKER_MEMORY_MB is"
+                           f" {self.limits.memory_mb}, and the container's own limit may be lower)")
             self._drop(kill=True)
             raise WorkerBroken(f"the analysis process could not start: {reason}")
         _, self.vote, self.hash, self.limited, self.peak_mb, *rest = message
@@ -292,13 +314,25 @@ class Runner:
         self._conn.send(("analyse", str(path), max_seconds, mode, options or {}))
         last = ("load", 0.0)
         beat = started + self.heartbeat_s
+        watch = self.limited and self.limits.memory_mb > 0
+        peak = 0
         while True:
             now = time.monotonic()
             deadline = started + limit
             if now >= deadline:
                 self._drop(kill=True)
                 raise JobFailed("timeout", f"The analysis ran past its {limit:.0f} s limit and was stopped.")
+            if watch:
+                used = resident_mb(self._process.pid)
+                if used is not None:
+                    peak = max(peak, used)
+                    if used > self.limits.memory_mb:
+                        self._drop(kill=True)
+                        raise JobFailed("too_heavy", f"The analysis used {used} MB of memory, past the worker's "
+                                                     f"{self.limits.memory_mb} MB limit, and was stopped.")
             wait = min(deadline, beat if progress else deadline) - now
+            if watch:
+                wait = min(wait, MEMORY_POLL_S)
             if not self._conn.poll(max(0.05, wait)):
                 if not self._process.is_alive():
                     raise self._died()
@@ -318,6 +352,7 @@ class Runner:
                 if progress:
                     progress(*last)
             elif message[0] == "result":
+                self.job_peak_mb = peak or None
                 return message[1]
             elif message[0] == "failed":
                 if message[1] == "too_heavy":

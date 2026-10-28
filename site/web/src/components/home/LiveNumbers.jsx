@@ -9,6 +9,9 @@ import { countLabel, loadStats } from '../../lib/home.js'
  * once after the first paint. Nothing is drawn until it answers, and nothing
  * at all when it does not (the route not deployed yet answers 404): the
  * numbers are colour, so their absence is not an error.
+ *
+ * Set as a meter's readouts, not as cards: a mono figure over its label,
+ * separated by hairlines. Each figure links to the page that explains it.
  */
 export default function LiveNumbers() {
   const { t, i18n } = useTranslation()
@@ -30,24 +33,22 @@ export default function LiveNumbers() {
   ].filter(Boolean)
 
   return (
-    <section aria-label={t('home.live.title')} className="rise flex flex-wrap items-stretch gap-px overflow-hidden rounded-panel border border-line bg-line">
-      {items.map((item) => (
-        <div key={item.key} className="min-w-[10rem] flex-1 bg-surface px-4 py-3">
-          <p className="label flex items-center gap-1.5">
-            {item.key === 'queue' && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />}
-            {t(`home.live.${item.key}`)}
-          </p>
-          <p className="readout text-title text-text">
-            {item.to ? (
-              <Link to={item.to} className="hover:text-accent">
+    <section aria-label={t('home.live.title')} className="fade-in">
+      <dl className="flex flex-wrap gap-x-10 gap-y-4">
+        {items.map((item, i) => (
+          <div key={item.key} className={`min-w-[9rem] space-y-1 ${i > 0 ? 'sm:border-l sm:border-line sm:pl-10' : ''}`}>
+            <dt className="label flex items-center gap-2">
+              {item.key === 'queue' && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />}
+              {t(`home.live.${item.key}`)}
+            </dt>
+            <dd className="readout text-heading font-medium text-text">
+              <Link to={item.to} className="transition-colors duration-150 hover:text-accent">
                 {countLabel(item.value, i18n.language)}
               </Link>
-            ) : (
-              countLabel(item.value, i18n.language)
-            )}
-          </p>
-        </div>
-      ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   )
 }

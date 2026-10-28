@@ -13,7 +13,7 @@ import { readable } from './analyses.routes.js';
  * anyone else as for an id that does not exist):
  *
  *   GET    /analyses/:id/versions          the readings of the same audio by the same owner, and the saved adjustments
- *   POST   /analyses/:id/versions          { factor, nudgeMs, label? }: save the adjustment being tried as a version
+ *   POST   /analyses/:id/versions          { factor, nudgeMs, lines?, label? }: save the adjustment (or edit, W7) being tried as a version
  *   DELETE /analyses/:id/versions/:vid     forget one
  *
  * The difference per red line between two versions is computed by the page
@@ -51,7 +51,11 @@ router.post('/analyses/:id/versions', changeLimit, requireSameOrigin, optionalSe
   if (row.status !== 'done') throw new HttpError(409, 'Only a finished timing has versions.', 'NO_TIMING');
   const adjustment = parseAdjustment(req.body);
   if (!adjustment) {
-    throw new HttpError(400, 'factor is 0.5, 1 or 2 and nudgeMs a whole number from -500 to 500; one of them must change something.', 'BAD_ADJUSTMENT');
+    throw new HttpError(
+      400,
+      'factor is 0.5, 1 or 2, nudgeMs a whole number from -500 to 500, lines (optional) up to 512 packed red lines; one of them must change something.',
+      'BAD_ADJUSTMENT',
+    );
   }
   const raw = req.body?.label;
   const label = raw === undefined || raw === null ? null : cleanText(raw, LABEL_MAX + 1);

@@ -10,11 +10,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "budget": "vite build && node scripts/budget.mjs",
     "test": "node --test \"test/*.test.js\"",
     "preview": "vite preview"
   },
   "license": "SEE LICENSE IN ../../LICENSE",
   "dependencies": {
+    "@fontsource-variable/archivo": "5.3.0",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "i18next": "^26.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

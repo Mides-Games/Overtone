@@ -2,13 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from 'react-i18next'
 
 import { pageKeyIgnored } from '../../lib/keys.js'
+import { snapTo } from '../../lib/editor.js'
+import { forgetProgress, readLayers, songSpectra, writeLayers } from '../../lib/song-spectra.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
-import { layout, paintMap, paintOverview, readPalette } from './draw.js'
+import { layout, MONO, paintMap, paintOverview, readPalette } from './draw.js'
+import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
 
 /** The closest zoom, seconds across the whole map. */
 const MIN_SPAN_S = 0.5
 /** A click this close to a red line (CSS px) picks the line instead of seeking. */
 const LINE_PICK_PX = 6
+/** A dragged red line (W7) snaps to an attack or a beat this close, CSS px; Alt leaves it free. */
+const LINE_SNAP_PX = 8
 const OVERVIEW_H = 34
 
 /**
@@ -16,9 +21,71 @@ const OVERVIEW_H = 34
  * + / -), pan (drag, the overview), seek (click) and loop (Shift-drag), with
  * the playhead following the song. Two canvases: the map, repainted when the
  * view or the data change, and an overlay for what moves every frame.
+ *
+ * `song` ({ id, buffer }, once the reader's file is decoded) feeds the two
+ * optional lanes, the bands (W13.6) and the spectrogram (W13.7): worked out
+ * in a worker (lib/song-spectra.js) the first time either is on, and kept for
+ * the session.
+ *
+ * Editing (W7, `editing`): a red line drags, snapped to the nearest attack or
+ * beat (Alt: free), and lands through `onMoveLine`; a double-click adds one
+ * through `onAddAt`; ← → are the editor's for the selected line
+ * (TimingEditor.jsx). E turns editing on and off (`onToggleEdit`).
  */
-export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, focus, children }) {
+export default function TempoMap({
+  data,
+  player,
+  snapshot,
+  selected,
+  hovered,
+  onSelect,
+  onHover,
+  clockRef,
+  focus,
+  song = null,
+  editing = false,
+  onToggleEdit = null,
+  onMoveLine = null,
+  onAddAt = null,
+  marks = null,
+  onMark = null,
+  children,
+}) {
   const { t } = useTranslation()
+  const [layers, setLayers] = useState(readLayers)
+  const [spectra, setSpectra] = useState(null)
+  // null, a fraction while the worker runs, or 'error'.
+  const [spectraState, setSpectraState] = useState(null)
+  const specCache = useRef({})
+  const wanted = layers.bands || layers.spectrogram
+  const songId = song?.id ?? null
+  const songBuffer = song?.buffer ?? null
+  useEffect(() => {
+    setSpectra(null)
+    if (!wanted || !songBuffer) return setSpectraState(null)
+    let live = true
+    const onProgress = (done) => live && setSpectraState(done)
+    setSpectraState(0)
+    songSpectra(songId, songBuffer, onProgress).then(
+      (result) => {
+        if (!live) return
+        setSpectra(result)
+        setSpectraState(null)
+      },
+      () => live && setSpectraState('error'),
+    )
+    return () => {
+      live = false
+      forgetProgress(songId, onProgress)
+    }
+  }, [wanted, songId, songBuffer])
+  const toggleLayer = (key) =>
+    setLayers((now) => {
+      const next = { ...now, [key]: !now[key] }
+      writeLayers(next)
+      return next
+    })
+  const bandLabels = useMemo(() => ({ low: t('tempo.bands.lowShort'), mid: t('tempo.bands.midShort'), high: t('tempo.bands.highShort') }), [t])
   const wrapRef = useRef(null)
   const mapRef = useRef(null)
   const overlayRef = useRef(null)
@@ -34,8 +101,12 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
   const [follow, setFollow] = useState(true)
   const [viewLabel, setViewLabel] = useState(null)
   const [tip, setTip] = useState(null)
+  // The view as state too, for what is drawn in HTML over it (W13.15's comment marks).
+  const [span, setSpan] = useState(null)
 
-  const L = useMemo(() => (width ? layout(width) : null), [width])
+  const showBands = layers.bands && Boolean(spectra)
+  const showSpec = layers.spectrogram && Boolean(spectra)
+  const L = useMemo(() => (width ? layout(width, { bands: showBands, spectrogram: showSpec }) : null), [width, showBands, showSpec])
   const duration = Math.max(data.durationS, MIN_SPAN_S)
 
   // The theme's class lands on <html> in the provider's own effect, after this
@@ -87,7 +158,14 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     const c = palette
     const top = L.tempoTop
     const foot = L.driftBottom
-    const band = drag.current?.kind === 'loop' && drag.current.to !== null ? span(drag.current.from, drag.current.to) : snapshot.loopOn ? (snapshot.range ?? (snapshot.playing ? player.loop : null)) : null
+    const band =
+      drag.current?.kind === 'loop' && drag.current.to !== null
+        ? span(drag.current.from, drag.current.to)
+        : snapshot.practice
+          ? snapshot.practice
+          : snapshot.loopOn
+            ? (snapshot.range ?? (snapshot.playing ? player.loop : null))
+            : null
     if (band) {
       const x = Math.max(X(band.a), L.x0)
       const w = Math.min(X(band.b), L.x1) - x
@@ -100,6 +178,27 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         ctx.fillRect(x + w - 1.5, top, 1.5, foot - top)
         ctx.globalAlpha = 1
       }
+    }
+    // A red line being dragged (W7): where it will land, and when.
+    if (drag.current?.kind === 'line' && drag.current.moved) {
+      const x = Math.round(X(drag.current.to)) + 0.5
+      ctx.strokeStyle = c.accent
+      ctx.lineWidth = 2
+      ctx.setLineDash([4, 3])
+      ctx.beginPath()
+      ctx.moveTo(x, top)
+      ctx.lineTo(x, foot)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.font = MONO
+      const text = formatClock(drag.current.to * 1000) + (drag.current.snapped ? ' ◆' : '')
+      const w = ctx.measureText(text).width + 10
+      const left = Math.min(Math.max(x + 4, L.x0), L.x1 - w)
+      ctx.fillStyle = c.accent
+      ctx.fillRect(left, top + 2, w, 16)
+      ctx.fillStyle = c.bg
+      ctx.textBaseline = 'middle'
+      ctx.fillText(text, left + 5, top + 10)
     }
     if (hoverX.current !== null && !drag.current) {
       ctx.strokeStyle = c.muted
@@ -161,12 +260,14 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
   const paint = useCallback(() => {
     if (!L || !mapRef.current) return
     const ctx = sizeCanvas(mapRef.current, L.width, L.height)
-    geometry.current = paintMap(ctx, L, view.current, { ...data, selected, hovered }, palette)
+    const lanes = { spectra, specCache: specCache.current, bandLabels }
+    geometry.current = paintMap(ctx, L, view.current, { ...data, ...lanes, selected, hovered, editing }, palette)
     const { a, b } = view.current
     const zoomed = b - a < duration - 1e-6
     setViewLabel((old) => (!zoomed ? null : old && old.a === a && old.b === b ? old : { a, b }))
+    if (marks?.length) setSpan((old) => (old && old.a === a && old.b === b ? old : { a, b }))
     paintOverlay()
-  }, [L, data, selected, hovered, palette, paintOverlay, duration])
+  }, [L, data, selected, hovered, editing, palette, paintOverlay, duration, spectra, bandLabels, marks])
 
   // The overview's base, once per data and size.
   useEffect(() => {
@@ -264,6 +365,18 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     return near.reduce((best, j) => (Math.abs(grid[j] - s) < Math.abs(best - s) ? grid[j] : best), grid[near[0]])
   }
 
+  /** Where a dragged or added red line lands: the nearest attack or beat within LINE_SNAP_PX, the attack on a tie; Alt leaves it free. */
+  const lineSnap = (s, free) => {
+    if (free) return { s, snapped: false }
+    const { a, b } = view.current
+    const tol = (LINE_SNAP_PX / (L.x1 - L.x0)) * (b - a)
+    const attack = snapTo(data.onsets?.t_ms ?? [], s * 1000, tol * 1000) / 1000
+    const beat = snapTo(data.grid.t, s, tol)
+    const picks = [attack, beat].filter((x) => x !== s)
+    if (!picks.length) return { s, snapped: false }
+    return { s: picks.reduce((best, x) => (Math.abs(x - s) < Math.abs(best - s) ? x : best)), snapped: true }
+  }
+
   const zoomBy = useCallback(
     (factor, at) => {
       const { a, b } = view.current
@@ -311,9 +424,12 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       drag.current = { kind: 'pinch', distance: Math.abs(p - q) || 1, at: secondsAt((p + q) / 2), view: { ...view.current } }
       return
     }
+    const near = editing && !event.shiftKey && onMoveLine ? lineAt(x) : -1
     drag.current = event.shiftKey
       ? { kind: 'loop', x0: x, from: beatAt(secondsAt(x), event.altKey), to: null, moved: false }
-      : { kind: 'pan', x0: x, a: view.current.a, b: view.current.b, moved: false }
+      : near >= 0
+        ? { kind: 'line', i: near, x0: x, to: data.lines[near].timeMs / 1000, snapped: false, moved: false }
+        : { kind: 'pan', x0: x, a: view.current.a, b: view.current.b, moved: false }
   }
 
   function onPointerMove(event) {
@@ -339,6 +455,11 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         paint()
       } else if (current.kind === 'loop') {
         current.to = beatAt(secondsAt(x), event.altKey)
+        paintOverlay()
+      } else if (current.kind === 'line') {
+        const landing = lineSnap(Math.min(Math.max(secondsAt(x), 0), duration), event.altKey)
+        current.to = landing.s
+        current.snapped = landing.snapped
         paintOverlay()
       }
       return
@@ -387,10 +508,23 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       paintOverlay()
       return
     }
+    if (current.kind === 'line') {
+      if (current.moved) onMoveLine(current.i, Math.round(current.to * 1e6) / 1000)
+      else onSelect(current.i)
+      paintOverlay()
+      return
+    }
     if (current.moved) return
     const near = lineAt(x)
     if (near >= 0) onSelect(near)
     else if (snapshot.ready && x >= L.x0 && x <= L.x1) player.seek(secondsAt(x))
+  }
+
+  function onDoubleClick(event) {
+    if (!editing || !onAddAt || !L) return
+    const { x } = localX(event)
+    if (x < L.x0 || x > L.x1 || lineAt(x) >= 0) return
+    onAddAt(Math.round(lineSnap(secondsAt(x), event.altKey).s * 1e6) / 1000)
   }
 
   function onPointerLeave() {
@@ -417,8 +551,10 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       }
       const handled = {
         ' ': () => snapshot.ready && player.toggle(),
-        ArrowRight: () => snapshot.ready && step(1, event.shiftKey),
-        ArrowLeft: () => snapshot.ready && step(-1, event.shiftKey),
+        // Editing with a line selected, the arrows move that line (TimingEditor.jsx), not the playhead.
+        ArrowRight: editing && selected !== null && selected !== undefined ? null : () => snapshot.ready && step(1, event.shiftKey),
+        ArrowLeft: editing && selected !== null && selected !== undefined ? null : () => snapshot.ready && step(-1, event.shiftKey),
+        e: onToggleEdit ? () => onToggleEdit() : null,
         '+': () => zoomBy(0.6),
         '=': () => zoomBy(0.6),
         '-': () => zoomBy(1 / 0.6),
@@ -437,7 +573,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [data, player, snapshot, selected, zoomBy, fit, onSelect])
+  }, [data, player, snapshot, selected, zoomBy, fit, onSelect, editing, onToggleEdit])
 
   function onOverview(event) {
     if (!L) return
@@ -473,8 +609,29 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
           <button type="button" className="tool-btn px-2.5" aria-pressed={follow} onClick={() => setFollow((on) => !on)} title={t('tempo.followHint')}>
             {t('tempo.follow')}
           </button>
+          <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
+          <button type="button" className="tool-btn px-2.5" aria-pressed={layers.bands} onClick={() => toggleLayer('bands')} title={t('tempo.bands.hint')}>
+            {t('tempo.bands.toggle')}
+          </button>
+          <button type="button" className="tool-btn px-2.5" aria-pressed={layers.spectrogram} onClick={() => toggleLayer('spectrogram')} title={t('tempo.spectrogram.hint')}>
+            {t('tempo.spectrogram.toggle')}
+          </button>
+          {onToggleEdit && (
+            <button type="button" className="tool-btn px-2.5" aria-pressed={editing} onClick={() => onToggleEdit()} aria-keyshortcuts="E" title={t('editor.toggleHint')}>
+              ✎ {t('editor.edit')}
+            </button>
+          )}
         </div>
       </div>
+      {wanted && (spectraState !== null || !songBuffer) && (
+        <p className="border-b border-line px-3 py-1.5 text-caption text-dim" role="status">
+          {!songBuffer
+            ? t('tempo.layers.needSong')
+            : spectraState === 'error'
+              ? t('tempo.layers.failed')
+              : t('tempo.layers.working', { percent: Math.round(spectraState * 100) })}
+        </p>
+      )}
 
       <div ref={wrapRef} className="relative select-none" style={{ height: L ? L.height : 300 }}>
         <canvas ref={mapRef} className="absolute inset-0 h-full w-full" aria-hidden="true" />
@@ -484,11 +641,13 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
           style={{ touchAction: 'pan-y' }}
           role="img"
           aria-label={t('tempo.canvasLabel', { count: data.lines.length })}
+          aria-describedby={RED_LINES_TABLE_ID}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onPointerLeave={onPointerLeave}
+          onDoubleClick={onDoubleClick}
         />
         {tip && L && (
           <div
@@ -505,6 +664,8 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         )}
       </div>
 
+      {marks?.length > 0 && L && span && <CommentMarks marks={marks} L={L} span={span} onMark={onMark} />}
+
       <canvas
         ref={overviewRef}
         className="block w-full cursor-pointer border-t border-line"
@@ -515,8 +676,87 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       />
 
       {children}
-      <Legend hints={data.hints} swing={data.swing} subdivision={data.subdivision ?? 1} other={data.other?.length ? data.otherLabel ?? t('compare.other') : null} />
+      <Legend
+        hints={data.hints}
+        swing={data.swing}
+        subdivision={data.subdivision ?? 1}
+        other={data.other?.length ? data.otherLabel ?? t('compare.other') : null}
+        bands={showBands}
+        spectrogram={showSpec}
+        spectraSeconds={spectra?.totalMs ? spectra.totalMs / 1000 : null}
+      />
     </section>
+  )
+}
+
+/**
+ * W13.15: a published timing's timed comments as marks on a lane under the
+ * map, where they are in the song at the map's zoom. Hovering or focusing a
+ * mark shows who said what; clicking it moves the player there (`onMark`).
+ * Marks closer than a few pixels share one button, so a busy chorus stays
+ * one target a finger can hit, and its note lists the comments it holds.
+ */
+const MARK_MERGE_PX = 14
+const MARK_TIP_W = 224
+
+function CommentMarks({ marks, L, span, onMark }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(null)
+  const X = (ms) => L.x0 + ((ms / 1000 - span.a) / (span.b - span.a)) * (L.x1 - L.x0)
+  const groups = []
+  for (const mark of [...marks].sort((p, q) => p.atMs - q.atMs)) {
+    const x = X(mark.atMs)
+    if (x < L.x0 - 1 || x > L.x1 + 1) continue
+    const last = groups.at(-1)
+    if (last && x - last.x < MARK_MERGE_PX) last.marks.push(mark)
+    else groups.push({ key: mark.id, x, marks: [mark] })
+  }
+  const shown = groups.find((g) => g.key === open) ?? null
+  const hide = (key) => setOpen((current) => (current === key ? null : current))
+  return (
+    <div className="relative h-8 border-t border-line">
+      <ul className="contents" aria-label={t('social.comments.marks', { count: marks.length })}>
+        {groups.map((g) => (
+          <li key={g.key} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: g.x }}>
+            <button
+              type="button"
+              className="flex h-6 min-w-6 items-center justify-center rounded-full border border-accent bg-accent/15 px-1 text-[11px] leading-none text-accent transition hover:bg-accent/35 focus-visible:bg-accent/35"
+              aria-label={t('social.comments.markLabel', { at: formatClock(g.marks[0].atMs), count: g.marks.length })}
+              aria-describedby={open === g.key ? 'comment-mark-tip' : undefined}
+              onMouseEnter={() => setOpen(g.key)}
+              onMouseLeave={() => hide(g.key)}
+              onFocus={() => setOpen(g.key)}
+              onBlur={() => hide(g.key)}
+              onClick={() => onMark?.(g.marks[0])}
+            >
+              {g.marks.length > 1 ? g.marks.length : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z" />
+                </svg>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {shown && (
+        <div
+          id="comment-mark-tip"
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full z-10 mb-1 space-y-1 rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-caption shadow-lg"
+          style={{ width: Math.min(MARK_TIP_W, L.width - 8), left: Math.max(4, Math.min(shown.x - MARK_TIP_W / 2, L.width - MARK_TIP_W - 4)) }}
+        >
+          {shown.marks.slice(0, 4).map((m) => (
+            <p key={m.id} className="break-words">
+              <span className="readout text-accent">{formatClock(m.atMs)}</span>{' '}
+              <span className="font-semibold">{m.author ? `@${m.author}` : t('social.uses.goneAccount')}</span>{' '}
+              <span className="text-muted">{m.text}</span>
+            </p>
+          ))}
+          {shown.marks.length > 4 && <p className="text-dim">{t('social.comments.moreMarks', { count: shown.marks.length - 4 })}</p>}
+          <p className="text-dim">{t('social.comments.markHint')}</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -531,16 +771,18 @@ function Row({ k, v }) {
 
 const span = (from, to) => (to === null || from === to ? null : { a: Math.min(from, to), b: Math.max(from, to) })
 
-function Legend({ hints, swing, subdivision, other = null }) {
+function Legend({ hints, swing, subdivision, other = null, bands = false, spectrogram = false, spectraSeconds = null }) {
   const { t } = useTranslation()
   const items = [
     ['var(--red)', t('tempo.legend.lines')],
-    ['var(--lavender)', t('tempo.legend.tempo')],
+    ['var(--tempo)', t('tempo.legend.tempo')],
     ['var(--accent)', t('tempo.legend.onsets')],
     ['var(--line-strong)', t('tempo.legend.grid')],
     ...(subdivision > 1 ? [['var(--line)', t('listening.legendSubs', { n: subdivision })]] : []),
     ['var(--amber)', t('tempo.legend.drift')],
     ...(other ? [['var(--compare)', other]] : []),
+    ...(spectrogram ? [['var(--muted)', t('tempo.spectrogram.legend')]] : []),
+    ...(bands ? [['var(--text)', t('tempo.bands.legend')]] : []),
   ]
   return (
     <div className="space-y-1 border-t border-line px-3 py-2">
@@ -550,7 +792,7 @@ function Legend({ hints, swing, subdivision, other = null }) {
         </p>
       ))}
       {swing.map((s) => (
-        <p key={`s${s.start_ms}`} className="text-caption text-lavender">
+        <p key={`s${s.start_ms}`} className="text-caption text-tempo">
           {t('tempo.swing', { from: formatClock(s.start_ms), to: formatClock(s.end_ms), snap: s.snap ?? '–', late: s.late_ms ?? '–' })}
         </p>
       ))}
@@ -562,6 +804,11 @@ function Legend({ hints, swing, subdivision, other = null }) {
           </li>
         ))}
       </ul>
+      {(bands || spectrogram) && (
+        <p className="text-caption text-dim">
+          {bands && t('tempo.bands.note')} {spectraSeconds !== null && t('tempo.layers.done', { seconds: spectraSeconds.toFixed(1) })}
+        </p>
+      )}
       <p className="hidden text-caption text-dim sm:block">{t('tempo.howTo')}</p>
       <p className="text-caption text-dim sm:hidden">{t('tempo.howToTouch')}</p>
     </div>

@@ -7,10 +7,11 @@ import { env } from '../config/env.js';
 import { bearerGuard } from '../middlewares/shared-secret.js';
 import { analyses, setEngineHash } from '../services/analysis.service.js';
 import { enqueueDm } from '../services/links.service.js';
+import { analysisKey, notify } from '../services/notification.service.js';
 import { audioPath, discard } from '../services/spool.service.js';
 import { DEFAULT_MODE, MODES, parseOptions } from '../utils/analysis-options.js';
 import { HttpError } from '../utils/http-error.js';
-import { workerSeen } from '../utils/worker-status.js';
+import { reportMemory, workerSeen } from '../utils/worker-status.js';
 
 /**
  * The worker's side of the queue, under /api/internal (worker/main.py).
@@ -93,6 +94,8 @@ router.post('/jobs/claim', async (req, res) => {
     }
   }
   setEngineHash(hash, hashes);
+  // W13.19: optional, for the staff panel; a malformed one is dropped, not refused.
+  reportMemory(req.body.memory);
   await sweepStaleJobs();
   const job = await analyses().claim();
   if (!job) return res.status(204).end();
@@ -223,7 +226,16 @@ export const askedOf = (result) => {
 const noticeEnd = async (id) => {
   try {
     const row = await analyses().get(id, { position: false });
-    if (row?.accountId) await enqueueDm({ publicId: id, accountId: row.accountId });
+    if (!row?.accountId) return;
+    // W13.17: the bell, marked read as soon as its owner reads the ended
+    // analysis (routes/analyses.routes.js), so a song the tray already showed
+    // ending is not news twice.
+    await notify(row.accountId, 'analysis', analysisKey(id), {
+      analysis: id,
+      name: row.tagTitle ?? row.filename ?? null,
+      status: row.status,
+    });
+    await enqueueDm({ publicId: id, accountId: row.accountId });
   } catch (error) {
     console.warn(`[bot] the DM notice of ${id} was not queued: ${error.message}`);
   }

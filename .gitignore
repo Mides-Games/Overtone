@@ -45,3 +45,6 @@ bench/.cache/
 # The Discord bot (bot/): the same rule, its token included.
 /bot/node_modules/
 /bot/.env
+# The end-to-end run's traces and reports (site/e2e).
+/site/e2e/test-results/
+/site/e2e/playwright-report/

@@ -174,7 +174,7 @@ function Appearance() {
           {[
             ['bg-red', 'red'],
             ['bg-amber', 'amber'],
-            ['bg-lavender', 'lavender'],
+            ['bg-tempo', 'lavender'],
             ['bg-accent', 'accent'],
           ].map(([swatch, name]) => (
             <li key={name} className="flex items-center gap-2 rounded-control border border-line px-2.5 py-2 text-caption text-muted">

@@ -27,10 +27,11 @@ function Row({ name, state, note }) {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-2 bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-0.5">
-        <dt className="font-display text-label font-semibold uppercase">{t(`status.${name}`)}</dt>
-        <p className="text-caption text-dim">{note}</p>
-      </div>
+      {/* The term holds the name and its note: a <dl>'s row is dt + dd, nothing nested between. */}
+      <dt className="space-y-0.5">
+        <span className="block font-display text-label font-semibold uppercase">{t(`status.${name}`)}</span>
+        <span className="block text-caption text-dim">{note}</span>
+      </dt>
       <dd className={`chip shrink-0 self-start sm:self-auto ${TONE[state]}`}>
         <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
         {t(`status.states.${state}`)}

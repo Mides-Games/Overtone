@@ -7,9 +7,16 @@ import Term from '../Term.jsx'
 
 export const LEVELS = {
   high: { tone: 'var(--accent)', key: 'strip.high' },
-  medium: { tone: 'var(--lavender)', key: 'strip.medium' },
+  medium: { tone: 'var(--tempo)', key: 'strip.medium' },
   check: { tone: 'var(--amber)', key: 'strip.check' },
 }
+
+/**
+ * The table's id. It is the tempo map's text alternative (W10.2): the map's
+ * canvas names it in aria-describedby, so a screen reader that meets the
+ * picture is pointed at the same red lines as rows. One result per page.
+ */
+export const RED_LINES_TABLE_ID = 'red-lines-table'
 
 const ms1 = (value) => (value === null || value === undefined ? '–' : value.toFixed(1))
 
@@ -55,7 +62,7 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="label">
+        <h2 id={`${RED_LINES_TABLE_ID}-title`} className="label">
           <Term id="redLine">{t('result.redLines')}</Term>
         </h2>
         {copyRows && (
@@ -79,7 +86,7 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
         )}
       </div>
       <div ref={box} className="relative max-h-[28rem] overflow-auto rounded-panel border border-line">
-        <table className="w-full min-w-[46rem] text-left text-label">
+        <table id={RED_LINES_TABLE_ID} aria-labelledby={`${RED_LINES_TABLE_ID}-title`} className="w-full min-w-[46rem] text-left text-label">
           <thead className="sticky top-0 z-[1] bg-surface-2">
             <tr className="label">
               {copyRows && (
@@ -127,7 +134,8 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
               const lit = i === selected ? 'bg-accent/10' : i === hovered ? 'bg-surface-2' : ''
               return (
                 <tr
-                  key={line.index}
+                  // An edited timing (W7) may add lines (index -1) and reorder them: the position is the key then.
+                  key={line.edited === undefined ? line.index : `e${i}`}
                   ref={(el) => {
                     rows.current[i] = el
                   }}
@@ -154,6 +162,11 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
                   )}
                   <td className="px-3 py-2 text-dim">
                     <span className="inline-block h-3 w-0.5 bg-red align-middle" aria-hidden="true" /> {i + 1}
+                    {line.edited && (
+                      <span className="ml-1.5 rounded-sm bg-amber/15 px-1 text-caption text-amber" title={t(line.added ? 'editor.addedLine' : 'editor.editedLine')}>
+                        ✎<span className="sr-only"> {t(line.added ? 'editor.addedLine' : 'editor.editedLine')}</span>
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {formatClock(line.timeMs)}

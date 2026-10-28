@@ -6,10 +6,10 @@ import { formatClock } from '../../lib/timing.js'
 /** Each reason's tone, as the map and the table draw the same thing. */
 const TONES = {
   check: 'border-amber/40 bg-amber/10 text-amber',
-  medium: 'border-lavender/40 bg-lavender/10 text-lavender',
+  medium: 'border-tempo/40 bg-tempo/10 text-tempo',
   drift: 'border-amber/40 bg-amber/10 text-amber',
   hint: 'border-amber/40 bg-amber/10 text-amber',
-  swing: 'border-lavender/40 bg-lavender/10 text-lavender',
+  swing: 'border-tempo/40 bg-tempo/10 text-tempo',
 }
 
 /**

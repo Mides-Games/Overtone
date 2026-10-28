@@ -7,7 +7,8 @@ import { env } from '../config/env.js';
 import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { isStaff } from '../services/account.service.js';
-import { analyses, engineHash, newPublicId, REMOVED } from '../services/analysis.service.js';
+import { analyses, engineHash, limitRefusal, newPublicId, REMOVED } from '../services/analysis.service.js';
+import { analysisKey, seen } from '../services/notification.service.js';
 import { ANON_COOKIE, anonCookieHeader, cookiesOf } from '../services/session.service.js';
 import { versions } from '../services/version.service.js';
 import { audioPath, commit, discard, discardPart, receive, reserve } from '../services/spool.service.js';
@@ -221,15 +222,7 @@ export const acceptUpload = async (req, res, { ipHash, anonHash }) => {
   const quota = accountId ? env.userDailyLimit : env.anonDailyLimit;
   const used = await analyses().countToday({ accountId, ipHash });
   if (used >= quota) {
-    const error = new HttpError(
-      429,
-      accountId
-        ? `You have used today's ${quota} analyses. The count resets at 00:00 UTC.`
-        : `Without an account you can analyse ${quota} songs a day. Sign in for more, or come back after 00:00 UTC.`,
-      'QUOTA_EXCEEDED',
-      { limit: quota, scope: accountId ? 'account' : 'anonymous' },
-    );
-    refuseEarly(res, error);
+    refuseEarly(res, limitRefusal('QUOTA_EXCEEDED', { limit: quota, scope: accountId ? 'account' : 'anonymous' }));
   }
 
   // W3.9: a batch is many uploads, each one checked here, so a person's songs
@@ -242,12 +235,7 @@ export const acceptUpload = async (req, res, { ipHash, anonHash }) => {
   if (pending.mine + (arriving.get(owner) ?? 0) >= maxPending) {
     refuseEarly(
       res,
-      new HttpError(
-        429,
-        `You already have ${maxPending} songs in the queue. Send more when one finishes.`,
-        'PENDING_LIMIT',
-        { limit: maxPending, scope: accountId ? 'account' : 'anonymous' },
-      ),
+      limitRefusal('PENDING_LIMIT', { limit: maxPending, scope: accountId ? 'account' : 'anonymous', pending: pending.mine }),
     );
   }
   if (pending.all + arrivingTotal >= env.queueMax) {
@@ -545,6 +533,8 @@ router.get('/analyses/:id', optionalSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   // Polled every second or so while it waits: the links are read once it has ended.
   const finished = !['queued', 'running'].includes(row.status);
+  // W13.17: its owner has now seen how it ended; the bell need not say it.
+  if (finished && req.account && row.accountId === req.account.id) await seen(req.account.id, analysisKey(row.publicId));
   res.json({ ...publicView(row), related: finished ? await relatedOf(req, row) : [] });
 });
 

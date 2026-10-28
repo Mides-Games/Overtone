@@ -6,6 +6,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { analyses } from '../services/analysis.service.js';
 import { social } from '../services/social.service.js';
+import { votes } from '../services/vote.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { MIN_RATINGS_TO_RANK } from '../utils/social.js';
 import { historyEntry, listFilters, publicTiming, recentEntry } from '../utils/timings.js';
@@ -109,13 +110,19 @@ const NO_STATS = Object.freeze({ rating: { average: null, count: 0 }, uses: 0 })
  * both this.
  */
 export const listPage = async (filters) => {
+  // W13.16: whether a mapper confirmed each row, one query for the page.
+  const verifiedOf = async (rows) => votes().verifiedMany(rows.map((row) => row.publicId));
   if (filters.sort !== 'new') {
     const { rows, next } = await social().listRanked(filters);
-    return { timings: rows.map((row) => ({ ...recentEntry(row), ...row.stats })), next };
+    const verified = await verifiedOf(rows);
+    return { timings: rows.map((row) => ({ ...recentEntry(row), ...row.stats, verified: verified.has(row.publicId) })), next };
   }
   const { rows, next } = await analyses().listPublished(filters);
-  const stats = await social().statsFor(rows.map((row) => row.publicId));
-  return { timings: rows.map((row) => ({ ...recentEntry(row), ...(stats.get(row.publicId) ?? NO_STATS) })), next };
+  const [stats, verified] = await Promise.all([social().statsFor(rows.map((row) => row.publicId)), verifiedOf(rows)]);
+  return {
+    timings: rows.map((row) => ({ ...recentEntry(row), ...(stats.get(row.publicId) ?? NO_STATS), verified: verified.has(row.publicId) })),
+    next,
+  };
 };
 
 router.get('/timings', readRateLimit, async (req, res) => {

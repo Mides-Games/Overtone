@@ -26,9 +26,12 @@
  * - **Each new red line** takes the hitsound state that was in effect at its
  *   time (the last old point at or before it, else the first one), and kiai
  *   from it; never "omit first barline", which belonged to the old bar.
- * - **Hit objects** are not touched: moving them is out of scope. They may no
- *   longer sit on the new grid, and the page says so.
+ * - **Hit objects** are not touched unless the reader asks (W13.2): then each
+ *   one's time moves to the nearest tick of the new grid at the divisor they
+ *   chose (`snapHitObjects`), and only those numbers change in its row. Left
+ *   alone, they may no longer sit on the new grid, and the page says so.
  */
+import { snapTime, SNAP_DIVISORS } from './mapping.js'
 import { roundHalfEven } from './timing.js'
 
 /** Bytes to a string of one char per byte, and back: lossless, unlike any TextDecoder. */
@@ -114,9 +117,11 @@ function sectionEnd(text, from) {
  * page's red lines, `adjustLines`' shape). Returns `{ text, report }`, or
  * `{ error }`: 'notOsu' when the first line is not an osu! header,
  * 'noTimingPoints' when the file has no `[TimingPoints]`, 'noLines' when there
- * is nothing to put in.
+ * is nothing to put in. `snap`, a divisor from lib/mapping.js `SNAP_DIVISORS`,
+ * also moves the hit objects onto the new grid (W13.2); the report then has a
+ * `snap` with what moved.
  */
-export function patchOsu(text, lines) {
+export function patchOsu(text, lines, { snap = null } = {}) {
   const body = text.replace(/^\xef\xbb\xbf/, '')
   if (!/^\s*osu file format v\d+/.test(body)) return { error: 'notOsu' }
   const usable = lines.filter((line) => line.beatMs > 0 && Number.isFinite(line.timeMs))
@@ -191,17 +196,102 @@ export function patchOsu(text, lines) {
   const last = rows.length ? rows[rows.length - 1].eol : eol
   const section = all.map((row, i) => row.raw + (i + 1 < all.length ? row.eol || eol : last)).join('')
   const firstRed = added[0].time
-  return {
-    text: text.slice(0, start) + section + text.slice(end),
-    report: {
-      redRemoved: reds.length,
-      redAdded: added.length,
-      greensKept: greens.length,
-      greensBefore: greens.filter((g) => g.time < firstRed).length,
-      carried: carried.length,
-      hitObjects: countHitObjects(text),
-    },
+  const report = {
+    redRemoved: reds.length,
+    redAdded: added.length,
+    greensKept: greens.length,
+    greensBefore: greens.filter((g) => g.time < firstRed).length,
+    carried: carried.length,
+    hitObjects: countHitObjects(text),
   }
+  let patched = text.slice(0, start) + section + text.slice(end)
+  if (SNAP_DIVISORS.includes(snap)) {
+    const snapped = snapHitObjects(patched, added, snap)
+    patched = snapped.text
+    report.snap = snapped.report
+  }
+  return { text: patched, report }
+}
+
+// osu!'s object types: a spinner and a mania hold note carry an end time of their own.
+const SPINNER = 8
+const HOLD = 128
+
+/** The median of a non-empty list of numbers. */
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length >> 1
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/**
+ * Every hit object of `text` moved to the nearest 1/`divisor` tick of
+ * `points` (red lines, `{ time, beatLength }`), W13.2. Only the numbers that
+ * move are rewritten: an object's time, a spinner's or a hold note's end time;
+ * every other byte of the row and of the file stays as it was. A spinner's or
+ * hold's end goes to its own nearest tick, kept after its start. A slider's end
+ * is not written in the file: osu! works it out from its length, the slider
+ * velocity and the beat, so on the new beat it keeps its length in beats and
+ * ends on the grid when it starts on it.
+ *
+ * Returns `{ text, report }`: `{ divisor, total, moved, maxMs, medianMs,
+ * shared }`, the distances in ms over the objects that moved (0 when none
+ * did), `shared` the objects that now share a time with the one before them
+ * and did not before (two notes snapped onto one tick).
+ */
+export function snapHitObjects(text, points, divisor) {
+  const report = { divisor, total: 0, moved: 0, maxMs: 0, medianMs: 0, shared: 0 }
+  const at = sectionAt(text, 'HitObjects')
+  if (at < 0 || !points.length) return { text, report }
+  const end = sectionEnd(text, at)
+  const body = text.slice(at, end)
+  const distances = []
+  let before = null // the previous object's time, before and after
+  let header = true
+  const out = body.replace(/[^\r\n]+/g, (row) => {
+    if (header) {
+      header = false
+      return row
+    }
+    const trimmed = row.trim()
+    if (!trimmed || trimmed.startsWith('//')) return row
+    const f = row.split(',')
+    const time = Number(f[2])
+    const type = Number(f[3])
+    if (f.length < 4 || !Number.isFinite(time) || !Number.isFinite(type)) return row
+    report.total++
+    const newTime = snapTime(points, time, divisor)
+    let moved = newTime !== time
+    let distance = Math.abs(newTime - time)
+    if (moved) f[2] = String(newTime)
+    // An end time: a spinner's sixth field; a hold's sixth field before its first ':'.
+    const hold = type & HOLD
+    if ((type & SPINNER || hold) && f.length > 5) {
+      const parts = hold ? f[5].split(':') : [f[5]]
+      const oldEnd = Number(parts[0])
+      if (Number.isFinite(oldEnd) && parts[0].trim() !== '') {
+        let newEnd = snapTime(points, oldEnd, divisor)
+        if (newEnd <= newTime) newEnd = newTime + Math.max(1, Math.round(oldEnd - time))
+        if (newEnd !== oldEnd) {
+          parts[0] = String(newEnd)
+          f[5] = parts.join(':')
+          moved = true
+          distance = Math.max(distance, Math.abs(newEnd - oldEnd))
+        }
+      }
+    }
+    if (before && newTime === before.now && time !== before.was) report.shared++
+    before = { was: time, now: newTime }
+    if (!moved) return row
+    report.moved++
+    distances.push(distance)
+    return f.join(',')
+  })
+  if (distances.length) {
+    report.maxMs = Math.max(...distances)
+    report.medianMs = median(distances)
+  }
+  return { text: text.slice(0, at) + out + text.slice(end), report }
 }
 
 /** How many hit objects the file holds: the rows of `[HitObjects]`. */
@@ -215,11 +305,11 @@ export function countHitObjects(text) {
     .filter((row) => row.trim() && !row.trim().startsWith('//')).length
 }
 
-/** The patched file from the reader's `File`: `{ name, bytes, report }` or `{ error }`. */
-export async function patchOsuFile(file, lines) {
+/** The patched file from the reader's `File`: `{ name, bytes, report }` or `{ error }`. `options` as `patchOsu`'s. */
+export async function patchOsuFile(file, lines, options = {}) {
   if (file.size > 16 * 1024 * 1024) return { error: 'tooBig' }
   const text = bytesToBinary(new Uint8Array(await file.arrayBuffer()))
-  const patched = patchOsu(text, lines)
+  const patched = patchOsu(text, lines, options)
   if (patched.error) return patched
   return { name: file.name, bytes: binaryToBytes(patched.text), report: patched.report }
 }

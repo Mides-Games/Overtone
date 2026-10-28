@@ -806,7 +806,13 @@
     "filesTitle": "File",
     "json": "Risultato (JSON)",
     "summary": "Riepilogo (TXT)",
-    "filesNote": "Il CSV e il riepilogo seguono le tue modifiche; il JSON è il risultato del motore così come l'ha inviato il server."
+    "filesNote": "Il CSV e il riepilogo seguono le tue modifiche; il JSON è il risultato del motore così come l'ha inviato il server.",
+    "snapLabel": "Allinea gli hit object al nuovo timing",
+    "snapOff": "No",
+    "snapNote": "Ogni oggetto va al tick più vicino della nuova griglia con questo divisore; cambia solo il suo tempo (e la fine di uno spinner o di un hold). Gli slider tengono la loro lunghezza in battiti. Senza allineamento, gli oggetti restano dove sono.",
+    "snapped": "Allineato a {{divisor}}: spostati {{moved}} oggetti su {{total}}, al massimo di {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Allineato a {{divisor}}: nessuno dei {{total}} oggetti ha dovuto muoversi.",
+    "snapShared": "Oggetti ora sullo stesso tick del precedente: {{n}}. Controllali nell'editor."
   },
   "community": {
     "nav": "Community",
@@ -1095,7 +1101,13 @@
     "openTipFirefox": "In Firefox, apri Impostazioni → Generale → File e applicazioni, trova il tipo .osz e impostalo per aprirsi con osu!. Il prossimo .osz andrà dritto in osu!.",
     "openTipOsu": "Serve osu! installato con i file .osz associati, cosa che fa il suo installer. Il sito non può aprire il file al posto tuo: una pagina web non esegue mai ciò che scarica.",
     "openTipClose": "Ho capito",
-    "openTipNever": "Non mostrare più"
+    "openTipNever": "Non mostrare più",
+    "divisor": "Divisore di snap",
+    "divisorAt": "{{divisor}}: il divisore su cui cadono gli attacchi, scritto come BeatDivisor dell'editor.",
+    "divisorNone": "Troppi pochi attacchi sulla griglia: l'editor tiene il suo 1/4.",
+    "breaks": "Break",
+    "breaksAt": "Lunghi silenzi tra gli attacchi, dentro i margini di un break di osu!: {{spans}}.",
+    "breaksNone": "Nessun silenzio di 5 s o più tra gli attacchi."
   },
   "listening": {
     "subdivision": "Tra i battiti",
@@ -2238,6 +2250,45 @@
       "sharedNone": "Dalla condivisione non è arrivato nulla di utilizzabile: condividi un file MP3, OGG, WAV, FLAC, M4A o Opus, oppure sceglilo qui sotto."
     }
   },
+  "mapSet": {
+    "title": "Il set della mappa",
+    "mode": "Modalità di gioco",
+    "modeNote": "Scritta come Mode in ogni difficoltà; per mania, il numero di tasti va in CircleSize.",
+    "keys": "Tasti",
+    "test": "Mappa di prova",
+    "off": "No",
+    "testNote": "Una difficoltà giocabile, \"Overtone test\", con un cerchio su ogni battito o mezzo battito: il primo battito della battuta apre una combo con un finish, i mezzi battiti suonano con whistle. Giocala in osu! e senti se il timing è sfasato. Serve a controllare, non a rankare.",
+    "testBreaks": "Break che lascia vuoti: {{n}}.",
+    "difficulties": "Difficoltà vuote",
+    "difficultiesNote": "Ognuna è un .osu a sé nel set, con lo stesso timing e senza oggetti. HP, CS, OD e AR sono un punto di partenza da cambiare nell'editor.",
+    "count": "Difficoltà nel .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Dove cadono gli attacchi",
+    "all": "Tutto il brano",
+    "perLine": "Sotto ogni red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "suggerito {{divisor}}",
+    "none": "troppi pochi attacchi per dirlo",
+    "other": "nessuno",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Ogni attacco sentito dall'engine, secondo il divisore più semplice del battito su cui cade (entro 1/48 di battito, al massimo 15 ms); gli attacchi deboli contano meno. Suggerisce il divisore di snap dell'editor; non misura il timing."
+  },
+  "daw": {
+    "title": "Software musicali (mappa del tempo)",
+    "midi": "Mappa del tempo MIDI",
+    "midiNote": "Un file MIDI di tipo 1 a 960 tick per battito: un tempo e un metro a ogni red line, ogni cambio entro {{ms}} ms dal suo momento.",
+    "leadIn": "La battuta 1 è una battuta di attacco che finisce sul primo battito forte della prima red line, così le battute dopo combaciano con la canzone.",
+    "reaperNote": "Reaper: un progetto con il tempo, un marker su ogni red line e la canzone su una traccia. Salvalo nella cartella che contiene {{file}}.",
+    "reaperNoAudio": "Reaper: un progetto con il tempo e un marker su ogni red line. La canzone mettila tu su una traccia.",
+    "ableton": "Ableton Live non sa leggere una mappa del tempo da testo, quindi qui non c’è un file per Live. Usa il file MIDI: trascinalo nell’Arrangement e Live può prenderne i cambi di tempo e di metro (a seconda della versione lo chiede, oppure lo attiva un’opzione di importazione)."
+  },
   "calculator": {
     "title": "Calcolatrice di timing",
     "description": "BPM e ms per battito, tick, la distanza tra due red line, la deriva e il BPM da due istanti: i conti del timing di una mappa, fatti nel tuo browser.",
@@ -2306,14 +2357,5 @@
       "bpm": "BPM",
       "beat": "Un battito"
     }
-  },
-  "daw": {
-    "title": "Software musicali (mappa del tempo)",
-    "midi": "Mappa del tempo MIDI",
-    "midiNote": "Un file MIDI di tipo 1 a 960 tick per battito: un tempo e un metro a ogni red line, ogni cambio entro {{ms}} ms dal suo momento.",
-    "leadIn": "La battuta 1 è una battuta di attacco che finisce sul primo battito forte della prima red line, così le battute dopo combaciano con la canzone.",
-    "reaperNote": "Reaper: un progetto con il tempo, un marker su ogni red line e la canzone su una traccia. Salvalo nella cartella che contiene {{file}}.",
-    "reaperNoAudio": "Reaper: un progetto con il tempo e un marker su ogni red line. La canzone mettila tu su una traccia.",
-    "ableton": "Ableton Live non sa leggere una mappa del tempo da testo, quindi qui non c’è un file per Live. Usa il file MIDI: trascinalo nell’Arrangement e Live può prenderne i cambi di tempo e di metro (a seconda della versione lo chiede, oppure lo attiva un’opzione di importazione)."
   }
 }

@@ -806,7 +806,13 @@
     "filesTitle": "Archivos",
     "json": "Resultado (JSON)",
     "summary": "Resumen (TXT)",
-    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor."
+    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor.",
+    "snapLabel": "Ajustar los hit objects al timing nuevo",
+    "snapOff": "No",
+    "snapNote": "Cada objeto se mueve al tick más cercano de la grilla nueva con este divisor; solo cambia su tiempo (y el final de un spinner o de un hold). Los sliders conservan su largo en tiempos. Sin ajuste, los objetos quedan donde están.",
+    "snapped": "Ajustado a {{divisor}}: se movieron {{moved}} de {{total}} objetos, como mucho {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Ajustado a {{divisor}}: ninguno de los {{total}} objetos tuvo que moverse.",
+    "snapShared": "Objetos que ahora caen en el mismo tick que el anterior: {{n}}. Revisalos en el editor."
   },
   "community": {
     "nav": "Comunidad",
@@ -1095,7 +1101,13 @@
     "openTipFirefox": "En Firefox, abrí Ajustes → General → Archivos y aplicaciones, buscá el tipo .osz y ponelo para abrir con osu!. El próximo .osz va directo a osu!.",
     "openTipOsu": "Hace falta tener osu! instalado con los .osz asociados, cosa que hace su instalador. El sitio no puede abrir el archivo por vos: una página web nunca ejecuta lo que descarga.",
     "openTipClose": "Entendido",
-    "openTipNever": "No mostrar más"
+    "openTipNever": "No mostrar más",
+    "divisor": "Divisor de snap",
+    "divisorAt": "{{divisor}}: el divisor en el que caen los ataques, escrito como BeatDivisor del editor.",
+    "divisorNone": "Muy pocos ataques sobre la grilla: el editor se queda con su 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Silencios largos entre los ataques, dentro de los márgenes de osu! para un break: {{spans}}.",
+    "breaksNone": "No hay silencios de 5 s o más entre los ataques."
   },
   "listening": {
     "subdivision": "Entre tiempos",
@@ -2238,6 +2250,45 @@
       "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
   },
+  "mapSet": {
+    "title": "El set del mapa",
+    "mode": "Modo de juego",
+    "modeNote": "Se escribe como Mode en cada dificultad; en mania, la cantidad de teclas va en CircleSize.",
+    "keys": "Teclas",
+    "test": "Mapa de prueba",
+    "off": "No",
+    "testNote": "Una dificultad jugable, \"Overtone test\", con un círculo en cada tiempo o medio tiempo: el primer tiempo del compás abre un combo con un finish y los medios tiempos suenan con whistle. Jugalo en osu! y sentí si el timing está corrido. Es para revisar, no para rankear.",
+    "testBreaks": "Breaks que deja vacíos: {{n}}.",
+    "difficulties": "Dificultades vacías",
+    "difficultiesNote": "Cada una es su propio .osu dentro del set, con el mismo timing y sin objetos. Su HP, CS, OD y AR son un punto de partida para cambiar en el editor.",
+    "count": "Dificultades en el .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Dónde caen los ataques",
+    "all": "Toda la canción",
+    "perLine": "Bajo cada red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "sugerido {{divisor}}",
+    "none": "muy pocos ataques para decir",
+    "other": "ninguno",
+    "aria": "{{divisor}}: {{pct}} %",
+    "note": "Cada ataque que oyó el engine, según el divisor más simple del tiempo en el que cae (a menos de 1/48 de tiempo, 15 ms como mucho); los ataques débiles cuentan menos. Sugiere el divisor de snap del editor; no mide el timing."
+  },
+  "daw": {
+    "title": "Software de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Un archivo MIDI tipo 1 a 960 ticks por tiempo: un tempo y un compás en cada red line, cada cambio a menos de {{ms}} ms de su momento.",
+    "leadIn": "El compás 1 es un compás de entrada que termina en el primer tiempo fuerte de la primera red line, así los compases siguientes coinciden con la canción.",
+    "reaperNote": "Reaper: un proyecto con el tempo, un marcador en cada red line y la canción en una pista. Guardalo en la carpeta donde está {{file}}.",
+    "reaperNoAudio": "Reaper: un proyecto con el tempo y un marcador en cada red line. La canción la ponés vos en una pista.",
+    "ableton": "Ableton Live no puede leer un mapa de tempo desde texto, así que acá no hay archivo de Live. Usá el MIDI: arrastralo al Arrangement y Live puede tomar sus cambios de tempo y compás (según la versión, te pregunta o lo activa una opción de importación)."
+  },
   "calculator": {
     "title": "Calculadora de timing",
     "description": "BPM y ms por tiempo, ticks, la distancia entre dos red lines, el corrimiento y el BPM a partir de dos marcas: la aritmética de timear un mapa, hecha en tu navegador.",
@@ -2306,14 +2357,5 @@
       "bpm": "BPM",
       "beat": "Un tiempo"
     }
-  },
-  "daw": {
-    "title": "Software de música (mapa de tempo)",
-    "midi": "Mapa de tempo MIDI",
-    "midiNote": "Un archivo MIDI tipo 1 a 960 ticks por tiempo: un tempo y un compás en cada red line, cada cambio a menos de {{ms}} ms de su momento.",
-    "leadIn": "El compás 1 es un compás de entrada que termina en el primer tiempo fuerte de la primera red line, así los compases siguientes coinciden con la canción.",
-    "reaperNote": "Reaper: un proyecto con el tempo, un marcador en cada red line y la canción en una pista. Guardalo en la carpeta donde está {{file}}.",
-    "reaperNoAudio": "Reaper: un proyecto con el tempo y un marcador en cada red line. La canción la ponés vos en una pista.",
-    "ableton": "Ableton Live no puede leer un mapa de tempo desde texto, así que acá no hay archivo de Live. Usá el MIDI: arrastralo al Arrangement y Live puede tomar sus cambios de tempo y compás (según la versión, te pregunta o lo activa una opción de importación)."
   }
 }

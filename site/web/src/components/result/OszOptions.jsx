@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { divisorHistogram, suggestBreaks, suggestDivisor } from '../../lib/mapping.js'
 import { energyFrames, kiaiRows, kiaiSections, leadIn, previewTime } from '../../lib/osz-suggest.js'
 import { readCover } from '../../lib/tags.js'
 import { formatClock } from '../../lib/timing.js'
+import MapSet from './MapSet.jsx'
 
 /**
  * What the .osz carries besides the audio and the red lines (W12.9), each one
@@ -20,10 +22,31 @@ import { formatClock } from '../../lib/timing.js'
  * - kiai, off: where kiai goes is a mapping decision, and loudness per bar is
  *   a crude stand-in for "the chorus", so it is never written unasked.
  *
- * Everything is worked out here, from the reader's file and the song the
- * page already decoded for the waveform: nothing is sent.
+ * - the beat divisor (W13.3), on: it only sets the editor's snapping, and the
+ *   attacks' own divisor beats osu!'s blind 1/4;
+ * - breaks (W13.4), off: a break is a mapping decision too, and silence in
+ *   the onset envelope is only a guess at one.
+ *
+ * Below them, the set itself (W13.1, W13.5, MapSet.jsx): the mode, the empty
+ * difficulties and the test map, all off until asked for, so the .osz stays
+ * the one Timing difficulty it always was.
+ *
+ * Everything is worked out here, from the reader's file, the song the page
+ * already decoded for the waveform and the attacks the engine sent: nothing
+ * is sent.
  */
-export const DEFAULT_OPTIONS = { cover: true, preview: true, leadIn: false, kiai: false }
+export const DEFAULT_OPTIONS = {
+  cover: true,
+  preview: true,
+  leadIn: false,
+  kiai: false,
+  divisor: true,
+  breaks: false,
+  mode: 0,
+  keys: 4,
+  difficulties: [],
+  testSub: 0,
+}
 
 /** The file's cover, read once per file, with an object URL for its thumbnail. */
 export function useCover(file) {
@@ -56,6 +79,11 @@ export function useSuggestions({ result, lines, songBuffer }) {
     return energyFrames(channels, songBuffer.sampleRate)
   }, [songBuffer])
   const durationMs = (result.duration_s ?? songBuffer?.duration ?? 0) * 1000
+  // W13.3 and W13.4 need only the engine's attacks and envelope, not the decoded song.
+  const mapping = useMemo(() => {
+    const histogram = divisorHistogram(result.onsets, lines)
+    return { histogram, divisor: suggestDivisor(histogram.all), breaks: suggestBreaks({ envelope: result.onset_envelope, onsets: result.onsets }) }
+  }, [result, lines])
   return useMemo(() => {
     const kiai = frames ? kiaiSections({ frames, lines, durationMs }) : []
     return {
@@ -63,8 +91,9 @@ export function useSuggestions({ result, lines, songBuffer }) {
       lead: leadIn({ lines, firstAttackMs: result.onsets?.t_ms?.[0] ?? null }),
       kiai,
       greens: kiaiRows(kiai, lines, durationMs),
+      ...mapping,
     }
-  }, [frames, lines, durationMs, result])
+  }, [frames, lines, durationMs, result, mapping])
 }
 
 /** The `extras` buildOsz takes, from what is ticked and what was found. */
@@ -74,12 +103,18 @@ export function oszExtras(options, cover, suggestions) {
     previewMs: options.preview ? suggestions.previewMs : null,
     leadInMs: options.leadIn ? (suggestions.lead?.leadInMs ?? 0) : 0,
     greens: options.kiai ? suggestions.greens : [],
+    beatDivisor: options.divisor && suggestions.divisor ? suggestions.divisor : 4,
+    breaks: options.breaks ? suggestions.breaks : [],
+    mode: options.mode,
+    keys: options.keys,
+    difficulties: options.difficulties,
+    testSub: options.testSub || null,
   }
 }
 
 export default function OszOptions({ options, onChange, cover, suggestions, decoded }) {
   const { t } = useTranslation()
-  const { previewMs, lead, kiai } = suggestions
+  const { previewMs, lead, kiai, divisor, breaks } = suggestions
   const seconds = (ms) => (ms / 1000).toFixed(1)
   const set = (key) => (e) => onChange((o) => ({ ...o, [key]: e.target.checked }))
 
@@ -120,6 +155,22 @@ export default function OszOptions({ options, onChange, cover, suggestions, deco
           : t('oszPlus.kiaiNone'),
       suggestion: true,
     },
+    {
+      key: 'divisor',
+      title: t('oszPlus.divisor'),
+      usable: divisor !== null,
+      detail: divisor ? t('oszPlus.divisorAt', { divisor: `1/${divisor}` }) : t('oszPlus.divisorNone'),
+      suggestion: true,
+    },
+    {
+      key: 'breaks',
+      title: t('oszPlus.breaks'),
+      usable: breaks.length > 0,
+      detail: breaks.length
+        ? t('oszPlus.breaksAt', { spans: breaks.map((b) => `${formatClock(b.startMs)}–${formatClock(b.endMs)}`).join(', ') })
+        : t('oszPlus.breaksNone'),
+      suggestion: true,
+    },
   ]
 
   return (
@@ -151,6 +202,7 @@ export default function OszOptions({ options, onChange, cover, suggestions, deco
         ))}
       </ul>
       <p className="text-caption text-dim">{t('oszPlus.note')}</p>
+      <MapSet options={options} onChange={onChange} breaks={options.breaks ? breaks.length : 0} />
     </fieldset>
   )
 }

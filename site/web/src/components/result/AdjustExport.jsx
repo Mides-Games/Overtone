@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { changesLines, exportLines } from '../../lib/export-options.js'
 import { buildOsz } from '../../lib/osz.js'
 import { saveText, timingText } from '../../lib/timing.js'
+import DivisorChart from './DivisorChart.jsx'
 import { useExportOptions } from './ExportOptions.jsx'
 import OszOptions, { DEFAULT_OPTIONS, oszExtras, useCover, useSuggestions } from './OszOptions.jsx'
 
@@ -154,6 +155,7 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
           }}
         />
       )}
+      <DivisorChart histogram={suggestions.histogram} lines={written} />
       {audioFile && <OszOptions options={oszOptions} onChange={setOszOptions} cover={cover} suggestions={suggestions} decoded={Boolean(songBuffer)} />}
       {children}
     </section>

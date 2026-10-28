@@ -536,6 +536,67 @@ but FLAC in the browser (the others by node:test on built bytes), the archive op
 osu! itself, Firefox's and Safari's own download behaviour, and whether the suggestions
 are any good for mapping: they are loudness heuristics, and the page says so.
 
+### Mapping helpers (W13.1-W13.5, 2026-10-28)
+
+All of it is built in the browser from the red lines as the reader exports them (after
+the export options) and from what the engine already sent (`onsets`, `onset_envelope`);
+nothing is uploaded and the engine is not touched. The logic is `lib/mapping.js`, pure
+and under node:test; the page is `components/result/DivisorChart.jsx`, `MapSet.jsx`,
+two rows more in `OszOptions.jsx` and the snap in `MoreDownloads.jsx`.
+
+- **Where the attacks fall** (W13.3). Each attack is put under the red line it falls in
+  (one before the first line, under the first) and sorted into the *simplest* divisor
+  of the beat it sits on: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, or none. "Sits on" means within
+  a 48th of the beat, at most 15 ms: the tick sets of 1/6 and 1/8, the closest pair, are
+  a 24th of a beat apart, so no attack can be claimed by both. Each attack counts its
+  weight (0-100), so a faint one counts less. The result page shows the bars for the
+  whole song, and per red line (up to twelve) folded under them.
+- **The suggested `BeatDivisor`**: the coarsest of 1/2, 1/3, 1/4, 1/6 and 1/8 whose ticks
+  hold at least 90 % of the attacks on a tick (1/6 holds 1/1, 1/2, 1/3 and 1/6; 1/8 holds
+  1/1, 1/2, 1/4 and 1/8), else the one that holds most, the coarser on a tie. With fewer
+  than 16 attacks on a tick there is no suggestion and the `.osz` keeps osu!'s 4. It is
+  on by default under ".osz options": it only sets the editor's snapping. It is not
+  written into a patched `.osu`, which changes only what the reader asks for.
+- **Breaks** (W13.4), off by default. A stretch of the onset envelope at or under 5 (of
+  the song's 100) with no attack of weight 20 or more, between the first and the last
+  such attack (osu! has no break before the first object or after the last), at least
+  **5 s** long, is shrunk by osu!'s gaps (a break starts 200 ms after the object before
+  it and ends 450 ms before the next one, as osu!(lazer)'s `BreakPeriod` states them as
+  far as we know) and kept when it is still **650 ms** or longer, osu!'s minimum. The
+  5 s is our choice: osu! would take a 1.3 s pause, which a mapper maps around. Written
+  as `2,start,end` under `//Break Periods`, in every difficulty.
+- **The map set** (W13.5). The mode (osu!, taiko, catch, mania) is written as `Mode` in
+  every difficulty, and mania's key count (4K-10K) as `CircleSize`. Easy, Normal, Hard,
+  Insane and Expert are each their own `.osu` in the `.osz`, same timing and no objects,
+  with HP/CS/OD/AR rising from 2/3/2/3 to 6/4.2/9/9.4: a starting point, our choice. The
+  Timing difficulty stays in the set either way.
+- **A test map** (W13.1): "Overtone test (1/1)" or "(1/2)", a circle on every beat or
+  half beat from the first red line to the song's end (each line's ticks stop where the
+  next one starts, and a red line restarts the bar). The bar's first beat starts a combo
+  and plays a finish (a big don in taiko), a half beat a whistle (a kat). In osu! and
+  catch the bar draws a ring of radius 120 around the playfield's centre, its first beat
+  at the top; mania walks the columns. Nothing is placed inside a break or its gaps. The
+  file name writes "1/2" as "1-2"; the `Version` keeps the slash.
+- **Snapping a patched `.osu`** (W13.2), off by default: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8,
+  1/12 or 1/16. After the red lines are put in, each hit object's time goes to the
+  nearest tick of the **new** grid (the red line in force, counted from its own offset,
+  in whole ms rounded half to even like the red lines); a spinner's end and a mania
+  hold's end go to their own nearest tick, kept after the start. Only those numbers are
+  rewritten; every other byte of the row and of the file is untouched. A slider's end is
+  not in the file: osu! works it out from its length, the slider velocity and the beat,
+  so it keeps its length in beats and ends on the grid when it starts on it. The report
+  says how many moved, the largest and the median move, and how many now share a tick
+  with the object before them.
+
+Checked with Playwright in Chromium on 2026-10-28 against the e2e fake worker, at 375 px,
+EN and ES, dark and light, nothing past the edge: the chart (the fixture's attacks are
+all on the beat, so 1/1 at 100 % and 1/2 suggested), the set with mania 7K, the 1/2 test
+map, Easy and Expert, downloaded and read back (five entries; the test map `Mode: 3`,
+`CircleSize:7`, `BeatDivisor: 2`, columns walking and a finish on the bar), and a small
+`.osu` patched with a 1/4 snap (3 of 3 moved, the report shown). Not checked: any of it
+opened in osu! itself, a real song's breaks, and whether the suggested divisor matches
+what mappers pick on ranked maps (Corpus B could measure that; nobody has yet).
+
 ### The queue, moderated (W3.18, 2026-10-27)
 
 Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`

@@ -794,7 +794,13 @@
     "filesTitle": "파일",
     "json": "결과 (JSON)",
     "summary": "요약 (TXT)",
-    "filesNote": "CSV와 요약은 조정한 값을 따르고, JSON은 서버가 보낸 엔진 결과 그대로예요."
+    "filesNote": "CSV와 요약은 조정한 값을 따르고, JSON은 서버가 보낸 엔진 결과 그대로예요.",
+    "snapLabel": "히트 오브젝트를 새 타이밍에 스냅",
+    "snapOff": "끔",
+    "snapNote": "각 오브젝트를 이 분할의 새 그리드에서 가장 가까운 틱으로 옮겨요. 바뀌는 건 시간뿐이에요(스피너와 홀드는 끝도). 슬라이더는 박 단위 길이를 유지해요. 끄면 오브젝트는 그대로예요.",
+    "snapped": "{{divisor}}에 스냅: 오브젝트 {{total}}개 중 {{moved}}개를 최대 {{max}} ms 옮겼어요(중앙값 {{median}} ms).",
+    "snappedNone": "{{divisor}}에 스냅: 오브젝트 {{total}}개 중 옮길 것이 없었어요.",
+    "snapShared": "이제 앞 오브젝트와 같은 틱에 놓인 오브젝트: {{n}}. 에디터에서 확인하세요."
   },
   "community": {
     "nav": "커뮤니티",
@@ -1068,7 +1074,13 @@
     "openTipFirefox": "Firefox에서 설정 → 일반 → 파일 및 애플리케이션을 열고, .osz 유형을 찾아 osu!로 열도록 설정하세요. 다음 .osz부터 바로 osu!로 가요.",
     "openTipOsu": "osu!가 설치되어 있고 .osz 파일이 osu!로 열리도록 되어 있어야 해요(설치 프로그램이 설정해 줘요). 사이트가 대신 파일을 열 수는 없어요: 웹 페이지는 다운로드한 것을 절대 실행하지 않아요.",
     "openTipClose": "알겠어요",
-    "openTipNever": "다시 보지 않기"
+    "openTipNever": "다시 보지 않기",
+    "divisor": "비트 스냅 분할",
+    "divisorAt": "{{divisor}}: 어택이 떨어지는 분할이에요. 에디터의 BeatDivisor로 써요.",
+    "divisorNone": "그리드 위의 어택이 너무 적어요: 에디터는 1/4 그대로예요.",
+    "breaks": "브레이크",
+    "breaksAt": "어택 사이의 긴 무음, osu! 브레이크 간격 안쪽: {{spans}}.",
+    "breaksNone": "어택 사이에 5초 이상의 무음이 없어요."
   },
   "listening": {
     "subdivision": "비트 사이",
@@ -2181,6 +2193,45 @@
       "sharedNone": "공유로 쓸 수 있는 게 오지 않았어요: MP3, OGG, WAV, FLAC, M4A, Opus 파일을 공유하거나 아래에서 선택하세요."
     }
   },
+  "mapSet": {
+    "title": "맵 세트",
+    "mode": "게임 모드",
+    "modeNote": "모든 난이도에 Mode로 써요. mania는 키 수를 CircleSize에 써요.",
+    "keys": "키",
+    "test": "테스트 맵",
+    "off": "끔",
+    "testNote": "플레이할 수 있는 난이도 \"Overtone test\"로, 박마다 또는 반 박마다 서클이 있어요. 마디의 첫 박은 피니시와 함께 콤보를 시작하고, 반 박은 휘슬이 나요. osu!에서 플레이하며 타이밍이 어긋났는지 느껴 보세요. 확인용이지 랭크용이 아니에요.",
+    "testBreaks": "비워 두는 브레이크: {{n}}.",
+    "difficulties": "빈 난이도",
+    "difficultiesNote": "각각 세트 안의 별도 .osu로, 타이밍은 같고 오브젝트는 없어요. HP, CS, OD, AR은 에디터에서 바꿀 출발점이에요.",
+    "count": ".osz의 난이도 수: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "어택이 떨어지는 곳",
+    "all": "곡 전체",
+    "perLine": "red line별",
+    "line": "red line {{n}} · {{time}}",
+    "suggested": "제안 {{divisor}}",
+    "none": "어택이 너무 적어 판단할 수 없어요",
+    "other": "없음",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "엔진이 들은 각 어택을, 그것이 놓인 박의 가장 단순한 분할로 셌어요(박의 1/48 이내, 최대 15 ms). 약한 어택은 덜 셉니다. 에디터의 비트 스냅 분할을 제안할 뿐, 타이밍을 측정하지는 않아요."
+  },
+  "daw": {
+    "title": "음악 소프트웨어 (템포 맵)",
+    "midi": "MIDI 템포 맵",
+    "midiNote": "한 박에 960틱인 타입 1 MIDI 파일이에요. red line마다 템포와 박자가 있고, 모든 변화가 제 시각에서 {{ms}} ms 안에 있어요.",
+    "leadIn": "1마디는 첫 red line의 강박에서 끝나는 도입 마디라서, 그 뒤의 마디가 곡과 맞아요.",
+    "reaperNote": "Reaper: 템포, red line마다 마커, 트랙 위의 곡이 든 프로젝트예요. {{file}}이(가) 있는 폴더에 저장하세요.",
+    "reaperNoAudio": "Reaper: 템포와 red line마다 마커가 든 프로젝트예요. 곡은 직접 트랙에 올리세요.",
+    "ableton": "Ableton Live는 텍스트에서 템포 맵을 읽지 못해서 여기엔 Live용 파일이 없어요. MIDI 파일을 쓰세요: 어레인지먼트로 끌어다 놓으면 Live가 템포와 박자 변화를 가져올 수 있어요(버전에 따라 물어보거나, 가져오기 옵션으로 켜져요)."
+  },
   "calculator": {
     "title": "타이밍 계산기",
     "description": "BPM과 한 박의 ms, 틱, 두 red line 사이의 간격, 어긋남, 두 시점으로 구하는 BPM: 맵 타이밍에 필요한 계산을 브라우저에서 해요.",
@@ -2249,14 +2300,5 @@
       "bpm": "BPM",
       "beat": "한 박"
     }
-  },
-  "daw": {
-    "title": "음악 소프트웨어 (템포 맵)",
-    "midi": "MIDI 템포 맵",
-    "midiNote": "한 박에 960틱인 타입 1 MIDI 파일이에요. red line마다 템포와 박자가 있고, 모든 변화가 제 시각에서 {{ms}} ms 안에 있어요.",
-    "leadIn": "1마디는 첫 red line의 강박에서 끝나는 도입 마디라서, 그 뒤의 마디가 곡과 맞아요.",
-    "reaperNote": "Reaper: 템포, red line마다 마커, 트랙 위의 곡이 든 프로젝트예요. {{file}}이(가) 있는 폴더에 저장하세요.",
-    "reaperNoAudio": "Reaper: 템포와 red line마다 마커가 든 프로젝트예요. 곡은 직접 트랙에 올리세요.",
-    "ableton": "Ableton Live는 텍스트에서 템포 맵을 읽지 못해서 여기엔 Live용 파일이 없어요. MIDI 파일을 쓰세요: 어레인지먼트로 끌어다 놓으면 Live가 템포와 박자 변화를 가져올 수 있어요(버전에 따라 물어보거나, 가져오기 옵션으로 켜져요)."
   }
 }

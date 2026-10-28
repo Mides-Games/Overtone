@@ -464,6 +464,17 @@ class ResultPartsTests(unittest.TestCase):
             "min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
             "prefer_map_bpm": True, "refine_beats": True, "force_subdivision": 0.0})
 
+    def test_the_beat_this_sessions_share_one_arena_registered_once(self):
+        # A second registration of the same allocator raises in ONNX Runtime:
+        # every session the worker opens must find the one already there.
+        try:
+            import onnxruntime
+        except ImportError:
+            self.skipTest("onnxruntime is not installed")
+        tr._shared_arena(onnxruntime)
+        tr._shared_arena(onnxruntime)
+        self.assertEqual(tr._ARENA, [True])
+
     def test_engine_hash_depends_on_the_vote(self):
         self.assertNotEqual(tr.engine_hash(True), tr.engine_hash(False))
         self.assertEqual(tr.engine_hash(False), tr.engine_hash(False))

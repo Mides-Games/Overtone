@@ -20,6 +20,45 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## v1.0.0-stable — 2026-10-28 · Fifteen-minute songs, and the memory to time them
+
+### Changed
+
+- **Songs up to 15 minutes** (`MAX_AUDIO_SECONDS` 900, was 600), and uploads up to
+  95 MB (`MAX_UPLOAD_MB`, was 40; under the 100 MB a request may carry through
+  Cloudflare).
+
+### Fixed
+
+- **`too_heavy` on songs of about nine minutes.** The worker's Beat This! sessions each
+  kept an ONNX Runtime arena that grows by doubling, so the largest chunk's overshoot
+  stayed held: an owner's song stopped at 1985 MB against `WORKER_MEMORY_MB`'s 1800.
+  The worker now registers one shared CPU arena that grows by what a run asks for
+  (`worker/timing_result.py`, `_shared_arena`). The engine's own loader is untouched.
+  The edit changes the engine hash, so stored results are recomputed on their next
+  upload.
+
+### Measured
+
+- Peak committed memory of one worker analysis on this machine (Windows, 4 ONNX
+  threads, the vote on), minutes apart on the same build:
+
+  | song | before | shared arena | arena off |
+  |---|---|---|---|
+  | 543 s | 2369 MB, 62 s | 1864 MB, 60 s | 1739 MB, 83 s |
+  | 758 s | -- | 1943 MB, 83 s | 1818 MB |
+
+  Same BPM, offset and red lines in every run. Per stage, the peak is Beat This!'s
+  inference (`_beat_this_logits`, +1000 MB over the stage before it with the old
+  arenas). Growth is about 22 MB a minute of audio, so 900 s lands near 2000 MB
+  committed, below the 2369 MB of a 543 s song before, which is the size of song that
+  failed on the server. Not measured there: its resident peak is the real check.
+  Rejected: the arena off (35 % slower for 125 MB more).
+- site/api, site/web, bot and the worker's tests as listed in the commit. Not run on
+  the server's Linux worker yet: its first 15-minute song is the first real check.
+
+---
+
 ## v1.0.0-stable — 2026-10-28 · Songs timed on the front page, visits on a profile
 
 ### Changed

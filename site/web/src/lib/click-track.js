@@ -11,8 +11,8 @@ import { lowerBound, SUB } from './timing.js'
 import { encodeWav } from './wav.js'
 
 /**
- * The longest track rendered: the site's own analysis limit (MAX_AUDIO_SECONDS,
- * 600 s by default). Ten minutes of 16-bit stereo at 48 kHz is 115 MB, about
+ * The longest track rendered: ten minutes, below the site's own analysis
+ * limit (MAX_AUDIO_SECONDS, 900 s by default) on purpose. Ten minutes of 16-bit stereo at 48 kHz is 115 MB, about
  * as much as a browser tab should hand to a download in one piece.
  */
 export const MAX_TRACK_SECONDS = 600

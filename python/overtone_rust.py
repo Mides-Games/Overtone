@@ -159,7 +159,27 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     binary = cli or find_cli()
     if binary is None:
         raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
-    args = [str(binary), "analyze", os.fspath(path), "--full",
+    source, scratch = os.fspath(path), None
+    if ta.PERCUSSIVE_INPUT:
+        # The engine reads a file: the drums go to a temporary WAV beside it.
+        import tempfile
+        import soundfile
+        y, sr = ta._load_audio(source, lambda _message: None)
+        handle, scratch = tempfile.mkstemp(suffix=".wav")
+        os.close(handle)
+        soundfile.write(scratch, ta._percussive(y, sr), sr, subtype="FLOAT")
+        source = scratch
+    try:
+        return _analyze(path, source, binary, min_delta, persistence, min_confidence,
+                        prefer_map_bpm, timeout)
+    finally:
+        if scratch:
+            os.unlink(scratch)
+
+
+def _analyze(path, source: str, binary, min_delta: float, persistence: int,
+             min_confidence: float, prefer_map_bpm: bool, timeout: float) -> ta.Analysis:
+    args = [str(binary), "analyze", source, "--full",
             "--min-delta", repr(float(min_delta)), "--persistence", str(int(persistence)),
             "--min-confidence", repr(float(min_confidence))]
     if not prefer_map_bpm:
@@ -188,6 +208,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     analysis = ta._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
     if ta.DRIFT_FOLLOW:
         analysis = ta._follow_drift(analysis)
+    analysis = ta._change_points(analysis)
     before, before_beats = float(analysis.global_bpm), analysis.beats
     if ta._beat_this_session() is not None:
         # Beat This! reads the audio itself; the Rust report carries none of it.
@@ -207,7 +228,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
 
     analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
     analysis = ta._song_octave_by_beat_this(analysis, heard)
-    return ta._tidy_bpms(ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard)))
+    return ta._tidy_bpms(ta._snap_whole_points(ta._octave_rule(ta._fold_lines_to_song_octave(analysis, heard))))
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

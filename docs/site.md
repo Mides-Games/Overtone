@@ -7,7 +7,7 @@ analyses it with the v3 engine and gives the timing back.
 
 ```
 site/api/   Express 5 + pg, plain ES modules (modelled on cavernia-api)
-site/web/   React 19 + Vite + Tailwind 4 + react-router 7 + i18next EN/ES
+site/web/   React 19 + Vite + Tailwind 4 + react-router 7 + i18next, ten languages
 worker/     the analysis worker: Python, standard library + python/overtone.py
 ```
 
@@ -1131,9 +1131,9 @@ fallback of `/compare` as a stranger (the browser that published it also owned i
 search button in the bar opens it on every page; on a phone the button leads the
 places' row, because the top row has no room left at a large font size. It lists
 the tray's in-flight analyses first, then this browser's recent ones
-(`lib/recent.js`), the pages, and the actions: switch language, the three themes,
+(`lib/recent.js`), the pages, and the actions: each of the ten languages, the three themes,
 high contrast on or off, open settings, the shortcut help, sign in or out. Each
-page and action also matches its name in the other language ("inicio" finds Home).
+page and action also matches its name in English and Spanish ("inicio" finds Home).
 
 - The ranking is `lib/commands.js`, a subsequence match that favours word starts
   and runs and ignores case and accents, falling back to a plain left-to-right walk
@@ -1594,3 +1594,52 @@ Not checked: the PostgreSQL stores of tokens and versions against a database; th
 worker in a browser (the preview pane refused to register any worker), so installing,
 reading a result offline and a real phone's share sheet were not seen; a batch near the
 1 GiB cap; how forums actually frame the embed; Safari and Firefox.
+
+### Ten languages and the selector (W12.16, 2026-10-28)
+
+English, Español, Français, Deutsch, Italiano, Polski, Português do Brasil, 日本語, 한국어
+and Русский. `lib/languages.js` is the one list (code, own name, flag, direction) that
+the navbar, `/settings`, the command palette and the tests read.
+
+- **Files by convention.** `src/locales/<code>.json`, the same shape as `en.json`, which
+  is the source of truth. English and Spanish are in the main bundle; Vite splits every
+  other file into its own chunk (`import.meta.glob`), which a small i18next backend in
+  `i18n.js` fetches the first time the language is chosen. A new language is its file
+  plus one row in `lib/languages.js`, one flag in `components/Flag.jsx` and the code in
+  `index.html`'s early script; the test names any of the four that is missing.
+- **The starting language** is `mides.lang` when it holds one of the ten, otherwise the
+  browser's first match in `navigator.languages` (exact code, then the primary language:
+  `pt` and `pt-PT` read Brazilian Portuguese), otherwise English. A detected language is
+  not stored, only a visitor's own pick. `main.jsx` shows the loader's beats, without
+  words, until the starting language's strings are in, so the first frame is never
+  English by mistake. `<html lang>` and `dir` follow the language. A key a file lacks
+  reads in English.
+- **The selector** (`components/LanguageSelect.jsx`): a button with the flag and the
+  code opens the WAI-ARIA listbox of the ten, each by its own name. Arrows, Home and End
+  move, Enter or Space picks, typing jumps by name or code (a repeated letter cycles),
+  Escape and Tab close, and focus goes back to the button. On a phone the list is
+  pinned to the bar's right edge: the button sits too far left for a list anchored to it.
+- **Flags** (`components/Flag.jsx`) are inline SVG on one 3:2 box: no emoji (Windows
+  draws none) and no image files. Spanish is Argentina's flag, as the site's Spanish is
+  rioplatense; English the Union Jack, its saltire simplified; Portuguese Brazil's,
+  without the stars; South Korea keeps the taegeuk and the four trigrams.
+- **Legal pages** say in every language but English that the translation is for
+  convenience and the English version prevails, with a button to switch.
+- **The palette** has one action per language, after the others; each answers to its
+  name in English and in the current language ("german", "alemán") and to its code.
+- **`test/i18n.test.js`** checks every file: its keys are English's (plural forms by
+  `Intl.PluralRules` and the brief: `one/few/many/other` for ru and pl, `other` for ja
+  and ko, `one/many/other` for fr), the same `{{placeholders}}` (a plural form may leave
+  the count out), the legal pages' `[[...]]` marks, no empty string, and 100 % coverage
+  for es, fr, de and any file that is not empty. It prints each language's coverage:
+  all ten at 100 % on 2026-10-28.
+
+Seen in the browser (web 5221, API 3051, `OVERTONE_WORKER=0`): Home, `/analyze`, the
+three legal pages, `/settings`, `/community`, `/how-it-works`, `/queue`, `/recent`,
+`/timers` and `/login` in fr and de at 375 px, with a script listing any element wider
+than its box or past the viewport: none, but the `[TimingPoints]` line of the front
+page's demo, which clips in every language. Spot checks of ja and ru at 375 px. At
+1024 px the navbar's places overflowed in French (608 of 586 px), Polish and Russian;
+all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
+little less space between places below 1280 px. Not seen: a result page (no worker
+ran), a screen reader on the listbox, Safari and Firefox.

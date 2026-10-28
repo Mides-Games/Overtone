@@ -3209,8 +3209,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y, sr))
-            return _snap_whole_points(_fold_lines_to_song_octave(
-                analysis, lambda: _beat_this_judge_beats(y, sr)))
+            return _tidy_bpms(_snap_whole_points(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y, sr))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3221,13 +3221,13 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         return analysis
     tracked = _local_tempo_track(analysis)
     if tracked is None:
-        return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+        return _tidy_bpms(_fold_to_map_octave(analysis, min_delta, persistence, min_confidence))
     tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
                                         lambda: _beat_this_tempo(y, sr))
     tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y, sr))
     tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
-    return _constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
+    return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr)))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -4231,6 +4231,43 @@ def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes)
     spans = np.diff([p.offset_ms for p in points] + [float(analysis.duration) * 1000.0])
     return replace(analysis, points=points, **changes,
                    global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+#: Red lines a mapper can read: a BPM keeps two decimals at most, and one
+#: where that is within TIDY_BPM_ONE_DECIMAL of it (180.19 -> 180.2; 180.18
+#: stays), at the owner's request (2026-10-28): 180.178 is not a tempo
+#: anyone hears. Each line keeps the beat at the middle of its span where it
+#: was, so the rounding's drift is split between the line's two ends.
+TIDY_BPM = False
+TIDY_BPM_ONE_DECIMAL = 0.011
+
+
+def _tidy_bpm(bpm: float) -> float:
+    two = round(float(bpm), 2)
+    one = round(float(bpm), 1)
+    return one if abs(one - two) <= TIDY_BPM_ONE_DECIMAL else two
+
+
+def _tidy_bpms(analysis: Analysis) -> Analysis:
+    """The finished red lines at the BPMs _tidy_bpm reads (TIDY_BPM)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not TIDY_BPM or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    end_ms = float(analysis.duration) * 1000.0
+    out = []
+    for n, point in enumerate(points):
+        bpm = _tidy_bpm(point.bpm)
+        if bpm == point.bpm:
+            out.append(point)
+            continue
+        stop = points[n + 1].offset_ms if n + 1 < len(points) else end_ms
+        was, now = 60000.0 / point.bpm, 60000.0 / bpm
+        k = max(0, int((stop - point.offset_ms) / was) // 2)
+        out.append(replace(point, bpm=bpm, offset_ms=point.offset_ms + k * (was - now)))
+    if all(a is b for a, b in zip(out, points)):
+        return analysis
+    lines = [(p.offset_ms, p.bpm) for p in out]
+    return replace(analysis, points=out, beats=_beats_of(lines, float(analysis.duration)))
 
 
 def _snap_whole_points(analysis: Analysis) -> Analysis:

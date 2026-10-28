@@ -189,6 +189,24 @@ def engine_settings(mode: str, window: tuple[float, float] | None):
             setattr(ta, name, value)
 
 
+_ARENA: list = []
+
+
+def _shared_arena(onnxruntime) -> None:
+    """One CPU arena for every Beat This! session, grown by what a run asks
+    for (kSameAsRequested) instead of doubling. Each session's own arena kept
+    the doubled overshoot of the largest chunk: a 543 s song peaked at 2369 MB
+    committed with them and 1864 MB with this (2026-10-28, 4 threads, the vote
+    on, same beats, same wall time). Turning the arena off reached 1739 MB but
+    took 83 s instead of 60."""
+    if _ARENA:
+        return
+    info = onnxruntime.OrtMemoryInfo("Cpu", onnxruntime.OrtAllocatorType.ORT_ARENA_ALLOCATOR, 0,
+                                     onnxruntime.OrtMemType.DEFAULT)
+    onnxruntime.create_and_register_allocator(info, onnxruntime.OrtArenaCfg(0, 1, -1, -1))
+    _ARENA.append(True)
+
+
 def limit_onnx_threads(threads: int) -> None:
     """Make every Beat This! session the engine opens use ``threads`` intra-op
     threads. ONNX Runtime sizes its pool from the machine's cores, not from a
@@ -214,6 +232,10 @@ def limit_onnx_threads(threads: int) -> None:
         # (python/overtone.py, _load_beat_this). Without this line the worker
         # that caps its threads, which is every deployed one, kept the old peak.
         options.enable_mem_pattern = False
+        # The arena every session shares (_shared_arena): what kept the too_heavy
+        # failures at 1800 MB on songs of nine minutes.
+        _shared_arena(onnxruntime)
+        options.add_session_config_entry("session.use_env_allocators", "1")
         try:
             return onnxruntime.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
         except Exception:  # noqa: BLE001 -- as the engine's loader: no session, no vote

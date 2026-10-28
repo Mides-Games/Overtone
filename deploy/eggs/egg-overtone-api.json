@@ -220,7 +220,7 @@
         },
         {
             "name": "Max audio seconds",
-            "description": "Longest audio accepted (default 600).",
+            "description": "Longest audio accepted (default 900).",
             "env_variable": "MAX_AUDIO_SECONDS",
             "default_value": "",
             "user_viewable": true,

@@ -198,7 +198,7 @@ def api():
                    rules="required|string|min:32"),
             var("Anonymous daily limit", "ANON_DAILY_LIMIT", "Analyses per day without an account (default 5)."),
             var("User daily limit", "USER_DAILY_LIMIT", "Analyses per day with a Mides account (default 50)."),
-            var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted (default 600)."),
+            var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted (default 900)."),
             var("Max upload MB", "MAX_UPLOAD_MB", "Largest upload, checked before the body is read (default 95, under Cloudflare's 100 MB per request)."),
             var("Job timeout", "JOB_TIMEOUT_S",
                 "Seconds a job may run before it goes back to the queue; two attempts in all (default 900)."),

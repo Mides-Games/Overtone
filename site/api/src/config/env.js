@@ -134,7 +134,10 @@ export const env = {
   // lookup or upload of audio analysed before costs no quota, so it has a cap
   // of its own.
   cacheDailyLimit: integer('CACHE_DAILY_LIMIT', 100, { min: 1, max: 100_000 }),
-  maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 600, { min: 10, max: 3600 }),
+  // 900 (was 600, 2026-10-28): with the worker's shared Beat This! arena a
+  // 15-minute song stays near 2000 MB committed, under WORKER_MEMORY_MB's
+  // 1800 resident (docs/timeline.md).
+  maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 900, { min: 10, max: 3600 }),
   // The largest upload: checked against Content-Length before a byte is read,
   // and again while the body streams to disk. 95 (was 40, 2026-10-28: FLAC and
   // high-bitrate files were refused) stays under the 100 MB a request may carry

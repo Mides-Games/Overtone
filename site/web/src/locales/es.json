@@ -150,7 +150,8 @@
       "no_pulse": "Overtone no encontró un pulso estable en este audio, así que no informa un BPM.",
       "too_short": "Este audio es demasiado corto para timearlo: necesita al menos dos segundos.",
       "too_long": "Este audio supera el límite de duración.",
-      "refused": "Overtone no pudo timear este audio."
+      "refused": "Overtone no pudo timear este audio.",
+      "bad_stretch": "El tramo elegido tiene menos de diez segundos de este audio."
     },
     "refusedWhy": "Un BPM adivinado se vería preciso y estaría mal. El ruido, los pads ambientales y la música en tiempo libre terminan acá a propósito.",
     "redLines": "Red lines",
@@ -930,6 +931,104 @@
       "deleteNote": "Borrar un análisis borra su resultado y baja su página pública en el momento. Una canción que todavía espera se cancela desde su propia página; una que se está analizando se puede borrar cuando termine.",
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
+    }
+  },
+  "modes": {
+    "names": {
+      "fast": "Rápido",
+      "normal": "Normal",
+      "strict": "Estricto"
+    },
+    "about": {
+      "fast": "El engine solo, sin la red Beat This!: se saltean su voto sobre las red lines y sus chequeos de octava. Una fracción de la espera; en música real, la octava y las red lines se revisan menos.",
+      "normal": "El análisis de siempre: el engine, después el voto de Beat This! y los chequeos de octava.",
+      "strict": "Por ahora, el mismo análisis que Normal: todavía no se midió nada extra que ayude. Acá va a ir una revisión más fina de cada red line."
+    },
+    "options": {
+      "title": "Opciones (opcionales)",
+      "changed": "cambiadas",
+      "defaults": "por defecto",
+      "mode": "Modo",
+      "modeNote": "Elegí según cuánto querés esperar. La misma canción en otro modo es otro resultado.",
+      "tempo": "Tempo",
+      "unknown": "No sé",
+      "constant": "Un solo BPM en toda la canción",
+      "changes": "El tempo cambia",
+      "meter": "Tiempos por compás",
+      "beats_one": "{{count}} tiempo por compás",
+      "beats_other": "{{count}} tiempos por compás",
+      "bpm": "BPM",
+      "about": "Aproximado",
+      "range": "Entre",
+      "aboutBpm": "BPM aproximado",
+      "fromBpm": "BPM más bajo",
+      "toBpm": "BPM más alto",
+      "stretch": "Solo un tramo (inicio – fin)",
+      "from": "Inicio (m:ss)",
+      "to": "Fin (m:ss)",
+      "stretchNote": "Dejá los dos vacíos para toda la canción. Los tiempos del resultado siguen en la línea de tiempo de la canción.",
+      "stretchOne": "Un tramo se puede elegir para una canción por vez.",
+      "honest": "Las pistas nunca pisan al audio. Un tempo esperado elige la octava en la que el engine lee la canción, y un compás completa solo los compases que el engine no pudo probar; donde el audio no coincide con una pista, el resultado lo dice.",
+      "reset": "Volver a lo de por defecto"
+    },
+    "errors": {
+      "bpm": "Un BPM es un número de 30 a 400.",
+      "range": "El primer BPM del rango tiene que ser el más bajo.",
+      "meter": "Los tiempos por compás son un número entero de 1 a 16.",
+      "stretch": "Escribí el tramo como m:ss o en segundos, con un fin.",
+      "stretchBatch": "Un tramo se puede elegir para una canción por vez: borralo, o mandá una sola canción.",
+      "stretchPast": "El tramo termina después que la canción.",
+      "stretchShort": "El tramo tiene que durar al menos 10 segundos.",
+      "server": "El server rechazó las opciones: {{message}}"
+    },
+    "estimate": {
+      "label": "Estimación:",
+      "left": "Lista en",
+      "seconds_one": "{{count}} s",
+      "seconds_other": "{{count}} s",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "about": "≈ {{value}}",
+      "range": "≈ {{low}} – {{high}}",
+      "atLeast": "al menos {{value}}",
+      "why": "una estimación con el costo medido por minuto de audio, con un worker",
+      "queueNote": "Los tiempos para terminar son estimaciones (≈): lo que se midió que cuesta un análisis por minuto de audio, según su modo, con un worker; por eso un rango y nunca una promesa. Si no se sabe cuánto dura una canción, las que vienen detrás dicen \"al menos\"."
+    },
+    "result": {
+      "title": "Cómo se analizó",
+      "noVote": "(El worker no tenía el modelo de Beat This!, así que no votó.)",
+      "stretch": "Se analizó solo {{from}} – {{to}} de la canción. Las red lines y todos los tiempos de acá están en la línea de tiempo de la canción; fuera de ese tramo no se midió nada.",
+      "hints": "Tus pistas:",
+      "aboutBpm": "unos {{bpm}} BPM",
+      "rangeBpm": "{{low}}–{{high}} BPM",
+      "stretchShort": "solo {{from}}–{{to}}"
+    },
+    "checks": {
+      "tempo_not_constant_one": "Dijiste un solo BPM, y el engine encontró {{count}} tempo.",
+      "tempo_not_constant_other": "Dijiste un solo BPM; el engine encontró {{count}} tempos distintos. Sus red lines quedan: escuchá dónde cambian.",
+      "tempo_constant": "Dijiste que el tempo cambia; el engine encontró un solo BPM ({{bpm}}) en toda la canción.",
+      "bpm_far": "Esperabas unos {{expected}} BPM; el engine lee {{bpm}}.",
+      "bpm_outside_one": "{{count}} red line queda fuera de tu rango de {{low}}–{{high}} BPM.",
+      "bpm_outside_other": "{{count}} red lines quedan fuera de tu rango de {{low}}–{{high}} BPM.",
+      "double": "Al doble entraría: probá ×2 en los ajustes.",
+      "half": "A la mitad entraría: probá ÷2 en los ajustes.",
+      "octave_window": "Tu tempo eligió la octava en la que el engine leyó la canción ({{low}}–{{high}} BPM).",
+      "octave_window_moved": "Tu tempo eligió la octava en la que el engine leyó la canción ({{low}}–{{high}} BPM). Sin él, el engine la habría leído a {{bpm}} BPM.",
+      "meter_differs": "Dijiste {{meter}} tiempos por compás; donde el engine pudo probar el compás encontró {{found}}, y dejó el suyo.",
+      "meter_applied_one": "{{count}} red line no tenía un compás que el engine pudiera probar: usa tus {{meter}} tiempos por compás.",
+      "meter_applied_other": "{{count}} red lines no tenían un compás que el engine pudiera probar: usan tus {{meter}} tiempos por compás."
+    },
+    "reanalyse": {
+      "title": "Analizar de nuevo",
+      "note": "La misma canción en otro modo, con las mismas pistas. Este navegador manda el archivo que todavía tiene, o te pide que lo elijas de nuevo y primero comprueba que sea el mismo audio. Si ya se pidió antes, la respuesta sale del resultado guardado.",
+      "go": "Analizar en {{mode}}",
+      "pick": "Elegí {{name}} de nuevo para mandarlo: antes se compara con este análisis.",
+      "mismatchFile": "{{name}} no es el audio de este análisis.",
+      "mismatch": "Ese archivo no es el audio del análisis que querías volver a analizar.",
+      "related": "Análisis vinculados",
+      "from": "El original",
+      "into": "Analizado de nuevo",
+      "compare": "Comparar"
     }
   }
 }

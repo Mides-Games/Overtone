@@ -298,13 +298,15 @@ export function paintMap(ctx, L, view, d, c) {
   } else if (d.envelope?.v?.length) {
     const v = d.envelope.v
     const per = d.envelope.span_ms / 1000 / v.length
+    // A stretch's envelope (W12.19) starts where the stretch does.
+    const from = (d.envelope.start_ms ?? 0) / 1000
     ctx.fillStyle = c.onset
-    const i0 = Math.max(0, Math.floor(view.a / per))
-    const i1 = Math.min(v.length, Math.ceil(view.b / per) + 1)
+    const i0 = Math.max(0, Math.floor((view.a - from) / per))
+    const i1 = Math.min(v.length, Math.ceil((view.b - from) / per) + 1)
     const w = Math.max(1, per * pxPerS)
     for (let i = i0; i < i1; i++) {
       const h = (v[i] / 100) * wh
-      if (h >= 0.6) ctx.fillRect(X(i * per), wmid - h, w, 2 * h)
+      if (h >= 0.6) ctx.fillRect(X(from + i * per), wmid - h, w, 2 * h)
     }
   }
 
@@ -468,11 +470,12 @@ export function paintOverview(ctx, width, height, d, c) {
   } else if (d.envelope?.v?.length) {
     const v = d.envelope.v
     const per = d.envelope.span_ms / 1000 / v.length
+    const from = (d.envelope.start_ms ?? 0) / 1000
     ctx.fillStyle = c.onset
     const w = Math.max(1, (per / d.durationS) * width)
     for (let i = 0; i < v.length; i++) {
       const y = (v[i] / 100) * h
-      if (y >= 0.5) ctx.fillRect(X(i * per), mid - y, w, 2 * y)
+      if (y >= 0.5) ctx.fillRect(X(from + i * per), mid - y, w, 2 * y)
     }
   }
   const bounds = d.lines.map((l) => l.timeMs / 1000).concat([d.durationS])

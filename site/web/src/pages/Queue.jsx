@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { formatRange } from '../lib/analysis-options.js'
 import { api } from '../lib/api.js'
 
 /**
@@ -95,6 +96,7 @@ export default function Queue() {
 
           {data.staff && <ModerationLog tick={tick} />}
 
+          <p className="max-w-[72ch] text-caption leading-relaxed text-dim">{t('modes.estimate.queueNote')}</p>
           <p className="max-w-[72ch] text-caption leading-relaxed text-dim">{t('queue.privacy')}</p>
         </>
       )}
@@ -135,6 +137,13 @@ function Row({ row, onModerated }) {
       <div className="shrink-0 space-y-1 text-right">
         <Status row={row} />
         <p className="readout text-caption text-dim">{formatElapsed(row.elapsedS)}</p>
+        {/* W3.16: an estimate, a range, and said to be one; W11.1: in which mode. */}
+        {row.estimate && (
+          <p className="readout text-caption text-dim" title={t('modes.estimate.why')}>
+            {t('modes.estimate.left')} {formatRange(t, row.estimate.lowS, row.estimate.highS)}
+          </p>
+        )}
+        {row.mode && row.mode !== 'normal' && <p className="text-caption text-dim">{t(`modes.names.${row.mode}`)}</p>}
       </div>
     </div>
   )

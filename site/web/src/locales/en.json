@@ -150,7 +150,8 @@
       "no_pulse": "Overtone found no steady pulse in this audio, so it does not report a BPM.",
       "too_short": "This audio is too short to time: it needs at least two seconds.",
       "too_long": "This audio is longer than the limit.",
-      "refused": "Overtone could not time this audio."
+      "refused": "Overtone could not time this audio.",
+      "bad_stretch": "The stretch chosen holds less than ten seconds of this audio."
     },
     "refusedWhy": "A guessed BPM would look precise and be wrong. Noise, ambient pads and free-time music end here on purpose.",
     "redLines": "Red lines",
@@ -930,6 +931,104 @@
       "deleteNote": "Deleting an analysis erases its result and takes down its public page at once. A song still waiting can be cancelled from its own page; one being analysed can be deleted once it ends.",
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
+    }
+  },
+  "modes": {
+    "names": {
+      "fast": "Fast",
+      "normal": "Normal",
+      "strict": "Strict"
+    },
+    "about": {
+      "fast": "The engine alone, without the Beat This! network: its vote on the red lines and its octave checks are skipped. A fraction of the wait; on real music the octave and the red lines are checked less.",
+      "normal": "The usual analysis: the engine, then the Beat This! vote and the octave checks.",
+      "strict": "For now the same analysis as Normal: nothing extra has been measured to help yet. A finer check of each red line will go here."
+    },
+    "options": {
+      "title": "Options (optional)",
+      "changed": "changed",
+      "defaults": "defaults",
+      "mode": "Mode",
+      "modeNote": "Choose by how long you want to wait. The same song in another mode is another result.",
+      "tempo": "Tempo",
+      "unknown": "Don't know",
+      "constant": "One BPM throughout",
+      "changes": "The tempo changes",
+      "meter": "Beats per bar",
+      "beats_one": "{{count}} beat per bar",
+      "beats_other": "{{count}} beats per bar",
+      "bpm": "BPM",
+      "about": "About",
+      "range": "Between",
+      "aboutBpm": "Approximate BPM",
+      "fromBpm": "Lowest BPM",
+      "toBpm": "Highest BPM",
+      "stretch": "Only a stretch (start – end)",
+      "from": "Start (m:ss)",
+      "to": "End (m:ss)",
+      "stretchNote": "Leave both empty for the whole song. The result's times stay in the song's own timeline.",
+      "stretchOne": "A stretch can be chosen for one song at a time.",
+      "honest": "Hints never override the audio. An expected tempo picks the octave the engine reads the song at, and a meter fills only the bars the engine could not prove; where the audio disagrees with a hint, the result says so.",
+      "reset": "Back to the defaults"
+    },
+    "errors": {
+      "bpm": "A BPM is a number from 30 to 400.",
+      "range": "The first BPM of the range has to be the lower one.",
+      "meter": "Beats per bar is a whole number from 1 to 16.",
+      "stretch": "Write the stretch as m:ss or seconds, with an end.",
+      "stretchBatch": "A stretch can be chosen for one song at a time: clear it, or send one song.",
+      "stretchPast": "The stretch ends after the song does.",
+      "stretchShort": "The stretch has to be at least 10 seconds long.",
+      "server": "The server refused the options: {{message}}"
+    },
+    "estimate": {
+      "label": "Estimate:",
+      "left": "Done in",
+      "seconds_one": "{{count}} s",
+      "seconds_other": "{{count}} s",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "about": "≈ {{value}}",
+      "range": "≈ {{low}} – {{high}}",
+      "atLeast": "at least {{value}}",
+      "why": "an estimate from the measured cost per minute of audio, with one worker",
+      "queueNote": "The times to finish are estimates (≈): what one analysis was measured to cost per minute of audio, for its mode, with one worker, so a range and never a promise. When a song's length is not known, the ones behind it read \"at least\"."
+    },
+    "result": {
+      "title": "How it was analysed",
+      "noVote": "(The Beat This! model was not available to the worker, so it did not vote.)",
+      "stretch": "Only {{from}} – {{to}} of the song was analysed. The red lines and every time here are in the song's own timeline; outside that stretch nothing was measured.",
+      "hints": "Your hints:",
+      "aboutBpm": "about {{bpm}} BPM",
+      "rangeBpm": "{{low}}–{{high}} BPM",
+      "stretchShort": "only {{from}}–{{to}}"
+    },
+    "checks": {
+      "tempo_not_constant_one": "You said one BPM throughout, and the engine found {{count}} tempo.",
+      "tempo_not_constant_other": "You said one BPM throughout; the engine found {{count}} different tempos. Its red lines are kept: listen where they change.",
+      "tempo_constant": "You said the tempo changes; the engine found one BPM ({{bpm}}) throughout.",
+      "bpm_far": "You expected about {{expected}} BPM; the engine reads {{bpm}}.",
+      "bpm_outside_one": "{{count}} red line falls outside your range of {{low}}–{{high}} BPM.",
+      "bpm_outside_other": "{{count}} red lines fall outside your range of {{low}}–{{high}} BPM.",
+      "double": "Doubled it would fit: try ×2 in the adjustments.",
+      "half": "Halved it would fit: try ÷2 in the adjustments.",
+      "octave_window": "Your tempo chose the octave the engine read the song at ({{low}}–{{high}} BPM).",
+      "octave_window_moved": "Your tempo chose the octave the engine read the song at ({{low}}–{{high}} BPM). Without it, the engine would have read it at {{bpm}} BPM.",
+      "meter_differs": "You said {{meter}} beats per bar; where the engine could prove the bar it found {{found}}, and kept its own.",
+      "meter_applied_one": "{{count}} red line had no bar the engine could prove: it uses your {{meter}} beats per bar.",
+      "meter_applied_other": "{{count}} red lines had no bar the engine could prove: they use your {{meter}} beats per bar."
+    },
+    "reanalyse": {
+      "title": "Analyse again",
+      "note": "The same song in another mode, with the same hints. This browser sends the file it still holds, or asks you to pick it again and checks it is the same audio first. Asked for before, it is answered from the stored result.",
+      "go": "Analyse in {{mode}}",
+      "pick": "Pick {{name}} again to send it: it is checked against this analysis first.",
+      "mismatchFile": "{{name}} is not the audio of this analysis.",
+      "mismatch": "That file is not the audio of the analysis it was meant to re-analyse.",
+      "related": "Linked analyses",
+      "from": "The original",
+      "into": "Analysed again",
+      "compare": "Compare"
     }
   }
 }

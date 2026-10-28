@@ -29,36 +29,126 @@
     "eyebrow": "timing de osu!, medido",
     "title": "Timeá una canción en minutos, no en horas",
     "subtitle": "Subí el audio y Overtone encuentra el BPM, el offset y cada red line, y te dice qué tan seguro está de cada sección.",
-    "cta": "Timear una canción",
-    "secondary": "Entrá para guardar tu historial",
-    "honest": "Overtone no promete un timing perfecto. En el benchmark sintético es exacto; en mapas rankeados reales es un primer borrador sólido. La confianza está a la vista para que sepas dónde mirar.",
-    "features": {
-      "upload": {
-        "title": "Subís, salen red lines",
-        "body": "BPM, offset, compases y cambios de compás, listos para pegar en [TimingPoints]."
+    "cta": "Analizar una canción",
+    "howCta": "Cómo funciona",
+    "draft": "Un primer borrador sólido, no un mapa terminado: revisalo de oído.",
+    "draftLink": "Lo que Overtone no promete",
+    "checkByEar": "Revisar de oído",
+    "facts": {
+      "free": "Gratis",
+      "noAccount": "Sin cuenta",
+      "deleted": "El audio se borra al terminar"
+    },
+    "live": {
+      "title": "En vivo",
+      "analyses": "Análisis hechos",
+      "queue": "En la cola ahora"
+    },
+    "gain": {
+      "eyebrow": "Qué ganás",
+      "title": "Pasá la noche mapeando, no tapeando",
+      "time": {
+        "title": "Horas de timing, de vuelta",
+        "body": "El BPM, el offset y la primera red line en minutos, en vez de una noche tocando al ritmo y corriendo milisegundos."
       },
-      "confidence": {
-        "title": "Confianza por sección",
-        "body": "Cada sección dice cuánta evidencia la respalda, en vez de un número que parece preciso."
+      "variable": {
+        "title": "Cambios de tempo, separados para vos",
+        "body": "Una canción que acelera, frena o cambia de compás vuelve como red lines separadas, cada una con su BPM y su offset."
       },
-      "account": {
-        "title": "Con una cuenta de Mides",
-        "body": "Guardá tus análisis, publicá timings y mirá quién más timeó la misma canción."
+      "osz": {
+        "title": "Abre en osu!, listo para mapear",
+        "body": "Bajá un .osz con tu canción y sus red lines adentro. Abrilo en osu! y empezá a poner notas."
+      },
+      "check": {
+        "title": "Herramientas para revisar de oído",
+        "body": "Clicks sobre la canción, un loop en cualquier sección, reproducción hasta la mitad de velocidad y un nivel de confianza por sección que te dice dónde escuchar primero."
+      },
+      "free": {
+        "title": "Gratis, sin registro, sin guardar nada",
+        "body": "No hace falta cuenta. Tu audio se borra del servidor apenas termina su análisis; solo queda el timing."
+      },
+      "try": {
+        "title": "Probalo con una canción que conozcas",
+        "body": "Con una subida alcanza para ver si te ahorra tiempo."
       }
     },
-    "checkByEar": "Revisar de oído"
+    "steps": {
+      "eyebrow": "Cómo funciona",
+      "title": "Tres pasos, una canción",
+      "more": "Todo el proceso, explicado",
+      "upload": {
+        "title": "Subí",
+        "body": "Soltá un MP3, OGG, WAV, FLAC, M4A u Opus, o varios a la vez."
+      },
+      "analyse": {
+        "title": "Analizá",
+        "body": "Espera su turno en la cola y el engine encuentra los tiempos, el BPM, el offset y cada cambio de tempo. Lo seguís desde cualquier página."
+      },
+      "check": {
+        "title": "Revisá y bajá",
+        "body": "Escuchalo con los clicks, poné en loop y bajá la velocidad de las partes que importan, y después bajá el .osz o copiá los [TimingPoints]."
+      }
+    },
+    "recent": {
+      "eyebrow": "Recién timeadas",
+      "title": "Canciones que alguien acaba de timear",
+      "loading": "Cargando los últimos timings"
+    },
+    "about": {
+      "eyebrow": "Quiénes somos",
+      "title": "Una herramienta de Mides Projects, abierta a todos",
+      "body": "Overtone es parte de Mides Projects y lo fundó githalt. Empezó como una app de escritorio que timeaba canciones en tu propia compu, y se convirtió en este sitio para que cualquiera la use desde el navegador.",
+      "open": "Código abierto con licencia MIT: el engine y este sitio, en un solo repositorio.",
+      "desktop": "De herramienta de escritorio a la web, con el mismo engine abajo.",
+      "independent": "Sin relación con osu! ni con ppy.",
+      "source": "Código en GitHub",
+      "mides": "midesprojects.com"
+    },
+    "faq": {
+      "eyebrow": "Preguntas",
+      "title": "Antes de subir",
+      "more": "Todas las preguntas",
+      "free": {
+        "q": "¿Es gratis?",
+        "a": "Sí. Analizar, escuchar y bajar no cuesta nada. Hay un límite diario por persona para que la cola sea justa; entrando con Mides el límite sube."
+      },
+      "audio": {
+        "q": "¿Se guarda mi audio?",
+        "a": "No. El archivo se borra del servidor apenas su análisis termina o falla. Queda el timing y una huella del archivo (su SHA-1), para responder al instante la próxima vez que llegue la misma canción."
+      },
+      "accuracy": {
+        "q": "¿Qué tan preciso es?",
+        "a": "En el benchmark sintético cada sección queda a menos de 0,05 BPM y 5 ms. En canciones reales es un primer borrador sólido: cada sección muestra su confianza y las que hay que revisar de oído están marcadas."
+      },
+      "formats": {
+        "q": "¿Qué formatos acepta?",
+        "a": "MP3, OGG, WAV, FLAC, M4A y Opus. Podés mandar varias canciones de una vez."
+      },
+      "account": {
+        "q": "¿Necesito una cuenta?",
+        "a": "No. Podés analizar, bajar y hasta publicar sin cuenta. Una cuenta de Mides guarda tu historial en todos tus dispositivos y sube el límite diario."
+      }
+    },
+    "final": {
+      "title": "Tu próximo mapa empieza por su timing",
+      "body": "Subí una canción y en minutos tenés red lines para revisar.",
+      "community": "Comunidad",
+      "recent": "Todos los timings recientes"
+    }
   },
   "strip": {
     "title": "Análisis",
     "example": "Ejemplo",
-    "caption": "Un análisis de ejemplo: cuatro compases de 4/4 a 174 BPM con red lines en los compases 1 y 3.",
+    "caption": "Un análisis de ejemplo reproducido en tiempo real: cuatro red lines a 174, 186 y 160 BPM, con un tramo en 3/4. Las lecturas siguen a la red line que está bajo el cursor.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Compás",
     "confidence": "Confianza",
     "high": "Confianza alta",
     "medium": "Media",
-    "check": "Revisar de oído"
+    "check": "Revisar de oído",
+    "line": "red line {{n}} de {{count}}",
+    "osuRow": "Esta red line como la escribe osu! en [TimingPoints]"
   },
   "analyze": {
     "title": "Analizar una canción",

@@ -29,36 +29,126 @@
     "eyebrow": "osu! timing, measured",
     "title": "Time a song in minutes, not hours",
     "subtitle": "Upload the audio and Overtone finds the BPM, the offset and every red line, and tells you how sure it is about each section.",
-    "cta": "Time a song",
-    "secondary": "Sign in to keep your history",
-    "honest": "Overtone does not promise perfect timing. Its benchmark is exact on synthetic tracks; on real ranked maps it is a strong first draft. Confidence is shown so you know where to look.",
-    "features": {
-      "upload": {
-        "title": "Upload, get red lines",
-        "body": "BPM, offset, bars and signature changes, ready to paste into [TimingPoints]."
+    "cta": "Analyze a song",
+    "howCta": "How it works",
+    "draft": "A strong first draft, not a finished map: check it by ear.",
+    "draftLink": "What Overtone does not promise",
+    "checkByEar": "Check by ear",
+    "facts": {
+      "free": "Free",
+      "noAccount": "No account needed",
+      "deleted": "Audio deleted after analysis"
+    },
+    "live": {
+      "title": "Live numbers",
+      "analyses": "Analyses done",
+      "queue": "In the queue now"
+    },
+    "gain": {
+      "eyebrow": "What you gain",
+      "title": "Spend the evening mapping, not tapping",
+      "time": {
+        "title": "Hours of timing, back",
+        "body": "The BPM, the offset and the first red line in minutes, instead of an evening of tapping along and nudging by milliseconds."
       },
-      "confidence": {
-        "title": "Confidence per section",
-        "body": "Every section says how much evidence backs it, instead of a number that looks precise."
+      "variable": {
+        "title": "Tempo changes, split for you",
+        "body": "A song that speeds up, slows down or changes meter comes back as separate red lines, each with its own BPM and offset."
       },
-      "account": {
-        "title": "With a Mides account",
-        "body": "Keep your analyses, publish timings, and see who else timed the same song."
+      "osz": {
+        "title": "Opens in osu!, ready to map",
+        "body": "Download a .osz with your song and its red lines inside. Open it in osu! and start placing notes."
+      },
+      "check": {
+        "title": "Tools to check it by ear",
+        "body": "Clicks over the song, a loop on any section, playback down to half speed, and a confidence level per section that says where to listen first."
+      },
+      "free": {
+        "title": "Free, no sign-up, nothing kept",
+        "body": "No account is needed. Your audio is deleted from the server as soon as its analysis ends; only the timing stays."
+      },
+      "try": {
+        "title": "Try it on a song you know",
+        "body": "One upload is enough to see whether it saves you time."
       }
     },
-    "checkByEar": "Check by ear"
+    "steps": {
+      "eyebrow": "How it works",
+      "title": "Three steps, one song",
+      "more": "The whole pipeline, explained",
+      "upload": {
+        "title": "Upload",
+        "body": "Drop an MP3, OGG, WAV, FLAC, M4A or Opus file, or several at once."
+      },
+      "analyse": {
+        "title": "Analyse",
+        "body": "It waits its turn in the queue, then the engine finds the beats, the BPM, the offset and every tempo change. Follow it from any page."
+      },
+      "check": {
+        "title": "Check and download",
+        "body": "Listen with the clicks, loop and slow down the parts that matter, then download the .osz or copy the [TimingPoints]."
+      }
+    },
+    "recent": {
+      "eyebrow": "Recently timed",
+      "title": "Songs people just timed",
+      "loading": "Loading the latest timings"
+    },
+    "about": {
+      "eyebrow": "Who we are",
+      "title": "A Mides Projects tool, open to everyone",
+      "body": "Overtone is part of Mides Projects and was founded by githalt. It started as a desktop app that timed songs on your own computer, and became this site so anyone can use it from a browser.",
+      "open": "Open source under the MIT licence: the engine and this site, in one repository.",
+      "desktop": "From a desktop tool to the web, with the same engine underneath.",
+      "independent": "Not affiliated with osu! or ppy.",
+      "source": "Source code on GitHub",
+      "mides": "midesprojects.com"
+    },
+    "faq": {
+      "eyebrow": "Questions",
+      "title": "Before you upload",
+      "more": "All questions",
+      "free": {
+        "q": "Is it free?",
+        "a": "Yes. Analysing, listening and downloading cost nothing. There is a daily limit per person to keep the queue fair; signing in with Mides raises it."
+      },
+      "audio": {
+        "q": "Is my audio kept?",
+        "a": "No. The file is deleted from the server as soon as its analysis ends or fails. What stays is the timing and a fingerprint of the file (its SHA-1), so the same song is answered at once next time."
+      },
+      "accuracy": {
+        "q": "How accurate is it?",
+        "a": "On the synthetic benchmark every section lands within 0.05 BPM and 5 ms. On real songs it is a strong first draft: each section shows its confidence, and the ones to check by ear are marked."
+      },
+      "formats": {
+        "q": "Which formats does it take?",
+        "a": "MP3, OGG, WAV, FLAC, M4A and Opus. You can send several songs in one go."
+      },
+      "account": {
+        "q": "Do I need an account?",
+        "a": "No. You can analyse, download and even publish without one. A Mides account keeps your history on every device and raises the daily limit."
+      }
+    },
+    "final": {
+      "title": "Your next map starts with its timing",
+      "body": "Upload a song and have red lines to check in minutes.",
+      "community": "Community",
+      "recent": "All recent timings"
+    }
   },
   "strip": {
     "title": "Analysis",
     "example": "Example",
-    "caption": "An example analysis: four bars of 4/4 at 174 BPM with red lines on bars 1 and 3.",
+    "caption": "An example analysis played in real time: four red lines at 174, 186 and 160 BPM, with one passage in 3/4. The readouts follow the red line under the playhead.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Meter",
     "confidence": "Confidence",
     "high": "High confidence",
     "medium": "Medium",
-    "check": "Check by ear"
+    "check": "Check by ear",
+    "line": "red line {{n}} of {{count}}",
+    "osuRow": "This red line as osu! writes it in [TimingPoints]"
   },
   "analyze": {
     "title": "Analyze a song",

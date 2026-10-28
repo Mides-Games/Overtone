@@ -105,7 +105,7 @@ And the site's, before any commit that touches `site/` or `bot/` (after `pnpm in
 
 ```bash
 pnpm --dir site/api test                               # all pass (144 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (186 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (197 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
 pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
 ```

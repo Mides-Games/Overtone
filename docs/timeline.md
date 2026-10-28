@@ -20,6 +20,42 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · A front page that answers why
+
+### Changed
+
+- `/` is a landing page (W12.25, the owner's request): what a mapper gains, how it
+  works in three steps, recently timed songs, live numbers from `GET /stats`, who
+  makes Overtone, five questions and a closing call, in EN and ES. Every claim is
+  one the site keeps today (`docs/site.md`, "The front page").
+- The example strip on it has four red lines (174, 186, a passage in 3/4, 160) and
+  plays them: a playhead crosses in real time and the BPM, offset, meter, confidence
+  and `[TimingPoints]` row follow the line under it (the owner's request). The data
+  is osu! timing: whole-ms offsets on downbeats, `beatLength = 60000 / BPM`.
+
+### Hardening
+
+- The strip runs only on screen and in a visible tab, and with reduced motion (the
+  system's or the site setting) steps a line every 4 s instead of sweeping.
+- The live numbers hide on any failure of `/stats`, and while nothing has been
+  analysed: they are colour, never an error.
+
+### Measured
+
+- Not measured: the page's load time and the strip's frame cost. The strip renders
+  React only on a line change (four times a 13 s loop) and moves one SVG transform
+  per frame.
+
+### Rejected / tried and dropped
+
+- Guessing the `/stats` shape before it existed: the first version read several
+  likely field names. Once W12.13 landed it reads exactly `totals.done` and
+  `queue.queued + queue.running`, so a renamed field shows as a hidden block, not a
+  wrong number.
+- Showing "0 analyses done" on a fresh site: dropped, the block waits for the first.
+
+---
+
 ## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
 
 ### Changed

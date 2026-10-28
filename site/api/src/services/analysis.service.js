@@ -501,7 +501,10 @@ const memoryStore = {
     const tempo = { single: 0, variable: 0 };
     const durations = [];
     const queue = { queued: 0, running: 0 };
+    const recent = { week: 0, month: 0 };
     const since = Date.now() - days * 86_400_000;
+    const week = Date.now() - 7 * 86_400_000;
+    const month = Date.now() - 30 * 86_400_000;
     for (const a of memory.analyses.values()) {
       if (a.job?.state === 'queued') queue.queued += 1;
       else if (a.job?.state === 'running') queue.running += 1;
@@ -518,6 +521,8 @@ const memoryStore = {
         if (bpm !== null) buckets[bucketOf(bpm)] += 1;
         tempo[isVariable(a.result) ? 'variable' : 'single'] += 1;
         if (a.finishedAt && a.finishedAt.getTime() >= since) durations.push(a.finishedAt - a.createdAt);
+        if (a.finishedAt && a.finishedAt.getTime() >= week) recent.week += 1;
+        if (a.finishedAt && a.finishedAt.getTime() >= month) recent.month += 1;
       } else if (a.status === 'refused') counts.refused += 1;
       else if (a.status === 'failed') counts.failed += 1;
     }
@@ -527,6 +532,7 @@ const memoryStore = {
       tempo,
       times: { count: durations.length, medianMs: percentile(durations, 0.5), p90Ms: percentile(durations, 0.9) },
       queue,
+      timed: { last7Days: recent.week, last30Days: recent.month },
     };
   },
 };
@@ -1125,6 +1131,8 @@ const pgStore = {
            WHERE a.deleted_at IS NULL AND a.cached_from IS NOT NULL AND a.status IN ('done', 'refused'))::int AS cached,
          (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND a.published_at IS NOT NULL)::int AS published,
          (SELECT count(DISTINCT a.song_id) FROM analyses a WHERE ${OWN} AND a.status = 'done')::int AS songs,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND a.finished_at >= now() - interval '7 days')::int AS last7,
+         (SELECT count(*) FROM analyses a WHERE ${OWN} AND a.status = 'done' AND a.finished_at >= now() - interval '30 days')::int AS last30,
          (SELECT coalesce(json_agg(json_build_array(b, n)), '[]'::json)
             FROM (SELECT width_bucket(${BPM}, $2::float8[]) AS b, count(*)::int AS n
                     FROM analyses a WHERE ${OWN} AND a.status = 'done' AND ${BPM} IS NOT NULL
@@ -1155,6 +1163,7 @@ const pgStore = {
         p90Ms: row.p90_ms === null ? null : Number(row.p90_ms),
       },
       queue: { queued: row.queued, running: row.running },
+      timed: { last7Days: row.last7, last30Days: row.last30 },
     };
   },
 };

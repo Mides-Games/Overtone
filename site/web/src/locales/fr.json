@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "Chiffres en direct",
-      "analyses": "Analyses effectuées",
-      "queue": "Dans la file en ce moment"
+      "analyses": "Morceaux calés",
+      "queue": "Dans la file en ce moment",
+      "week": "7 derniers jours",
+      "month": "30 derniers jours"
     },
     "gain": {
       "eyebrow": "Ce que vous y gagnez",
@@ -1894,6 +1896,14 @@
       "queued": "En attente",
       "running": "En analyse",
       "link": "Voir la file"
+    },
+    "activity": {
+      "title": "Morceaux calés et visites",
+      "total": "Calés au total",
+      "week": "7 derniers jours",
+      "month": "30 derniers jours",
+      "visits": "Visites de profils",
+      "note": "Un morceau calé est une analyse que le moteur a menée jusqu’à un timing : pas un refus, un échec, une réponse du cache ni une analyse supprimée. Les 7 et 30 jours sont glissants, jusqu’à maintenant. Une visite de profil, c’est une personne sur un profil public en un jour ; les visites du propriétaire ne comptent pas."
     }
   },
   "modes": {
@@ -2286,6 +2296,11 @@
         "unpin": "Désépingler",
         "none": "Vous n'avez pas encore de timing publié à épingler.",
         "full": "Les six places sont prises : désépinglez-en un d'abord."
+      },
+      "visits": {
+        "title": "Visites du profil",
+        "recent": "30 derniers jours",
+        "note": "Une personne compte une fois par jour ; vos propres visites ne comptent pas."
       }
     },
     "badges": {

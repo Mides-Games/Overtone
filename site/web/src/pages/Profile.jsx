@@ -111,7 +111,7 @@ export default function Profile() {
 
   return (
     <div className={`space-y-12 ${accent.className ?? ''}`} style={accent.style}>
-      <ProfileCard user={user} totals={profile?.totals ?? null}>
+      <ProfileCard user={user} totals={profile?.totals ?? null} visits={profile?.visits ?? null}>
         {profile && !profile.private && (
           <>
             <ShareButton username={account.username} />

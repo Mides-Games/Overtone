@@ -119,6 +119,22 @@ export default function Stats() {
             <p className="max-w-[70ch] text-caption leading-relaxed text-dim">{t('siteStats.totals.note')}</p>
           </section>
 
+          {/* An API from before the windows sends no `timed`: the section waits for one that does. */}
+          {stats.timed && (
+            <section aria-labelledby="stats-activity" className="space-y-4">
+              <h2 id="stats-activity" className="heading-title">
+                {t('siteStats.activity.title')}
+              </h2>
+              <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
+                <Readout label={t('siteStats.activity.total')} value={number(stats.timed.total)} />
+                <Readout label={t('siteStats.activity.week')} value={number(stats.timed.last7Days)} />
+                <Readout label={t('siteStats.activity.month')} value={number(stats.timed.last30Days)} />
+                {stats.profileVisits && <Readout label={t('siteStats.activity.visits')} value={number(stats.profileVisits.total)} />}
+              </dl>
+              <p className="max-w-[70ch] text-caption leading-relaxed text-dim">{t('siteStats.activity.note')}</p>
+            </section>
+          )}
+
           <div className="grid gap-x-12 gap-y-12 lg:grid-cols-12">
             <Block id="stats-bpm" title={t('siteStats.bpm.title')} className="lg:col-span-7">
               <BpmChart buckets={stats.bpm.buckets} />

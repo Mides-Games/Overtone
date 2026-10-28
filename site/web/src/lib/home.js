@@ -22,12 +22,14 @@ export const RECENT_ON_HOME = 5
 const count = (value) => (Number.isSafeInteger(value) && value >= 0 ? value : null)
 
 /**
- * The two numbers the front page shows, from `GET /api/v1/stats` (W12.13,
- * site/api/src/utils/stats.js `shapeStats`): analyses done (`totals.done`)
- * and the songs in the queue now, waiting or running (`queue.queued` +
- * `queue.running`). Anything that is not a whole non-negative number is left
- * out. Null when neither number is there: the block is then not drawn, rather
- * than drawn with dashes.
+ * The numbers the front page shows, from `GET /api/v1/stats` (W12.13,
+ * site/api/src/utils/stats.js `shapeStats`): the songs timed ever
+ * (`totals.done`), in the rolling last 7 and last 30 days (`timed.last7Days`,
+ * `timed.last30Days`), and the songs in the queue now, waiting or running
+ * (`queue.queued` + `queue.running`). Anything that is not a whole
+ * non-negative number is left out (null; an API from before the windows sends
+ * none). Null when neither the total nor the queue is there: the block is then
+ * not drawn, rather than drawn with dashes.
  */
 export function readStats(data) {
   if (!data || typeof data !== 'object') return null
@@ -36,7 +38,7 @@ export function readStats(data) {
   const running = count(data.queue?.running)
   const queue = queued === null && running === null ? null : (queued ?? 0) + (running ?? 0)
   if (analyses === null && queue === null) return null
-  return { analyses, queue }
+  return { analyses, week: count(data.timed?.last7Days), month: count(data.timed?.last30Days), queue }
 }
 
 /**

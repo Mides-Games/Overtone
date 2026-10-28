@@ -2,14 +2,16 @@ import { Router } from 'express';
 
 import { guard } from '../middlewares/rate-limit.js';
 import { analyses } from '../services/analysis.service.js';
+import { visits } from '../services/visit.service.js';
 import { STATS_DAYS, shapeStats } from '../utils/stats.js';
 
 /**
  * The site's public statistics (W12.13).
  *
  *   GET /stats   totals, the BPM histogram, single vs. variable tempo, the
- *                median and 90th percentile time from upload to result, and
- *                the queue's length
+ *                median and 90th percentile time from upload to result, the
+ *                queue's length, the songs timed (ever, last 7 and last 30
+ *                days) and the site-wide count of profile visits
  *
  * Aggregates only: no id, no name, no hash, nothing that belongs to one
  * person. The store counts, utils/stats.js `shapeStats` builds the answer
@@ -36,8 +38,8 @@ export const clearStatsCache = () => {
 };
 
 const compute = async () => {
-  const raw = await analyses().stats({ days: STATS_DAYS });
-  return shapeStats(raw, { days: STATS_DAYS });
+  const [raw, visited] = await Promise.all([analyses().stats({ days: STATS_DAYS }), visits().total()]);
+  return shapeStats({ ...raw, visits: visited }, { days: STATS_DAYS });
 };
 
 router.get('/stats', statsRateLimit, async (_req, res) => {

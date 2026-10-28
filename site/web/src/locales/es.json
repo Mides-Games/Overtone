@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "En vivo",
-      "analyses": "Análisis hechos",
-      "queue": "En la cola ahora"
+      "analyses": "Canciones timeadas",
+      "queue": "En la cola ahora",
+      "week": "Últimos 7 días",
+      "month": "Últimos 30 días"
     },
     "gain": {
       "eyebrow": "Qué ganás",
@@ -1858,6 +1860,14 @@
       "queued": "Esperando",
       "running": "Analizándose",
       "link": "Ver la cola"
+    },
+    "activity": {
+      "title": "Canciones timeadas y visitas",
+      "total": "Timeadas en total",
+      "week": "Últimos 7 días",
+      "month": "Últimos 30 días",
+      "visits": "Visitas a perfiles",
+      "note": "Una canción timeada es un análisis que el engine llevó hasta un timing: no un rechazo, un fallo, una respuesta de la caché ni uno borrado. Los 7 y 30 días son móviles, hasta ahora. Una visita a un perfil es una persona en un perfil público en un día; las del propio dueño no cuentan."
     }
   },
   "modes": {
@@ -2232,6 +2242,11 @@
         "unpin": "Quitar",
         "none": "Todavía no tenés timings publicados para fijar.",
         "full": "Los seis lugares están ocupados: quitá uno primero."
+      },
+      "visits": {
+        "title": "Visitas al perfil",
+        "recent": "últimos 30 días",
+        "note": "Cada persona cuenta una vez por día; tus propias visitas no cuentan."
       }
     },
     "badges": {

@@ -42,8 +42,10 @@
     },
     "live": {
       "title": "Numeri in tempo reale",
-      "analyses": "Analisi completate",
-      "queue": "In coda ora"
+      "analyses": "Brani temporizzati",
+      "queue": "In coda ora",
+      "week": "Ultimi 7 giorni",
+      "month": "Ultimi 30 giorni"
     },
     "gain": {
       "eyebrow": "Cosa ci guadagni",
@@ -1858,6 +1860,14 @@
       "queued": "In attesa",
       "running": "In analisi",
       "link": "Vedi la coda"
+    },
+    "activity": {
+      "title": "Brani temporizzati e visite",
+      "total": "Temporizzati in totale",
+      "week": "Ultimi 7 giorni",
+      "month": "Ultimi 30 giorni",
+      "visits": "Visite ai profili",
+      "note": "Un brano temporizzato è un’analisi che il motore ha portato fino a un timing: non un rifiuto, un errore, una risposta dalla cache né una eliminata. I 7 e 30 giorni sono mobili, fino ad ora. Una visita a un profilo è una persona su un profilo pubblico in un giorno; le visite del proprietario non contano."
     }
   },
   "modes": {
@@ -2232,6 +2242,11 @@
         "unpin": "Togli",
         "none": "Non hai ancora timing pubblicati da fissare.",
         "full": "Tutti e sei i posti sono occupati: togline uno prima."
+      },
+      "visits": {
+        "title": "Visite al profilo",
+        "recent": "ultimi 30 giorni",
+        "note": "Ogni persona conta una volta al giorno; le tue visite non contano."
       }
     },
     "badges": {

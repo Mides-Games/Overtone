@@ -107,12 +107,14 @@ And the site's, before any commit that touches `site/` (after `pnpm install --fr
 pnpm --dir site/api test                               # all pass (109 on 2026-10-27)
 pnpm --dir site/web test                               # all pass (185 on 2026-10-27)
 pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
-pnpm --dir site/e2e test                               # 51 pass in Chromium: the main paths, axe on every page in both themes
+pnpm --dir site/e2e test                               # 72 pass in Chromium: the main paths, axe on every page in both themes
 ```
 
 `site/e2e` starts its own API (in memory, with a fake worker) and Vite on 3090 and 5290
 (`E2E_API_PORT`, `E2E_WEB_PORT`), never in CI. Chromium is installed once per machine
-with `pnpm --dir site/e2e exec playwright install chromium`.
+with `pnpm --dir site/e2e exec playwright install chromium`. A measurement, not a gate:
+`pnpm --dir site/e2e vitals` (after a build) prints each page's LCP and CLS on the built site
+under Lighthouse's mobile profile (docs/site.md, W10.1).
 
 `bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
 the number stated here to them, so a test that lands without its count moving is named.

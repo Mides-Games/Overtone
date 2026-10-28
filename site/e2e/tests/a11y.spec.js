@@ -14,6 +14,9 @@ import { PUBLIC_PAGES, prefer, ready, signInAsStaff, uploadSong } from './helper
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
 
 async function audit(page) {
+  // Buttons fade their colours in (150 ms transitions); read them settled,
+  // not halfway (a pressed rate button once read 3.69:1 mid-fade).
+  await page.waitForTimeout(400)
   const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze()
   const summary = violations.map((v) => ({
     rule: v.id,
@@ -40,6 +43,14 @@ for (const theme of ['dark', 'light']) {
         await audit(page)
       })
     }
+
+    test('the command palette, open', async ({ page }) => {
+      await page.goto('/')
+      await ready(page)
+      await page.keyboard.press('Control+k')
+      await page.getByRole('combobox').fill('a')
+      await audit(page)
+    })
 
     test('a result page, running then done', async ({ page }) => {
       // A song not timed before (its own rate, so its own SHA-1), held by the

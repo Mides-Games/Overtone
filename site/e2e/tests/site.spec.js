@@ -110,6 +110,15 @@ test('the language switch turns the page Spanish and is remembered', async ({ pa
   await expect(page.getByRole('button', { name: 'Switch to English' })).toBeVisible()
 })
 
+test('a Spanish visitor gets Spanish from the first frame, its strings loaded on demand', async ({ browser }) => {
+  const page = await browser.newPage()
+  await prefer(page, { lang: 'es' })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es')
+  await expect(page.getByRole('button', { name: 'Switch to English' })).toBeVisible()
+  await page.close()
+})
+
 test('the theme switch turns the page light and is remembered', async ({ page }) => {
   await page.goto('/')
   await ready(page)
@@ -120,6 +129,17 @@ test('the theme switch turns the page light and is remembered', async ({ page })
   await page.reload()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(background)
+})
+
+test('the command palette opens with Ctrl+K and goes to a page', async ({ page }) => {
+  await page.goto('/')
+  await ready(page)
+  await page.keyboard.press('Control+k')
+  const field = page.getByRole('combobox')
+  await expect(field).toBeFocused()
+  await field.fill('queue')
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/queue$/)
 })
 
 test('the keyboard reaches the skip link first, and every focus is visible', async ({ page }) => {
@@ -151,7 +171,7 @@ test('the keyboard reaches the skip link first, and every focus is visible', asy
 test.describe('at 375 px', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
-  for (const path of ['/', '/analyze', '/queue', '/community', '/recent', '/login', '/terms', '/credits', '/status']) {
+  for (const path of ['/', '/analyze', '/queue', '/community', '/recent', '/stats', '/how-it-works', '/faq', '/glossary', '/settings', '/login', '/terms', '/credits', '/status']) {
     test(`${path} does not scroll sideways`, async ({ page }) => {
       await page.goto(path)
       await ready(page)

@@ -5,7 +5,9 @@ import { Router } from 'express';
 import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { analyses } from '../services/analysis.service.js';
+import { social } from '../services/social.service.js';
 import { HttpError } from '../utils/http-error.js';
+import { MIN_RATINGS_TO_RANK } from '../utils/social.js';
 import { historyEntry, listFilters, publicTiming, recentEntry } from '../utils/timings.js';
 import { downloadName, timingCsv, timingText } from '../utils/upload.js';
 import { readable } from './analyses.routes.js';
@@ -15,7 +17,8 @@ import { readable } from './analyses.routes.js';
  *
  *   POST   /analyses/:id/publish    the uploader makes a finished analysis public { makePublic? }
  *   DELETE /analyses/:id/publish    the uploader takes it back
- *   GET    /timings                 recent published timings from everyone: filters and a cursor
+ *   GET    /timings                 recent published timings from everyone: filters, an order
+ *                                   (sort=new|rated|used, W6) and a cursor; each with its stars and uses
  *   GET    /timings/:id             one published timing, as anyone may see it
  *   GET    /timings/:id/card        the same without the result: a link preview's fields
  *   GET    /timings/:id/timing.txt  its [TimingPoints] block
@@ -96,11 +99,30 @@ router.delete('/analyses/:id/publish', publishRateLimit, requireSameOrigin, opti
   res.status(204).end();
 });
 
+const NO_STATS = Object.freeze({ rating: { average: null, count: 0 }, uses: 0 });
+
+/**
+ * One page of published timings under `filters` (utils/timings.js
+ * `listFilters`), each with its stars and uses (W6): newest first from the
+ * analyses' keyset list, or best rated or most used from the social store's
+ * order. The recent list and a profile's list (routes/social.routes.js) are
+ * both this.
+ */
+export const listPage = async (filters) => {
+  if (filters.sort !== 'new') {
+    const { rows, next } = await social().listRanked(filters);
+    return { timings: rows.map((row) => ({ ...recentEntry(row), ...row.stats })), next };
+  }
+  const { rows, next } = await analyses().listPublished(filters);
+  const stats = await social().statsFor(rows.map((row) => row.publicId));
+  return { timings: rows.map((row) => ({ ...recentEntry(row), ...(stats.get(row.publicId) ?? NO_STATS) })), next };
+};
+
 router.get('/timings', readRateLimit, async (req, res) => {
-  const { rows, next } = await analyses().listPublished(listFilters(req.query));
+  const page = await listPage(listFilters(req.query));
   // Not cached either: an unpublished timing leaves the list on the next read.
   res.set('Cache-Control', 'no-store');
-  res.json({ timings: rows.map(recentEntry), next });
+  res.json({ ...page, minRatings: MIN_RATINGS_TO_RANK });
 });
 
 router.get('/timings/:id', readRateLimit, async (req, res) => {

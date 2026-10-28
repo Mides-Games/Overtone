@@ -16,7 +16,7 @@ export const memory = { accounts: new Map() };
 
 export const COLUMNS =
   'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, ' +
-  'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at';
+  'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private';
 
 /** The W9 fields a new memory row starts with, as the table's defaults. */
 const LINK_DEFAULTS = {
@@ -48,6 +48,7 @@ export const upsertFromMides = async (user) => {
       id: existing?.id ?? randomUUID(),
       session_version: existing?.session_version ?? 0,
       created_at: existing?.created_at ?? now,
+      profile_private: existing?.profile_private ?? false,
       mides_user_id: user.midesUserId,
       username: user.username,
       display_name: user.displayName,
@@ -130,6 +131,7 @@ export const publicAccount = (row) => ({
   bannerUrl: row.banner_url,
   role: row.mides_role,
   createdAt: new Date(row.created_at).toISOString(),
+  profilePrivate: Boolean(row.profile_private),
 });
 
 /**
@@ -149,3 +151,50 @@ export const ownLinks = (row) => ({
       }
     : null,
 });
+
+// ── Profiles (W5.6, W13.18) ─────────────────────────────────────────────────
+
+/**
+ * The account a public profile's URL names, by its Mides username in any
+ * case, or null. The username is refreshed at every sign-in, so a name that
+ * moved to another person on Mides can sit on two rows here until the old
+ * holder signs in again: the most recently refreshed row is the one that
+ * holds it now.
+ */
+export const accountByUsername = async (username) => {
+  const wanted = String(username).toLowerCase();
+  if (!hasDatabase()) {
+    return (
+      [...memory.accounts.values()]
+        .filter((a) => a.username.toLowerCase() === wanted)
+        .sort((a, b) => b.cached_at - a.cached_at)[0] ?? null
+    );
+  }
+  const { rows } = await query(
+    `SELECT ${COLUMNS} FROM accounts WHERE lower(username) = $1 ORDER BY cached_at DESC LIMIT 1`,
+    [wanted],
+  );
+  return rows[0] ?? null;
+};
+
+/** One account by id, or null. */
+export const accountById = async (id) => {
+  if (!id) return null;
+  if (!hasDatabase()) return memory.accounts.get(id) ?? null;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { rows } = await query(`SELECT ${COLUMNS} FROM accounts WHERE id = $1`, [id]);
+  return rows[0] ?? null;
+};
+
+/** The private-profile switch (W13.18). */
+export const setProfilePrivate = async (id, on) => {
+  if (!hasDatabase()) {
+    const row = memory.accounts.get(id);
+    if (row) row.profile_private = Boolean(on);
+    return;
+  }
+  await query('UPDATE accounts SET profile_private = $2 WHERE id = $1', [id, Boolean(on)]);
+};
+
+/** For the social store's memory twin (services/social.service.js): the accounts as rows. */
+export const memoryAccounts = () => memory.accounts;

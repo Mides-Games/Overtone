@@ -15,9 +15,11 @@ const robots = read('../public/robots.txt')
 /**
  * Pages nobody should land on from a search: a result is its uploader's, sign-in is a step,
  * and a comparison (W12.11) is two ids in the query, whose page depends on who asks;
- * the settings are this browser's own, with nothing to find (W12.15).
+ * the settings are this browser's own, with nothing to find (W12.15). And the pages with
+ * an id in their path (a timing, a timer's profile, a collection, W6): public, but with no
+ * fixed URL a static sitemap could list.
  */
-const PRIVATE = ['analyze/:id', 'history', 'compare', 't/:id', 'login', 'login/callback', 'profile', 'link/osu', 'settings', '*']
+const PRIVATE = ['analyze/:id', 'history', 'compare', 't/:id', 'u/:username', 'c/:id', 'login', 'login/callback', 'profile', 'link/osu', 'settings', '*']
 
 const routes = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
 const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+(\/[^<]*)<\/loc>/g)].map((m) => m[1])

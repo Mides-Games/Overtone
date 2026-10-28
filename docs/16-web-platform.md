@@ -686,13 +686,35 @@ privados: publicar es opt-in, W3.27), con título, artista, BPM principal, canti
 red lines, quién y cuándo. Filtros por rango de BPM y tempo único o variable,
 búsqueda por título o artista, y paginación por cursor. **Falta:** portada (no hay
 ninguna guardada), filtro por fecha en la lista pública, y "más usados" o "mejor
-puntuados", que esperan los usos y las estrellas.
+puntuados", que esperan los usos y las estrellas (hechos el 2026-10-27 con W6, abajo).
 
 ### Fase W6 — Social v2
 
 Colecciones, ranking de timers (por usos y estrellas), la insignia Ranked-match,
 reportes y panel de moderación con los roles de Mides, posts en el Feed de Mides,
 metadatos de osu! (beatmapset).
+
+**W5.6, W6 y W13.18 en buena parte, y W13.15, el 2026-10-27** en la rama
+`feature/site-social` (docs/site.md, "Social v2"):
+
+- **Hecho.** Estrellas de 1 a 5 en los timings publicados (una por cuenta, editable;
+  quien lo publicó no puede calificar el suyo), con el promedio en `/t/:id` y en
+  `/recent`, que ordena por "mejor puntuados" (desde 3 calificaciones, con promedio
+  bayesiano de 3 calificaciones previas de 3★) y "más usados". "Lo usé" (uno por
+  cuenta, con link opcional a un beatmapset de osu.ppy.sh, validado y guardado en una
+  sola forma). Comentarios (con cuenta, hasta 1000 caracteres, borrables por su autor,
+  ocultables por el staff con la moderación de Community) anclados opcionalmente a un
+  tiempo de la canción que mueve el reproductor (W13.15). Colecciones privadas o
+  públicas, con página propia (`/c/:id`). Perfil público por timer (`/u/<username>`):
+  timings publicados, totales, insignias (primer timing, 10 y 50 publicados, sugerencia
+  aceptada, usado por otros) y colecciones públicas; perfil privado = 404. La pestaña
+  Timings (y Colecciones) en `/profile`. Ranking de timers (`/timers`) por usos (desde
+  3) o estrellas (desde 5 calificaciones).
+- **Falta.** La insignia Ranked-match (espera W9.2; queda el gancho en `badgesOf`),
+  los metadatos del beatmapset (W9.2), los posts en el Feed de Mides (necesita su API),
+  reacciones con emoji (`timing_reactions` sigue sin usarse), comentarios en hilo,
+  marcar los comentarios con tiempo sobre el mapa de tempo (W13.15 los lleva al punto,
+  no los dibuja), y avisos al autor (W13.17).
 
 ### Fase W7 — Editor en el navegador
 

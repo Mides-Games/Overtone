@@ -26,8 +26,11 @@ import Status from './pages/Status.jsx'
 // The credits carry the whole dependency list (src/data/credits.json): loaded
 // when someone opens them, not with every page.
 const Credits = lazy(() => import('./pages/Credits.jsx'))
+import CollectionPage from './pages/CollectionPage.jsx'
 import Recent from './pages/Recent.jsx'
+import Timers from './pages/Timers.jsx'
 import TimingPage from './pages/TimingPage.jsx'
+import UserProfile from './pages/UserProfile.jsx'
 
 export default function App() {
   return (
@@ -44,6 +47,10 @@ export default function App() {
         <Route path="compare" element={<Compare />} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
         <Route path="t/:id" element={<TimingPage />} />
+        {/* W6 and W13.18: the ranking of timers, a timer's public profile, a collection. */}
+        <Route path="timers" element={<Timers />} />
+        <Route path="u/:username" element={<UserProfile />} />
+        <Route path="c/:id" element={<CollectionPage />} />
         <Route path="login" element={<Login />} />
         {/* The SSO's redirect_uri: SITE_URL + /login/callback, registered with Mides. */}
         <Route path="login/callback" element={<LoginCallback />} />

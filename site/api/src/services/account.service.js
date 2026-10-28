@@ -12,17 +12,39 @@ import { hasDatabase, query } from '../config/database.js';
  * production.
  */
 
-const memory = { accounts: new Map() };
+export const memory = { accounts: new Map() };
 
-const COLUMNS =
-  'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, profile_private';
+export const COLUMNS =
+  'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, ' +
+  'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private';
 
-/** Creates the account on first sign-in, refreshes its public fields on every later one. */
+/** The W9 fields a new memory row starts with, as the table's defaults. */
+const LINK_DEFAULTS = {
+  discord_notify: false, osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null,
+};
+
+/**
+ * Creates the account on first sign-in, refreshes its public fields on every
+ * later one.
+ *
+ * The Discord id (W9.1) is taken when Mides sends one and kept when it does
+ * not: a link made through the bot's /link code must survive a sign-in from a
+ * Mides that has no Discord on file. Mides is the authority when it does send
+ * one, so that id leaves any other account that held it first (one Discord
+ * user, one account).
+ */
 export const upsertFromMides = async (user) => {
   if (!hasDatabase()) {
     const existing = [...memory.accounts.values()].find((a) => a.mides_user_id === user.midesUserId);
+    if (user.discordId) {
+      for (const other of memory.accounts.values()) {
+        if (other !== existing && other.discord_id === user.discordId) Object.assign(other, { discord_id: null, discord_notify: false });
+      }
+    }
     const now = new Date();
     const row = {
+      ...LINK_DEFAULTS,
+      ...existing,
       id: existing?.id ?? randomUUID(),
       session_version: existing?.session_version ?? 0,
       created_at: existing?.created_at ?? now,
@@ -32,7 +54,7 @@ export const upsertFromMides = async (user) => {
       display_name: user.displayName,
       avatar_url: user.avatarUrl,
       banner_url: user.bannerUrl,
-      discord_id: user.discordId,
+      discord_id: user.discordId ?? existing?.discord_id ?? null,
       mides_role: user.role,
       cached_at: now,
     };
@@ -40,6 +62,12 @@ export const upsertFromMides = async (user) => {
     return row;
   }
 
+  if (user.discordId) {
+    await query(
+      'UPDATE accounts SET discord_id = NULL, discord_notify = false WHERE discord_id = $1 AND mides_user_id <> $2',
+      [user.discordId, user.midesUserId],
+    );
+  }
   const { rows } = await query(
     `INSERT INTO accounts (mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role)
           VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -48,7 +76,7 @@ export const upsertFromMides = async (user) => {
                  display_name = EXCLUDED.display_name,
                  avatar_url = EXCLUDED.avatar_url,
                  banner_url = EXCLUDED.banner_url,
-                 discord_id = EXCLUDED.discord_id,
+                 discord_id = coalesce(EXCLUDED.discord_id, accounts.discord_id),
                  mides_role = EXCLUDED.mides_role,
                  cached_at = now()
        RETURNING ${COLUMNS}`,
@@ -104,6 +132,24 @@ export const publicAccount = (row) => ({
   role: row.mides_role,
   createdAt: new Date(row.created_at).toISOString(),
   profilePrivate: Boolean(row.profile_private),
+});
+
+/**
+ * The account's own links (W9.1, W9.2), for `/me` only: whether Discord is
+ * linked and DMs are on, and the osu! profile read at link time. The Discord
+ * id itself is not sent: the page has no use for it.
+ */
+export const ownLinks = (row) => ({
+  discord: { linked: Boolean(row.discord_id), notify: Boolean(row.discord_id && row.discord_notify) },
+  osu: row.osu_user_id
+    ? {
+        id: Number(row.osu_user_id),
+        username: row.osu_username,
+        avatarUrl: row.osu_avatar_url,
+        rankedCount: row.osu_ranked_count ?? null,
+        linkedAt: row.osu_linked_at ? new Date(row.osu_linked_at).toISOString() : null,
+      }
+    : null,
 });
 
 // ── Profiles (W5.6, W13.18) ─────────────────────────────────────────────────

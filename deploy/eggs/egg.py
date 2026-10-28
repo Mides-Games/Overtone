@@ -211,6 +211,51 @@ def api():
                 "upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk "
                 "(default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it."),
             var("Queue max", "QUEUE_MAX", "Songs waiting or running at once, everyone's together (default 30)."),
+            secret("Bot token", "BOT_TOKEN",
+                   "32+ characters, the same value as this environment's overtone-bot BOT_TOKEN, and not "
+                   "WORKER_TOKEN: the bearer of /api/internal/bot. Empty = the bot's routes answer 503 BOT_OFF."),
+            var("Mides Discord link path", "MIDES_DISCORD_LINK_PATH",
+                "The Mides page that links Discord to a Mides account and returns to the profile "
+                "(docs/bot.md). Default /connections/discord/link."),
+            var("osu! client id", "OSU_CLIENT_ID",
+                "The osu! OAuth app's id (docs/bot.md). With the secret and the redirect URI, or none: "
+                "empty = linking osu! is off.",
+                rules="nullable|string|regex:/^[0-9]{1,12}$/"),
+            secret("osu! client secret", "OSU_CLIENT_SECRET", "The osu! OAuth app's secret."),
+            var("osu! redirect URI", "OSU_REDIRECT_URI",
+                "SITE_URL + /link/osu, exactly as registered with the osu! app.",
+                rules="nullable|string|starts_with:https://"),
+        ],
+    )
+
+
+def bot():
+    return app_egg(
+        "bot", "bot",
+        "The Overtone Discord bot (bot/, discord.js): /time-song and the other slash commands, through "
+        "overtone-api's /api/internal/bot with BOT_TOKEN. Needs no allocation of its own: it only makes "
+        "outbound connections (Discord's gateway, the API). Off, and stopped, until DISCORD_TOKEN, "
+        "BOT_TOKEN and OVERTONE_API are set.",
+        NODE_IMAGES, "overtone-bot: ready as",
+        [
+            secret("Discord token", "DISCORD_TOKEN",
+                   "The bot user's token (Discord developer portal -> the application -> Bot). Never in a file."),
+            secret("Bot token", "BOT_TOKEN",
+                   "The same value as this environment's overtone-api BOT_TOKEN.",
+                   rules="nullable|string|min:32"),
+            var("API", "OVERTONE_API",
+                "This environment's overtone-api, http://<allocation ip>:<port>, reached directly (never "
+                "through overtone-web, which does not forward /api/internal). No trailing slash.",
+                rules="nullable|string|starts_with:http"),
+            var("Discord application id", "DISCORD_APP_ID",
+                "The application the slash commands belong to. With it, every start registers them "
+                "(bot/scripts/register.mjs), so new commands arrive with the code.",
+                rules="nullable|string|regex:/^[0-9]{17,20}$/"),
+            var("Discord server id", "DISCORD_GUILD_ID",
+                "Register the commands on this one server, at once, instead of globally (for staging).",
+                rules="nullable|string|regex:/^[0-9]{17,20}$/"),
+            var("Poll ms", "BOT_POLL_MS", "How often a waiting /time-song asks the API (default 3000)."),
+            var("DM poll ms", "BOT_DM_POLL_MS", "How often the DM outbox is read (default 15000)."),
         ],
     )
 
@@ -360,7 +405,7 @@ def db():
     }
 
 
-EGGS = {"overtone-web": web, "overtone-api": api, "overtone-worker": worker, "overtone-db": db}
+EGGS = {"overtone-web": web, "overtone-api": api, "overtone-worker": worker, "overtone-bot": bot, "overtone-db": db}
 
 
 def render(make):

@@ -1673,6 +1673,36 @@
       "link": "See the queue"
     }
   },
+  "links": {
+    "title": "Linked accounts",
+    "loadFailed": "Your linked accounts could not be loaded. Reload the page to try again.",
+    "unlink": "Unlink",
+    "back": "Back to your profile",
+    "discord": {
+      "linked": "Linked. The Overtone bot knows you, and /time-song counts on your account.",
+      "notLinked": "Not linked. Link it to use the Overtone bot with your account and its quota.",
+      "onMides": "Link on Mides",
+      "code": "Link with the bot",
+      "codeHint": "Type this in Discord, to the Overtone bot, within {{minutes}} minutes:",
+      "unavailable": "Linking Discord is not available on this server yet.",
+      "notify": "Send me a Discord DM when an analysis ends",
+      "notifyHint": "From the Overtone bot, for the songs of this account. You can turn it off here or with /notify off.",
+      "botOff": "The Overtone bot is not running on this server yet: nothing is sent until it is."
+    },
+    "osu": {
+      "title": "Linking osu!",
+      "link": "Link osu!",
+      "notLinked": "Not linked.",
+      "unavailable": "Linking osu! is not available on this server yet.",
+      "ranked_one": "{{count}} ranked map",
+      "ranked_other": "{{count}} ranked maps",
+      "scope": "Overtone asks osu! only for your public identity (the identify scope): your id, name, picture and ranked map count, read once. It keeps no osu! token and never acts on your account.",
+      "working": "Linking your osu! account…",
+      "denied": "osu! was not linked: the request was declined on osu!.",
+      "stateMissing": "This link did not start in this browser, or took too long. Start again from your profile.",
+      "failed": "osu! could not be linked: {{message}}"
+    }
+  },
   "social": {
     "nav": {
       "timers": "Timers"

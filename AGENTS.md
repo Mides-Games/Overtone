@@ -101,16 +101,17 @@ cargo run --release -q -p overtone-bench -- map        # no false changes
 
 Every mode reads the golden vectors, so a new golden fixture must pass all five.
 
-And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
+And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (121 on 2026-10-27)
+pnpm --dir site/api test                               # all pass (144 on 2026-10-27)
 pnpm --dir site/web test                               # all pass (186 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
+pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
 ```
 
-`bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
-the number stated here to them, so a test that lands without its count moving is named.
+`bench/facts.py` counts the `test(` calls in `site/api/test`, `site/web/test` and `bot/test`
+and holds the number stated here to them, so a test that lands without its count moving is named.
 Their PostgreSQL paths run against an
 in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
 `DATABASE_URL` is set.
@@ -161,7 +162,9 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
    A field the user did not ask to change comes out byte-identical, CRLF included.
 6. No telemetry, no update checks, no third-party APIs. The engine, the command line
    and the gates run fully offline. The website talks only to its own API and worker
-   (`site/`, `docs/site.md`); the measurement server (`overtone_server.py`) only answers
+   (`site/`, `docs/site.md`), to Mides for sign-in, and to osu!'s OAuth only when a
+   person links their osu! account (W9.2, `identify`, one read); the Discord bot
+   (`bot/`, `docs/bot.md`) talks to Discord and to that API; the measurement server (`overtone_server.py`) only answers
    and makes no outbound calls. The desktop app was parked on 2026-10-26
    (`parked/desktop-app`, tag `v3-desktop-app`); editing tools come back on the web (W7).
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
@@ -172,12 +175,14 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 The root holds almost nothing on purpose: `README.md`, the workspaces
 (`Cargo.toml`, `Cargo.lock`; `package.json`, `pnpm-workspace.yaml`,
-`pnpm-lock.yaml` for the site), the agent rules (`AGENTS.md`, `CLAUDE.md` —
+`pnpm-lock.yaml` for the site and the bot), the agent rules (`AGENTS.md`, `CLAUDE.md` —
 identical) and the Git plumbing (`.gitignore`, `.gitattributes`). Everything
 else lives in a folder:
 
 ```
 site/                     the website, Overtone's only interface (docs/site.md)
+bot/                      the Discord bot (discord.js): /time-song and friends through the
+                          API's /api/internal/bot; scripts/register.mjs (docs/bot.md)
 python/                   v3 engine, osu! I/O and the command line
   overtone.py               engine and command line
   overtone_paths.py         where Overtone's files live, and the release's version

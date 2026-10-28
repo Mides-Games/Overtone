@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useSearchParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
+import Connections from '../components/Connections.jsx'
 import { Badges, ProfileCard, PublishedTimings } from '../components/social/ProfileParts.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
@@ -28,14 +29,40 @@ import {
  */
 const TABS = ['timings', 'collections']
 
+/**
+ * Back from Mides' Discord page (`?linked=discord`, W9.1): Overtone keeps no
+ * Mides token to ask again, so the profile is refreshed the way it is first
+ * read, by signing in. Mides already has a session, so the trip is a bounce.
+ * At most once a minute per tab, so a Mides that kept sending the browser
+ * back here could not make it loop.
+ */
+const RELINK_NOTE = 'overtone.relinkAt'
+const relinkOnce = () => {
+  try {
+    const last = Number(sessionStorage.getItem(RELINK_NOTE))
+    if (Number.isFinite(last) && Date.now() - last < 60_000) return false
+    sessionStorage.setItem(RELINK_NOTE, String(Date.now()))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export default function Profile() {
   const { t, i18n } = useTranslation()
   usePageMeta(t('nav.profile'))
-  const { account, refresh } = useAuth()
+  const { account, signIn, refresh } = useAuth()
   const [params, setParams] = useSearchParams()
+  const relink = params.get('linked') === 'discord'
   const tab = TABS.includes(params.get('tab')) ? params.get('tab') : 'timings'
   const [profile, setProfile] = useState(null)
   const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (!relink || !account) return
+    setParams({}, { replace: true })
+    if (relinkOnce()) signIn('', '/profile').catch(() => {})
+  }, [relink, account, setParams, signIn])
 
   useEffect(() => {
     if (!account) return undefined
@@ -124,6 +151,8 @@ export default function Profile() {
         )}
         {tab === 'collections' && <ManageCollections />}
       </section>
+
+      <Connections />
 
       <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>
     </div>

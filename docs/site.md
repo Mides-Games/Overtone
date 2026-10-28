@@ -163,6 +163,10 @@ is missing.
 | `QUEUE_MAX` | `30` | Songs waiting, running or still arriving, everyone's together (503 `QUEUE_FULL`). The default keeps `QUEUE_MAX × MAX_UPLOAD_MB` inside `SPOOL_MAX_MB`; the API warns at start when it does not. |
 | `WORKER_TOKEN` | random per process | The bearer of `/api/internal`. 32+ characters. **Required in production.** `pnpm dev` generates one and hands it to the worker it starts. |
 | `JOB_TIMEOUT_S` | `900` | A job running longer goes back to the queue; two attempts in all. |
+| `BOT_TOKEN` | none (bot off) | The Discord bot's bearer for `/api/internal/bot` (W9.3, `docs/bot.md`). 32+ characters, never `WORKER_TOKEN`. Unset, those routes answer 503 `BOT_OFF` and the profile offers no bot code. |
+| `MIDES_DISCORD_LINK_PATH` | `/connections/discord/link` | The Mides page that links Discord and returns to `/profile?linked=discord` (W9.1). Mides does not serve it yet. |
+| `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI` | none (osu! off) | The osu! OAuth app (W9.2): all three or none; the redirect URI is `SITE_URL/link/osu`, exactly as registered. |
+| `OSU_PKCE` | on | `0` leaves PKCE out of the osu! link, should osu! ever refuse it; the state check stays. |
 | `PROXY_SECRET` | none | The header overtone-web (`deploy/web/serve.mjs`) adds to everything it forwards; without it the API answers 404, except `/api/internal`. 32+ characters. **Required in production** (docs/deploy.md). Not needed with Vite's proxy. |
 | `OVERTONE_PYTHON` | `.venv`'s | `pnpm dev` only: the Python that runs the worker. |
 | `OVERTONE_WORKER` | on | `pnpm dev` only: `0` starts the API without its worker. |
@@ -899,6 +903,21 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### Linked accounts and the Discord bot (W9.1-W9.5, 2026-10-27)
+
+The profile gains "Linked accounts": Discord (through Mides, or a code typed to the
+bot as `/link`; then the DM switch) and osu! (OAuth, `identify` only, one `/me`, no
+token kept). `/link/osu` is osu!'s return page, private (robots.txt, the SEO test's
+list). The API gains `/me/links` and `/links/*` (session, same-origin, 30 per 10
+minutes), and the bot's own `/api/internal/bot` behind `BOT_TOKEN`, which uploads
+through the site's own `acceptUpload`. New: `accounts.discord_notify` and the
+`osu_*` columns, the unique indexes on `discord_id` and `osu_user_id`, and the
+tables `discord_link_codes` and `discord_dms`.
+
+Everything, from what Mides must add to what the owner registers on osu! and
+Discord, the decisions (the anonymous quota per Discord user, no chart image) and
+what was and was not checked, is in `docs/bot.md`.
 
 ### Other games' formats and the export options (W12.7, W12.8, 2026-10-27)
 

@@ -20,6 +20,56 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
+
+### Changed
+
+- An account links Discord (W9.1) and osu! (W9.2) from its profile, and a Discord
+  bot (`bot/`, discord.js 14.27.0) times songs and reads timings through a new
+  `/api/internal/bot` (W9.3-W9.5): `/time-song`, `/timing`, `/queue`, `/compare`,
+  `/recent`, `/link`, `/notify`. DMs when an analysis ends, opt-in (W9.4).
+  Everything is off until its secrets exist, and says so. `docs/bot.md`.
+- Discord through Mides needs two things Mides does not have yet (`discord_id` in
+  the SSO's user, a link page with `return_to`); until then a ten-minute code from
+  the profile, typed to the bot as `/link`, links the Discord user the bot names.
+- **Decided:** an unlinked Discord user gets the anonymous quota of one visitor,
+  counted by an HMAC of their id per day. Refusing them would leave the bot unused
+  until Mides sends Discord ids; a Discord account costs about what a fresh address
+  does, and both the bot and the API limit per Discord user.
+- The API's upload became `acceptUpload`, shared by the browser's route and the
+  bot's, so the bot is held to exactly the site's checks. A new `overtone-bot` egg.
+
+### Hardening
+
+- `BOT_TOKEN` is its own key: refused when equal to `WORKER_TOKEN`, neither opens
+  the other's routes, and overtone-web refuses `/api/internal/bot` in any spelling
+  (a test tries six).
+- The Discord id travels in a header, never a URL, and is stored raw only on the
+  account it is linked to (the DMs need it); quotas and limits count an HMAC of it.
+- osu!: state in a signed cookie bound to the account, a PKCE verifier derived
+  server side (never in the browser), the token dropped after one `/me`, the
+  avatar kept only on `ppy.sh`. Link codes are stored as an HMAC and spent once.
+- The bot checks an attachment before downloading (extension, type, the API's
+  `MAX_UPLOAD_MB`, Discord's CDN hosts) and while downloading (no redirects, type,
+  a byte count cut at the cap); the audio lives in memory until uploaded (ADR-W4).
+  A song name cannot write markdown or mentions into an embed.
+
+### Measured
+
+- Not measured: no performance claim. Tests: `site/api` 123 (23 new), `bot` 29,
+  `site/web` 90; the bot's contract suite runs it against the real API.
+
+### Rejected / tried and dropped
+
+- An image of the tempo chart in the embed: rendering the site's chart server side
+  needs a headless browser or a canvas library for one picture. The embed links
+  the page.
+- Refusing unlinked Discord users (above).
+- Showing the osu! avatar: widening the site's `img-src` to `ppy.sh` for a picture
+  only its owner sees is not worth a third-party request.
+
+---
+
 ## Unreleased — 2026-10-27 · Stars, uses, comments, collections and timer profiles
 
 ### Changed
@@ -74,6 +124,8 @@ version is `v0.2.0-alpha`.
 - A keyset cursor for "best rated" and "most used": a cursor over a score that moves
   while someone reads skips or repeats rows just the same, so those orders page by
   offset (`o<n>`) and say so.
+
+---
 
 ## Unreleased — 2026-10-27 · Other games' formats and export options
 

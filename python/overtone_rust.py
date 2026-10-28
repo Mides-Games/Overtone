@@ -207,7 +207,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
 
     analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
     analysis = ta._song_octave_by_beat_this(analysis, heard)
-    return ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard))
+    return ta._tidy_bpms(ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard)))
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

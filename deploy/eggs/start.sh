@@ -129,6 +129,17 @@ update() {
     [ "$old" = "$new" ] && return 0
 
     if ! git merge-base --is-ancestor "$old" "$new"; then
+        # master's history was rewritten (squashed, 2026-10-28): a commit that
+        # is now only in an archive tag (refs/tags/history/*) was published,
+        # so a clean checkout moves to the new history. A commit made on the
+        # server is in no archive and is left alone, as before.
+        git "${AUTH[@]}" fetch --quiet origin "+refs/tags/history/*:refs/tags/history/*" 2>/dev/null || true
+        if [ -n "$(git tag --list 'history/*' --contains "$old")" ] && git diff --quiet HEAD --; then
+            git reset --quiet --hard "$new" || return 0
+            say "$BRANCH was rewritten; moved from the archived $(git rev-parse --short "$old") to $(git rev-parse --short "$new")"
+            log "rewrite"
+            return 0
+        fi
         say "$BRANCH cannot fast-forward from $(git rev-parse --short "$old") to $(git rev-parse --short "$new")" \
             "(history rewritten, or commits made on the server); left alone"
         return 0

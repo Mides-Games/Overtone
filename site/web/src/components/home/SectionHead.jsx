@@ -1,18 +1,10 @@
+import SectionHeader from '../ui/SectionHeader.jsx'
+
 /**
- * A front-page section's heading: the small-caps eyebrow, the h2 the section
- * is labelled by, and an optional link on the right (wraps under it on a
- * phone).
+ * A front-page section's heading: the site's section header
+ * (components/ui/SectionHeader.jsx) with the front page's way of passing the
+ * action, as children.
  */
-export default function SectionHead({ id, eyebrow, title, children }) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-      <div className="min-w-0 space-y-2">
-        <p className="label text-accent">{eyebrow}</p>
-        <h2 id={id} className="font-display text-[clamp(1.4rem,1.1rem+1.2vw,2rem)] font-bold uppercase leading-tight tracking-[-0.005em]">
-          {title}
-        </h2>
-      </div>
-      {children}
-    </div>
-  )
+export default function SectionHead({ id, eyebrow, title, lede, children, className }) {
+  return <SectionHeader id={id} eyebrow={eyebrow} title={title} lede={lede} action={children} className={className} />
 }

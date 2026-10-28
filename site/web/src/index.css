@@ -230,7 +230,7 @@
   --text-section--line-height: 1.1;
   --text-headline: clamp(2rem, 1.3rem + 2.6vw, 2.75rem);
   --text-headline--line-height: 1.05;
-  --text-display: clamp(2.5rem, 1.5rem + 3.6vw, 3.75rem);
+  --text-display: clamp(2.5rem, 1rem + 3.6vw, 3.75rem);
   --text-display--line-height: 1;
 
   --radius-control: 6px;

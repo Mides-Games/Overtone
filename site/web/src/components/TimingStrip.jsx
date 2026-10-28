@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useSettings } from '../context/SettingsContext.jsx'
-import { motionReduced } from '../lib/settings.js'
+import useReducedMotion from '../hooks/useReducedMotion.js'
 import { activeIndex, buildLines, gridOf, loopTime, osuRow, readoutsOf, spanOf, steppedIndex } from '../lib/strip.js'
 
 /**
@@ -61,20 +60,6 @@ const ONSETS = (() => {
   }
   return out
 })()
-
-/** Whether motion is cut: the site setting, else the system's preference, followed live. */
-function useReducedMotion() {
-  const setting = useSettings()?.settings?.reducedMotion ?? 'system'
-  const [system, setSystem] = useState(() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)
-  useEffect(() => {
-    if (typeof matchMedia !== 'function') return undefined
-    const query = matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setSystem(query.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
-  return motionReduced(setting, system)
-}
 
 /** Whether `ref`'s element is on screen and the tab visible: the strip runs only then. */
 function useRunning(ref) {
@@ -149,7 +134,7 @@ export default function TimingStrip() {
 
   return (
     <figure ref={figure} className="panel overflow-hidden" aria-label={t('strip.caption')}>
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <span className="label truncate">
           {t('strip.title')} · <span className="readout">{t('strip.line', { n: active + 1, count: LINES.length })}</span>
         </span>
@@ -178,7 +163,7 @@ export default function TimingStrip() {
               <g key={i} opacity={on ? 1 : 0.55}>
                 <rect x={x - 1} y={TOP - 4} width="2" height={BASE - TOP + 4} fill="var(--red)" />
                 <rect x={x + 1} y={TOP - 4} width={meterChange ? 54 : 30} height="17" rx="2" fill="var(--red)" className="max-sm:hidden" />
-                <text x={x + 5} y={TOP + 9} fill="var(--bg)" fontSize="12" fontWeight="700" className="font-mono max-sm:hidden">
+                <text x={x + 5} y={TOP + 9} fill="var(--red-ink)" fontSize="12" fontWeight="600" className="font-mono max-sm:hidden">
                   {label}
                 </text>
               </g>
@@ -196,11 +181,11 @@ export default function TimingStrip() {
 
       <dl className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4" aria-live="off">
         {readouts.map((r) => (
-          <div key={r.label} className="min-w-0 space-y-1 bg-surface px-4 py-3">
+          <div key={r.label} className="min-w-0 space-y-1 bg-surface px-4 py-3.5">
             <dt className="label">{r.label}</dt>
-            <dd className="readout text-title text-text" style={r.tone ? { color: r.tone } : undefined}>
+            <dd className="readout text-heading font-medium leading-none text-text" style={r.tone ? { color: r.tone } : undefined}>
               {r.value}
-              {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
+              {r.unit && <span className="unit">{r.unit}</span>}
             </dd>
           </div>
         ))}

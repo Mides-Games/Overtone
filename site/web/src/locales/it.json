@@ -235,6 +235,8 @@
     },
     "failedTitle": "L'analisi non è riuscita",
     "failed": "Overtone non è riuscito a leggere questo file. Potrebbe essere danneggiato o non essere l'audio che il nome indica. Il tuo file è stato eliminato.",
+    "failedTooHeavy": "L'analisi ha richiesto più memoria di quanta il server ne conceda a un brano, quindi è stata interrotta. Il tuo file è stato eliminato. Riprova tra qualche minuto, oppure analizza un tratto più breve del brano.",
+    "failedTimeout": "L'analisi ha richiesto più tempo di quanto il server consenta per un brano di questa durata, quindi è stata interrotta. Il tuo file è stato eliminato. Riprova tra qualche minuto, oppure usa la modalità veloce.",
     "refusedTitle": "Nessun BPM",
     "refusal": {
       "no_pulse": "Overtone non ha trovato una pulsazione stabile in questo audio, quindi non indica un BPM.",

@@ -235,6 +235,8 @@
     },
     "failedTitle": "A análise falhou",
     "failed": "O Overtone não conseguiu ler este arquivo. Ele pode estar danificado ou não ser o áudio que o nome indica. Seu arquivo foi apagado.",
+    "failedTooHeavy": "A análise precisou de mais memória do que o servidor permite por música, então foi interrompida. Seu arquivo foi apagado. Tente de novo em alguns minutos ou analise um trecho mais curto da música.",
+    "failedTimeout": "A análise demorou mais do que o servidor permite para uma música dessa duração, então foi interrompida. Seu arquivo foi apagado. Tente de novo em alguns minutos ou use o modo rápido.",
     "refusedTitle": "Sem BPM",
     "refusal": {
       "no_pulse": "O Overtone não encontrou um pulso estável neste áudio, então não informa um BPM.",

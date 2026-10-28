@@ -377,7 +377,7 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
     trabajos. Cada trabajo tiene un límite de reloj de
     `max(WORKER_TIMEOUT_MIN_S, WORKER_TIMEOUT_FACTOR × duración)` (120 s y 3× por
     defecto); pasado eso, el hijo se mata y el trabajo falla con `timeout`;
-  - en Linux, el hijo tiene `RLIMIT_AS` de `WORKER_MEMORY_MB` (1800 por defecto; 0
+  - en Linux, el hijo tiene un tope de memoria residente (RSS, leída de /proc) de `WORKER_MEMORY_MB` (1800 por defecto; 0
     lo apaga) y `MALLOC_ARENA_MAX=2`. Si se queda sin memoria, o si el OOM killer
     lo mata, el trabajo falla con `too_heavy`. En Windows no hay rlimit y se avisa;
   - el worker sigue atendiendo: el siguiente trabajo arranca un hijo nuevo. Mientras

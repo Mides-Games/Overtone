@@ -20,6 +20,47 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## v1.0.0-stable — 2026-10-28 · Tidy BPMs on, and three bands experiments
+
+### Changed
+
+- `TIDY_BPM` is on: a red line keeps two decimals at most, one where that is within
+  0.011 (180.19 → 180.2, 180.178 → 180.18), its middle beat held where it was.
+- Three engine experiments, off by default, for the server to measure:
+  - `OCTAVE_RULE`: a song under 130 BPM whose half beats carry at least 0.9 of the
+    beats' attack weight is doubled (fast punk read at half); one over 160 BPM with
+    under 0.3 is halved. Fitted on the tidy-bpm runs' evidence.
+  - `PERCUSSIVE_INPUT`: the grid is fitted on the percussive part of the audio (HPSS),
+    the drums without the sustained guitars and bass; Beat This! keeps the mix. The
+    Rust engine reads it from a temporary WAV.
+  - `CHANGE_POINTS`: a one-line song is followed beat by beat on its strongest attacks,
+    and the beats found are split by optimal partitioning into steady stretches; a split
+    stands only where the stretches differ by 0.4 % and fit the attacks 15 % better.
+    On synthetic attacks it finds 178 → 174, 180 → 185 → 180 and 200 → 195 → 200 at
+    the right BPM, and splits no steady song with 5, 10 or 15 ms of jitter (0 of 30).
+
+### Measured
+
+- tidy-bpm on the server (2026-10-28, 045aeac): tempo ok unchanged on every stage run
+  (bands dev 51.1, held out 59.9; anime-variable dev 31.9, held out 21.5).
+- The octave rule, on the per-map evidence of those runs: the precision path's first
+  lines at the right octave +63 maps dev (1677), +44 held out (681). Not yet measured end
+  to end.
+- `PERCUSSIVE_INPUT` and `CHANGE_POINTS`: not measured on real maps yet.
+
+### Rejected / tried and dropped
+
+- **Shorter drift windows** (2026-10-28, anime-variable dev, tempo ok): base 31.9;
+  48 beats 31.1, 32 beats 31.7, 32 with a looser guard 30.6, 16 looser 27.5; bands dev
+  51.1 → 50.2 (32) and 46.1 (32 looser), held out 59.9 → 52.6 (32 looser). A window cuts
+  where it ends, not where the tempo moves, and a looser guard invents changes.
+- **Piecewise variants on the tracker path**: minimum 32 beats, bands dev 52.2 (octave
+  87.6) but held out 57.7; with drift 32, dev 51.3.
+- **OCTAVE_CONTINUITY**: changed no map on any stage; the octave mixes it was meant for
+  were counted on the map's lines, not the engine's.
+
+---
+
 ## v1.0.0-stable — 2026-10-28 · Fifteen-minute songs, and the memory to time them
 
 ### Changed

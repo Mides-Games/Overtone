@@ -20,6 +20,48 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The site in ten languages, chosen by flag
+
+### Changed
+
+- The navbar's EN/ES toggle is a language selector: a button with the current flag and
+  code opens a listbox of ten languages, each by its own name (W12.16). French and German
+  are new; Italian, Polish, Brazilian Portuguese, Japanese, Korean and Russian, translated
+  on their own branches, are moved onto the selector's keys.
+- English and Spanish stay in the main bundle; the other eight are found by file name
+  (`src/locales/<code>.json`) and fetched on first use. A first visit follows the
+  browser's languages; only a visitor's own choice is stored in `mides.lang`.
+- `/settings` lists the ten with their flags; the command palette has one action per
+  language. The legal pages say, in every language but English, that the English
+  version prevails.
+- The privacy page no longer says `mides.lang` holds "English or Spanish".
+
+### Hardening
+
+- `test/i18n.test.js` checks all ten files: keys within English's, placeholders and the
+  legal pages' `[[...]]` marks equal, plural forms by language, no empty string, and 100 %
+  coverage for es, fr, de and any file that has begun. It also holds the list, the locale
+  files, the flags and `index.html`'s early script to the same ten codes.
+- The app waits for the starting language's strings before its first frame, showing the
+  loader's beats, so a French visitor never sees English flash.
+
+### Measured
+
+- Coverage on 2026-10-28: all ten at 100 % of `en.json` (1,583 strings).
+- Build: `fr` 116.4 kB and `de` 109.2 kB as their own chunks (39.0 and 38.5 kB gzip),
+  outside the main bundle.
+- Navbar places at 1024 px before the spacing change: fr 608 of 586 px, pl 593 of 586,
+  ru 645 of 611 (overflowing); after: all ten fit (fr 580, ru 617 of their boxes).
+- site/web: 238 tests pass; the build is clean.
+
+### Rejected / tried and dropped
+
+- Emoji flags: Windows renders none. Image files: ten more requests for 18 px.
+- Storing the detected language: it would pin a visitor to the browser's language of
+  their first visit.
+
+---
+
 ## Unreleased — 2026-10-28 · One branch: master
 
 ### Changed

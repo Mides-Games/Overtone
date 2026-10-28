@@ -38,7 +38,7 @@ const anchor = (text) =>
     .replace(/^-|-$/g, '')
 
 export default function LegalPage({ page, draft = true, children }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   usePageMeta(t(`legal.${page}.title`), t(`legal.${page}.description`))
   const sections = t(`legal.${page}.sections`, { returnObjects: true })
   const list = Array.isArray(sections) ? sections : []
@@ -49,8 +49,17 @@ export default function LegalPage({ page, draft = true, children }) {
   return (
     <article className="rise space-y-8">
       <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t(`legal.${page}.title`)}</h1>
+        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase break-words hyphens-auto">{t(`legal.${page}.title`)}</h1>
         <p className="readout text-caption text-dim">{t('legal.updated', { date: t('legal.date') })}</p>
+        {/* W12.16: any language but English says the English text is the one that binds. */}
+        {!i18n.language?.startsWith('en') && (
+          <p className="rounded-control border border-line-strong bg-surface-2 px-3 py-2 text-label leading-relaxed text-muted">
+            {t('legal.translationNote')}{' '}
+            <button type="button" className="text-accent hover:underline" onClick={() => i18n.changeLanguage('en')} lang="en">
+              English
+            </button>
+          </p>
+        )}
         {draft && (
           <p className="rounded-control border border-amber/40 bg-amber/10 px-3 py-2 text-label leading-relaxed text-amber">{t('legal.draft')}</p>
         )}

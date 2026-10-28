@@ -13,8 +13,8 @@
     "signOut": "Esci",
     "account": "Menu dell'account",
     "changeTheme": "Cambia tema",
-    "changeLanguage": "Switch to English",
-    "otherLanguage": "EN",
+    "changeLanguage": "Cambia lingua",
+    "language": "Lingua: {{name}}",
     "openMenu": "Apri il menu",
     "closeMenu": "Chiudi il menu",
     "queue": "Coda"
@@ -454,6 +454,7 @@
     "updated": "Ultimo aggiornamento: {{date}}",
     "date": "27 ottobre 2026",
     "toBeSet": "Da definire",
+    "translationNote": "Questa traduzione è fornita per comodità; fa fede la versione inglese.",
     "resultLink": "Cosa significa “controlla a orecchio”",
     "terms": {
       "title": "Termini d'uso",
@@ -1252,7 +1253,8 @@
       "contrastOn": "Attiva il contrasto elevato",
       "contrastOff": "Disattiva il contrasto elevato",
       "settings": "Apri le impostazioni",
-      "shortcuts": "Scorciatoie da tastiera"
+      "shortcuts": "Scorciatoie da tastiera",
+      "language": "Lingua: {{name}}"
     },
     "help": {
       "title": "Scorciatoie da tastiera",
@@ -1325,9 +1327,7 @@
     "reset": "Ripristina contrasto, dimensione, colori e animazioni",
     "language": {
       "title": "Lingua",
-      "label": "Lingua del sito",
-      "en": "English",
-      "es": "Español"
+      "label": "Lingua del sito"
     },
     "audio": {
       "title": "Lettore",

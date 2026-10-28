@@ -13,8 +13,8 @@
     "signOut": "Wyloguj się",
     "account": "Menu konta",
     "changeTheme": "Zmień motyw",
-    "changeLanguage": "Switch to English",
-    "otherLanguage": "EN",
+    "changeLanguage": "Zmień język",
+    "language": "Język: {{name}}",
     "openMenu": "Otwórz menu",
     "closeMenu": "Zamknij menu",
     "queue": "Kolejka"
@@ -470,6 +470,7 @@
     "updated": "Ostatnia aktualizacja: {{date}}",
     "date": "27 października 2026",
     "toBeSet": "Do ustalenia",
+    "translationNote": "To tłumaczenie służy wyłącznie wygodzie; wiążąca jest wersja angielska.",
     "resultLink": "Co znaczy „sprawdź na słuch”",
     "terms": {
       "title": "Regulamin",
@@ -1318,7 +1319,8 @@
       "contrastOn": "Włącz wysoki kontrast",
       "contrastOff": "Wyłącz wysoki kontrast",
       "settings": "Otwórz ustawienia",
-      "shortcuts": "Skróty klawiszowe"
+      "shortcuts": "Skróty klawiszowe",
+      "language": "Język: {{name}}"
     },
     "help": {
       "title": "Skróty klawiszowe",
@@ -1391,9 +1393,7 @@
     "reset": "Przywróć kontrast, rozmiar, kolory i animacje",
     "language": {
       "title": "Język",
-      "label": "Język strony",
-      "en": "English",
-      "es": "Español"
+      "label": "Język strony"
     },
     "audio": {
       "title": "Odtwarzacz",

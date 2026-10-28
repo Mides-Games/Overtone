@@ -7,6 +7,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { isStaff } from '../services/account.service.js';
 import { community, KINDS, newPublicId, PAGE_MAX, SORTS, STATES } from '../services/community.service.js';
+import { social } from '../services/social.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { cleanText } from '../utils/text.js';
 import { ipHashOf } from './analyses.routes.js';
@@ -24,7 +25,8 @@ import { ipHashOf } from './analyses.routes.js';
  *   GET    /community/reviews/form               a form token, for the anonymous minimum time
  *   POST   /community/reviews                    { stars, body, token?, website? }
  *   DELETE /community/reviews/mine               signed in
- *   POST   /community/:kind/:id/report           { reason }                    anyone
+ *   POST   /community/:kind/:id/report           { reason }                    anyone; kind is
+ *                                                 suggestions, reviews or comments (a timing's, W6)
  *   POST   /community/:kind/:id/moderate         { action: hide|unhide, reason? } staff
  *   GET    /community/moderation                 staff: open reports and the log
  *
@@ -67,8 +69,8 @@ const requireStaff = (req, _res, next) => {
 
 const notFound = () => new HttpError(404, 'Not found.', 'NOT_FOUND');
 
-/** Cleaned text within `[min, max]` code points, or a 400 that names the field. */
-const field = (raw, name, min, max, { multiline = false } = {}) => {
+/** Cleaned text within `[min, max]` code points, or a 400 that names the field. Also the comments' (routes/social.routes.js). */
+export const field =(raw, name, min, max, { multiline = false } = {}) => {
   // One past the cap survives cleaning, so "too long" can be told from "fits".
   const text = cleanText(raw, max + 1, { multiline });
   const length = text ? [...text].length : 0;
@@ -284,16 +286,21 @@ router.delete('/community/reviews/mine', reviewLimit, requireSameOrigin, require
 
 // ── Moderation, shared ──────────────────────────────────────────────────────
 
-const KIND_OF = { suggestions: 'suggestion', reviews: 'review' };
+const KIND_OF = { suggestions: 'suggestion', reviews: 'review', comments: 'comment' };
 
-/** The item `:kind/:id` if this request may see it (as `visibleSuggestion`), else a 404. */
+/**
+ * The item `:kind/:id` if this request may see it (as `visibleSuggestion`),
+ * else a 404. A comment (W6, routes/social.routes.js) is also a 404 while its
+ * timing is not published: nobody can see it then, so nobody reports it.
+ */
 const visibleItem = async (req) => {
   const kind = KIND_OF[req.params.kind];
   if (!kind || !KINDS.includes(kind)) throw notFound();
   if (kind === 'suggestion') return { kind, item: await visibleSuggestion(req) };
   if (!ID.test(req.params.id)) throw notFound();
-  const item = await community().getReview(req.params.id);
-  if (!item || (item.hidden && !isStaff(req.account) && !(req.account && item.accountId === req.account.id))) throw notFound();
+  const item = kind === 'review' ? await community().getReview(req.params.id) : await social().getComment(req.params.id);
+  if (!item || (kind === 'comment' && !item.timingPublished)) throw notFound();
+  if (item.hidden && !isStaff(req.account) && !(req.account && item.accountId === req.account.id)) throw notFound();
   return { kind, item };
 };
 
@@ -321,16 +328,23 @@ router.post('/community/:kind/:id/moderate', staffLimit, requireSameOrigin, requ
   res.status(204).end();
 });
 
+/** A comment's timing, so staff can open the page it sits on; null once the comment is gone. */
+const timingOfComment = async (kind, ref) => (kind === 'comment' ? ((await social().getComment(ref))?.timingId ?? null) : undefined);
+
 router.get('/community/moderation', requireSession, requireStaff, async (_req, res) => {
   const store = community();
   const [log, reports] = await Promise.all([store.moderationLog(), store.openReportList()]);
   res.set('Cache-Control', 'no-store');
   res.json({
-    log: log.map((e) => ({
+    log: await Promise.all(log.map(async (e) => ({
       action: e.action, kind: e.kind, ref: e.ref, from: e.fromState ?? null, to: e.toState ?? null,
       moderator: e.moderator, reason: e.reason ?? null, at: iso(e.createdAt),
-    })),
-    reports: reports.map((r) => ({ kind: r.kind, ref: r.ref, count: r.count, reasons: r.reasons, at: iso(r.latestAt) })),
+      ...(e.kind === 'comment' ? { timing: await timingOfComment(e.kind, e.ref) } : {}),
+    }))),
+    reports: await Promise.all(reports.map(async (r) => ({
+      kind: r.kind, ref: r.ref, count: r.count, reasons: r.reasons, at: iso(r.latestAt),
+      ...(r.kind === 'comment' ? { timing: await timingOfComment(r.kind, r.ref) } : {}),
+    }))),
   });
 });
 

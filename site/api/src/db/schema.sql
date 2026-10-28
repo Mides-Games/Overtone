@@ -406,10 +406,26 @@ CREATE TABLE IF NOT EXISTS analysis_versions (
   factor          real NOT NULL CHECK (factor IN (0.5, 1, 2)),
   nudge_ms        smallint NOT NULL CHECK (nudge_ms BETWEEN -500 AND 500),
   label           text CHECK (char_length(label) <= 60),
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  CHECK (factor <> 1 OR nudge_ms <> 0),
-  UNIQUE (analysis_id, factor, nudge_ms)
+  created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- An edited timing (W7): the owner's own red lines, packed rows checked by
+-- version.service.js `parseLines`, and a key of them so the same edit saved
+-- twice is one version. A version may now be an edit with no factor or
+-- nudge, so the check and the uniqueness the table first had (on factor and
+-- nudge alone) are dropped where they exist and replaced by these.
+ALTER TABLE analysis_versions ADD COLUMN IF NOT EXISTS lines jsonb
+  CHECK (lines IS NULL OR (jsonb_typeof(lines) = 'array' AND jsonb_array_length(lines) BETWEEN 1 AND 512));
+ALTER TABLE analysis_versions ADD COLUMN IF NOT EXISTS lines_key text NOT NULL DEFAULT ''
+  CHECK (lines_key ~ '^([0-9a-f]{64})?$');
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_check;
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_analysis_id_factor_nudge_ms_key;
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_changes_check;
+ALTER TABLE analysis_versions ADD CONSTRAINT analysis_versions_changes_check
+  CHECK (factor <> 1 OR nudge_ms <> 0 OR lines_key <> '');
+ALTER TABLE analysis_versions DROP CONSTRAINT IF EXISTS analysis_versions_lines_pair_check;
+ALTER TABLE analysis_versions ADD CONSTRAINT analysis_versions_lines_pair_check
+  CHECK ((lines IS NULL) = (lines_key = ''));
+CREATE UNIQUE INDEX IF NOT EXISTS analysis_versions_same_idx ON analysis_versions (analysis_id, factor, nudge_ms, lines_key);
 -- ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ───────────────
 
 -- The social tables above were drafted for `timings`, the rows people edit

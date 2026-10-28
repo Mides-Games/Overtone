@@ -22,7 +22,7 @@ export default function MapImage({ id, analysis, lines, data, adjustment, publis
   const note = [
     `${formatBpm(bpm)} BPM`,
     `${lines.length} red line${lines.length === 1 ? '' : 's'}`,
-    adjusted ? `adjusted ${adjusted}` : null,
+    adjusted ? (adjustment.edits ? adjusted : `adjusted ${adjusted}`) : null,
     'Overtone',
   ].filter(Boolean).join(' · ')
   const stem = downloadName(analysis.filename ?? heading, 'tempo-map').replace(/-tempo-map$/, '')

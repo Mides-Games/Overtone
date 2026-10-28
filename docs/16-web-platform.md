@@ -725,6 +725,18 @@ de referencia (`app/app.js`, `overtone_web.py`) está en `parked/desktop-app`, y
 funciones puras de edición que llamaba (`add_timing_point`, `nudge_timing_point`,
 `split_section`, `merge_sections`, `set_meter`…) siguen en `python/overtone.py`.
 
+**Hecha en su mayor parte el 2026-10-28** (`feature/site-editor`, `docs/site.md`): modo
+Editar en el mapa del resultado: arrastrar red lines (pegadas a ataques o pulsos, Alt
+libre), mover 1/10 ms con las flechas, agregar en el cabezal o con doble clic, borrar,
+tipear tiempo, BPM y compás, partir/unir y ×2/÷2 por sección con el reajuste del
+escritorio (portado a `lib/editor.js` y probado contra el Python en 16 casos), deshacer
+y rehacer con historial visible y anuncios para lectores de pantalla, y el offset lab
+(cabecera gapless del MP3 y prueba ciega). Las ediciones alimentan clics, copia, `.osz`
+y exportes marcadas como editadas; se guardan en el navegador y como versión (W12.21).
+**Falta:** fijar (lock) red lines, el metrónomo aparte de los clics, la comparación de
+decodificadores del offset lab (necesita los dos engines), y probar un arrastre con
+mouse real, la prueba ciega entera y un lector de pantalla.
+
 ### Fase W8 — Vuelven las piezas estacionadas, bien hechas
 
 Hitsounds primero, con su propia puerta de calidad antes de mostrarse. Después Train
@@ -811,7 +823,7 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 | W12.14 | **Paleta de comandos y atajos** (2.ª tanda): Ctrl+K para ir a cualquier página, abrir un análisis reciente o cambiar idioma y tema; `?` muestra todos los atajos |
 | W12.15 | **Ajustes y accesibilidad** (2.ª tanda): `/settings` con tema, alto contraste, tamaño de letra, paleta del mapa apta para daltonismo, movimiento reducido, volúmenes por defecto y la latencia de W12.2; todo en el navegador |
 | W12.16 | **Más idiomas**: pt-BR, fr, de, ja, ko, con un flujo para que la comunidad traduzca (un JSON por idioma y la prueba de claves de i18n)<br>**Hecha el 2026-10-28** (`feature/site-languages` y las ramas de cada idioma): diez idiomas (en, es, fr, de, it, pl, pt-BR, ja, ko, ru) con un selector con banderas en SVG en la barra; un idioma nuevo es su JSON en `src/locales/`, una fila en `lib/languages.js` y su bandera, cargado al elegirlo; `test/i18n.test.js` controla claves, placeholders, plurales por idioma y cobertura (los diez al 100 %). **Falta:** un lector de pantalla sobre el selector y una página de resultado vista en cada idioma |
-| W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 |
+| W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 (hecho, 2026-10-28: dentro del editor de W7) |
 | W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord (hecho, 2026-10-27: PNG del mapa de la página, SVG reducido, `/embed/<id>` enmarcable solo esa ruta; falta una imagen Open Graph para que Discord la muestre en el link) |
 | W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota)<br>**Hecho el 2026-10-27** (`feature/site-analysis-modes`), del lado del worker y no recortando en el navegador: el navegador decodifica con otro decoder (el retardo de MP3 movería los tiempos), un WAV del tramo cambia el SHA-1 y puede pasar el tope de subida. El worker decodifica como el engine, analiza el tramo y devuelve los tiempos en la línea de tiempo de la canción; la página dice qué tramo cubrió. Se sube el archivo entero (misma cuota; la espera sí baja) |
 | W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad (hecho, 2026-10-27: `/settings/tokens`, `/developers`, tres permisos, 120 pedidos/min por token; falta probar el store de PostgreSQL contra una base real) |

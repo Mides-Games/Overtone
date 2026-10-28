@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { changesLines, exportLines } from '../../lib/export-options.js'
 import { buildOsz } from '../../lib/osz.js'
-import { saveText, timingText } from '../../lib/timing.js'
+import { isAdjusted, saveText, timingText } from '../../lib/timing.js'
 import DivisorChart from './DivisorChart.jsx'
 import { useExportOptions } from './ExportOptions.jsx'
 import OszOptions, { DEFAULT_OPTIONS, oszExtras, useCover, useSuggestions } from './OszOptions.jsx'
@@ -42,7 +42,7 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
   const showCover = audioFile && cover && typeof cover === 'object'
   const [openTip, setOpenTip] = useState(false)
   const result = analysis.result
-  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const adjusted = isAdjusted(adjustment)
 
   // Functional updates: two presses before a render must both count.
   const setNudge = (value) =>

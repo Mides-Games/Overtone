@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -25,15 +25,20 @@ import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useCoverAccent } from '../hooks/useCoverAccent.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
+import { useTimingEdits } from '../hooks/useTimingEdits.js'
 import { formatRange } from '../lib/analysis-options.js'
 import { calculatorPath } from '../lib/calc.js'
 import { checkSpans } from '../lib/check-spans.js'
+import { addLine, updateLine } from '../lib/editor.js'
 import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
 import { heldAudio } from '../lib/session-audio.js'
 import { tracker, useAnalysis } from '../lib/tracking.js'
 import { publishAnalysis, timingPath, unpublishAnalysis } from '../lib/timings.js'
-import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
+import { adjustLines, attackDrift, clickGrid, formatBpm, formatClock, formatMs, governing, isAdjusted, lineDrift } from '../lib/timing.js'
+
+// The editor (W7) and its offset lab load after the page: a reader who never edits never waits for them.
+const TimingEditor = lazy(() => import('../components/result/TimingEditor.jsx'))
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
@@ -287,11 +292,20 @@ function Refused({ result }) {
  * `sha1` to check a file against, so it passes `verify`, which asks the
  * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
  * lists and saves versions (W12.21).
+ *
+ * The reader's own changes are `adjustment`: the ×2 / ÷2 and the nudge
+ * (`frame`), and the red lines edited in the editor (W7, `edits`, kept by
+ * hooks/useTimingEdits.js). Everything below reads the lines through
+ * `adjustLines(result, adjustment)`, so an edit reaches the clicks, the copy,
+ * the .osz and the exports exactly as the nudge does.
  */
 export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false, onAccent = null }) {
   const { t } = useTranslation()
   const result = analysis.result
-  const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
+  const [frame, setFrame] = useState({ factor: 1, nudgeMs: 0 })
+  const editor = useTimingEdits(id, result, frame)
+  const adjustment = useMemo(() => (editor.edits ? { ...frame, edits: editor.edits } : frame), [frame, editor.edits])
+  const [editing, setEditing] = useState(false)
   // W12.24: a copied row is written as the whole block is (W12.8's options).
   const exportOptions = useExportOptions()
   const [selected, setSelected] = useState(null)
@@ -323,8 +337,12 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
 
   const durationS = result.duration_s ?? 0
   const sections = useMemo(() => result.sections ?? [], [result])
-  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const adjusted = isAdjusted(adjustment)
   const lines = useMemo(() => adjustLines(result, adjustment), [result, adjustment])
+  // An undo or a delete can leave the selection past the last line.
+  useEffect(() => {
+    if (selected !== null && selected >= lines.length) setSelected(lines.length ? lines.length - 1 : null)
+  }, [selected, lines.length])
   // The beats alone, for the map, the arrow keys and the taps; the clicks add the subdivisions the reader asked for (W12.6).
   const grid = useMemo(() => clickGrid(lines, durationS), [lines, durationS])
   const subdivision = snapshot.subdivision
@@ -415,6 +433,19 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
     setFocus({ ...spanOf(item), key: item.key, scroll: false })
   }
 
+  // The map's own edits (W7): a dragged line lands, a double-click adds one with the BPM and bar of the line before it.
+  const moveLine = (i, ms) => {
+    const out = editor.act((l) => updateLine(l, i, ms), (o) => ({ key: 'move', values: { n: o.selected + 1, time: formatClock(ms) } }))
+    if (!out.error) setSelected(out.selected)
+  }
+  const addAt = (ms) => {
+    const here = lines[governing(lines, ms / 1000)]
+    if (!here) return
+    const out = editor.act((l) => addLine(l, ms, here.bpm, { meter: here.meter }), (o) => ({ key: 'add', values: { n: o.selected + 1, time: formatClock(ms) } }))
+    if (!out.error) setSelected(out.selected)
+  }
+  const audioFile = audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)
+
   const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
     { term: 'bpm', label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
@@ -469,6 +500,10 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         clockRef={clockRef}
         focus={focus}
         song={songLanes}
+        editing={editing}
+        onToggleEdit={lines.length ? () => setEditing((on) => !on) : null}
+        onMoveLine={moveLine}
+        onAddAt={addAt}
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
@@ -480,8 +515,28 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
           grid={grid}
           adjusted={adjusted}
           nudgeMs={adjustment.nudgeMs}
-          onAdjust={setAdjustment}
+          onAdjust={setFrame}
         />
+        {lines.length > 0 && (
+          <Suspense fallback={null}>
+          <TimingEditor
+            editor={editor}
+            editing={editing}
+            onEditing={setEditing}
+            lines={lines}
+            selected={selected}
+            onSelect={setSelected}
+            player={player}
+            snapshot={snapshot}
+            result={result}
+            durationS={durationS}
+            owner={owner}
+            nudgeMs={adjustment.nudgeMs}
+            onAdjust={setFrame}
+            audioFile={audioFile}
+          />
+          </Suspense>
+        )}
       </TempoMap>
 
       <CheckHere
@@ -508,7 +563,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         <Link to={comparePath({ id })} className="btn-ghost h-8 px-3 text-caption">
           {t('compare.withAnother')}
         </Link>
-        {adjusted && (
+        {/* An edited timing's lines do not fit in a link: the comparison takes the ×2 and the nudge only. */}
+        {adjusted && !adjustment.edits && (
           <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost h-8 px-3 text-caption">
             {t('compare.withAdjusted')}
           </Link>
@@ -523,8 +579,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         analysis={analysis}
         lines={lines}
         adjustment={adjustment}
-        onAdjust={setAdjustment}
-        audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+        onAdjust={setFrame}
+        audioFile={audioFile}
         songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
       >
         <MoreDownloads
@@ -544,7 +600,17 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
       </AdjustExport>
 
-      {owner && <Versions analysis={analysis} adjustment={adjustment} onApply={setAdjustment} />}
+      {owner && (
+        <Versions
+          analysis={analysis}
+          adjustment={adjustment}
+          onApply={(next) => {
+            setFrame({ factor: next.factor, nudgeMs: next.nudgeMs })
+            // A version's edits, or none: one step of the editor's history, so it undoes.
+            if ((next.edits ?? null) !== (editor.edits ?? null)) editor.replace(next.edits ?? null, { key: 'version' })
+          }}
+        />
+      )}
 
       <RedLinesTable
         lines={lines}

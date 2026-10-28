@@ -6257,6 +6257,57 @@ class DeployScriptTests(unittest.TestCase):
         self.assertTrue(moved, said)
         self.assertIn("moved", said)
 
+    def test_a_rewritten_master_moves_an_archived_checkout_and_spares_a_local_one(self):
+        # 2026-10-28: master was squashed and the old history archived under
+        # refs/tags/history/*. A checkout on an archived commit follows the
+        # new master; a commit made on the server is still left alone.
+        import shutil
+        import subprocess
+        for tool in ("sh", "git", "curl"):
+            if shutil.which(tool) is None:
+                self.skipTest(f"{tool} is not on PATH")
+        for local_commit, expect_moved in ((False, True), (True, False)):
+            with self.subTest(local_commit=local_commit):
+                scratch = tempfile.TemporaryDirectory()
+                self.addCleanup(scratch.cleanup)
+                tmp = Path(scratch.name)
+                env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                       "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+                       "GIT_CONFIG_GLOBAL": str(tmp / "gitconfig"), "GIT_CONFIG_NOSYSTEM": "1"}
+
+                def git(*args, cwd=tmp):
+                    return subprocess.run(["git", *args], cwd=cwd, env=env, check=True,
+                                          capture_output=True, text=True).stdout.strip()
+
+                upstream, checkout = tmp / "upstream", tmp / "checkout"
+                git("init", "-q", "-b", "master", str(upstream))
+                for text in ("one", "two"):
+                    (upstream / "a.txt").write_text(text + "\n", encoding="utf-8")
+                    git("add", "a.txt", cwd=upstream)
+                    git("commit", "-q", "-m", text, cwd=upstream)
+                git("clone", "-q", "-b", "master", str(upstream), str(checkout))
+                if local_commit:
+                    (checkout / "b.txt").write_text("server\n", encoding="utf-8")
+                    git("add", "b.txt", cwd=checkout)
+                    git("commit", "-q", "-m", "made on the server", cwd=checkout)
+                # The rewrite: archive the old master, squash it to one root commit.
+                git("tag", "history/test", "master", cwd=upstream)
+                tree = git("rev-parse", "master^{tree}", cwd=upstream)
+                root = git("commit-tree", tree, "-m", "squashed", cwd=upstream)
+                git("update-ref", "refs/heads/master", root, cwd=upstream)
+                stubs = tmp / "bin"
+                stubs.mkdir()
+                for name, body in (("systemctl", "[ \"$1\" = is-active ] && exit 3\nexit 0\n"), ("sudo", "exit 0\n")):
+                    (stubs / name).write_bytes(f"#!/bin/sh\n{body}".encode())
+                    (stubs / name).chmod(0o755)
+                env.update(PATH=str(stubs) + os.pathsep + env.get("PATH", ""), OVERTONE_REPO=str(checkout),
+                           OVERTONE_TOKEN_FILE=str(tmp / "none"), OVERTONE_API="http://127.0.0.1:9",
+                           OVERTONE_CARGO="false")
+                done = subprocess.run(["sh", str(self.DEPLOY / "overtone-update.sh")], env=env,
+                                      capture_output=True, text=True, timeout=120)
+                head = git("rev-parse", "HEAD", cwd=checkout)
+                self.assertEqual(head == root, expect_moved, done.stdout + done.stderr)
+
     def test_the_updater_deploys_to_a_server_that_is_not_running(self):
         # A stopped service runs nothing, and may be waiting for this very fix.
         moved, said = self._update(None, active=False)

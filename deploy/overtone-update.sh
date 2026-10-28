@@ -31,9 +31,24 @@ main() {
     # and counting it as one blocks every fast-forward that touches that file.
     git config core.fileMode false
     git fetch --quiet origin "$BRANCH" || return 1
+    # The archives of rewritten history (refs/tags/history/*): what tells a
+    # published commit master dropped from one made on this server.
+    git fetch --quiet origin "+refs/tags/history/*:refs/tags/history/*" 2>/dev/null || true
     old=$(git rev-parse HEAD)
     new=$(git rev-parse "origin/$BRANCH")
     [ "$old" = "$new" ] && return 0
+
+    # master's history was rewritten (squashed, 2026-10-28) and this checkout
+    # sits on a commit that is now only in an archive tag: it was published,
+    # so nothing here is lost by moving. Clean trees only, and after the busy
+    # check below, like any update.
+    rewritten=0
+    if [ "$(git rev-parse --abbrev-ref HEAD)" = "$BRANCH" ] &&
+       ! git merge-base --is-ancestor HEAD "origin/$BRANCH" &&
+       [ -n "$(git tag --list 'history/*' --contains HEAD)" ] &&
+       git diff --quiet && git diff --cached --quiet; then
+        rewritten=1
+    fi
 
     # One-time move (2026-10-28): the deployed branch was experimental until
     # the owner made master the only branch. A checkout still on experimental,
@@ -80,7 +95,10 @@ main() {
         esac
     fi
 
-    if ! git merge --quiet --ff-only "origin/$BRANCH"; then
+    if [ "$rewritten" = 1 ]; then
+        git reset --quiet --hard "origin/$BRANCH" || return 1
+        echo "overtone-update: $BRANCH was rewritten; moved from the archived $(git rev-parse --short "$old") to $(git rev-parse --short "$new")"
+    elif ! git merge --quiet --ff-only "origin/$BRANCH"; then
         echo "overtone-update: $BRANCH cannot fast-forward to $(git rev-parse --short "$new"); left alone"
         return 1
     fi

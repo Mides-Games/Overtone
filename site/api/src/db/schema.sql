@@ -362,9 +362,12 @@ ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS target_kind text NOT NULL DE
 ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS target_ref text CHECK (char_length(target_ref) <= 64);
 ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS from_state text CHECK (char_length(from_state) <= 16);
 ALTER TABLE moderation_log ADD COLUMN IF NOT EXISTS to_state text CHECK (char_length(to_state) <= 16);
+-- Every re-add of these two checks carries the whole final list: the file runs
+-- top to bottom at each deploy, so a shorter list here would refuse rows a later
+-- section allows (a logged 'accept', a 'vote' target) and stop the migration.
 ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_action_check;
 ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_action_check
-  CHECK (action IN ('remove', 'requeue', 'hide', 'unhide', 'state'));
+  CHECK (action IN ('remove', 'requeue', 'hide', 'unhide', 'state', 'accept', 'dismiss'));
 CREATE INDEX IF NOT EXISTS moderation_log_target_idx ON moderation_log (target_kind, target_ref);
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -498,7 +501,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS collection_items_analysis_once ON collection_i
 -- Staff hide and unhide a comment through the same log as everything else.
 ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_target_kind_check;
 ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_target_kind_check
-  CHECK (target_kind IN ('analysis', 'suggestion', 'review', 'comment'));
+  CHECK (target_kind IN ('analysis', 'suggestion', 'review', 'comment', 'vote'));
 
 -- ── Votes on published timings and the notification bell (W13.14, W13.16, W13.17) ──
 

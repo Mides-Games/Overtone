@@ -13,9 +13,12 @@ lock, SBOM and notices gates do not move.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import math
 import sys
+import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -27,12 +30,13 @@ import overtone as ta  # noqa: E402
 
 FORMAT = "timing-result"
 VERSION = 1
-#: ``timing-result v1.1``: ``version`` stays 1 so every v1 reader (the API's
-#: check, the exports) reads it unchanged; ``minor`` 1 adds the read-only
+#: ``timing-result v1.2``: ``version`` stays 1 so every v1 reader (the API's
+#: check, the exports) reads it unchanged; ``minor`` 1 added the read-only
 #: evidence the result page draws (``beats``, ``downbeats_ms``, ``onsets``,
-#: ``onset_envelope``, per-section drift, ``swing``, ``pulse_hints``). Nothing
-#: in a v1 field changes.
-MINOR = 1
+#: ``onset_envelope``, per-section drift, ``swing``, ``pulse_hints``); ``minor``
+#: 2 adds how the analysis was asked for (W11.1, W3.21, W12.19): ``mode``,
+#: ``options``, ``hint_checks`` and ``stretch``. Nothing in a v1 field changes.
+MINOR = 2
 
 #: The engine generation the site's ``analyses.engine`` column records.
 ENGINE = "v3"
@@ -67,6 +71,122 @@ def default_params() -> dict:
     """
     return {"min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
             "prefer_map_bpm": True, "refine_beats": True, "force_subdivision": 0.0}
+
+
+# ── Modes and the person's hints (W11.1, W3.21, W12.19) ─────────────────────
+
+#: How long the person is willing to wait, not which engine runs (W11.1).
+#: ``normal`` is the analysis every result had before modes existed, exactly.
+MODES = ("fast", "normal", "strict")
+DEFAULT_MODE = "normal"
+
+#: What each mode changes, and nothing else:
+#:
+#: - ``vote``: whether Beat This! votes on the red lines (it still needs the
+#:   model to be there; a worker without it votes in no mode);
+#: - ``judges``: whether Beat This! is asked about the octave at all (the
+#:   local, section and song octave judges). Off, every judge gets "no
+#:   answer", which each one already reads as "leave the engine's octave";
+#: - ``flags``: engine switches set for the job and restored after it.
+#:
+#: ``fast`` is the engine without the network: about a tenth of the time on
+#: a quiet machine (docs/deploy.md, W2.4). ``strict`` is ``normal`` until a
+#: switch is measured to help on real music. The engine's switches that are
+#: off (PIECEWISE_GRID, CONSTANT_GRID, SONG_OCTAVE_BEAT_THIS) are the
+#: candidates, each "off until measured on the server" in python/overtone.py;
+#: none has a held-out measurement yet (docs/timeline.md, 2026-10-27), so none
+#: is switched on here. W11.4, the phase polish, is what is meant to fill it.
+MODE_SETTINGS = {
+    "fast": {"vote": False, "judges": False, "flags": {}},
+    "normal": {"vote": True, "judges": True, "flags": {}},
+    "strict": {"vote": True, "judges": True, "flags": {}},
+}
+
+#: Hints a person can give before analysing (W3.21), and their bounds. The
+#: API checks the same bounds; the worker checks again, since what it is
+#: handed decides what the engine is asked.
+HINT_BPM = (30.0, 400.0)
+HINT_METER = (1, 16)
+TEMPO_HINTS = ("constant", "changes")
+#: The shortest stretch worth analysing: the engine wants two seconds, and a
+#: tempo needs a few bars.
+MIN_STRETCH_S = 10.0
+#: How far an approximate BPM may be from the reading before the result says
+#: so: a person's "about 170" is a guess, not a measurement.
+APPROX_SLACK = 0.10
+
+
+def clean_options(raw) -> dict:
+    """The hints that are well formed, as plain numbers and words; anything
+    else is dropped (the API refuses it before it gets here)."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+
+    def number(key, low, high):
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        value = float(value)
+        return value if math.isfinite(value) and low <= value <= high else None
+
+    if raw.get("tempo") in TEMPO_HINTS:
+        out["tempo"] = raw["tempo"]
+    bpm = number("bpm", *HINT_BPM)
+    low, high = number("bpm_min", *HINT_BPM), number("bpm_max", *HINT_BPM)
+    if bpm is not None:
+        out["bpm"] = bpm
+    elif low is not None and high is not None and low < high:
+        out["bpm_min"], out["bpm_max"] = low, high
+    meter = raw.get("meter")
+    if isinstance(meter, int) and not isinstance(meter, bool) and HINT_METER[0] <= meter <= HINT_METER[1]:
+        out["meter"] = meter
+    start, end = number("start_s", 0.0, 4 * 3600.0), number("end_s", 0.0, 4 * 3600.0)
+    if start is not None and end is not None and end - start >= MIN_STRETCH_S:
+        out["start_s"], out["end_s"] = start, end
+    return out
+
+
+def octave_window(options: dict) -> tuple[float, float] | None:
+    """The octave the engine reads the song at when the person named a tempo:
+    the engine's own MAP_OCTAVE_RANGE (one octave, 120-240 by default) moved
+    to sit around their BPM or the middle of their range. None without a
+    tempo hint, and None when the hint already lies inside the default
+    window: the engine reads that octave anyway, so it runs untouched."""
+    lo, hi = ta.MAP_OCTAVE_RANGE
+    if "bpm" in options:
+        centre = options["bpm"]
+        if lo <= centre <= hi:
+            return None
+    elif "bpm_min" in options:
+        if lo <= options["bpm_min"] and options["bpm_max"] <= hi:
+            return None
+        centre = math.sqrt(options["bpm_min"] * options["bpm_max"])
+    else:
+        return None
+    return (round(centre / math.sqrt(2.0), 3), round(centre * math.sqrt(2.0), 3))
+
+
+@contextlib.contextmanager
+def engine_settings(mode: str, window: tuple[float, float] | None):
+    """The engine switched as ``mode`` and the octave window ask, for one job,
+    and put back as it was after it, whatever happens. The worker's analysis
+    process runs one job at a time, so nothing else sees the switches."""
+    settings = MODE_SETTINGS[mode]
+    saved = {name: getattr(ta, name) for name in settings["flags"]}
+    saved["MAP_OCTAVE_RANGE"] = ta.MAP_OCTAVE_RANGE
+    saved["_beat_this_judge_beats"] = ta._beat_this_judge_beats
+    try:
+        for name, value in settings["flags"].items():
+            setattr(ta, name, value)
+        if window is not None:
+            ta.MAP_OCTAVE_RANGE = window
+        if not settings["judges"]:
+            ta._beat_this_judge_beats = lambda _y, _sr: None
+        yield
+    finally:
+        for name, value in saved.items():
+            setattr(ta, name, value)
 
 
 def limit_onnx_threads(threads: int) -> None:
@@ -109,17 +229,30 @@ def beat_vote_available() -> bool:
     return ta._beat_this_session() is not None
 
 
-def engine_hash(vote: bool | None = None) -> str:
+def engine_hash(vote: bool | None = None, mode: str = DEFAULT_MODE) -> str:
     """The code a result came from, keyed as ``bench/corpus_b.py`` and the
     library key their caches: a SHA-1 over the engine source, plus this
     file (it shapes the result), plus whether the Beat This! vote ran (it
-    moves red lines). Any edit to either file stales every cached result."""
+    moves red lines), plus the mode when it is not ``normal``. Any edit to
+    either file stales every cached result."""
     if vote is None:
         vote = beat_vote_available()
-    digest = hashlib.sha1(f"{FORMAT} {VERSION}.{MINOR} {ENGINE} vote={bool(vote)}".encode())
+    vote = bool(vote) and MODE_SETTINGS[mode]["vote"]
+    label = f"{FORMAT} {VERSION}.{MINOR} {ENGINE} vote={vote}"
+    if mode != DEFAULT_MODE:
+        label += f" mode={mode}"
+    digest = hashlib.sha1(label.encode())
     for path in (Path(ta.__file__), Path(__file__)):
         digest.update(hashlib.sha1(path.read_bytes()).digest())
     return digest.hexdigest()[:16]
+
+
+def engine_hashes(vote: bool | None = None) -> dict:
+    """Each mode's engine hash: what the API keys a cached result of that
+    mode by (the same audio in another mode is another result)."""
+    if vote is None:
+        vote = beat_vote_available()
+    return {mode: engine_hash(vote, mode) for mode in MODES}
 
 
 #: The engine's progress messages, as stages the site can name in either
@@ -364,7 +497,14 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
         "findings": findings,
         "osu_timing": ta.osu_timing_text(analysis),
         **evidence,
+        **asked(),
     }
+
+
+def asked(mode: str = DEFAULT_MODE, options: dict | None = None) -> dict:
+    """How the analysis was asked for (v1.2): the mode, the hints as they
+    were applied, what the result says about each hint, and the stretch."""
+    return {"mode": mode, "options": dict(options or {}), "hint_checks": [], "stretch": None}
 
 
 def refusal_code(message: str) -> str:
@@ -377,6 +517,8 @@ def refusal_code(message: str) -> str:
         return "too_long"
     if "at least two seconds" in text:
         return "too_short"
+    if "stretch" in text:
+        return "bad_stretch"
     if "pulse" in text or "beats" in text or "tempo" in text:
         return "no_pulse"
     return "refused"
@@ -395,6 +537,7 @@ def refused_result(message: str, *, vote: bool, hash_: str, duration_s: float | 
         "global_bpm": None, "offset_ms": None, "meter": None, "stability": None,
         "residual_ms": None, "red_lines": [], "sections": [], "findings": [],
         "osu_timing": "",
+        **asked(),
     }
 
 
@@ -437,22 +580,140 @@ class AnalysisFailed(Exception):
     missing): a failed job, not a refusal."""
 
 
+def _shift_ms(value, shift: float, whole: bool = False):
+    if value is None:
+        return None
+    moved = float(value) + shift
+    return int(round(moved)) if whole else round(moved, 3)
+
+
+def shift_result(result: dict, shift: float) -> dict:
+    """Every time of ``result`` moved ``shift`` ms later: an analysis of a
+    stretch read back in the whole song's timeline (W12.19). ``osu_timing``
+    is not text this can move; the caller writes it again from the points."""
+    out = dict(result)
+    out["offset_ms"] = _shift_ms(result.get("offset_ms"), shift)
+    out["red_lines"] = [{**line, "time_ms": _shift_ms(line["time_ms"], shift)} for line in result.get("red_lines", [])]
+    out["sections"] = [{**s, "start_ms": _shift_ms(s["start_ms"], shift), "end_ms": _shift_ms(s["end_ms"], shift)}
+                       for s in result.get("sections", [])]
+    if isinstance(result.get("beats"), dict):
+        out["beats"] = {**result["beats"], "t_ms": [_shift_ms(t, shift, True) for t in result["beats"]["t_ms"]]}
+    if isinstance(result.get("onsets"), dict):
+        out["onsets"] = {**result["onsets"], "t_ms": [_shift_ms(t, shift, True) for t in result["onsets"]["t_ms"]]}
+    if "downbeats_ms" in result:
+        out["downbeats_ms"] = [_shift_ms(t, shift, True) for t in result["downbeats_ms"]]
+    if isinstance(result.get("onset_envelope"), dict):
+        # The envelope covers the stretch only: where it starts says where to draw it.
+        out["onset_envelope"] = {**result["onset_envelope"], "start_ms": _shift_ms(0, shift, True)}
+    if isinstance(result.get("swing"), dict):
+        out["swing"] = {**result["swing"], "spans": [
+            {**s, "start_ms": _shift_ms(s["start_ms"], shift, True), "end_ms": _shift_ms(s["end_ms"], shift, True)}
+            for s in result["swing"].get("spans", [])]}
+    if "pulse_hints" in result:
+        out["pulse_hints"] = [{**h, **{k: _shift_ms(h[k], shift, True) for k in ("from_ms", "to_ms", "boundary_ms")}}
+                              for h in result["pulse_hints"]]
+    return out
+
+
+def _shifted(analysis, shift: float):
+    """The analysis with its red lines ``shift`` ms later, for ``osu_timing``."""
+    return replace(analysis, points=[replace(p, offset_ms=p.offset_ms + shift) for p in analysis.points])
+
+
+def _fold(bpm: float, window: tuple[float, float]) -> float:
+    """``bpm`` doubled or halved into ``window``, as the engine's fold reads it."""
+    lo, hi = window
+    while bpm < lo - 0.01:
+        bpm *= 2.0
+    while bpm > hi + 0.01:
+        bpm /= 2.0
+    return bpm
+
+
+def hint_checks(result: dict, options: dict, window: tuple[float, float] | None,
+                applied_meter: int = 0) -> list[dict]:
+    """What the result says about each hint the person gave (W3.21): ``warn``
+    where the audio contradicts it, ``info`` where the hint decided something.
+    A hint never turns into an answer the engine did not find; when they
+    disagree, this is how the page says so."""
+    checks = []
+    lines = result.get("red_lines") or []
+    if not lines:
+        return checks
+    bpm = float(result["global_bpm"])
+    tempos = sorted({round(float(line["bpm"]), 2) for line in lines})
+    if options.get("tempo") == "constant" and len(tempos) > 1:
+        checks.append({"level": "warn", "key": "tempo_not_constant", "values": {"count": len(tempos)}})
+    if options.get("tempo") == "changes" and len(tempos) == 1:
+        checks.append({"level": "warn", "key": "tempo_constant", "values": {"bpm": tempos[0]}})
+
+    def octave_away(expected_low: float, expected_high: float):
+        for factor in (2.0, 0.5):
+            if expected_low <= bpm * factor <= expected_high:
+                return factor
+        return None
+
+    if "bpm" in options:
+        expected = options["bpm"]
+        if abs(bpm - expected) > APPROX_SLACK * expected:
+            checks.append({"level": "warn", "key": "bpm_far", "values": {
+                "bpm": round(bpm, 2), "expected": round(expected, 2),
+                "factor": octave_away(expected * (1 - APPROX_SLACK), expected * (1 + APPROX_SLACK))}})
+    if "bpm_min" in options:
+        low, high = options["bpm_min"], options["bpm_max"]
+        outside = sum(1 for line in lines if not low - 0.01 <= float(line["bpm"]) <= high + 0.01)
+        if outside:
+            checks.append({"level": "warn", "key": "bpm_outside", "values": {
+                "bpm": round(bpm, 2), "min": round(low, 2), "max": round(high, 2), "count": outside,
+                "factor": octave_away(low, high)}})
+    if window is not None:
+        default = _fold(bpm, ta.MAP_OCTAVE_RANGE)
+        checks.append({"level": "info", "key": "octave_window", "values": {
+            "low": round(window[0], 1), "high": round(window[1], 1),
+            "default_bpm": round(default, 2) if abs(default - bpm) > 0.01 else None}})
+    if "meter" in options:
+        found = sorted({int(line["meter"]) for line in lines if line.get("meter_known")} - {options["meter"]})
+        if found:
+            checks.append({"level": "warn", "key": "meter_differs", "values": {"meter": options["meter"], "found": found}})
+        if applied_meter:
+            checks.append({"level": "info", "key": "meter_applied", "values": {"meter": options["meter"], "count": applied_meter}})
+    return checks
+
+
 def analyse(path: str | Path, *, vote: bool, hash_: str,
             max_seconds: float | None = None,
-            progress: Callable[[str, float], None] | None = None) -> dict:
+            progress: Callable[[str, float], None] | None = None,
+            mode: str = DEFAULT_MODE, options: dict | None = None) -> dict:
     """Run the engine on one file and return its ``timing-result v1``.
+
+    ``vote`` says whether the Beat This! vote is available; ``mode`` says
+    whether this job uses it (W11.1). ``options`` are the person's hints
+    (W3.21): an expected tempo moves the octave window the engine reads the
+    song at, a meter fills the bars the engine could not prove, a stretch
+    (W12.19) is cut out of the decoded audio and analysed alone, its times
+    put back in the song's timeline. The rest only flag the result
+    (``hint_checks``). With no options and the default mode this is the
+    analysis it always was.
 
     A ``ValueError`` from the engine is a refusal (no pulse, too short, too
     long), returned as a result. Anything else is a failure, raised as
     ``AnalysisFailed`` with the engine's message.
     """
+    mode = mode if mode in MODES else DEFAULT_MODE
+    options = clean_options(options)
+    vote = bool(vote) and MODE_SETTINGS[mode]["vote"]
+    window = octave_window(options)
+
+    def refuse(message: str, duration_s: float | None = None) -> dict:
+        return {**refused_result(message, vote=vote, hash_=hash_, duration_s=duration_s),
+                **asked(mode, options)}
+
     heavy = header_refusal(path, max_seconds)
     if heavy:
-        return refused_result(heavy, vote=vote, hash_=hash_)
+        return refuse(heavy)
     seconds = audio_seconds(path)
     if max_seconds and seconds is not None and seconds > max_seconds:
-        return refused_result(f"Audio is longer than {max_seconds / 60:g} minutes.",
-                              vote=vote, hash_=hash_, duration_s=seconds)
+        return refuse(f"Audio is longer than {max_seconds / 60:g} minutes.", seconds)
 
     def say(message: str) -> None:
         found = stage_of(message)
@@ -460,18 +721,57 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
             progress(*found)
 
     params = default_params()
-    try:
-        analysis = ta.analyze_audio(
-            str(path), params["min_delta"], params["persistence"], params["prefer_map_bpm"],
-            params["min_confidence"], say, params["force_subdivision"], params["refine_beats"],
-            beat_vote=vote)
-    except ValueError as exc:
-        return refused_result(str(exc), vote=vote, hash_=hash_, duration_s=seconds)
-    except Exception as exc:  # noqa: BLE001 -- the job records why, the worker keeps going
-        raise AnalysisFailed(str(exc) or type(exc).__name__) from exc
+    stretch = None
+    with contextlib.ExitStack() as stack:
+        source = Path(path)
+        try:
+            if "start_s" in options:
+                # The whole song decoded once, as the engine decodes it, and the
+                # stretch written out losslessly: the engine then reads exactly
+                # those samples, and the offset back is a whole number of them.
+                y, sr = ta._load_audio(str(path), say)
+                full = len(y) / sr
+                if max_seconds and full > max_seconds:
+                    return refuse(f"Audio is longer than {max_seconds / 60:g} minutes.", full)
+                first = int(round(options["start_s"] * sr))
+                last = int(round(min(options["end_s"], full) * sr))
+                if last - first < MIN_STRETCH_S * sr:
+                    return refuse(f"The stretch to analyse holds less than {MIN_STRETCH_S:g} seconds of the audio.", full)
+                folder = stack.enter_context(tempfile.TemporaryDirectory(prefix="overtone-stretch-"))
+                source = Path(folder) / "stretch.wav"
+                ta.sf.write(str(source), y[first:last], sr, subtype="FLOAT")
+                del y
+                stretch = {"start_ms": round(first / sr * 1000.0, 3), "end_ms": round(last / sr * 1000.0, 3),
+                           "duration_s": round(full, 3)}
+            with engine_settings(mode, window):
+                analysis = ta.analyze_audio(
+                    str(source), params["min_delta"], params["persistence"], params["prefer_map_bpm"],
+                    params["min_confidence"], say, params["force_subdivision"], params["refine_beats"],
+                    beat_vote=vote)
+        except ValueError as exc:
+            return refuse(str(exc), seconds)
+        except Exception as exc:  # noqa: BLE001 -- the job records why, the worker keeps going
+            raise AnalysisFailed(str(exc) or type(exc).__name__) from exc
     if max_seconds and analysis.duration > max_seconds:
-        return refused_result(f"Audio is longer than {max_seconds / 60:g} minutes.",
-                              vote=vote, hash_=hash_, duration_s=float(analysis.duration))
+        return refuse(f"Audio is longer than {max_seconds / 60:g} minutes.", float(analysis.duration))
     if progress is not None:
         progress("result", 0.95)
-    return build_result(analysis, vote=vote, hash_=hash_)
+
+    # A meter the person named fills the bars the engine could not prove: the
+    # engine's own fallback for such a line is the analysis's meter, which was
+    # a guess there. A bar it proved stays, and a different one is flagged.
+    applied = 0
+    if "meter" in options:
+        applied = sum(1 for p in analysis.points if not p.meter_known)
+        if applied:
+            below = str(analysis.meter).split("/")[1] if "/" in str(analysis.meter) else "4"
+            analysis = replace(analysis, meter=f"{options['meter']}/{below}")
+
+    result = {**build_result(analysis, vote=vote, hash_=hash_), **asked(mode, options)}
+    if stretch is not None:
+        result = shift_result(result, stretch["start_ms"])
+        result["osu_timing"] = ta.osu_timing_text(_shifted(analysis, stretch["start_ms"]))
+        result["duration_s"] = stretch.pop("duration_s")
+        result["stretch"] = stretch
+    result["hint_checks"] = hint_checks(result, options, window, applied)
+    return result

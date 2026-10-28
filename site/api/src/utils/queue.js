@@ -14,7 +14,13 @@ import { songLabel } from './upload.js';
  * moderation buttons act on. It opens nothing, and a private row still shows
  * no song and no uploader: removing or requeueing a job needs neither.
  */
-export const queueEntry = (row, { mine = false, staff = false, now = Date.now() } = {}) => {
+/*
+ * W11.1 and W3.16: a waiting or running row also says its mode and, when
+ * the queue snapshot has one (utils/estimate.js), its estimated time to done
+ * as a range, `{ lowS, highS }`, `highS` null for "at least". Neither says
+ * anything of the song.
+ */
+export const queueEntry = (row, { mine = false, staff = false, now = Date.now(), estimate = null } = {}) => {
   const created = new Date(row.createdAt).getTime();
   const finished = row.finishedAt ? new Date(row.finishedAt).getTime() : null;
   const shown = !row.private;
@@ -25,6 +31,8 @@ export const queueEntry = (row, { mine = false, staff = false, now = Date.now() 
     status: row.status,
     ...(row.status === 'queued' && row.position ? { position: row.position } : {}),
     ...(row.status === 'running' ? { progress: row.progress ?? 0, stage: row.stage ?? null } : {}),
+    mode: row.mode ?? 'normal',
+    ...(estimate && (row.status === 'queued' || row.status === 'running') ? { estimate } : {}),
     private: Boolean(row.private),
     song: shown ? songLabel(row) : null,
     uploader:

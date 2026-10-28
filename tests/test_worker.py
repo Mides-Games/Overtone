@@ -66,8 +66,11 @@ class ResultOnAudioTests(unittest.TestCase):
         self.assertEqual(stages[-1], ("result", 0.95))
         json.dumps(result)  # plain JSON all the way down
 
-        # v1.1: still a v1 for every v1 reader, plus the evidence the page draws.
-        self.assertEqual((result["version"], result["minor"]), (1, 1))
+        # v1.1: still a v1 for every v1 reader, plus the evidence the page draws;
+        # v1.2: how it was asked for, which by default is as it always was.
+        self.assertEqual((result["version"], result["minor"]), (1, 2))
+        self.assertEqual((result["mode"], result["options"], result["hint_checks"], result["stretch"]),
+                         ("normal", {}, [], None))
         beats = result["beats"]
         self.assertEqual(len(beats["t_ms"]), len(beats["bpm"]))
         self.assertEqual(beats["t_ms"], sorted(beats["t_ms"]))
@@ -112,6 +115,57 @@ class ResultOnAudioTests(unittest.TestCase):
             bogus.write_bytes(b"this is not a wave file" * 100)
             with self.assertRaises(tr.AnalysisFailed):
                 tr.analyse(bogus, vote=False, hash_="test")
+
+    def test_fast_mode_never_asks_beat_this_and_leaves_the_engine_as_it_was(self):
+        asked = []
+        original = tr.ta._beat_this_judge_beats
+        try:
+            def spy(_y, _sr):
+                asked.append(1)
+
+            tr.ta._beat_this_judge_beats = spy
+            result = tr.analyse(self.change, vote=True, hash_="test", mode="fast")
+            self.assertIs(result["beat_vote"], False)
+            self.assertEqual(result["mode"], "fast")
+            self.assertEqual(asked, [])
+            self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
+            # Put back after the job, whatever the mode switched.
+            self.assertIs(tr.ta._beat_this_judge_beats, spy)
+        finally:
+            tr.ta._beat_this_judge_beats = original
+        self.assertEqual(tr.ta.MAP_OCTAVE_RANGE, (120.0, 240.0))
+
+    def test_a_stretch_is_read_back_in_the_songs_timeline(self):
+        whole = tr.analyse(self.change, vote=False, hash_="test")
+        part = tr.analyse(self.change, vote=False, hash_="test", options={"start_s": 6.0, "end_s": 20.0})
+        self.assertFalse(part["refused"])
+        self.assertEqual(part["stretch"], {"start_ms": 6000.0, "end_ms": 20000.0})
+        self.assertAlmostEqual(part["duration_s"], 24.0, places=2)
+        self.assertEqual([round(line["bpm"], 2) for line in part["red_lines"]], [128.0, 142.0])
+        # Its grid is the whole song's grid: each line's beats land on the other's.
+        for mine, theirs in zip(part["red_lines"], whole["red_lines"], strict=True):
+            beat = mine["beat_length_ms"]
+            gap = (mine["time_ms"] - theirs["time_ms"]) % beat
+            self.assertLess(min(gap, beat - gap), 2.0)
+        self.assertGreaterEqual(part["red_lines"][0]["time_ms"], 6000.0)
+        self.assertGreaterEqual(min(part["onsets"]["t_ms"]), 6000)
+        self.assertEqual(part["onset_envelope"]["start_ms"], 6000)
+        rows = [r for r in part["osu_timing"].splitlines() if r and not r.startswith("//")]
+        self.assertEqual([int(r.split(",")[0]) for r in rows], [round(line["time_ms"]) for line in part["red_lines"]])
+
+    def test_a_stretch_too_short_is_refused_and_says_why(self):
+        result = tr.analyse(self.change, vote=False, hash_="test", options={"start_s": 18.0, "end_s": 40.0})
+        self.assertTrue(result["refused"])
+        self.assertEqual(result["refusal"]["code"], "bad_stretch")
+
+    def test_hints_the_audio_contradicts_are_flagged_not_obeyed(self):
+        result = tr.analyse(self.change, vote=False, hash_="test",
+                            options={"tempo": "constant", "bpm": 135.0, "meter": 3})
+        self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
+        keys = {check["key"]: check for check in result["hint_checks"]}
+        self.assertEqual(keys["tempo_not_constant"]["values"], {"count": 2})
+        self.assertNotIn("bpm_far", keys)  # 128 is within a tenth of 135
+        self.assertEqual(result["options"], {"tempo": "constant", "bpm": 135.0, "meter": 3})
 
 
 class HeaderGuardTests(unittest.TestCase):
@@ -280,6 +334,71 @@ class IsolatedEngineTests(unittest.TestCase):
                 runner.close()
 
 
+class DefaultModeTests(unittest.TestCase):
+    """The default mode with no hints calls the engine exactly as the worker
+    did before modes existed (W11.1): the same arguments, the vote as the
+    worker has it, and no engine switch moved while it runs. The accuracy
+    gates pin what that call returns; this pins that it is the same call."""
+
+    def setUp(self):
+        import soundfile as sf
+        self.tmp = tempfile.TemporaryDirectory()
+        self.audio = Path(self.tmp.name) / "song.wav"
+        sf.write(str(self.audio), np.zeros(22050 * 3, dtype=np.float32), 22050)
+        self.original = tr.ta.analyze_audio
+        self.calls = []
+
+        def record(*args, **kwargs):
+            self.calls.append((args, kwargs, tr.ta.MAP_OCTAVE_RANGE, tr.ta._beat_this_judge_beats))
+            raise ValueError("No rhythmic pulse found (recorded call)")
+
+        tr.ta.analyze_audio = record
+
+    def tearDown(self):
+        tr.ta.analyze_audio = self.original
+        self.tmp.cleanup()
+
+    def _call(self, **kwargs):
+        judge = tr.ta._beat_this_judge_beats
+        result = tr.analyse(self.audio, hash_="test", **kwargs)
+        self.assertEqual(len(self.calls), 1)
+        args, keywords, window, judge_seen = self.calls[0]
+        return result, args, keywords, window, judge_seen is judge
+
+    def test_the_default_call_is_the_one_before_modes(self):
+        for vote in (True, False):
+            self.calls.clear()
+            result, args, keywords, window, same_judge = self._call(vote=vote)
+            self.assertEqual(args[0], str(self.audio))
+            # min_delta, persistence, prefer_map_bpm, min_confidence, progress,
+            # force_subdivision, refine_beats: default_params(), in that order.
+            self.assertEqual(args[1:5], (1.5, 12, True, 0.75))
+            self.assertTrue(callable(args[5]))
+            self.assertEqual(args[6:], (0.0, True))
+            self.assertEqual(keywords, {"beat_vote": vote})
+            self.assertEqual(window, (120.0, 240.0))
+            self.assertTrue(same_judge)
+            self.assertIs(result["beat_vote"], vote)
+            self.assertEqual((result["mode"], result["options"], result["hint_checks"], result["stretch"]),
+                             ("normal", {}, [], None))
+
+    def test_naming_normal_or_nothing_is_the_same_call(self):
+        _, *first = self._call(vote=True)
+        self.calls.clear()
+        _, *second = self._call(vote=True, mode="normal", options={})
+        self.assertEqual(first[0][:5] + first[0][6:], second[0][:5] + second[0][6:])
+        self.assertEqual(first[1:], second[1:])
+        self.calls.clear()
+        # An unknown mode, or hints that do not parse, fall back to the default call.
+        _, args, keywords, window, same_judge = self._call(vote=True, mode="turbo", options={"bpm": "fast"})
+        self.assertEqual((keywords, window, same_judge), ({"beat_vote": True}, (120.0, 240.0), True))
+
+    def test_a_hint_inside_the_default_octave_leaves_the_engine_alone(self):
+        _, _, _, window, same_judge = self._call(vote=True, options={"bpm": 174, "tempo": "constant"})
+        self.assertEqual(window, (120.0, 240.0))
+        self.assertTrue(same_judge)
+
+
 class ResultPartsTests(unittest.TestCase):
     def test_defaults_are_the_desktop_apps_fresh_install(self):
         self.assertEqual(tr.default_params(), {
@@ -290,6 +409,66 @@ class ResultPartsTests(unittest.TestCase):
         self.assertNotEqual(tr.engine_hash(True), tr.engine_hash(False))
         self.assertEqual(tr.engine_hash(False), tr.engine_hash(False))
         self.assertRegex(tr.engine_hash(False), r"^[0-9a-f]{16}$")
+
+    def test_each_mode_has_its_own_hash_and_normal_keeps_the_old_label(self):
+        hashes = tr.engine_hashes(True)
+        self.assertEqual(set(hashes), set(tr.MODES))
+        self.assertEqual(len(set(hashes.values())), 3)
+        self.assertEqual(hashes["normal"], tr.engine_hash(True))
+        # Fast never votes, whatever the worker has.
+        self.assertEqual(tr.engine_hashes(False)["fast"], hashes["fast"])
+
+    def test_options_are_cleaned_to_what_the_engine_can_be_asked(self):
+        self.assertEqual(tr.clean_options(None), {})
+        self.assertEqual(tr.clean_options({"tempo": "maybe", "bpm": "120", "meter": 3.5, "x": 1}), {})
+        self.assertEqual(tr.clean_options({"bpm": 500}), {})
+        self.assertEqual(tr.clean_options({"bpm_min": 180, "bpm_max": 90}), {})
+        self.assertEqual(tr.clean_options({"bpm_min": 90, "bpm_max": 180, "meter": 3, "tempo": "changes"}),
+                         {"bpm_min": 90.0, "bpm_max": 180.0, "meter": 3, "tempo": "changes"})
+        self.assertEqual(tr.clean_options({"start_s": 10, "end_s": 15}), {})  # under ten seconds
+        self.assertEqual(tr.clean_options({"start_s": 10, "end_s": 40}), {"start_s": 10.0, "end_s": 40.0})
+        self.assertEqual(tr.clean_options({"bpm": True}), {})
+
+    def test_a_tempo_hint_moves_the_octave_window_only_outside_the_default(self):
+        self.assertIsNone(tr.octave_window({}))
+        self.assertIsNone(tr.octave_window({"bpm": 175}))
+        self.assertIsNone(tr.octave_window({"bpm_min": 130, "bpm_max": 200}))
+        low, high = tr.octave_window({"bpm": 90})
+        self.assertAlmostEqual(high / low, 2.0, places=3)
+        self.assertLess(low, 90)
+        self.assertGreater(high, 90)
+        low, high = tr.octave_window({"bpm_min": 240, "bpm_max": 280})
+        self.assertLess(low, 240)
+        self.assertGreater(high, 280)
+
+    def test_hint_checks(self):
+        result = {"global_bpm": 85.0, "red_lines": [{"bpm": 85.0, "meter": 4, "meter_known": True}]}
+        checks = {c["key"]: c for c in tr.hint_checks(result, {"bpm": 170.0, "tempo": "changes", "meter": 3}, None)}
+        self.assertEqual(checks["bpm_far"]["values"]["factor"], 2.0)
+        self.assertEqual(checks["tempo_constant"]["values"], {"bpm": 85.0})
+        self.assertEqual(checks["meter_differs"]["values"], {"meter": 3, "found": [4]})
+        checks = {c["key"]: c for c in tr.hint_checks(result, {"bpm_min": 80.0, "bpm_max": 100.0}, (70.0, 140.0))}
+        self.assertNotIn("bpm_outside", checks)
+        self.assertEqual(checks["octave_window"]["values"]["default_bpm"], 170.0)
+        self.assertEqual(tr.hint_checks({"global_bpm": None, "red_lines": []}, {"bpm": 120.0}, None), [])
+
+    def test_shift_result_moves_every_time(self):
+        result = {"offset_ms": 10.0, "red_lines": [{"time_ms": 10.0}], "sections": [{"start_ms": 10.0, "end_ms": 50.0}],
+                  "beats": {"t_ms": [10, 20], "bpm": [120, 120]}, "onsets": {"t_ms": [11], "w": [100]},
+                  "downbeats_ms": [10], "onset_envelope": {"span_ms": 40, "v": [1]},
+                  "swing": {"measured": 0, "swung": 0, "spans": [{"start_ms": 10, "end_ms": 20}]},
+                  "pulse_hints": [{"from_ms": 10, "to_ms": 20, "boundary_ms": 15}]}
+        moved = tr.shift_result(result, 1000.5)
+        self.assertEqual(moved["offset_ms"], 1010.5)
+        self.assertEqual(moved["red_lines"][0]["time_ms"], 1010.5)
+        self.assertEqual(moved["sections"][0], {"start_ms": 1010.5, "end_ms": 1050.5})
+        self.assertEqual(moved["beats"]["t_ms"], [1010, 1020])
+        self.assertEqual(moved["onsets"]["t_ms"], [1012])
+        self.assertEqual(moved["downbeats_ms"], [1010])
+        self.assertEqual(moved["onset_envelope"]["start_ms"], 1000)
+        self.assertEqual(moved["swing"]["spans"][0], {"start_ms": 1010, "end_ms": 1020})
+        self.assertEqual(moved["pulse_hints"][0], {"from_ms": 1010, "to_ms": 1020, "boundary_ms": 1016})
+        self.assertEqual(result["offset_ms"], 10.0)  # the original is left alone
 
     def test_refusal_codes(self):
         self.assertEqual(tr.refusal_code("No rhythmic pulse found: this audio sounds like noise"), "no_pulse")
@@ -385,7 +564,8 @@ class TwoEnginesOneSchemaTests(unittest.TestCase):
         # v4 writes timing-result v1.0: no `minor`, so no reader looks in it
         # for the v1.1 evidence the result page draws. v1.0 is what both share.
         self.assertNotIn("minor", v4)
-        for key in ("minor", "beats", "downbeats_ms", "onsets", "onset_envelope", "swing", "pulse_hints"):
+        for key in ("minor", "beats", "downbeats_ms", "onsets", "onset_envelope", "swing", "pulse_hints",
+                    "mode", "options", "hint_checks", "stretch"):
             v3.pop(key)
         for section in v3["sections"]:
             for key in ("drift_ms", "drift_p90_ms", "drift_bias_ms", "onsets"):

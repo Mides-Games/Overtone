@@ -487,15 +487,15 @@ pasos que W2.3.
 | W3.13 | **Tags de M4A y WAV.** `lib/tags.js` lee ID3v2 y Vorbis; faltan los átomos `©nam`/`©ART` de MP4 (M4A) y el chunk `LIST/INFO` de WAV. Con fixtures chicos generados en el test, no con canciones de la biblioteca |
 | W3.14 | **Avisar cuando termina un lote.** El título de la pestaña lleva la cuenta ("2/5 listas") y, si la persona lo permite, una notificación del navegador al terminar la última. Nada sale del navegador |
 | W3.15 | **Bajar un lote entero.** Desde las tarjetas de una subida múltiple: un ZIP con el `timing.txt` de cada canción lista, armado en el navegador con los resultados que ya trae. Sin dependencia nueva si alcanza con un ZIP sin compresión |
-| W3.16 | **Tiempo estimado en la cola.** Con el costo por minuto de audio que mida W2.4, cada fila de `/queue` dice cuánto falta, aproximado y marcado como estimación. Antes de W2.4 no se muestra: no se inventa precisión |
+| W3.16 | **Tiempo estimado en la cola.** Con el costo por minuto de audio que mida W2.4, cada fila de `/queue` dice cuánto falta, aproximado y marcado como estimación. Antes de W2.4 no se muestra: no se inventa precisión<br>**Hecho el 2026-10-27** (`feature/site-analysis-modes`): cada fila de `/queue` y la página de espera dicen "lista en ≈ a – b", con el costo por minuto de W2.4 por modo (bajo: la corrida tranquila; alto: 35 s/min con voto, 11 sin), un worker supuesto, y "al menos" detrás de un trabajo de largo desconocido (`site/api/src/utils/estimate.js`). **Falta:** medir el contenedor y ajustar la tabla |
 | W3.17 | **Un rate limit que sobreviva a dos procesos.** `middlewares/rate-limit.js` cuenta en memoria y lo dice: el día que haya dos procesos de API, pasa a Postgres (o a la misma tabla que las cuotas). Hecho cuando dos APIs detrás del proxy comparten el conteo |
 | W3.18 | **La cola, moderada.** Quien tenga rol de staff en Mides ve en `/queue` un botón para sacar un trabajo o devolverlo a la cola, con registro de quién lo hizo. Es la primera pieza del panel de moderación de W6 |
 | W3.19 | **Las pruebas del sitio en la lista de verificación.** `node --test` de `site/api` y `vite build` de `site/web` entran en la sección Verification de `CLAUDE.md`/`AGENTS.md`, con su conteo, y `bench/facts.py` chequea ese conteo como hace con la suite de Python |
 | W3.20 | **Más descargas.** Además de `[TimingPoints]` y CSV:<br>• el `.osu` con el timing inyectado (la persona sube su `.osu`, el navegador lo parchea con el resultado y lo descarga; el server nunca lo guarda; los campos que no se tocan salen byte a byte, regla 5);<br>• un `.osz` mínimo para empezar un mapa;<br>• click track WAV (la canción del navegador más el metrónomo, renderizado con `OfflineAudioContext`);<br>• JSON `timing-result` completo;<br>• formatos de otros juegos que el engine ya exporta (Quaver, StepMania, Etterna);<br>• opciones de exportación: decimales del offset, solo la primera red line, BPM redondeado, ×2/÷2 |
-| W3.21 | **Opciones antes de analizar**, todas opcionales y con un valor por defecto que no hace falta tocar:<br>• modo (W11.1);<br>• "la canción tiene un solo BPM" o "cambia de tempo";<br>• rango de BPM esperado o un BPM aproximado;<br>• compás;<br>• analizar solo un tramo (inicio y fin).<br>Una pista mal puesta no puede empeorar el resultado sin avisar: si el audio la contradice, el resultado lo dice |
+| W3.21 | **Opciones antes de analizar**, todas opcionales y con un valor por defecto que no hace falta tocar:<br>• modo (W11.1);<br>• "la canción tiene un solo BPM" o "cambia de tempo";<br>• rango de BPM esperado o un BPM aproximado;<br>• compás;<br>• analizar solo un tramo (inicio y fin).<br>Una pista mal puesta no puede empeorar el resultado sin avisar: si el audio la contradice, el resultado lo dice<br>**Hecho el 2026-10-27** (`feature/site-analysis-modes`), con este criterio: una pista toca el engine solo donde tiene una perilla real. Un tempo esperado fuera de 120-240 corre `MAP_OCTAVE_RANGE` (la octava en la que el engine lee la canción) para ese trabajo; un compás llena solo los compases que el engine no pudo probar. "Un solo BPM" / "cambia" no tienen perilla honesta: solo marcan el resultado. Cada pista se compara con el resultado (`hint_checks`), y modo y pistas son parte de la clave de caché. **Falta:** W11.5 (medir cuánto ayudan las pistas correctas en held-out) |
 | W3.22 | **La bandeja de análisis.** Un panel fijo (esquina o barra) visible en todas las páginas, con cada canción propia en curso: nombre, estado, % y posición. Se puede navegar el sitio mientras tanto; al recargar, los ids guardados en el navegador la reconstruyen. Al terminar, la tarjeta lleva al resultado |
 | W3.23 | **Avisos** (amplía W3.14): notificación del navegador por canción y por lote, sonido opcional, contador en el título de la pestaña y una bandeja de avisos dentro del sitio. Con cuenta, también por DM de Discord cuando exista el bot (W9.4). Todo opt-in y apagable |
-| W3.24 | **Volver a analizar en otro modo** sin volver a subir (el navegador todavía tiene el archivo, o se lo vuelve a elegir y se compara el SHA-1), y **comparar dos resultados** lado a lado: dónde coinciden y dónde no |
+| W3.24 | **Volver a analizar en otro modo** sin volver a subir (el navegador todavía tiene el archivo, o se lo vuelve a elegir y se compara el SHA-1), y **comparar dos resultados** lado a lado: dónde coinciden y dónde no<br>**Volver a analizar, hecho el 2026-10-27** (`feature/site-analysis-modes`): desde el resultado, con el archivo que el navegador tiene o uno elegido de nuevo y comparado por SHA-1, en otro modo con las mismas pistas; los dos resultados quedan vinculados (`reanalysis_of`) y cada uno enlaza a `/compare?a=&b=` (W12.11) |
 | W3.25 | **"Revisá acá".** El resultado marca los tramos con baja confianza, o donde dos métodos no coinciden (W11), con un botón que reproduce ese tramo con el metrónomo |
 | W3.26 | **Historial con cuenta:** todo lo que analizaste, buscable y con filtros (fecha, BPM, estado), y borrar lo propio |
 | W3.27 | **Página de cada timing** con URL propia: el resultado completo, el gráfico, quién lo subió y la tarjeta Open Graph (imagen del gráfico) para compartirlo en Discord y redes. Base del posteo que enlaza el bot (W9.3) |
@@ -686,13 +686,35 @@ privados: publicar es opt-in, W3.27), con título, artista, BPM principal, canti
 red lines, quién y cuándo. Filtros por rango de BPM y tempo único o variable,
 búsqueda por título o artista, y paginación por cursor. **Falta:** portada (no hay
 ninguna guardada), filtro por fecha en la lista pública, y "más usados" o "mejor
-puntuados", que esperan los usos y las estrellas.
+puntuados", que esperan los usos y las estrellas (hechos el 2026-10-27 con W6, abajo).
 
 ### Fase W6 — Social v2
 
 Colecciones, ranking de timers (por usos y estrellas), la insignia Ranked-match,
 reportes y panel de moderación con los roles de Mides, posts en el Feed de Mides,
 metadatos de osu! (beatmapset).
+
+**W5.6, W6 y W13.18 en buena parte, y W13.15, el 2026-10-27** en la rama
+`feature/site-social` (docs/site.md, "Social v2"):
+
+- **Hecho.** Estrellas de 1 a 5 en los timings publicados (una por cuenta, editable;
+  quien lo publicó no puede calificar el suyo), con el promedio en `/t/:id` y en
+  `/recent`, que ordena por "mejor puntuados" (desde 3 calificaciones, con promedio
+  bayesiano de 3 calificaciones previas de 3★) y "más usados". "Lo usé" (uno por
+  cuenta, con link opcional a un beatmapset de osu.ppy.sh, validado y guardado en una
+  sola forma). Comentarios (con cuenta, hasta 1000 caracteres, borrables por su autor,
+  ocultables por el staff con la moderación de Community) anclados opcionalmente a un
+  tiempo de la canción que mueve el reproductor (W13.15). Colecciones privadas o
+  públicas, con página propia (`/c/:id`). Perfil público por timer (`/u/<username>`):
+  timings publicados, totales, insignias (primer timing, 10 y 50 publicados, sugerencia
+  aceptada, usado por otros) y colecciones públicas; perfil privado = 404. La pestaña
+  Timings (y Colecciones) en `/profile`. Ranking de timers (`/timers`) por usos (desde
+  3) o estrellas (desde 5 calificaciones).
+- **Falta.** La insignia Ranked-match (espera W9.2; queda el gancho en `badgesOf`),
+  los metadatos del beatmapset (W9.2), los posts en el Feed de Mides (necesita su API),
+  reacciones con emoji (`timing_reactions` sigue sin usarse), comentarios en hilo,
+  marcar los comentarios con tiempo sobre el mapa de tempo (W13.15 los lleva al punto,
+  no los dibuja), y avisos al autor (W13.17).
 
 ### Fase W7 — Editor en el navegador
 
@@ -712,11 +734,11 @@ y Compile, si tienen sentido en web. Rust en el worker cuando Corpus B lo justif
 
 | # | Tarea |
 |---|---|
-| W9.1 | **Vincular Discord:** si la cuenta de Mides ya tiene Discord vinculado, se usa; si no, el sitio ofrece vincularlo con el flujo de Mides (`connections/discord/link-token` con `return_to` al sitio), sin un OAuth propio |
-| W9.2 | **Vincular osu!:** OAuth de la API v2 de osu! (scope `identify`, nada más), registrada como app de Mides Projects. Muestra el perfil de osu! en el de Overtone y permite, más adelante, relacionar un timing con un beatmapset. Leer y cumplir las reglas de la API de osu! antes de pedir la key |
-| W9.3 | **Bot de Discord** en el monorepo (`bot/`, mismo stack que cavernia-bot), con el comando `/time-song`:<br>• recibe un adjunto de audio y lo encola en la misma cola que el sitio, con los mismos límites; el dueño es la cuenta vinculada (sin vincular: el cupo anónimo, o directamente no, a decidir);<br>• responde con un embed: BPM, offset, red lines y confianza;<br>• adjunta una imagen del gráfico, renderizada en el worker con el mismo diseño que el sitio;<br>• enlaza a la página del timing (W3.27);<br>• el audio sigue la misma regla: se borra después de analizar |
-| W9.4 | **Avisos por DM** del bot cuando termina un análisis (opt-in, W3.23) |
-| W9.5 | **Más comandos:**<br>• `/timing <link>` muestra un timing publicado;<br>• `/queue` muestra el estado de la cola;<br>• `/compare` compara dos timings;<br>• un comando para ver los últimos timings de alguien |
+| W9.1 | **Hecho en parte (2026-10-27, `docs/bot.md`):** el lado de Overtone está: lee `discord_id` del perfil de Mides, el botón manda a la página de Mides con `return_to` y la vuelta refresca el perfil; mientras Mides no lo ofrezca, un código del perfil con `/link` en el bot. **Falta en Mides:** `discord_id` en el usuario del SSO y la página `/connections/discord/link`. <br>**Vincular Discord:** si la cuenta de Mides ya tiene Discord vinculado, se usa; si no, el sitio ofrece vincularlo con el flujo de Mides (`connections/discord/link-token` con `return_to` al sitio), sin un OAuth propio |
+| W9.2 | **Hecho, apagado (2026-10-27):** OAuth con state y PKCE, `identify`, `/me` una vez, sin guardar el token; en el perfil, con desvincular. **Falta:** registrar la app de osu! (una por entorno) y cargar `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI`. <br>**Vincular osu!:** OAuth de la API v2 de osu! (scope `identify`, nada más), registrada como app de Mides Projects. Muestra el perfil de osu! en el de Overtone y permite, más adelante, relacionar un timing con un beatmapset. Leer y cumplir las reglas de la API de osu! antes de pedir la key |
+| W9.3 | **Hecho, apagado (2026-10-27):** `bot/` con discord.js 14.27.0, `/time-song` con progreso y embed, el egg `overtone-bot`. Sin vincular: el cupo anónimo por usuario de Discord (hasheado). Sin imagen del gráfico: el embed enlaza la página. **Falta:** crear la aplicación de Discord y cargar los secretos. <br>**Bot de Discord** en el monorepo (`bot/`, mismo stack que cavernia-bot), con el comando `/time-song`:<br>• recibe un adjunto de audio y lo encola en la misma cola que el sitio, con los mismos límites; el dueño es la cuenta vinculada (sin vincular: el cupo anónimo, o directamente no, a decidir);<br>• responde con un embed: BPM, offset, red lines y confianza;<br>• adjunta una imagen del gráfico, renderizada en el worker con el mismo diseño que el sitio;<br>• enlaza a la página del timing (W3.27);<br>• el audio sigue la misma regla: se borra después de analizar |
+| W9.4 | **Hecho, apagado (2026-10-27):** `/notify on\|off` o el switch del perfil; outbox en la API, a lo sumo una vez. <br>**Avisos por DM** del bot cuando termina un análisis (opt-in, W3.23) |
+| W9.5 | **Hecho, apagado (2026-10-27):** `/timing`, `/queue`, `/compare` y `/recent`. <br>**Más comandos:**<br>• `/timing <link>` muestra un timing publicado;<br>• `/queue` muestra el estado de la cola;<br>• `/compare` compara dos timings;<br>• un comando para ver los últimos timings de alguien |
 | W9.6 | **Sin bajar audio de osu!.** Analizar un beatmapset directo desde su link exigiría bajar el `.osz`; no se hace sin confirmar que las reglas de osu! lo permiten. Hasta entonces, la persona sube su archivo |
 
 ### Fase W10 — Calidad, rendimiento y profesionalismo
@@ -739,7 +761,7 @@ de 10 ms, red lines dentro de 5 ms), sin romper ninguna puerta de precisión.
 
 | # | Tarea |
 |---|---|
-| W11.1 | **Modos de análisis**, elegidos por el tiempo que la persona quiere esperar y no por el engine. Tiempos de referencia en esta PC (2026-10-27, canción de 4:36), a medir de nuevo en el server (W2.4):<br>• **Rápido**, unos 10 s: el engine v3 sin el voto de Beat This! ni los jueces de octava (10,6 s medidos);<br>• **Normal**, menos de 2 min: el análisis actual, con el voto de Beat This! y los jueces (49–66 s medidos);<br>• **Estricto**, de 3 a 5 min: el ensamble de W11.3, con revisión por tramos y todo lo que mejore el held-out aunque cueste tiempo.<br>Cada resultado dice con qué modo se hizo; la caché se separa por modo |
+| W11.1 | **Modos de análisis**, elegidos por el tiempo que la persona quiere esperar y no por el engine. Tiempos de referencia en esta PC (2026-10-27, canción de 4:36), a medir de nuevo en el server (W2.4):<br>• **Rápido**, unos 10 s: el engine v3 sin el voto de Beat This! ni los jueces de octava (10,6 s medidos);<br>• **Normal**, menos de 2 min: el análisis actual, con el voto de Beat This! y los jueces (49–66 s medidos);<br>• **Estricto**, de 3 a 5 min: el ensamble de W11.3, con revisión por tramos y todo lo que mejore el held-out aunque cueste tiempo.<br>Cada resultado dice con qué modo se hizo; la caché se separa por modo<br>**Hecho en parte el 2026-10-27** (`feature/site-analysis-modes`): el modo va con cada trabajo, el resultado lo dice y la caché se separa por modo (un hash de engine por modo). Rápido = sin voto ni jueces; Normal = el de siempre, sin cambios; Estricto = Normal por ahora: ninguna de las perillas apagadas (`PIECEWISE_GRID`, `CONSTANT_GRID`, `SONG_OCTAVE_BEAT_THIS`) tiene una medición held-out, así que no se prende ninguna. Medido en esta PC cargada, `long-6min` del benchmark: Rápido 7,2 y 14,3 s, Normal 94,5 y 82,3 s, misma lectura. **Falta:** llenar Estricto (W11.3/W11.4) y medir los modos en el server |
 | W11.2 | **Estudio oráculo primero, antes de construir nada.** Correr K configuraciones sobre los stages:<br>• v3 con y sin voto;<br>• Rust;<br>• Beat This! solo;<br>• los variantes de octava (fold, halve, judge);<br>• el tracker local.<br>Después medir, en held-out, cuánto se gana si para cada canción se eligiera la mejor. Si ese techo no supera en 5 puntos a la mejor configuración sola, el ensamble no vale la pena y se dice. Todo con `bench/stages.py` y las corridas del server (`bench/remote.py`) |
 | W11.3 | **El engine que elige (router)**, si el oráculo da margen:<br>• **Rasgos baratos de la canción:** variabilidad del tempo local (tracker), BPM base y su rango, densidad de onsets, fuerza del pulso, acuerdo o desacuerdo entre métodos, confianza y género si se infiere.<br>• **Elección:** con esos rasgos, elige por canción, y mejor por tramo, qué método manda: reglas simples o un árbol chico.<br>• **Entrenamiento y evaluación:** se entrena solo en dev y se juzga solo en held-out, para no sobreajustar a Corpus B (20 canciones).<br>• **Consenso:** donde dos métodos coinciden, se toma su consenso; donde no, el que mejor explica los ataques de la canción (como ya hace el voto) y el tramo queda marcado "revisá acá" (W3.25) |
 | W11.4 | **Pulido de fase en el modo estricto:** re-timing fino de cada red line contra los ataques (la métrica más baja hoy es la fase: S1 37,5 % dentro de 5 ms), con la convención de osu! aplicada al final |
@@ -790,13 +812,14 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 | W12.15 | **Ajustes y accesibilidad** (2.ª tanda): `/settings` con tema, alto contraste, tamaño de letra, paleta del mapa apta para daltonismo, movimiento reducido, volúmenes por defecto y la latencia de W12.2; todo en el navegador |
 | W12.16 | **Más idiomas**: pt-BR, fr, de, ja, ko, con un flujo para que la comunidad traduzca (un JSON por idioma y la prueba de claves de i18n) |
 | W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 |
-| W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord |
-| W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota) |
-| W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad |
-| W12.21 | **Historial de versiones** de un timing: cada reanálisis o ajuste guardado como versión, con la diferencia entre ellas |
-| W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos |
-| W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) |
-| W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor |
+| W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord (hecho, 2026-10-27: PNG del mapa de la página, SVG reducido, `/embed/<id>` enmarcable solo esa ruta; falta una imagen Open Graph para que Discord la muestre en el link) |
+| W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota)<br>**Hecho el 2026-10-27** (`feature/site-analysis-modes`), del lado del worker y no recortando en el navegador: el navegador decodifica con otro decoder (el retardo de MP3 movería los tiempos), un WAV del tramo cambia el SHA-1 y puede pasar el tope de subida. El worker decodifica como el engine, analiza el tramo y devuelve los tiempos en la línea de tiempo de la canción; la página dice qué tramo cubrió. Se sube el archivo entero (misma cuota; la espera sí baja) |
+| W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad (hecho, 2026-10-27: `/settings/tokens`, `/developers`, tres permisos, 120 pedidos/min por token; falta probar el store de PostgreSQL contra una base real) |
+| W12.21 | **Historial de versiones** de un timing: cada reanálisis o ajuste guardado como versión, con la diferencia entre ellas (hecho, 2026-10-27: los reanálisis del mismo audio y dueño, y los ajustes guardados como factor y corrimiento; diferencia por red line en la página) |
+| W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos (hecho, 2026-10-27: ×2/÷2 y corrimiento para todo el lote, zip de `.osz` armado de a una canción, tope de 1 GiB de audio) |
+| W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) (hecho en parte, 2026-10-27: service worker, caché de resultados propios y share target con tests; no se vio instalado en un navegador ni en un teléfono) |
+| W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor (hecho, 2026-10-27: copiar por fila y filas marcadas, con Shift para un tramo, con las opciones de exportación) |
+| W12.25 | **Una portada que convenza** (hecho, 2026-10-27, pedido del owner): qué ganás, cómo funciona en tres pasos, recién timeadas, números en vivo de `/stats`, quiénes somos (Mides Projects, githalt, MIT, de escritorio a la web, sin relación con osu!/ppy), preguntas y un cierre; el ejemplo del inicio ahora tiene cuatro red lines (174, 186, un tramo en 3/4, 160) y sus lecturas siguen al cursor. Falta: verlo en Safari, Firefox y un teléfono real, y comprobar con el panel visible que el ejemplo se pausa fuera de pantalla (ver `docs/site.md`) |
 
 ---
 

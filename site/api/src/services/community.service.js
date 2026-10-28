@@ -32,7 +32,12 @@ export const newPublicId = () => randomBytes(16).toString('hex');
 export const STATES = ['open', 'review', 'planned', 'progress', 'done', 'rejected'];
 
 export const SORTS = ['votes', 'new'];
-export const KINDS = ['suggestion', 'review'];
+/**
+ * What can be reported and hidden. `comment` is a comment on a published
+ * timing (W6, services/social.service.js): its rows live there, but its
+ * reports, hides and log are this moderation's, so staff have one place.
+ */
+export const KINDS = ['suggestion', 'review', 'comment'];
 
 /** Anonymous reviews per hashed address per UTC day. */
 export const ANON_REVIEWS_PER_DAY = 2;
@@ -70,6 +75,19 @@ export const summarize = (rows) => {
 // ── In memory ───────────────────────────────────────────────────────────────
 
 const memory = { suggestions: new Map(), reviews: new Map(), reports: [], log: [] };
+
+/**
+ * Each kind's rows in memory, by public id: what a hide flips. Another
+ * store's kind registers its own map (the social store's comments), so this
+ * module never imports it.
+ */
+const memoryKinds = { suggestion: memory.suggestions, review: memory.reviews };
+export const registerMemoryKind = (kind, map) => {
+  memoryKinds[kind] = map;
+};
+
+/** For the social store's memory twin: the suggestions, to see whether an author had one accepted. */
+export const memorySuggestions = () => memory.suggestions.values();
 
 /** For the tests: start from nothing. */
 export const resetMemory = () => {
@@ -163,7 +181,7 @@ const memoryStore = {
   },
 
   async setHidden(kind, publicId, { hidden, by }) {
-    const item = (kind === 'suggestion' ? memory.suggestions : memory.reviews).get(publicId);
+    const item = memoryKinds[kind]?.get(publicId);
     if (!item) return null;
     if (item.hidden === hidden) return false;
     Object.assign(item, { hidden, hiddenReason: hidden ? (by.reason ?? null) : null });
@@ -345,7 +363,7 @@ const fromLog = (r) => ({
   createdAt: r.created_at,
 });
 
-const TABLE = { suggestion: 'suggestions', review: 'reviews' };
+const TABLE = { suggestion: 'suggestions', review: 'reviews', comment: 'timing_comments' };
 
 const pgStore = {
   async createSuggestion({ publicId, accountId, title, body }) {
@@ -498,8 +516,8 @@ const pgStore = {
   async moderationLog(limit = LOG_LIMIT) {
     const { rows } = await query(
       `SELECT action, target_kind, target_ref, from_state, to_state, moderator, account_id, reason, created_at
-         FROM moderation_log WHERE target_kind IN ('suggestion', 'review') ORDER BY id DESC LIMIT $1`,
-      [limit],
+         FROM moderation_log WHERE target_kind = ANY($2::text[]) ORDER BY id DESC LIMIT $1`,
+      [limit, KINDS],
     );
     return rows.map(fromLog);
   },
@@ -508,9 +526,9 @@ const pgStore = {
     const { rows } = await query(
       `SELECT target_kind, target_id, count(*)::int AS count, max(created_at) AS latest_at,
               (array_agg(reason ORDER BY created_at DESC))[1:5] AS reasons
-         FROM reports WHERE state = 'open' AND target_kind IN ('suggestion', 'review')
+         FROM reports WHERE state = 'open' AND target_kind = ANY($2::text[])
         GROUP BY target_kind, target_id ORDER BY latest_at DESC LIMIT $1`,
-      [limit],
+      [limit, KINDS],
     );
     return rows.map((r) => ({ kind: r.target_kind, ref: r.target_id, count: r.count, reasons: r.reasons, latestAt: r.latest_at }));
   },

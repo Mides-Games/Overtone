@@ -134,7 +134,8 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
               const lit = i === selected ? 'bg-accent/10' : i === hovered ? 'bg-surface-2' : ''
               return (
                 <tr
-                  key={line.index}
+                  // An edited timing (W7) may add lines (index -1) and reorder them: the position is the key then.
+                  key={line.edited === undefined ? line.index : `e${i}`}
                   ref={(el) => {
                     rows.current[i] = el
                   }}
@@ -161,6 +162,11 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
                   )}
                   <td className="px-3 py-2 text-dim">
                     <span className="inline-block h-3 w-0.5 bg-red align-middle" aria-hidden="true" /> {i + 1}
+                    {line.edited && (
+                      <span className="ml-1.5 rounded-sm bg-amber/15 px-1 text-caption text-amber" title={t(line.added ? 'editor.addedLine' : 'editor.editedLine')}>
+                        ✎<span className="sr-only"> {t(line.added ? 'editor.addedLine' : 'editor.editedLine')}</span>
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {formatClock(line.timeMs)}

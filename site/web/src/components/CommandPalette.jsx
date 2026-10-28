@@ -318,7 +318,7 @@ function Keys({ keys }) {
   )
 }
 
-/** The result page's keys (components/result/TempoMap.jsx), one row each. */
+/** The result page's keys (components/result/TempoMap.jsx), one row each; the editor's (TimingEditor.jsx) are listed in Help. */
 const RESULT_KEYS = [
   [['Space'], 'play'],
   [['←', '→'], 'beat'],
@@ -368,6 +368,15 @@ function Help({ open, onClose }) {
       <div className="max-h-[65vh] space-y-5 overflow-y-auto p-4">
         {section(t('palette.help.global.title'), global, 'global')}
         {section(t('palette.help.result.title'), RESULT_KEYS, 'result')}
+        {section(t('palette.help.editor.title'), [
+          [['E'], 'toggle'],
+          [['←', '→'], 'nudge'],
+          [['Shift', '←', '→'], 'nudge10'],
+          [['N'], 'add'],
+          [['Delete'], 'delete'],
+          [[mod, 'Z'], 'undo'],
+          [[mod, 'Shift', 'Z'], 'redo'],
+        ], 'editor')}
         <p className="text-caption text-dim">{t('palette.help.note')}</p>
       </div>
     </Modal>

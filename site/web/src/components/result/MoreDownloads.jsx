@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { MAX_TRACK_SECONDS, renderClickTrack } from '../../lib/click-track.js'
 import { exportLines } from '../../lib/export-options.js'
 import { patchOsuFile } from '../../lib/osu-patch.js'
-import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
+import { downloadName, isAdjusted, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
 import ExportOptions, { useExportOptions } from './ExportOptions.jsx'
 import GameFormats from './GameFormats.jsx'
 
@@ -22,7 +22,7 @@ import GameFormats from './GameFormats.jsx'
 export default function MoreDownloads({ id, analysis, lines, adjustment, grid, clicks = grid, durationS, songBuffer, player, checks, csvHref = null }) {
   const { t } = useTranslation()
   const result = analysis.result
-  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const adjusted = isAdjusted(adjustment)
   const options = useExportOptions()
   const written = useMemo(() => exportLines(lines, options), [lines, options])
   const osuInput = useRef(null)

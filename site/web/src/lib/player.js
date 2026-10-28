@@ -124,6 +124,7 @@ export class Player {
     this.subVolume = listening.subVolume
     this.shiftClicks = listening.shiftClicks
     this.latencyMs = readLatency()
+    this.clickShiftMs = 0
     this.listeners = new Set()
     this.snapshot = this.#snap()
   }
@@ -249,9 +250,21 @@ export class Player {
     this.#emit()
   }
 
+  /**
+   * The offset lab's hidden shift (W7): the clicks played `ms` later (or
+   * earlier, negative) than the lines put them, for one blind presentation.
+   * Never saved and never in an export; 0 puts them back.
+   */
+  setClickShift(ms) {
+    const next = Number.isFinite(ms) ? ms : 0
+    if (next === this.clickShiftMs) return
+    this.clickShiftMs = next
+    this.#reschedule()
+  }
+
   /** How far ahead of the song the clicks run, in real seconds. */
   #clickLead() {
-    return this.shiftClicks ? this.latencyMs / 1000 : 0
+    return (this.shiftClicks ? this.latencyMs / 1000 : 0) - this.clickShiftMs / 1000
   }
 
   /** Drops the clicks already scheduled and schedules them again from now, the song playing on. */

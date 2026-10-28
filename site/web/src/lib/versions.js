@@ -6,16 +6,27 @@
  * up what two versions say and shows how far apart they are.
  */
 import { api } from './api.js'
-import { adjustLines } from './timing.js'
+import { editsKey, packEdits, unpackEdits } from './editor.js'
+import { adjustLines, isAdjusted } from './timing.js'
+
+export { isAdjusted }
 
 export const NO_ADJUSTMENT = Object.freeze({ factor: 1, nudgeMs: 0 })
 
 export const fetchVersions = (id) => api(`/analyses/${id}/versions`)
-export const saveVersion = (id, { factor, nudgeMs, label = null }) =>
-  api(`/analyses/${id}/versions`, { method: 'POST', json: { factor, nudgeMs, ...(label ? { label } : {}) } })
+/** Saves the adjustment being tried; an edited timing (W7) sends its lines too, packed (lib/editor.js). */
+export const saveVersion = (id, { factor, nudgeMs, edits = null, label = null }) =>
+  api(`/analyses/${id}/versions`, {
+    method: 'POST',
+    json: { factor, nudgeMs, ...(edits ? { lines: packEdits(edits) } : {}), ...(label ? { label } : {}) },
+  })
 export const deleteVersion = (id, versionId) => api(`/analyses/${id}/versions/${versionId}`, { method: 'DELETE' })
 
-export const isAdjusted = (adjustment) => Boolean(adjustment) && (adjustment.factor !== 1 || adjustment.nudgeMs !== 0)
+/** A saved version as the page applies it: its factor, its nudge and its edited lines (null when it has none). */
+export const versionAdjustment = (v) => ({ factor: v.factor, nudgeMs: v.nudgeMs, edits: v.lines ? unpackEdits(v.lines) : null })
+
+/** One key per distinct adjustment, so the same one saved twice, or the one tried now, is recognised. */
+export const adjustmentKey = ({ factor = 1, nudgeMs = 0, edits = null }) => `${factor}:${nudgeMs}:${editsKey(edits)}`
 
 /** The red lines of a version: its reading's result with its adjustment applied. */
 export const versionLines = (result, adjustment = NO_ADJUSTMENT) => adjustLines(result, adjustment)
@@ -85,9 +96,11 @@ export function diffSummary(rows) {
   return { maxTimeMs, maxBpm, onlyA, onlyB, meters, same: !onlyA && !onlyB && !meters && maxTimeMs < 0.5 && maxBpm < 0.0005 }
 }
 
-/** A short name for an adjustment: "x2 -4 ms", "/2", "+12 ms"; '' for none. */
-export function adjustmentLabel({ factor, nudgeMs }) {
+/** A short name for an adjustment: "x2 -4 ms", "/2", "+12 ms", "✎ 12" for an edited timing of twelve red lines; '' for none. */
+export function adjustmentLabel({ factor, nudgeMs, edits = null, lines = null }) {
   const parts = []
+  const edited = edits ?? lines
+  if (edited) parts.push(`✎ ${edited.length}`)
   if (factor === 2) parts.push('×2')
   if (factor === 0.5) parts.push('÷2')
   if (nudgeMs) parts.push(`${nudgeMs > 0 ? '+' : '−'}${Math.abs(nudgeMs)} ms`)

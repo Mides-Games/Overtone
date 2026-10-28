@@ -2,14 +2,17 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from 'react-i18next'
 
 import { pageKeyIgnored } from '../../lib/keys.js'
+import { snapTo } from '../../lib/editor.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
-import { layout, paintMap, paintOverview, readPalette } from './draw.js'
+import { layout, MONO, paintMap, paintOverview, readPalette } from './draw.js'
 import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
 
 /** The closest zoom, seconds across the whole map. */
 const MIN_SPAN_S = 0.5
 /** A click this close to a red line (CSS px) picks the line instead of seeking. */
 const LINE_PICK_PX = 6
+/** A dragged red line (W7) snaps to an attack or a beat this close, CSS px; Alt leaves it free. */
+const LINE_SNAP_PX = 8
 const OVERVIEW_H = 34
 
 /**
@@ -17,8 +20,28 @@ const OVERVIEW_H = 34
  * + / -), pan (drag, the overview), seek (click) and loop (Shift-drag), with
  * the playhead following the song. Two canvases: the map, repainted when the
  * view or the data change, and an overlay for what moves every frame.
+ *
+ * Editing (W7, `editing`): a red line drags, snapped to the nearest attack or
+ * beat (Alt: free), and lands through `onMoveLine`; a double-click adds one
+ * through `onAddAt`; ← → are the editor's for the selected line
+ * (TimingEditor.jsx). E turns editing on and off (`onToggleEdit`).
  */
-export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, focus, children }) {
+export default function TempoMap({
+  data,
+  player,
+  snapshot,
+  selected,
+  hovered,
+  onSelect,
+  onHover,
+  clockRef,
+  focus,
+  editing = false,
+  onToggleEdit = null,
+  onMoveLine = null,
+  onAddAt = null,
+  children,
+}) {
   const { t } = useTranslation()
   const wrapRef = useRef(null)
   const mapRef = useRef(null)
@@ -102,6 +125,27 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         ctx.globalAlpha = 1
       }
     }
+    // A red line being dragged (W7): where it will land, and when.
+    if (drag.current?.kind === 'line' && drag.current.moved) {
+      const x = Math.round(X(drag.current.to)) + 0.5
+      ctx.strokeStyle = c.accent
+      ctx.lineWidth = 2
+      ctx.setLineDash([4, 3])
+      ctx.beginPath()
+      ctx.moveTo(x, top)
+      ctx.lineTo(x, foot)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.font = MONO
+      const text = formatClock(drag.current.to * 1000) + (drag.current.snapped ? ' ◆' : '')
+      const w = ctx.measureText(text).width + 10
+      const left = Math.min(Math.max(x + 4, L.x0), L.x1 - w)
+      ctx.fillStyle = c.accent
+      ctx.fillRect(left, top + 2, w, 16)
+      ctx.fillStyle = c.bg
+      ctx.textBaseline = 'middle'
+      ctx.fillText(text, left + 5, top + 10)
+    }
     if (hoverX.current !== null && !drag.current) {
       ctx.strokeStyle = c.muted
       ctx.lineWidth = 1
@@ -162,12 +206,12 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
   const paint = useCallback(() => {
     if (!L || !mapRef.current) return
     const ctx = sizeCanvas(mapRef.current, L.width, L.height)
-    geometry.current = paintMap(ctx, L, view.current, { ...data, selected, hovered }, palette)
+    geometry.current = paintMap(ctx, L, view.current, { ...data, selected, hovered, editing }, palette)
     const { a, b } = view.current
     const zoomed = b - a < duration - 1e-6
     setViewLabel((old) => (!zoomed ? null : old && old.a === a && old.b === b ? old : { a, b }))
     paintOverlay()
-  }, [L, data, selected, hovered, palette, paintOverlay, duration])
+  }, [L, data, selected, hovered, editing, palette, paintOverlay, duration])
 
   // The overview's base, once per data and size.
   useEffect(() => {
@@ -265,6 +309,18 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     return near.reduce((best, j) => (Math.abs(grid[j] - s) < Math.abs(best - s) ? grid[j] : best), grid[near[0]])
   }
 
+  /** Where a dragged or added red line lands: the nearest attack or beat within LINE_SNAP_PX, the attack on a tie; Alt leaves it free. */
+  const lineSnap = (s, free) => {
+    if (free) return { s, snapped: false }
+    const { a, b } = view.current
+    const tol = (LINE_SNAP_PX / (L.x1 - L.x0)) * (b - a)
+    const attack = snapTo(data.onsets?.t_ms ?? [], s * 1000, tol * 1000) / 1000
+    const beat = snapTo(data.grid.t, s, tol)
+    const picks = [attack, beat].filter((x) => x !== s)
+    if (!picks.length) return { s, snapped: false }
+    return { s: picks.reduce((best, x) => (Math.abs(x - s) < Math.abs(best - s) ? x : best)), snapped: true }
+  }
+
   const zoomBy = useCallback(
     (factor, at) => {
       const { a, b } = view.current
@@ -312,9 +368,12 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       drag.current = { kind: 'pinch', distance: Math.abs(p - q) || 1, at: secondsAt((p + q) / 2), view: { ...view.current } }
       return
     }
+    const near = editing && !event.shiftKey && onMoveLine ? lineAt(x) : -1
     drag.current = event.shiftKey
       ? { kind: 'loop', x0: x, from: beatAt(secondsAt(x), event.altKey), to: null, moved: false }
-      : { kind: 'pan', x0: x, a: view.current.a, b: view.current.b, moved: false }
+      : near >= 0
+        ? { kind: 'line', i: near, x0: x, to: data.lines[near].timeMs / 1000, snapped: false, moved: false }
+        : { kind: 'pan', x0: x, a: view.current.a, b: view.current.b, moved: false }
   }
 
   function onPointerMove(event) {
@@ -340,6 +399,11 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         paint()
       } else if (current.kind === 'loop') {
         current.to = beatAt(secondsAt(x), event.altKey)
+        paintOverlay()
+      } else if (current.kind === 'line') {
+        const landing = lineSnap(Math.min(Math.max(secondsAt(x), 0), duration), event.altKey)
+        current.to = landing.s
+        current.snapped = landing.snapped
         paintOverlay()
       }
       return
@@ -388,10 +452,23 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       paintOverlay()
       return
     }
+    if (current.kind === 'line') {
+      if (current.moved) onMoveLine(current.i, Math.round(current.to * 1e6) / 1000)
+      else onSelect(current.i)
+      paintOverlay()
+      return
+    }
     if (current.moved) return
     const near = lineAt(x)
     if (near >= 0) onSelect(near)
     else if (snapshot.ready && x >= L.x0 && x <= L.x1) player.seek(secondsAt(x))
+  }
+
+  function onDoubleClick(event) {
+    if (!editing || !onAddAt || !L) return
+    const { x } = localX(event)
+    if (x < L.x0 || x > L.x1 || lineAt(x) >= 0) return
+    onAddAt(Math.round(lineSnap(secondsAt(x), event.altKey).s * 1e6) / 1000)
   }
 
   function onPointerLeave() {
@@ -418,8 +495,10 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       }
       const handled = {
         ' ': () => snapshot.ready && player.toggle(),
-        ArrowRight: () => snapshot.ready && step(1, event.shiftKey),
-        ArrowLeft: () => snapshot.ready && step(-1, event.shiftKey),
+        // Editing with a line selected, the arrows move that line (TimingEditor.jsx), not the playhead.
+        ArrowRight: editing && selected !== null && selected !== undefined ? null : () => snapshot.ready && step(1, event.shiftKey),
+        ArrowLeft: editing && selected !== null && selected !== undefined ? null : () => snapshot.ready && step(-1, event.shiftKey),
+        e: onToggleEdit ? () => onToggleEdit() : null,
         '+': () => zoomBy(0.6),
         '=': () => zoomBy(0.6),
         '-': () => zoomBy(1 / 0.6),
@@ -438,7 +517,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [data, player, snapshot, selected, zoomBy, fit, onSelect])
+  }, [data, player, snapshot, selected, zoomBy, fit, onSelect, editing, onToggleEdit])
 
   function onOverview(event) {
     if (!L) return
@@ -474,6 +553,11 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
           <button type="button" className="tool-btn px-2.5" aria-pressed={follow} onClick={() => setFollow((on) => !on)} title={t('tempo.followHint')}>
             {t('tempo.follow')}
           </button>
+          {onToggleEdit && (
+            <button type="button" className="tool-btn px-2.5" aria-pressed={editing} onClick={() => onToggleEdit()} aria-keyshortcuts="E" title={t('editor.toggleHint')}>
+              ✎ {t('editor.edit')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -491,6 +575,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onPointerLeave={onPointerLeave}
+          onDoubleClick={onDoubleClick}
         />
         {tip && L && (
           <div

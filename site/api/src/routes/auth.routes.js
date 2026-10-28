@@ -105,6 +105,9 @@ router.post('/auth/logout', requireSameOrigin, async (req, res) => {
   res.status(204).end();
 });
 
+/** The Discord dev user's Discord id: a well-formed snowflake no real user has. */
+export const DEV_DISCORD_ID = '100000000000000001';
+
 /**
  * The fake Mides user of MIDES_DEV_LOGIN: one per provider, so both buttons
  * can be tried. The Google one is a moderator, so the queue's staff buttons
@@ -119,7 +122,9 @@ const devUser = (code) => {
       displayName: `Dev tester (${provider})`,
       avatarUrl: null,
       bannerUrl: null,
-      discordId: null,
+      // The Discord one comes with a Discord id, as a Mides that sends
+      // `discord_id` would (W9.1), so the bot's linked path can be tried.
+      discordId: provider === 'discord' ? DEV_DISCORD_ID : null,
       role: provider === 'google' ? 'moderator' : null,
     },
   };

@@ -6,6 +6,7 @@ import express, { Router } from 'express';
 import { env } from '../config/env.js';
 import { bearerGuard } from '../middlewares/shared-secret.js';
 import { analyses, setEngineHash } from '../services/analysis.service.js';
+import { enqueueDm } from '../services/links.service.js';
 import { audioPath, discard } from '../services/spool.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { workerSeen } from '../utils/worker-status.js';
@@ -173,6 +174,20 @@ export const validResult = (result) =>
   nullOr((r) => typeof r === 'object' && REFUSAL_CODE.test(r.code) && text(r.message, 1000))(result.refusal) &&
   (result.refused ? result.red_lines.length === 0 && result.global_bpm === null : result.red_lines.length > 0);
 
+/**
+ * W9.4: an ended analysis of an account that asked for Discord DMs goes into
+ * the bot's outbox. Never in the way of the result: a failure here is logged
+ * and the worker's answer still succeeds.
+ */
+const noticeEnd = async (id) => {
+  try {
+    const row = await analyses().get(id, { position: false });
+    if (row?.accountId) await enqueueDm({ publicId: id, accountId: row.accountId });
+  } catch (error) {
+    console.warn(`[bot] the DM notice of ${id} was not queued: ${error.message}`);
+  }
+};
+
 router.post('/jobs/:id/result', async (req, res) => {
   const id = idOf(req);
   const attempt = attemptOf(req);
@@ -180,6 +195,7 @@ router.post('/jobs/:id/result', async (req, res) => {
   if (!validResult(result)) throw new HttpError(400, 'Not a timing-result v1.', 'BAD_RESULT');
   if (!(await analyses().finish(id, attempt, result))) throw stale();
   await discard(id);
+  await noticeEnd(id);
   res.status(204).end();
 });
 
@@ -189,6 +205,7 @@ router.post('/jobs/:id/fail', async (req, res) => {
   const error = String(req.body.error ?? 'The analysis failed.').slice(0, 500);
   if (!(await analyses().fail(id, attempt, error))) throw stale();
   await discard(id);
+  await noticeEnd(id);
   res.status(204).end();
 });
 

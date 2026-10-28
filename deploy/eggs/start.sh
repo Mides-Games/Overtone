@@ -1,7 +1,7 @@
 #!/bin/bash
 # Start one Overtone server inside its panel container: update, prepare, run.
 #
-#   bash deploy/eggs/start.sh web|api|worker
+#   bash deploy/eggs/start.sh web|api|worker|bot
 #
 # This is the egg's whole startup line. Restarting the server in the panel is
 # the release gesture: with AUTO_UPDATE=1 the checkout fast-forwards to
@@ -31,8 +31,8 @@ set -u
 main() {
     role=${1:-}
     case "$role" in
-        web | api | worker) ;;
-        *) echo "usage: bash deploy/eggs/start.sh web|api|worker"; return 2 ;;
+        web | api | worker | bot) ;;
+        *) echo "usage: bash deploy/eggs/start.sh web|api|worker|bot"; return 2 ;;
     esac
 
     # OVERTONE_HOME exists for trying this script against a scratch clone.
@@ -199,6 +199,17 @@ install_api() {
     pnpm install --frozen-lockfile --prod --filter ./site/api
 }
 
+prepare_bot() {
+    need_lockfile || return 1
+    KEY=$(key package.json pnpm-lock.yaml pnpm-workspace.yaml bot/package.json)
+    once bot-deps install_bot
+}
+
+install_bot() {
+    say "installing bot's production dependencies"
+    pnpm install --frozen-lockfile --prod --filter ./bot
+}
+
 prepare_worker() {
     # The model first: a pointer where the model should be means the beat vote
     # cannot run, and the worker would analyse differently from the app.
@@ -239,6 +250,18 @@ run_api() {
     say "migrating"
     node site/api/src/db/migrate.js || { say "ERROR: the migration failed; not starting."; return 1; }
     exec node site/api/src/index.js
+}
+
+run_bot() {
+    [ -f bot/src/index.js ] || { say "ERROR: bot/src/index.js is not in $(revision)."; return 1; }
+    # The slash commands go with the code: registered at every start when the
+    # application id is known. One PUT of the whole list, which Discord takes
+    # unchanged as a no-op; a failure is said and does not stop the bot.
+    if [ -n "${DISCORD_APP_ID:-}" ] && [ -n "${DISCORD_TOKEN:-}" ]; then
+        node bot/scripts/register.mjs || say "WARNING: the slash commands were not registered; starting anyway."
+    fi
+    # Without its secrets the bot says it is off and exits 0 (bot/src/index.js).
+    exec node bot/src/index.js
 }
 
 run_worker() {

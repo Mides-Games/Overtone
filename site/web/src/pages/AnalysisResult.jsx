@@ -248,7 +248,7 @@ function Refused({ result }) {
  * `sha1` to check a file against, so it passes `verify`, which asks the
  * server, and `csvHref`, the public CSV.
  */
-export function Result({ id, analysis, verify = null, csvHref = null }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
@@ -256,6 +256,14 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
   const [hovered, setHovered] = useState(null)
   const audio = useSongAudio(id, analysis.sha1, verify)
   const [player] = useState(() => new Player())
+  // A public page's comments (W13.15) move this player to the time they name.
+  useEffect(() => {
+    if (!playerRef) return undefined
+    playerRef.current = player
+    return () => {
+      playerRef.current = null
+    }
+  }, [player, playerRef])
   const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
   const clockRef = useRef(null)
   const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])

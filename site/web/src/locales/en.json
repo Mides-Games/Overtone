@@ -281,15 +281,8 @@
   },
   "profile": {
     "signInFirst": "Sign in to see your profile.",
-    "timingsSoon": "Your timings, ratings and uses will appear here once publishing opens.",
     "onMides": "Open on midesprojects.com",
-    "since": "On Overtone since {{date}}",
-    "stats": {
-      "timings": "Timings",
-      "uses": "Uses",
-      "rating": "Rating"
-    },
-    "timings": "Published timings"
+    "since": "On Overtone since {{date}}"
   },
   "footer": {
     "tagline": "Automatic timing for osu!, measured and honest about its confidence.",
@@ -919,7 +912,8 @@
       "logEmpty": "Nothing moderated yet.",
       "kind": {
         "suggestion": "suggestion",
-        "review": "review"
+        "review": "review",
+        "comment": "comment"
       },
       "did": {
         "state": "@{{moderator}} moved it from {{from}} to {{to}}",
@@ -1767,6 +1761,214 @@
       "queued": "Waiting",
       "running": "Being analysed",
       "link": "See the queue"
+    }
+  },
+  "links": {
+    "title": "Linked accounts",
+    "loadFailed": "Your linked accounts could not be loaded. Reload the page to try again.",
+    "unlink": "Unlink",
+    "back": "Back to your profile",
+    "discord": {
+      "linked": "Linked. The Overtone bot knows you, and /time-song counts on your account.",
+      "notLinked": "Not linked. Link it to use the Overtone bot with your account and its quota.",
+      "onMides": "Link on Mides",
+      "code": "Link with the bot",
+      "codeHint": "Type this in Discord, to the Overtone bot, within {{minutes}} minutes:",
+      "unavailable": "Linking Discord is not available on this server yet.",
+      "notify": "Send me a Discord DM when an analysis ends",
+      "notifyHint": "From the Overtone bot, for the songs of this account. You can turn it off here or with /notify off.",
+      "botOff": "The Overtone bot is not running on this server yet: nothing is sent until it is."
+    },
+    "osu": {
+      "title": "Linking osu!",
+      "link": "Link osu!",
+      "notLinked": "Not linked.",
+      "unavailable": "Linking osu! is not available on this server yet.",
+      "ranked_one": "{{count}} ranked map",
+      "ranked_other": "{{count}} ranked maps",
+      "scope": "Overtone asks osu! only for your public identity (the identify scope): your id, name, picture and ranked map count, read once. It keeps no osu! token and never acts on your account.",
+      "working": "Linking your osu! account…",
+      "denied": "osu! was not linked: the request was declined on osu!.",
+      "stateMissing": "This link did not start in this browser, or took too long. Start again from your profile.",
+      "failed": "osu! could not be linked: {{message}}"
+    }
+  },
+  "social": {
+    "nav": {
+      "timers": "Timers"
+    },
+    "title": "What people did with this timing",
+    "failed": "That did not work. Try again in a moment.",
+    "cancel": "Cancel",
+    "more": "Show more",
+    "stars": {
+      "title": "Stars",
+      "count_one": "{{count}} rating",
+      "count_other": "{{count}} ratings",
+      "pick_one": "{{count}} star",
+      "pick_other": "{{count}} stars",
+      "yours": "Your rating",
+      "yoursHint": "Rate how well it fits the song. One rating per account; you can change it.",
+      "again": "Press your rating again to take it back.",
+      "own": "This is your timing: you cannot rate it.",
+      "signIn": "Sign in to rate it",
+      "notRanked_one": "\"Best rated\" counts a timing from {{count}} rating on.",
+      "notRanked_other": "\"Best rated\" counts a timing from {{count}} ratings on."
+    },
+    "uses": {
+      "title": "Used in maps",
+      "count_one": "Used by {{count}} person",
+      "count_other": "Used by {{count}} people",
+      "short_one": "{{count}} use",
+      "short_other": "{{count}} uses",
+      "mark": "I used this",
+      "marked": "You used it",
+      "save": "Save",
+      "editLink": "Change map link",
+      "unmark": "Unmark",
+      "link": "Your map on osu! (optional)",
+      "linkHint": "An osu.ppy.sh beatmapset link. It is shown as written, as a link, next to your name.",
+      "badLink": "That is not an osu.ppy.sh beatmapset link.",
+      "own": "This is your timing: uses count only from other people.",
+      "signIn": "Sign in to say you used it",
+      "goneAccount": "a deleted account"
+    },
+    "collections": {
+      "title": "Collections",
+      "eyebrow": "Collection",
+      "description": "A list of published timings someone put together on Overtone.",
+      "publicTitle": "Public collections",
+      "public": "Public",
+      "private": "Private",
+      "count_one": "{{count}} timing",
+      "count_other": "{{count}} timings",
+      "none": "You have no collections yet. Make one below.",
+      "noneYet": "You have no collections yet.",
+      "newName": "New collection name",
+      "newPlaceholder": "New collection, e.g. \"My mapset\"",
+      "create": "Create",
+      "privateNote": "A new collection is private.",
+      "manage": "Manage your collections",
+      "signIn": "Sign in to keep this in a collection",
+      "intro": "Your lists of published timings. A private one opens only for you; a public one has its own page and shows on your profile.",
+      "rename": "Rename",
+      "save": "Save",
+      "makePublic": "Make public",
+      "makePrivate": "Make private",
+      "delete": "Delete",
+      "deleteYes": "Delete it",
+      "full": "That collection is full.",
+      "tooMany": "You have as many collections as an account can keep.",
+      "empty": "Nothing here yet, or every timing in it was taken back by whoever published it.",
+      "notFoundTitle": "Collection not found",
+      "notFound": "This collection does not exist, or it is private."
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "No comments yet.",
+      "signIn": "Sign in to comment",
+      "body": "Your comment",
+      "placeholder": "What did you notice? Say where with a time.",
+      "at": "At (m:ss)",
+      "atHint": "Optional: a time in the song, so a click on it plays from there.",
+      "here": "Player position",
+      "post": "Comment",
+      "badTime": "That is not a time inside the song (m:ss).",
+      "seek": "Move the player here",
+      "seekTo": "Move the player to {{at}}",
+      "delete": "Delete",
+      "deleteConfirm": "Delete your comment?",
+      "deleteYes": "Delete",
+      "openTiming": "Open its timing"
+    },
+    "errors": {
+      "TOO_LONG": "That is too long.",
+      "TOO_SHORT": "Write something first.",
+      "BAD_TIME": "That is not a time inside the song.",
+      "RATE_LIMITED": "Too many at once. Wait a moment."
+    },
+    "sort": {
+      "label": "Order",
+      "new": "Newest",
+      "rated": "Best rated",
+      "used": "Most used",
+      "ratedNote_one": "Only timings with at least {{count}} rating, ordered so that many good ratings beat a few perfect ones.",
+      "ratedNote_other": "Only timings with at least {{count}} ratings, ordered so that many good ratings beat a few perfect ones.",
+      "usedNote": "Timings people said they used in a map, the most used first.",
+      "ratedEmpty": "No timing has enough ratings to be ranked yet.",
+      "usedEmpty": "Nobody has said they used one yet."
+    },
+    "timers": {
+      "title": "Timers",
+      "subtitle": "The people whose published timings others used in their maps, or rated best. Small and honest: there is a minimum to enter.",
+      "link": "Ranking of timers",
+      "by": {
+        "uses": "By uses",
+        "stars": "By stars"
+      },
+      "minUses_one": "A timer enters with {{count}} use of their timings by other people.",
+      "minUses_other": "A timer enters with {{count}} uses of their timings by other people.",
+      "minStars_one": "A timer enters with {{count}} rating received.",
+      "minStars_other": "A timer enters with {{count}} ratings received.",
+      "published_one": "{{count}} published",
+      "published_other": "{{count}} published",
+      "empty": "Nobody has reached the minimum yet.",
+      "howOrdered": "Stars are ordered by an average that counts three more ratings of 3, so a few perfect ratings do not beat many good ones. Private profiles are left out."
+    },
+    "profile": {
+      "title": "Timer",
+      "description": "@{{name}}'s published timings on Overtone, with their stars, uses and badges.",
+      "edit": "Edit your profile",
+      "publicPage": "Your public page",
+      "notFoundTitle": "Profile not found",
+      "notFound": "Nobody here goes by that name, or their profile is private.",
+      "privateNote": "Your profile is private: only you see this page.",
+      "timings": "Published timings",
+      "badges": "Badges",
+      "noBadges": "No badges yet: they come with publishing.",
+      "noTimings": "Nothing published yet.",
+      "noOwnTimings": "You have not published a timing yet. Publish one from its result or your history.",
+      "isPublic": "Your profile is public",
+      "isPrivate": "Your profile is private",
+      "privateHint": "A private profile is not shown to anyone else (its page says \"not found\") and you leave the ranking of timers. Your published timings stay published, with your name on them.",
+      "makePrivate": "Make it private",
+      "makePublic": "Make it public",
+      "tabs": {
+        "timings": "Timings",
+        "collections": "Collections"
+      },
+      "totals": {
+        "published": "Published",
+        "timed": "Songs timed",
+        "uses": "Uses",
+        "rating": "Stars"
+      }
+    },
+    "badges": {
+      "first-timing": {
+        "name": "First timing",
+        "why": "Published a timing."
+      },
+      "published-10": {
+        "name": "10 published",
+        "why": "Published ten timings."
+      },
+      "published-50": {
+        "name": "50 published",
+        "why": "Published fifty timings."
+      },
+      "suggestion-accepted": {
+        "name": "Idea accepted",
+        "why": "A suggestion of theirs was planned, started or done."
+      },
+      "used-by-others": {
+        "name": "Used by others",
+        "why": "Someone else said they used one of their timings in a map."
+      },
+      "ranked-match": {
+        "name": "Ranked match",
+        "why": "A timing matched the ranked map of its song."
+      }
     }
   }
 }

@@ -34,6 +34,42 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- refresh tokens goes, and takes any old ones with it.
 DROP TABLE IF EXISTS mides_tokens;
 
+-- W9.1 and W9.2, the linked accounts (docs/bot.md). `discord_id` (above) is
+-- the Discord user id, from the Mides profile when Mides sends one, or from
+-- the bot's /link code; one Discord user names one account at most.
+-- `discord_notify` is the opt-in to a DM from the bot when an analysis ends
+-- (W9.4). The osu! columns are what /me of the osu! API said at link time,
+-- read once with the `identify` scope; the osu! token itself is never kept.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS discord_notify   boolean NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_user_id      bigint CHECK (osu_user_id > 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_username     text CHECK (char_length(osu_username) <= 32);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_avatar_url   text CHECK (char_length(osu_avatar_url) <= 300);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_ranked_count integer CHECK (osu_ranked_count >= 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_linked_at    timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_discord_idx ON accounts (discord_id) WHERE discord_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_osu_idx ON accounts (osu_user_id) WHERE osu_user_id IS NOT NULL;
+
+-- W9.1's fallback while Mides sends no Discord id: the profile shows a code,
+-- the person types `/link <code>` to the bot, and the bot names the Discord
+-- user. Only the code's HMAC is kept; it lives ten minutes, one per account.
+CREATE TABLE IF NOT EXISTS discord_link_codes (
+  code_hash       text PRIMARY KEY CHECK (char_length(code_hash) <= 64),
+  account_id      uuid NOT NULL UNIQUE REFERENCES accounts (id) ON DELETE CASCADE,
+  expires_at      timestamptz NOT NULL
+);
+
+-- W9.4, the bot's outbox: one row per finished analysis of an account that
+-- asked for DMs. The bot claims rows (sent_at set in the same statement), so a
+-- notice goes at most once; a lost one is cheaper than a doubled one.
+CREATE TABLE IF NOT EXISTS discord_dms (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  public_id       char(32) NOT NULL UNIQUE,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  sent_at         timestamptz
+);
+CREATE INDEX IF NOT EXISTS discord_dms_pending_idx ON discord_dms (id) WHERE sent_at IS NULL;
+
 -- ── Songs, analyses and the queue ───────────────────────────────────────────
 
 -- A song is its audio's SHA-1, the same hash a .osz carries. The audio itself
@@ -324,3 +360,77 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at         timestamptz
 );
 CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (account_id, created_at DESC) WHERE read_at IS NULL;
+
+-- ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ───────────────
+
+-- The social tables above were drafted for `timings`, the rows people edit
+-- and fork (W4), which do not exist yet. What people publish today is an
+-- analysis (`published_at`, /t/<id>), so each table gains `analysis_id` and
+-- names exactly one of the two: a rating, a use, a comment or a collection
+-- item is on a W4 timing or on a published analysis, never both, never
+-- neither. The rules that were primary keys (one rating per account and
+-- timing, one item per collection and timing) become unique indexes per
+-- target, because a primary key cannot hold a column that may be null. The
+-- constraints are dropped and added again by name, so this runs any number
+-- of times.
+
+-- A private profile (W13.18): /u/<username> answers 404 and the ranking of
+-- timers leaves the account out. Its published timings stay published.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_private boolean NOT NULL DEFAULT false;
+-- A profile is found by its Mides username, in any case.
+CREATE INDEX IF NOT EXISTS accounts_username_idx ON accounts (lower(username), cached_at DESC);
+
+-- Stars: 1-5, one per account and timing, editable.
+ALTER TABLE timing_ratings ADD COLUMN IF NOT EXISTS analysis_id bigint REFERENCES analyses (id) ON DELETE CASCADE;
+ALTER TABLE timing_ratings ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE timing_ratings DROP CONSTRAINT IF EXISTS timing_ratings_pkey;
+ALTER TABLE timing_ratings ALTER COLUMN timing_id DROP NOT NULL;
+ALTER TABLE timing_ratings DROP CONSTRAINT IF EXISTS timing_ratings_target_check;
+ALTER TABLE timing_ratings ADD CONSTRAINT timing_ratings_target_check CHECK (num_nonnulls(timing_id, analysis_id) = 1);
+CREATE UNIQUE INDEX IF NOT EXISTS timing_ratings_timing_once ON timing_ratings (timing_id, account_id) WHERE timing_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS timing_ratings_analysis_once ON timing_ratings (analysis_id, account_id) WHERE analysis_id IS NOT NULL;
+
+-- "I used this": one per account and timing, with an optional osu!
+-- beatmapset link kept in its one canonical form (utils/social.js).
+-- Anonymous uses (the draft's ip_hash) are not taken: a count anyone can push
+-- again from every new address would not be the honest measure §4 wants.
+ALTER TABLE timing_uses ADD COLUMN IF NOT EXISTS analysis_id bigint REFERENCES analyses (id) ON DELETE CASCADE;
+ALTER TABLE timing_uses ADD COLUMN IF NOT EXISTS beatmap_url text CHECK (char_length(beatmap_url) <= 200);
+ALTER TABLE timing_uses ALTER COLUMN timing_id DROP NOT NULL;
+ALTER TABLE timing_uses DROP CONSTRAINT IF EXISTS timing_uses_target_check;
+ALTER TABLE timing_uses ADD CONSTRAINT timing_uses_target_check CHECK (num_nonnulls(timing_id, analysis_id) = 1);
+CREATE UNIQUE INDEX IF NOT EXISTS timing_uses_analysis_once
+  ON timing_uses (analysis_id, account_id) WHERE analysis_id IS NOT NULL AND account_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS timing_uses_analysis_idx ON timing_uses (analysis_id, used_at DESC) WHERE analysis_id IS NOT NULL;
+
+-- Comments: named outside by `public_id` as a suggestion is, hidden by staff
+-- through the community's moderation (W5.4), and optionally anchored to a
+-- time in the song (`at_ms`, W13.15). The API caps a body below the draft's 4000.
+ALTER TABLE timing_comments ADD COLUMN IF NOT EXISTS analysis_id bigint REFERENCES analyses (id) ON DELETE CASCADE;
+ALTER TABLE timing_comments ADD COLUMN IF NOT EXISTS public_id text UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$');
+ALTER TABLE timing_comments ADD COLUMN IF NOT EXISTS at_ms integer CHECK (at_ms BETWEEN 0 AND 86400000);
+ALTER TABLE timing_comments ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false;
+ALTER TABLE timing_comments ADD COLUMN IF NOT EXISTS hidden_reason text CHECK (char_length(hidden_reason) <= 500);
+ALTER TABLE timing_comments ALTER COLUMN timing_id DROP NOT NULL;
+ALTER TABLE timing_comments DROP CONSTRAINT IF EXISTS timing_comments_target_check;
+ALTER TABLE timing_comments ADD CONSTRAINT timing_comments_target_check CHECK (num_nonnulls(timing_id, analysis_id) = 1);
+CREATE INDEX IF NOT EXISTS timing_comments_analysis_idx ON timing_comments (analysis_id, created_at) WHERE analysis_id IS NOT NULL;
+
+-- Collections: an account's named lists, private until made public.
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS public_id text UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$');
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false;
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS collections_account_idx ON collections (account_id, created_at DESC);
+
+ALTER TABLE collection_items ADD COLUMN IF NOT EXISTS analysis_id bigint REFERENCES analyses (id) ON DELETE CASCADE;
+ALTER TABLE collection_items DROP CONSTRAINT IF EXISTS collection_items_pkey;
+ALTER TABLE collection_items ALTER COLUMN timing_id DROP NOT NULL;
+ALTER TABLE collection_items DROP CONSTRAINT IF EXISTS collection_items_target_check;
+ALTER TABLE collection_items ADD CONSTRAINT collection_items_target_check CHECK (num_nonnulls(timing_id, analysis_id) = 1);
+CREATE UNIQUE INDEX IF NOT EXISTS collection_items_timing_once ON collection_items (collection_id, timing_id) WHERE timing_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS collection_items_analysis_once ON collection_items (collection_id, analysis_id) WHERE analysis_id IS NOT NULL;
+
+-- Staff hide and unhide a comment through the same log as everything else.
+ALTER TABLE moderation_log DROP CONSTRAINT IF EXISTS moderation_log_target_kind_check;
+ALTER TABLE moderation_log ADD CONSTRAINT moderation_log_target_kind_check
+  CHECK (target_kind IN ('analysis', 'suggestion', 'review', 'comment'));

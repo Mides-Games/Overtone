@@ -686,13 +686,35 @@ privados: publicar es opt-in, W3.27), con título, artista, BPM principal, canti
 red lines, quién y cuándo. Filtros por rango de BPM y tempo único o variable,
 búsqueda por título o artista, y paginación por cursor. **Falta:** portada (no hay
 ninguna guardada), filtro por fecha en la lista pública, y "más usados" o "mejor
-puntuados", que esperan los usos y las estrellas.
+puntuados", que esperan los usos y las estrellas (hechos el 2026-10-27 con W6, abajo).
 
 ### Fase W6 — Social v2
 
 Colecciones, ranking de timers (por usos y estrellas), la insignia Ranked-match,
 reportes y panel de moderación con los roles de Mides, posts en el Feed de Mides,
 metadatos de osu! (beatmapset).
+
+**W5.6, W6 y W13.18 en buena parte, y W13.15, el 2026-10-27** en la rama
+`feature/site-social` (docs/site.md, "Social v2"):
+
+- **Hecho.** Estrellas de 1 a 5 en los timings publicados (una por cuenta, editable;
+  quien lo publicó no puede calificar el suyo), con el promedio en `/t/:id` y en
+  `/recent`, que ordena por "mejor puntuados" (desde 3 calificaciones, con promedio
+  bayesiano de 3 calificaciones previas de 3★) y "más usados". "Lo usé" (uno por
+  cuenta, con link opcional a un beatmapset de osu.ppy.sh, validado y guardado en una
+  sola forma). Comentarios (con cuenta, hasta 1000 caracteres, borrables por su autor,
+  ocultables por el staff con la moderación de Community) anclados opcionalmente a un
+  tiempo de la canción que mueve el reproductor (W13.15). Colecciones privadas o
+  públicas, con página propia (`/c/:id`). Perfil público por timer (`/u/<username>`):
+  timings publicados, totales, insignias (primer timing, 10 y 50 publicados, sugerencia
+  aceptada, usado por otros) y colecciones públicas; perfil privado = 404. La pestaña
+  Timings (y Colecciones) en `/profile`. Ranking de timers (`/timers`) por usos (desde
+  3) o estrellas (desde 5 calificaciones).
+- **Falta.** La insignia Ranked-match (espera W9.2; queda el gancho en `badgesOf`),
+  los metadatos del beatmapset (W9.2), los posts en el Feed de Mides (necesita su API),
+  reacciones con emoji (`timing_reactions` sigue sin usarse), comentarios en hilo,
+  marcar los comentarios con tiempo sobre el mapa de tempo (W13.15 los lleva al punto,
+  no los dibuja), y avisos al autor (W13.17).
 
 ### Fase W7 — Editor en el navegador
 
@@ -712,11 +734,11 @@ y Compile, si tienen sentido en web. Rust en el worker cuando Corpus B lo justif
 
 | # | Tarea |
 |---|---|
-| W9.1 | **Vincular Discord:** si la cuenta de Mides ya tiene Discord vinculado, se usa; si no, el sitio ofrece vincularlo con el flujo de Mides (`connections/discord/link-token` con `return_to` al sitio), sin un OAuth propio |
-| W9.2 | **Vincular osu!:** OAuth de la API v2 de osu! (scope `identify`, nada más), registrada como app de Mides Projects. Muestra el perfil de osu! en el de Overtone y permite, más adelante, relacionar un timing con un beatmapset. Leer y cumplir las reglas de la API de osu! antes de pedir la key |
-| W9.3 | **Bot de Discord** en el monorepo (`bot/`, mismo stack que cavernia-bot), con el comando `/time-song`:<br>• recibe un adjunto de audio y lo encola en la misma cola que el sitio, con los mismos límites; el dueño es la cuenta vinculada (sin vincular: el cupo anónimo, o directamente no, a decidir);<br>• responde con un embed: BPM, offset, red lines y confianza;<br>• adjunta una imagen del gráfico, renderizada en el worker con el mismo diseño que el sitio;<br>• enlaza a la página del timing (W3.27);<br>• el audio sigue la misma regla: se borra después de analizar |
-| W9.4 | **Avisos por DM** del bot cuando termina un análisis (opt-in, W3.23) |
-| W9.5 | **Más comandos:**<br>• `/timing <link>` muestra un timing publicado;<br>• `/queue` muestra el estado de la cola;<br>• `/compare` compara dos timings;<br>• un comando para ver los últimos timings de alguien |
+| W9.1 | **Hecho en parte (2026-10-27, `docs/bot.md`):** el lado de Overtone está: lee `discord_id` del perfil de Mides, el botón manda a la página de Mides con `return_to` y la vuelta refresca el perfil; mientras Mides no lo ofrezca, un código del perfil con `/link` en el bot. **Falta en Mides:** `discord_id` en el usuario del SSO y la página `/connections/discord/link`. <br>**Vincular Discord:** si la cuenta de Mides ya tiene Discord vinculado, se usa; si no, el sitio ofrece vincularlo con el flujo de Mides (`connections/discord/link-token` con `return_to` al sitio), sin un OAuth propio |
+| W9.2 | **Hecho, apagado (2026-10-27):** OAuth con state y PKCE, `identify`, `/me` una vez, sin guardar el token; en el perfil, con desvincular. **Falta:** registrar la app de osu! (una por entorno) y cargar `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI`. <br>**Vincular osu!:** OAuth de la API v2 de osu! (scope `identify`, nada más), registrada como app de Mides Projects. Muestra el perfil de osu! en el de Overtone y permite, más adelante, relacionar un timing con un beatmapset. Leer y cumplir las reglas de la API de osu! antes de pedir la key |
+| W9.3 | **Hecho, apagado (2026-10-27):** `bot/` con discord.js 14.27.0, `/time-song` con progreso y embed, el egg `overtone-bot`. Sin vincular: el cupo anónimo por usuario de Discord (hasheado). Sin imagen del gráfico: el embed enlaza la página. **Falta:** crear la aplicación de Discord y cargar los secretos. <br>**Bot de Discord** en el monorepo (`bot/`, mismo stack que cavernia-bot), con el comando `/time-song`:<br>• recibe un adjunto de audio y lo encola en la misma cola que el sitio, con los mismos límites; el dueño es la cuenta vinculada (sin vincular: el cupo anónimo, o directamente no, a decidir);<br>• responde con un embed: BPM, offset, red lines y confianza;<br>• adjunta una imagen del gráfico, renderizada en el worker con el mismo diseño que el sitio;<br>• enlaza a la página del timing (W3.27);<br>• el audio sigue la misma regla: se borra después de analizar |
+| W9.4 | **Hecho, apagado (2026-10-27):** `/notify on\|off` o el switch del perfil; outbox en la API, a lo sumo una vez. <br>**Avisos por DM** del bot cuando termina un análisis (opt-in, W3.23) |
+| W9.5 | **Hecho, apagado (2026-10-27):** `/timing`, `/queue`, `/compare` y `/recent`. <br>**Más comandos:**<br>• `/timing <link>` muestra un timing publicado;<br>• `/queue` muestra el estado de la cola;<br>• `/compare` compara dos timings;<br>• un comando para ver los últimos timings de alguien |
 | W9.6 | **Sin bajar audio de osu!.** Analizar un beatmapset directo desde su link exigiría bajar el `.osz`; no se hace sin confirmar que las reglas de osu! lo permiten. Hasta entonces, la persona sube su archivo |
 
 ### Fase W10 — Calidad, rendimiento y profesionalismo

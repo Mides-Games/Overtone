@@ -5,6 +5,7 @@ import { errorHandler, notFound } from './middlewares/error-handler.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { securityHeaders } from './middlewares/security-headers.js';
 import { INTERNAL_PREFIX, proxyGuard } from './middlewares/shared-secret.js';
+import bot from './routes/bot.routes.js';
 import v1 from './routes/index.js';
 import internal from './routes/internal.routes.js';
 
@@ -25,6 +26,10 @@ app.use(securityHeaders);
 app.use(proxyGuard(env.proxySecret));
 // The worker's routes first: their own bearer, their own body limit, and
 // outside the per-address rate limit, which counts visitors.
+// The Discord bot's routes (W9.3) go first, with BOT_TOKEN: inside the
+// worker's prefix (so overtone-web refuses to forward them all the same) but
+// never under WORKER_TOKEN.
+app.use(`${INTERNAL_PREFIX}/bot`, bot);
 app.use(INTERNAL_PREFIX, internal);
 
 // Small on purpose: JSON bodies here are a code or a form. Audio arrives as a

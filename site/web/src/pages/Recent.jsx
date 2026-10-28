@@ -6,21 +6,26 @@ import BrandLoader from '../components/BrandLoader.jsx'
 import TimingList from '../components/TimingList.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { usePagedList } from '../hooks/usePagedList.js'
-import { NO_FILTERS, recentTimings } from '../lib/timings.js'
+import { SORTS, sortedTimings } from '../lib/social.js'
+import { NO_FILTERS } from '../lib/timings.js'
 
-const loadRecent = (filters, options) => recentTimings(filters, options).then((data) => ({ items: data.timings, next: data.next }))
+const loadRecent = (filters, options) => sortedTimings(filters, options).then((data) => ({ items: data.timings, next: data.next }))
+
+/** "Best rated" counts a timing from this many ratings on (the API says the same number as `minRatings`). */
+const MIN_RATINGS = 3
 
 /**
  * Recent timings from everyone (W5.1): what people chose to publish, newest
- * first, searchable by title and artist and filtered by BPM and by single or
- * variable tempo. A page at a time; the filters live in the page, not in its
- * URL.
+ * first, or best rated or most used (W6), searchable by title and artist and
+ * filtered by BPM and by single or variable tempo. A page at a time; the
+ * filters live in the page, not in its URL.
  */
 export default function Recent() {
   const { t } = useTranslation()
   usePageMeta(t('timings.recent.title'), t('timings.recent.subtitle'))
   const [filters, setFilters] = useState(NO_FILTERS)
-  const list = usePagedList(loadRecent, filters)
+  const [sort, setSort] = useState('new')
+  const list = usePagedList(loadRecent, { ...filters, sort })
   const set = (key) => (event) => setFilters((f) => ({ ...f, [key]: event.target.value }))
   const narrowed = Object.entries(filters).some(([, value]) => value)
 
@@ -30,6 +35,28 @@ export default function Recent() {
         <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('timings.recent.title')}</h1>
         <p className="max-w-[60ch] text-muted">{t('timings.recent.subtitle')}</p>
       </header>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="group" aria-label={t('social.sort.label')} className="flex flex-wrap gap-1">
+          {SORTS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSort(key)}
+              className="tool-btn px-3 font-display text-caption font-semibold uppercase"
+              aria-pressed={sort === key}
+            >
+              {t(`social.sort.${key}`)}
+            </button>
+          ))}
+        </div>
+        <Link to="/timers" className="text-label text-accent hover:underline">
+          {t('social.timers.link')} →
+        </Link>
+      </div>
+      {sort !== 'new' && (
+        <p className="-mt-5 text-caption text-dim">{sort === 'rated' ? t('social.sort.ratedNote', { count: MIN_RATINGS }) : t('social.sort.usedNote')}</p>
+      )}
 
       <form className="panel grid grid-cols-1 gap-3 p-4 sm:grid-cols-[1fr_auto_auto_auto] [&>*]:min-w-0" role="search" onSubmit={(e) => e.preventDefault()}>
         <label className="space-y-1">
@@ -52,7 +79,7 @@ export default function Recent() {
         )}
       </form>
 
-      <Listing list={list} narrowed={narrowed} />
+      <Listing list={list} narrowed={narrowed} sort={sort} />
     </div>
   )
 }
@@ -73,7 +100,7 @@ export function BpmRange({ filters, set }) {
   )
 }
 
-function Listing({ list, narrowed }) {
+function Listing({ list, narrowed, sort = 'new' }) {
   const { t } = useTranslation()
   if (list.items === null) {
     return list.error ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <BrandLoader className="py-16" />
@@ -84,8 +111,8 @@ function Listing({ list, narrowed }) {
         <TimingList timings={list.items} />
       ) : (
         <p className="rounded-panel border border-line px-4 py-8 text-center text-label text-dim">
-          {narrowed ? t('timings.recent.noMatch') : t('timings.recent.empty')}{' '}
-          {!narrowed && (
+          {narrowed ? t('timings.recent.noMatch') : sort !== 'new' ? t(`social.sort.${sort}Empty`) : t('timings.recent.empty')}{' '}
+          {!narrowed && sort === 'new' && (
             <Link to="/analyze" className="text-accent hover:underline">
               {t('timings.recent.analyze')}
             </Link>

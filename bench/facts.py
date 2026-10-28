@@ -10,8 +10,8 @@ document that disagrees. It also holds the library index's two sides together:
 the schema version library.sql states and the one overtone_library.py reads. It runs no analysis and imports nothing heavy.
 
 Counts are static: a Rust test is a `#[test]` attribute, a Python test a
-`def test_` method, a site test a top-level `test(` call in `site/api/test` or
-`site/web/test`. None of the suites has parametrised, inherited or nested
+`def test_` method, a site test a top-level `test(` call in `site/api/test`,
+`site/web/test` or `bot/test`. None of the suites has parametrised, inherited or nested
 tests, so the static count is what `cargo test`, `unittest` and `node --test`
 report; if that ever stops being true, this is the place to say so.
 """
@@ -50,6 +50,12 @@ def site_tests() -> tuple[int, int]:
     return count("api"), count("web")
 
 
+def bot_tests() -> int:
+    """The Discord bot's `test(` calls (bot/test), counted as the site's are."""
+    return sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
+               for p in (ROOT / "bot" / "test").glob("*.test.js"))
+
+
 def crate_dirs() -> list[str]:
     return sorted(p.parent.name for p in (ROOT / "crates").glob("*/Cargo.toml"))
 
@@ -84,9 +90,10 @@ def main() -> int:
     crates = crate_dirs()
     golden = golden_vectors()
     site_api, site_web = site_tests()
+    bot = bot_tests()
     print(f"source: {python} Python tests ({engine} engine + {worker} worker), "
           f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors, "
-          f"{site_api} site/api and {site_web} site/web tests")
+          f"{site_api} site/api, {site_web} site/web and {bot} bot tests")
 
     def expect(doc: str, what: str, found: list[str], want: int) -> None:
         if not found:
@@ -114,6 +121,8 @@ def main() -> int:
         stated_web = re.findall(r"pnpm --dir site/web test\s+# all pass \((\d+) on", text)
         if site_web or stated_web:
             expect(doc, "site/web tests", stated_web, site_web)
+        expect(doc, "bot tests",
+               re.findall(r"pnpm --dir bot test\s+# all pass \((\d+) on", text), bot)
         listed = sorted(set(re.findall(r"^\s+(overtone-[a-z]+)/", text, re.M)))
         if listed != crates:
             problems.append(f"{doc}: layout lists crates {listed}, crates/ holds {crates}")

@@ -53,6 +53,116 @@ version is `v0.2.0-alpha`.
   `queue.queued + queue.running`, so a renamed field shows as a hidden block, not a
   wrong number.
 - Showing "0 analyses done" on a fresh site: dropped, the block waits for the first.
+
+---
+
+## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
+
+### Changed
+
+- An account links Discord (W9.1) and osu! (W9.2) from its profile, and a Discord
+  bot (`bot/`, discord.js 14.27.0) times songs and reads timings through a new
+  `/api/internal/bot` (W9.3-W9.5): `/time-song`, `/timing`, `/queue`, `/compare`,
+  `/recent`, `/link`, `/notify`. DMs when an analysis ends, opt-in (W9.4).
+  Everything is off until its secrets exist, and says so. `docs/bot.md`.
+- Discord through Mides needs two things Mides does not have yet (`discord_id` in
+  the SSO's user, a link page with `return_to`); until then a ten-minute code from
+  the profile, typed to the bot as `/link`, links the Discord user the bot names.
+- **Decided:** an unlinked Discord user gets the anonymous quota of one visitor,
+  counted by an HMAC of their id per day. Refusing them would leave the bot unused
+  until Mides sends Discord ids; a Discord account costs about what a fresh address
+  does, and both the bot and the API limit per Discord user.
+- The API's upload became `acceptUpload`, shared by the browser's route and the
+  bot's, so the bot is held to exactly the site's checks. A new `overtone-bot` egg.
+
+### Hardening
+
+- `BOT_TOKEN` is its own key: refused when equal to `WORKER_TOKEN`, neither opens
+  the other's routes, and overtone-web refuses `/api/internal/bot` in any spelling
+  (a test tries six).
+- The Discord id travels in a header, never a URL, and is stored raw only on the
+  account it is linked to (the DMs need it); quotas and limits count an HMAC of it.
+- osu!: state in a signed cookie bound to the account, a PKCE verifier derived
+  server side (never in the browser), the token dropped after one `/me`, the
+  avatar kept only on `ppy.sh`. Link codes are stored as an HMAC and spent once.
+- The bot checks an attachment before downloading (extension, type, the API's
+  `MAX_UPLOAD_MB`, Discord's CDN hosts) and while downloading (no redirects, type,
+  a byte count cut at the cap); the audio lives in memory until uploaded (ADR-W4).
+  A song name cannot write markdown or mentions into an embed.
+
+### Measured
+
+- Not measured: no performance claim. Tests: `site/api` 123 (23 new), `bot` 29,
+  `site/web` 90; the bot's contract suite runs it against the real API.
+
+### Rejected / tried and dropped
+
+- An image of the tempo chart in the embed: rendering the site's chart server side
+  needs a headless browser or a canvas library for one picture. The embed links
+  the page.
+- Refusing unlinked Discord users (above).
+- Showing the osu! avatar: widening the site's `img-src` to `ppy.sh` for a picture
+  only its owner sees is not worth a third-party request.
+
+---
+
+## Unreleased — 2026-10-27 · Stars, uses, comments, collections and timer profiles
+
+### Changed
+
+- Published timings get the social layer (W5.6, W6, W13.15, W13.18): 1-5 stars (one
+  per account, editable), "I used this" with an optional osu! beatmapset link, comments
+  that can point at a time in the song (its m:ss moves the player there), and
+  collections, private or public, with their own page (`/c/:id`).
+- `/recent` orders by newest, best rated or most used; each row shows its stars and
+  uses. `/u/<username>` is a timer's public profile (published timings, totals, badges,
+  public collections); `/profile` gains Timings and Collections tabs and a private
+  switch. `/timers` ranks timers by uses or by stars. Navbar link to Timers.
+- Decisions taken in the owner's absence:
+  - "Best rated" counts a timing from **3** ratings and orders by a Bayesian average
+    (3 prior ratings at 3 stars), as docs/16 §4 asks: 3 is the least that says more
+    than one person agreed; a higher bar would leave the sort empty while the site is
+    small. The page shows the plain average and states the bar.
+  - The timer ranking needs **3** uses by others or **5** ratings received, again small
+    on purpose, and stated on the page.
+  - The uploader can neither rate nor mark their own timing used.
+  - Uses need an account; the draft's anonymous uses by address hash were dropped (a
+    count anyone could push again from each new address).
+  - Comment moderation reuses the community's (reports, hide with reason,
+    `moderation_log`) with `comment` as a third kind: one place for staff.
+  - A private profile is a 404 and leaves the ranking; its published timings stay
+    published with the name on them.
+- Schema: the drafted social tables pointed at `timings` (W4, not built yet). Each
+  gained `analysis_id` and a check naming exactly one target, so W4 reuses them; the
+  one-per-account primary keys became unique indexes per target. `accounts` gained
+  `profile_private`; `moderation_log` admits `comment`.
+
+### Hardening
+
+- Every new mutating route has the same-origin guard, a per-address rate limit and
+  capped, cleaned input; "not yours" is the same 404 as "not there" for collections,
+  comments and private profiles. Beatmap links are stored only as
+  `https://osu.ppy.sh/beatmapsets/<set>[#<mode>/<map>]` and rendered as their own text
+  with `rel="noopener nofollow ugc"`. A test reads every response the social suite
+  saw and finds no SHA-1, address hash or anonymous hash in any of them.
+
+### Measured
+
+- site/api 121/121 (13 new), site/web 186/186 (3 new), `vite build` ok, after merging
+  `origin/experimental`. Before the merge, the 13 social tests also passed against
+  PostgreSQL 18.6 through PGlite 0.5.12 over HTTP, and `check` applied the schema
+  twice. No performance figure: not measured.
+
+### Rejected / tried and dropped
+
+- New `published_*` tables beside the drafted ones: they would have left two sets of
+  social tables once W4 lands. Amending the drafted ones keeps one.
+- A keyset cursor for "best rated" and "most used": a cursor over a score that moves
+  while someone reads skips or repeats rows just the same, so those orders page by
+  offset (`o<n>`) and say so.
+
+---
+
 ## Unreleased — 2026-10-27 · Other games' formats and export options
 
 ### Changed

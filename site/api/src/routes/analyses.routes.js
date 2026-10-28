@@ -136,7 +136,19 @@ const arrive = (owner, step) => {
   arrivingTotal += step;
 };
 
-router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
+router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, (req, res) =>
+  acceptUpload(req, res, { ipHash: ipHashOf(req), anonHash: () => ensureAnon(req, res) }));
+
+/**
+ * An upload, from its headers to the queue: the browser's (above) and the
+ * Discord bot's (routes/bot.routes.js, W9.3), which are one path so the bot is
+ * held to exactly the site's limits. `req.account` is the uploader's account
+ * or `null`; `ipHash` is what the anonymous quota and the queue's turns count
+ * by (the address's daily HMAC, or the Discord user's); `anonHash()` gives the
+ * hash an anonymous row is owned by, setting the cookie when the browser has
+ * none.
+ */
+export const acceptUpload = async (req, res, { ipHash, anonHash }) => {
   res.set('Cache-Control', 'no-store');
   const limit = env.maxUploadMb * 1_048_576;
 
@@ -157,7 +169,6 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   }
 
   const accountId = req.account?.id ?? null;
-  const ipHash = ipHashOf(req);
   const quota = accountId ? env.userDailyLimit : env.anonDailyLimit;
   const used = await analyses().countToday({ accountId, ipHash });
   if (used >= quota) {
@@ -207,16 +218,16 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     } catch (error) {
       refuseEarly(res, error);
     }
-    return await receiveUpload(req, res, { accountId, ipHash, filename, limit });
+    return await receiveUpload(req, res, { accountId, ipHash, anonHash, filename, limit });
   } finally {
     release();
     arrive(owner, -1);
   }
-});
+};
 
 /** The upload's body to the spool and its row into the queue (or an answer from the cache). */
-const receiveUpload = async (req, res, { accountId, ipHash, filename, limit }) => {
-  const anonHash = accountId ? null : ensureAnon(req, res);
+const receiveUpload = async (req, res, { accountId, ipHash, anonHash: anonHashFor, filename, limit }) => {
+  const anonHash = accountId ? null : anonHashFor();
   const id = newPublicId();
 
   let received;

@@ -20,6 +20,29 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
+
+### Fixed
+
+- A song on the staging site failed with `too_heavy` inside Beat This!'s Softmax. The
+  worker capped the analysis child's **address space** (`RLIMIT_AS`, 1800 MB), and ONNX
+  Runtime, numba and the thread pools reserve far more address space than they touch,
+  so an allocation hit the cap while the real use was well below it (W2.4 measured
+  ~1.2 GB resident for a 10-minute song with the vote). The worker now reads the
+  child's **resident** memory from /proc every 0.5 s and stops it past
+  `WORKER_MEMORY_MB`, with how much it used in the message; the container's OOM killer
+  stays the backstop.
+- The result page said a stopped job's file "may be damaged". A job stopped for memory
+  or time now says so, in all ten languages.
+
+### Measured
+
+- `tests/test_worker.py` `IsolationTests` 7/7 locally (the new over-the-limit test runs
+  only where /proc exists, so it was skipped on Windows); site/web 240/240. Not
+  measured: the failing song itself (it never reached this machine) and the server run.
+
+---
+
 ## Unreleased — 2026-10-28 · The site in ten languages, chosen by flag
 
 ### Changed

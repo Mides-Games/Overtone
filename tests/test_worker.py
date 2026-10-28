@@ -298,12 +298,43 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(isolate.kind_of(exc), "too_heavy")
         self.assertEqual(isolate.kind_of(ValueError("no pulse")), "failed")
 
-    def test_the_memory_cap_is_skipped_where_there_is_no_rlimit(self):
+    def test_the_memory_watch_is_skipped_where_there_is_no_proc_or_it_is_off(self):
+        self.assertFalse(self.isolate.can_watch_memory(0))
+        has_proc = Path("/proc/self/status").exists()
+        self.assertEqual(self.isolate.can_watch_memory(1800), has_proc)
+        if has_proc:
+            self.assertGreater(self.isolate.resident_mb("self"), 0)
+        else:
+            self.assertIsNone(self.isolate.resident_mb("self"))
+
+    def test_a_child_past_its_resident_limit_is_stopped_as_too_heavy(self):
+        # The child holds 64 MB live; a 16 MB limit stops it from outside.
+        isolate = self.isolate
+        if not isolate.can_watch_memory(16):
+            self.skipTest("no /proc here: the limit is Linux-only")
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=16), self_test=False, child=_hungry_child)
         try:
-            import resource  # noqa: F401
-        except ImportError:
-            self.assertFalse(self.isolate.limit_memory(1800))
-        self.assertFalse(self.isolate.limit_memory(0))
+            runner.start()
+            with self.assertRaises(isolate.JobFailed) as caught:
+                runner.analyse("ignored", max_seconds=60)
+            self.assertEqual(caught.exception.code, "too_heavy")
+            self.assertIn("16 MB limit", str(caught.exception))
+            self.assertFalse(runner.alive())
+        finally:
+            runner.close()
+
+
+def _hungry_child(conn, threads, memory_mb, vote_wanted, self_test):
+    """A stand-in analysis child: ready at once, then holds 64 MB resident and
+    waits, as an analysis that outgrows its limit would."""
+    conn.send(("ready", False, "0" * 16, True, None, {"normal": "0" * 16}))
+    if conn.recv()[0] != "analyse":
+        return
+    hoard = bytearray(64 * 1024 * 1024)
+    for i in range(0, len(hoard), 4096):
+        hoard[i] = 1
+    import time
+    time.sleep(30)
 
 
 class IsolatedEngineTests(unittest.TestCase):

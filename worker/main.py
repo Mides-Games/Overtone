@@ -215,10 +215,10 @@ def main() -> int:
         return 4
     hash_ = runner.hash
     if runner.limited:
-        memory = f"{limits.memory_mb} MB address space"
+        memory = f"{limits.memory_mb} MB of resident memory per job"
     else:
-        memory = "no memory cap (" + ("off" if limits.memory_mb <= 0 else "no rlimit on this platform") + ")"
-    peak = f", {runner.peak_mb} MB used after warm-up" if runner.peak_mb else ""
+        memory = "no memory cap (" + ("off" if limits.memory_mb <= 0 else "no /proc on this platform") + ")"
+    peak = f", {runner.peak_mb} MB resident after warm-up" if runner.peak_mb else ""
     print(f"[worker] analysis process warm in {time.perf_counter() - started:.1f} s: {memory}{peak}; "
           f"a job stops after max({limits.timeout_min_s:g} s, {limits.timeout_factor:g} x the audio)", flush=True)
     # The egg's "done" line (deploy/eggs/egg.py): the panel shows the server

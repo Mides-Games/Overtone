@@ -22,8 +22,8 @@ bench/.cache/
 /graphify-out/
 /.graphifyignore
 /.agents/
-# Installer (installer/build.py): the frozen tree, the MSI and the ZIP, and
-# PyInstaller's and WiX's working files. Build outputs are never committed.
+# Build outputs of the removed installer (parked 2026-10-26), still on some
+# disks: the frozen tree, the MSI and the ZIP. Never committed.
 /dist/
 /build/
 # Tauri frontend
@@ -42,3 +42,6 @@ bench/.cache/
 /site/*/node_modules/
 /site/*/dist/
 /site/*/.env
+# The Discord bot (bot/): the same rule, its token included.
+/bot/node_modules/
+/bot/.env

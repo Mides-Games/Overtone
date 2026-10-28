@@ -44,14 +44,15 @@ const startWorker = () => {
   }
   const worker = spawn(exe, [join(root, 'worker', 'main.py')], {
     cwd: root,
-    // stdin stays a pipe the worker watches: when this process goes, however
+    // The worker watches this process's pid and leaves when it goes, however
     // it goes (node --watch restarts it without running exit handlers on
-    // Windows), the pipe closes and the worker leaves with it.
-    stdio: ['pipe', 'inherit', 'inherit'],
+    // Windows). Not a stdin pipe: on Windows a thread blocked reading one
+    // stalls the start of the worker's analysis child.
+    stdio: ['ignore', 'inherit', 'inherit'],
     env: {
       ...process.env,
       OVERTONE_API: `http://127.0.0.1:${process.env.PORT || 3001}`,
-      WORKER_EXIT_WITH_STDIN: '1',
+      WORKER_PARENT_PID: String(process.pid),
       PYTHONUNBUFFERED: '1',
     },
   });

@@ -131,7 +131,8 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
         out.append({"file": entry["file"], "folder": song["folder"], "split": song["split"],
                     "path": analysis["path"], "map_lines": len(reds),
                     "detected_lines": len(detected), "rows": rows,
-                    "d_map": d_map, "d_eng": d_eng})
+                    "d_map": d_map, "d_eng": d_eng,
+                    **({"message": analysis["message"]} if analysis.get("message") else {})})
     return out
 
 
@@ -380,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
                "maps": [{k: v for k, v in m.items() if k not in ("rows", "d_map", "d_eng")} | {
                    "beat_f10": beat_f(m, 10, beat_shift),
                    "tempo_ok": tempo_ok(m), "conv_10": joint(m, 10, shift),
-                   "first": m["rows"][0]} for m in maps]}
+                   "first": m["rows"][0], "rows": m["rows"]} for m in maps]}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     if args.save_baseline:

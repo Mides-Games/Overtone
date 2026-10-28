@@ -9,6 +9,14 @@ export const AUDIO_EXTENSIONS = ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus'];
 const UNSAFE = /[\u0000-\u001f\u007f<>:"|?*\\/]/g;
 
 /**
+ * Characters a label must not carry, because they change how the text around
+ * them reads without being seen: C1 controls, the bidi marks, embeddings,
+ * overrides and isolates (an RLO turns "song‮vaw.exe" into what looks like
+ * "songexe.wav" on the public queue), the zero-width characters and the BOM.
+ */
+export const INVISIBLE = /[\u0080-\u009f؜​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+
+/**
  * The display name of an upload from its `X-Filename` header (percent-encoded
  * by the web, since a header is Latin-1). Only the last path segment, no
  * control or path characters, at most 200 characters with the extension
@@ -23,7 +31,7 @@ export const cleanFilename = (raw) => {
   } catch {
     // Not percent-encoded: take it as it came.
   }
-  name = name.split(/[\\/]/).pop().replace(UNSAFE, '').replace(/\s+/g, ' ').trim();
+  name = name.split(/[\\/]/).pop().replace(UNSAFE, '').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
   name = name.replace(/^\.+/, '');
   if (!name) return null;
   if (name.length > 200) {
@@ -47,12 +55,25 @@ export const downloadName = (filename, suffix) => {
   return `${stem || 'overtone'}-${suffix}`;
 };
 
+/**
+ * One CSV cell. Numbers go as they are. Text that a spreadsheet would run as a
+ * formula (a leading = + - @, or a tab or carriage return before one) gets a
+ * leading apostrophe, and anything with a comma, quote or line break is quoted.
+ */
+export const csvCell = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  let cell = String(value);
+  if (/^[=+\-@\t\r]/.test(cell)) cell = `'${cell}`;
+  return /[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+};
+
 /** The red lines as CSV: one row per line, the numbers the result carries. */
 export const timingCsv = (result) => {
   const rows = ['time_ms,bpm,beat_length_ms,meter,confidence,level'];
   (result?.red_lines ?? []).forEach((line, i) => {
     const section = result.sections?.[i] ?? {};
-    rows.push([line.time_ms, line.bpm, line.beat_length_ms, line.meter, section.confidence ?? '', section.level ?? ''].join(','));
+    rows.push([line.time_ms, line.bpm, line.beat_length_ms, line.meter, section.confidence, section.level].map(csvCell).join(','));
   });
   return `${rows.join('\r\n')}\r\n`;
 };
@@ -75,7 +96,7 @@ export const cleanTag = (raw) => {
   } catch {
     // Not percent-encoded: take it as it came.
   }
-  value = value.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  value = value.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return value || null;
 };
 

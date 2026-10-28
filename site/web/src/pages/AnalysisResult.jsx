@@ -1,58 +1,61 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
-import { api } from '../lib/api.js'
+import CancelButton from '../components/CancelButton.jsx'
+import CompareWithMap from '../components/compare/CompareWithMap.jsx'
+import Term from '../components/Term.jsx'
+import AdjustExport from '../components/result/AdjustExport.jsx'
+import AudioSource from '../components/result/AudioSource.jsx'
+import CheckHere from '../components/result/CheckHere.jsx'
+import HowAsked from '../components/result/HowAsked.jsx'
+import MapImage from '../components/result/MapImage.jsx'
+import MoreDownloads from '../components/result/MoreDownloads.jsx'
+import Reanalyse from '../components/result/Reanalyse.jsx'
+import { tempoRange } from '../components/result/draw.js'
+import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
+import TempoMap from '../components/result/TempoMap.jsx'
+import Listening from '../components/result/Listening.jsx'
+import Transport from '../components/result/Transport.jsx'
+import { useExportOptions } from '../components/result/ExportOptions.jsx'
+import Versions from '../components/result/Versions.jsx'
+import { timingRows } from '../lib/osu-copy.js'
+import usePageMeta from '../hooks/usePageMeta.js'
+import { useSongAudio } from '../hooks/useSongAudio.js'
+import { formatRange } from '../lib/analysis-options.js'
+import { checkSpans } from '../lib/check-spans.js'
+import { comparePath } from '../lib/compare.js'
+import { Player } from '../lib/player.js'
+import { heldAudio } from '../lib/session-audio.js'
+import { tracker, useAnalysis } from '../lib/tracking.js'
+import { publishAnalysis, timingPath, unpublishAnalysis } from '../lib/timings.js'
+import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
  *
- * Polls `GET /api/v1/analyses/:id` while it is queued or running (every
- * second, then every three after a minute, so a long queue does not become a
- * stream of requests). The page is its own URL, so a reload or a link back
- * from the recent list lands here again.
+ * Reads `GET /api/v1/analyses/:id` through the tracker (lib/tracking.js)
+ * while it is queued or running, at its polite pace (every second at first,
+ * slower in a long queue or a hidden tab), and the tray shows the same
+ * reading: the page and the tray never both ask. The page is its own URL, so
+ * a reload or a link back from the recent list lands here again.
  */
-const LEVELS = {
-  high: { tone: 'var(--accent)', key: 'strip.high' },
-  medium: { tone: 'var(--lavender)', key: 'strip.medium' },
-  check: { tone: 'var(--amber)', key: 'strip.check' },
-}
-
 export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
-  const [analysis, setAnalysis] = useState(null)
-  const [error, setError] = useState(null)
+  const reading = useAnalysis(id)
+  const analysis = reading?.data ?? null
+  const error = reading?.error ?? null
+  // The file's name names the tab: it never leaves this browser that way.
+  usePageMeta(analysis?.filename || t('result.eyebrow'))
 
+  // Only its uploader can read it at all, so one still in flight is the
+  // visitor's own: the tray follows it from here on, onto any other page.
+  const inFlight = analysis?.status === 'queued' || analysis?.status === 'running'
   useEffect(() => {
-    let alive = true
-    let timer = null
-    const started = Date.now()
-
-    async function poll() {
-      try {
-        const data = await api(`/analyses/${id}`)
-        if (!alive) return
-        setAnalysis(data)
-        setError(null)
-        if (data.status === 'queued' || data.status === 'running') {
-          timer = setTimeout(poll, Date.now() - started > 60_000 ? 3000 : 1000)
-        }
-      } catch (failure) {
-        if (!alive) return
-        if (failure.status === 404) return setError('notFound')
-        // A dropped connection is not the end of the analysis: try again.
-        setError('network')
-        timer = setTimeout(poll, 3000)
-      }
-    }
-    poll()
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [id])
+    if (inFlight) tracker.track(id, analysis.filename, { status: analysis.status })
+  }, [id, inFlight])
 
   if (error === 'notFound') {
     return (
@@ -92,13 +95,112 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
-      {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
+      {analysis.status === 'refused' && <HowAsked analysis={analysis} />}
+      {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
+      {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
+      {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
+      {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
     </div>
+  )
+}
+
+/**
+ * Sharing the timing (W3.27): off until its uploader presses Publish, and
+ * undone by Unpublish. A private upload asks first, since publishing makes
+ * it public; the API refuses it otherwise (409 PRIVATE).
+ */
+function Publish({ analysis, onChange }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState({ kind: 'idle' }) // idle | confirm | busy | error | copied
+  const link = typeof window === 'undefined' ? timingPath(analysis.id) : `${window.location.origin}${timingPath(analysis.id)}`
+
+  async function publish(makePublic = false) {
+    if (analysis.private && !makePublic) return setState({ kind: 'confirm' })
+    setState({ kind: 'busy' })
+    try {
+      const done = await publishAnalysis(analysis.id, { makePublic })
+      onChange({ published: true, publishedAt: done.publishedAt, private: false })
+      setState({ kind: 'idle' })
+    } catch (error) {
+      if (error.code === 'PRIVATE') return setState({ kind: 'confirm' })
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function unpublish() {
+    setState({ kind: 'busy' })
+    try {
+      await unpublishAnalysis(analysis.id)
+      onChange({ published: false, publishedAt: undefined })
+      setState({ kind: 'idle' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link)
+      setState({ kind: 'copied' })
+    } catch {
+      setState({ kind: 'error' })
+    }
+    setTimeout(() => setState((s) => (s.kind === 'copied' ? { kind: 'idle' } : s)), 2500)
+  }
+
+  const busy = state.kind === 'busy'
+  return (
+    <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <h2 className="label">{t('timings.publish.title')}</h2>
+        {analysis.published ? (
+          <p className="text-label text-text">
+            {t('timings.publish.isPublic')}{' '}
+            <Link to={timingPath(analysis.id)} className="readout break-all text-accent hover:underline">
+              {timingPath(analysis.id)}
+            </Link>
+          </p>
+        ) : (
+          <p className="text-label text-muted">{state.kind === 'confirm' ? t('timings.publish.privateWarning') : t('timings.publish.note')}</p>
+        )}
+        {state.kind === 'error' && (
+          <p role="alert" className="text-caption text-red">
+            {t('timings.publish.failed')}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {analysis.published ? (
+          <>
+            <button type="button" className="btn-ghost" onClick={copy} disabled={busy}>
+              {state.kind === 'copied' ? t('timings.publish.copied') : t('timings.publish.copyLink')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={unpublish} disabled={busy}>
+              {t('timings.publish.unpublish')}
+            </button>
+          </>
+        ) : state.kind === 'confirm' ? (
+          <>
+            <button type="button" className="btn-primary" onClick={() => publish(true)}>
+              {t('timings.publish.makePublic')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setState({ kind: 'idle' })}>
+              {t('timings.publish.keepPrivate')}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn-primary" onClick={() => publish(false)} disabled={busy}>
+            {busy ? t('timings.publish.busy') : t('timings.publish.publish')}
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
 function Waiting({ analysis }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const running = analysis.status === 'running'
   const percent = Math.round((analysis.progress ?? 0) * 100)
   return (
@@ -118,6 +220,13 @@ function Waiting({ analysis }) {
       <p className="text-caption text-dim">
         {running && analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.queuedNote')}
       </p>
+      {analysis.estimate && (
+        <p className="readout text-caption text-dim">
+          {t('modes.estimate.label')} {formatRange(t, analysis.estimate.lowS, analysis.estimate.highS)} · {t(`modes.names.${analysis.mode ?? 'normal'}`)}
+          <span className="ml-1 font-sans">({t('modes.estimate.why')})</span>
+        </p>
+      )}
+      {!running && <CancelButton id={analysis.id} onCancelled={() => navigate('/analyze')} />}
     </section>
   )
 }
@@ -127,7 +236,7 @@ function Failed({ analysis }) {
   return (
     <section role="alert" className="space-y-2 rounded-panel border border-red/40 bg-red/10 p-5">
       <h2 className="font-display text-[17px] font-semibold">{t('result.failedTitle')}</h2>
-      <p className="text-label text-text">{t('result.failed')}</p>
+      <p className="text-label text-text">{analysis.removed ? t('result.removed') : t('result.failed')}</p>
       {analysis.error && <p className="readout text-caption text-dim">{analysis.error}</p>}
     </section>
   )
@@ -146,40 +255,154 @@ function Refused({ result }) {
   )
 }
 
-function Result({ id, analysis }) {
+/**
+ * The timing, to be checked by ear: the readouts, the tempo map with the song
+ * and its clicks, the reader's adjustments and the exports, the red lines.
+ * The song is the reader's own file, decoded here (ADR-W4).
+ *
+ * A published timing's page (W3.27) shows the same view to anyone: it has no
+ * `sha1` to check a file against, so it passes `verify`, which asks the
+ * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
+ * lists and saves versions (W12.21).
+ */
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false }) {
   const { t } = useTranslation()
   const result = analysis.result
-  const [copied, setCopied] = useState(null)
-  const lines = result.red_lines ?? []
-  const sections = result.sections ?? []
-  const duration = (result.duration_s ?? 0) * 1000
-  const meters = [...new Set(lines.map((line) => line.meter))]
-
-  const readouts = [
-    { label: t('strip.bpm'), value: formatBpm(result.global_bpm) },
-    { label: t('strip.offset'), value: formatMs(result.offset_ms), unit: 'ms' },
-    { label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
-    { label: t('result.redLines'), value: String(lines.length) },
-  ]
-
-  async function copy() {
-    const text = `[TimingPoints]\r\n${result.osu_timing.split(/\r?\n/).filter(Boolean).join('\r\n')}\r\n`
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied('ok')
-    } catch {
-      setCopied('failed')
+  const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
+  // W12.24: a copied row is written as the whole block is (W12.8's options).
+  const exportOptions = useExportOptions()
+  const [selected, setSelected] = useState(null)
+  const [hovered, setHovered] = useState(null)
+  const audio = useSongAudio(id, analysis.sha1, verify)
+  const [player] = useState(() => new Player())
+  // A public page's comments (W13.15) move this player to the time they name.
+  useEffect(() => {
+    if (!playerRef) return undefined
+    playerRef.current = player
+    return () => {
+      playerRef.current = null
     }
-    setTimeout(() => setCopied(null), 2500)
+  }, [player, playerRef])
+  const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
+  const clockRef = useRef(null)
+  const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
+  const [checking, setChecking] = useState(null)
+  const [focus, setFocus] = useState(null)
+  // W12.10: a map the reader picked to compare with, held here only, and which timing the clicks play.
+  const [map, setMap] = useState(null)
+  const [clickSource, setClickSource] = useState('a')
+
+  const durationS = result.duration_s ?? 0
+  const sections = useMemo(() => result.sections ?? [], [result])
+  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const lines = useMemo(() => adjustLines(result, adjustment), [result, adjustment])
+  // The beats alone, for the map, the arrow keys and the taps; the clicks add the subdivisions the reader asked for (W12.6).
+  const grid = useMemo(() => clickGrid(lines, durationS), [lines, durationS])
+  const subdivision = snapshot.subdivision
+  const clicks = useMemo(() => (subdivision > 1 ? clickGrid(lines, durationS, { subdivision }) : grid), [lines, durationS, subdivision, grid])
+  // The engine's own lines' clicks, for the A/B (W12.5): only when the reader has moved them.
+  const engineClicks = useMemo(
+    () => (adjusted ? clickGrid(adjustLines(result), durationS, { subdivision }) : null),
+    [adjusted, result, durationS, subdivision],
+  )
+  const attacks = useMemo(() => attackDrift(result.onsets?.t_ms ?? [], lines), [result, lines])
+  // The worker's own per-line drift as it came; recomputed here once the reader moves the lines.
+  const drift = useMemo(
+    () =>
+      adjusted && result.onsets
+        ? lineDrift(result.onsets, attacks, lines, durationS * 1000)
+        : lines.map((line) => {
+            const s = sections[line.index] ?? {}
+            return { drift_ms: s.drift_ms ?? null, drift_p90_ms: s.drift_p90_ms ?? null, drift_bias_ms: s.drift_bias_ms ?? null }
+          }),
+    [adjusted, result, attacks, lines, durationS, sections],
+  )
+  const spans = useMemo(
+    () => lines.map((line, i) => ({ a: line.timeMs / 1000, b: i + 1 < lines.length ? lines[i + 1].timeMs / 1000 : durationS })),
+    [lines, durationS],
+  )
+
+  const mapGrid = useMemo(() => (map ? clickGrid(map.lines, durationS) : null), [map, durationS])
+  // The map's grid when the reader asked for its clicks (W12.10); otherwise the result's, with its A/B (W12.5).
+  useEffect(
+    () => (clickSource === 'b' && mapGrid ? player.setGrid(mapGrid, null) : player.setGrid(clicks, engineClicks)),
+    [player, clicks, engineClicks, mapGrid, clickSource],
+  )
+  useEffect(() => player.setSections(spans), [player, spans])
+  useEffect(() => {
+    if (audio.kind === 'ready') player.setBuffer(audio.song.buffer)
+  }, [player, audio.kind, audio.song])
+  useEffect(() => () => player.destroy(), [player])
+
+  const data = useMemo(
+    () => ({
+      lines,
+      sections,
+      grid,
+      clicks,
+      subdivision,
+      beats: result.beats ?? null,
+      onsets: result.onsets ?? null,
+      drift: attacks,
+      envelope: result.onset_envelope ?? null,
+      peaks: audio.kind === 'ready' ? audio.song.peaks : null,
+      swing: result.swing?.spans ?? [],
+      hints: result.pulse_hints ?? [],
+      factor: adjustment.factor,
+      durationS,
+      range: tempoRange(map ? [...lines, ...map.lines] : lines, result.beats, adjustment.factor),
+      other: map?.lines ?? null,
+      otherLabel: t('compare.map'),
+    }),
+    [lines, sections, grid, clicks, subdivision, result, attacks, audio.kind, audio.song, adjustment.factor, durationS, map, t],
+  )
+
+  const playFrom = (i) => {
+    const line = lines[i]
+    setSelected(i)
+    // One beat early, so the line's first click is heard coming in.
+    player.play(Math.max(0, (line.timeMs - line.beatMs) / 1000), { range: null, loopOn: false })
   }
+  const loopLine = (i) => {
+    setSelected(i)
+    player.play(spans[i].a, { range: spans[i], loopOn: true })
+  }
+
+  // "Check here": a span shown is the map's loop band (no audio needed), brought into view; played, it loops with the clicks.
+  const spanOf = (item) => ({ a: item.startMs / 1000, b: Math.min(item.endMs / 1000, durationS || item.endMs / 1000) })
+  const showSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.setRange(spanOf(item))
+    setFocus({ ...spanOf(item), key: item.key, scroll: true })
+  }
+  const playSpan = (item) => {
+    setChecking(item.key)
+    if (item.sections) setSelected(item.sections[0])
+    player.play(spanOf(item).a, { range: spanOf(item), loopOn: true })
+    setFocus({ ...spanOf(item), key: item.key, scroll: false })
+  }
+
+  const meters = [...new Set(lines.map((line) => line.meter))]
+  const readouts = [
+    { term: 'bpm', label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
+    { term: 'offset', label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
+    { term: 'meter', label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
+    { term: 'redLine', label: t('result.redLines'), value: String(lines.length) },
+  ]
 
   return (
     <div className="space-y-6">
+      {/* W11.1, W3.21, W12.19: the mode, the hints and the stretch this reading covers. */}
+      <HowAsked analysis={analysis} />
+
       <section className="panel overflow-hidden">
         <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
           {readouts.map((r) => (
             <div key={r.label} className="space-y-1 bg-surface px-4 py-3">
-              <dt className="label">{r.label}</dt>
+              <dt className="label">
+                <Term id={r.term}>{r.label}</Term>
+              </dt>
               <dd className="readout text-title text-text">
                 {r.value}
                 {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
@@ -187,89 +410,130 @@ function Result({ id, analysis }) {
             </div>
           ))}
         </dl>
+        <div className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
+            <li className="label">
+              <Term id="confidence">{t('strip.confidence')}</Term>
+            </li>
+            {Object.entries(LEVELS).map(([key, level]) => (
+              <li key={key} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />
+                {t(level.key)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-caption text-dim">{t('tempo.confidenceNote')}</p>
+        </div>
+      </section>
 
-        {duration > 0 && sections.length > 0 && (
-          <div className="space-y-2 border-t border-line px-4 py-3">
-            <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-              {sections.map((s) => (
-                <span
-                  key={s.index}
-                  style={{ width: `${Math.max(0.5, ((s.end_ms - s.start_ms) / duration) * 100)}%`, background: LEVELS[s.level]?.tone }}
-                />
-              ))}
-            </div>
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
-              {Object.entries(LEVELS).map(([key, level]) => (
-                <li key={key} className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />
-                  {t(level.key)}
-                </li>
-              ))}
-            </ul>
-          </div>
+      <TempoMap
+        data={data}
+        player={player}
+        snapshot={snapshot}
+        selected={selected}
+        hovered={hovered}
+        onSelect={setSelected}
+        onHover={setHovered}
+        clockRef={clockRef}
+        focus={focus}
+      >
+        <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
+        <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+        <Listening
+          player={player}
+          snapshot={snapshot}
+          lines={lines}
+          grid={grid}
+          adjusted={adjusted}
+          nudgeMs={adjustment.nudgeMs}
+          onAdjust={setAdjustment}
+        />
+      </TempoMap>
+
+      <CheckHere
+        spans={checks}
+        // Lit while its band is the map's loop: drawing another loop unlights it.
+        active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
+        canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
+
+      <CompareWithMap
+        lines={lines}
+        durationS={durationS}
+        adjusted={adjusted}
+        filename={analysis.filename}
+        map={map}
+        onMap={(next) => {
+          setMap(next)
+          if (!next) setClickSource('a')
+        }}
+        clicks={clickSource}
+        onClicks={setClickSource}
+        // A second early, so the line is heard coming in.
+        onPlayAt={snapshot.ready ? (ms) => player.play(Math.max(0, ms / 1000 - 1), { range: null, loopOn: false }) : null}
+      >
+        <Link to={comparePath({ id })} className="btn-ghost h-8 px-3 text-caption">
+          {t('compare.withAnother')}
+        </Link>
+        {adjusted && (
+          <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost h-8 px-3 text-caption">
+            {t('compare.withAdjusted')}
+          </Link>
         )}
+      </CompareWithMap>
 
-        <div className="flex flex-wrap gap-3 border-t border-line px-4 py-3">
-          <button type="button" className="btn-primary" onClick={copy}>
-            {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
-          </button>
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.txt`} download>
-            {t('result.downloadTxt')}
-          </a>
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
-            {t('result.downloadCsv')}
-          </a>
-        </div>
-      </section>
+      <AdjustExport
+        analysis={analysis}
+        lines={lines}
+        adjustment={adjustment}
+        onAdjust={setAdjustment}
+        audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+        songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+      >
+        <MoreDownloads
+          id={id}
+          analysis={analysis}
+          lines={lines}
+          adjustment={adjustment}
+          grid={grid}
+          clicks={clicks}
+          durationS={durationS}
+          songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+          player={player}
+          checks={checks}
+          csvHref={csvHref}
+        />
+        {/* W12.18: a published timing's page (verify) is public by definition. */}
+        <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
+      </AdjustExport>
 
-      <section className="space-y-3">
-        <h2 className="label">{t('result.redLines')}</h2>
-        <div className="overflow-x-auto rounded-panel border border-line">
-          <table className="w-full min-w-[34rem] text-left text-label">
-            <thead className="bg-surface-2">
-              <tr className="label">
-                <th className="px-4 py-2 font-semibold">#</th>
-                <th className="px-4 py-2 font-semibold">{t('result.time')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.bpm')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.meter')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.confidence')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {lines.map((line, i) => {
-                const section = sections[i] ?? {}
-                const level = LEVELS[section.level]
-                return (
-                  <tr key={i} className="readout">
-                    <td className="px-4 py-2 text-dim">{i + 1}</td>
-                    <td className="px-4 py-2">
-                      {formatClock(line.time_ms)}
-                      <span className="ml-2 text-caption text-dim">{formatMs(line.time_ms)} ms</span>
-                    </td>
-                    <td className="px-4 py-2">{formatBpm(line.bpm)}</td>
-                    <td className="px-4 py-2">
-                      {line.meter}/4
-                      {!line.meter_known && <span className="ml-1 text-caption text-dim" title={t('result.meterGuess')}>?</span>}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full" style={{ background: level?.tone }} />
-                        {level ? t(level.key) : '–'}
-                        <span className="text-caption text-dim">{Math.round((section.confidence ?? 0) * 100)}%</span>
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {owner && <Versions analysis={analysis} adjustment={adjustment} onApply={setAdjustment} />}
+
+      <RedLinesTable
+        lines={lines}
+        sections={sections}
+        drift={drift}
+        selected={selected}
+        hovered={hovered}
+        onSelect={setSelected}
+        onHover={setHovered}
+        canPlay={snapshot.ready}
+        onPlayFrom={playFrom}
+        onLoop={loopLine}
+        copyRows={(positions) => timingRows(result, lines, adjustment, positions, exportOptions)}
+      />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
-        <span className="chip-amber shrink-0">{t('home.checkByEar')}</span>
+        {/* W4.6: the short version here, the whole disclaimer on its own page. */}
+        <Link to="/disclaimer" className="chip-amber shrink-0 self-start transition hover:bg-amber/20">
+          {t('home.checkByEar')}
+        </Link>
         <div className="space-y-1">
-          <p className="max-w-[72ch] text-label leading-relaxed text-muted">{t('result.honest')}</p>
+          <p className="max-w-[72ch] text-label leading-relaxed text-muted">
+            {t('result.honest')}{' '}
+            <Link to="/disclaimer" className="whitespace-nowrap text-accent hover:underline">
+              {t('legal.resultLink')} →
+            </Link>
+          </p>
           <p className="readout text-caption text-dim">
             {t('result.engine', { hash: result.engine_hash, vote: result.beat_vote ? t('result.voteOn') : t('result.voteOff') })}
             {analysis.cached ? ` · ${t('result.cached')}` : ''}
@@ -278,16 +542,4 @@ function Result({ id, analysis }) {
       </section>
     </div>
   )
-}
-
-// Up to three decimals, trailing zeros dropped: 128, 128.37, 222.222.
-const formatBpm = (bpm) => (bpm === null || bpm === undefined ? '–' : String(Number(Number(bpm).toFixed(3))))
-
-const formatMs = (ms) => (ms === null || ms === undefined ? '–' : String(Math.round(ms)))
-
-const formatClock = (ms) => {
-  const total = Math.max(0, ms) / 1000
-  const minutes = Math.floor(total / 60)
-  const seconds = (total - minutes * 60).toFixed(3).padStart(6, '0')
-  return `${minutes}:${seconds}`
 }

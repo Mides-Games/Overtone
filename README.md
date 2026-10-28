@@ -1,496 +1,134 @@
-# Overtone
+<p align="center">
+  <img src="assets/logo-web.svg" width="96" alt="Overtone logo" />
+</p>
 
-**Offline timing and audio-analysis workbench for osu! mapping.** Open a song and
-Overtone proposes its BPM, offset, bar lines and tempo changes, checks an existing map
-against the audio, and writes the timing into your `.osu` without touching anything
-else. It also helps with structure (kiai, breaks, bookmarks). No uploads, no accounts,
-no network calls. Open source under the [MIT licence](LICENSE).
+<h1 align="center">Overtone</h1>
 
-![python](https://img.shields.io/badge/python-3.14-blue)
-![rust](https://img.shields.io/badge/rust-stable-orange)
-![licence](https://img.shields.io/badge/licence-MIT-blue)
-![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-784%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+<p align="center">
+  <b>Automatic timing for osu! maps.</b> Drop in a song and get its BPM, offset and every red line in minutes, ready to map.<br/>
+  Live at <a href="https://overtone.midesprojects.com"><b>overtone.midesprojects.com</b></a> · part of <a href="https://midesprojects.com">Mides Projects</a>
+</p>
 
-## Accuracy, honestly
+<p align="center">
+  <img alt="licence" src="https://img.shields.io/badge/licence-MIT-blue" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-537%20Python%20%C2%B7%20231%20Rust-6ee7b7" />
+  <img alt="engine" src="https://img.shields.io/badge/engine-Python%20%2B%20Rust-orange" />
+</p>
 
-```
-synthetic benchmark (24 tracks, exact ground truth)   24 / 24 sections within 0.05 BPM and 5 ms
-                                                      median 0.0000 BPM, 0.16 ms  (2026-09-23)
-real ranked maps (Corpus B, 20 hand-timed maps)       ~17 % of red lines within 5 ms
-                                                      (Python engine, default export, 2026-10-24)
-```
+---
 
-The synthetic number is an upper bound: clean drums with exact answers, where Overtone
-is exact. **On real records it is still research.** Against 1,152 red lines that
-mappers placed by hand on 20 ranked or loved maps, the default export lands within
-5 ms of 16.8 % of them and within 50 ms of 55.7 %; octave choices, drift and live
-playing are where it misses. Treat its output as a strong first draft and always check
-the first beat and every transition in the osu! editor. The details, and what is being
-done about it, are under [Benchmarks and gates](#benchmarks-and-gates) and in the
-[precision plan](docs/10-precision-plan.md).
+## What is it?
 
-## Quick start
+Timing is the first and most tedious step of making an osu! beatmap: finding the BPM,
+the exact offset of the first beat, and a new red line wherever the tempo or the meter
+changes. Overtone listens to the song and does that for you, then lets you check the
+result by ear before you start mapping.
 
-The first release from this repository is still to come; `installer/build.py` builds the
-MSI and portable ZIP in one line (Windows, unsigned: check it against `checksums.txt`).
-Or run from source on Windows with Python 3.14:
+It is a free website, **[overtone.midesprojects.com](https://overtone.midesprojects.com)**,
+and this repository is everything behind it: the analysis engine, the website and the
+servers it runs on.
+
+## What do you get out of it?
+
+- **Hours back.** A variable-tempo song can take an evening to time by hand. Overtone
+  proposes every red line in a few minutes.
+- **A map you can open straight away.** Download a `.osz` and osu! imports it as a new
+  beatmap with the timing in place, tagged `overtone overtone_timings`.
+- **Tools to check it, not just a number.** A tempo map of the whole song, clicks over
+  the music, loops, slowdown, tap tempo, latency calibration, and "check here" marks on
+  the stretches worth a second listen.
+- **Your own map, fixed.** Patch an existing `.osu` with the new red lines without
+  touching anything else, or compare it with Overtone's reading line by line.
+- **Exports for other games:** Quaver, StepMania and Etterna, Clone Hero, plus CSV, JSON
+  and a click track.
+- **Free, with no account needed.** A [Mides](https://midesprojects.com) account raises
+  the daily limit and keeps your history. You can also publish a timing for others to use.
+
+## Is it accurate?
+
+Honestly: it is a **strong first draft**, not a final answer.
+
+| | |
+|---|---|
+| Synthetic benchmark (24 tracks with exact answers) | 24 / 24 sections within 0.05 BPM and 5 ms |
+| Real ranked maps (20 maps, 1,152 red lines placed by hand) | ~17 % within 5 ms, ~56 % within 50 ms |
+
+The synthetic score is an upper bound: clean drums, where Overtone is exact. Real
+recordings are harder: octave choices (half or double BPM), drift and live playing are
+where it misses, and closing that gap is the current work
+([precision plan](docs/10-precision-plan.md)). Always check the first beat and every
+transition by ear. The site gives you the tools to do it.
+
+## Where did it come from?
+
+Overtone started as a desktop app by **githalt**, built to stop timing songs by
+hand. It grew a measured engine: every change to it is checked against a benchmark and
+golden vectors before it lands. In October 2026 it moved to
+[Mides Projects](https://midesprojects.com) and became a website, so anyone can use it
+from a browser. The desktop app is kept on the `parked/desktop-app` branch, and the
+engine is being ported to Rust.
+
+## How does it work?
+
+1. **Upload** an MP3, OGG, WAV, FLAC, M4A or Opus file. The browser first checks
+   whether the same audio was analysed before, and if so the answer is instant.
+2. **Analyse.** A worker finds the attacks, sweeps for the tempo, fits a grid, decides
+   the octave with a neural beat tracker ([Beat This!](https://github.com/CPJKU/beat_this))
+   and splits the song into sections with their own red lines.
+3. **Check and download.** Listen with the clicks, adjust if needed, and take the `.osz`.
+
+**Your audio is deleted as soon as it is analysed.** Only its fingerprint and the
+result are kept, and everything you play or export is done in your own browser.
+
+## Run it yourself
+
+The website needs Node 22+ and pnpm (`corepack enable`). From the repository root:
 
 ```bash
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r python/requirements.lock
-.venv/Scripts/python.exe python/overtone_web.py
+pnpm install && pnpm dev
 ```
 
-or double-click **`Overtone.bat`**. Open an audio file, **Analyze**, check the tempo map
-with the click track, then **Inject .osu…**. More under [Install & run](#install--run).
-
----
-
-## Where it stands — 2026-10-16
-
-| Area | State |
-|---|---|
-| **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
-| **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
-| **App** (web window) | ✅ Ten sections: Library (open a song or a beatmap folder, recents), Timing, Structure, Map check, Mapset, Audio, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report — in English and Spanish, dark or light |
-| **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
-| **Parked** | Hitsounds, Compile (several maps as one), Train (practice copies) and the osu! Songs browser left master on 2026-10-26 (W1, the project's core is timing). They are kept whole on the `parked/desktop-extras` branch and the `v3-desktop-full` tag |
-| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone |
-| **Accuracy on real, live-played songs** | 📋 Research underway — current default osu! export lands within 5 ms on 16.8 % of Python and 5.2 % of Rust Corpus B red lines; raw engine scores are 2.0 % and 1.1 % (`bench/corpus_b.py`, 2026-10-24) |
-| **Installer** (MSI) | ✅ Built in one line (`installer/build.py`); the first release from this repository is still to come — a per-user MSI (no administrator) and a portable ZIP, with the SBOM, the checksums and every bundled licence in the tree. **Unsigned**, so SmartScreen warns; check the download against `checksums.txt` |
-
-Nothing here claims a number that was not measured. Targets are marked as targets.
-
-### Status legend
-
-| | Meaning |
-|---|---|
-| ✅ | Implemented and covered by a test or gate |
-| 🟡 | Partly implemented |
-| 🦀 | Built and tested in the Rust engine, not reachable from the app yet |
-| 📋 | Planned — the roadmap phase is given (`P4` = [Phase 4](docs/07-roadmap.md)) |
-| ✖ | Deliberately not built — see [Rejected ideas](docs/07-roadmap.md#rejected-ideas) |
-
----
-
-## Features
-
-### Timing detection
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Least-squares beat grid `t(k) = offset + k·beat` | ✅ | Hundreds of attacks average the jitter away — no beat-to-beat differencing |
-| Sample-resolution attack re-timing | ✅ | Attacks land ~0.15 ms from truth |
-| Coherence sweep for the atomic pulse | ✅ | Ranked by share × coverage, so ×2 and ÷2 grids both lose |
-| Octave decision (which pulse is "the beat") | ✅ | Accent depth + tempogram hints; *Prefer map BPM (120–300)* by default |
-| Tempo sections and change points | ✅ | Each region re-seeds its own grid; boundaries on the beat where the grids cross |
-| Downbeat anchoring | ✅ | Red lines sit on the "1" of the bar when the accents prove where it is |
-| Time signatures per red line | ✅ | 6/4 → 3/4 → 4/4 over a constant bar, each line with its own meter |
-| Instant, exact ×2 / ÷2 | ✅ | Re-reads the fitted grid; nothing is re-detected |
-| Per-section pulse hints | ✅ | Flags half-time-looking sections |
-| Refuses audio with no pulse | ✅ | White, pink and brown noise, pads, silence and scattered clicks get no grid |
-| Fallback beat tracker for rubato / free time | ✅ | Says so in the result and the app |
-| Result cache by audio content | ✅ | Re-analysing a song takes ~0.02 s |
-| Per-section octave (exact 2× changes) | 🦀 | In Rust; the Python engine decides the octave globally |
-| Elastic grid for tempo ramps | ✅ | 0.16 BPM on realistic ramps, in Rust; Timing's Ramps card turns the curve into the fewest red lines within a chosen drift. The analysis itself still gives a staircase in Python |
-| 2-D coherence map | 🦀 | Better seeds and a confidence map |
-| Bar-length change (4/4 → 3/4 keeping the beat) | 📋 | P5 |
-| Fallback beats on their attacks | ✅ | The tracker's lag behind the attacks, read on each song's waveform, is taken off every beat and red line: 7-9 ms on clean drums, 12-17 ms on real songs |
-| Real-audio offset bias measured and corrected | 📋 | P22 — explained, not corrected: ranked maps put their lines a median 21 ms before the sound starts (100 held-out maps, every decoder), and Overtone's grids sit a few ms after it; following the maps' convention on export is a decision (10.0a) |
-| Human-level accuracy on real songs | 📋 | P10 — fingerprint reuse, percussive stem, neural beats, rippling tempo, ensemble |
-| Analysis mode fast / precise | 📋 | P20 |
-
-### The app (web window)
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Open audio, drag and drop, beatmap folder import, recent files | ✅ | A file dropped on `Overtone.bat` opens straight into analysis |
-| Analysis on a background thread, each stage named and timed, with a stop | ✅ | The stop lands inside the running stage (within half a second on the songs measured) and ends the Rust engine's process; the result on screen stays |
-| Stats strip: global BPM, points, beats, stability, engine, residual | ✅ | |
-| Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line; the stretch before the first red line is hatched; zoomed out, the bar lines stay; a red line where the bar changes names its signature; a strip along the foot shows each section's confidence |
-| Timing-point list with a detail panel | ✅ | ↑ / ↓ to move; the panel explains the selected point |
-| Honesty banners | ✅ | Fallback engine, a first red line long after the music starts, loose grids, validation findings |
-| Point editor: apply, add, delete, ±1 ms nudge, per-section ×2 / ÷2, split, merge, bar length | ✅ | Split at the playhead and merge with the next refit the sections to their attacks; beats per bar changes a line's bar and keeps its beat |
-| Undo / redo | ✅ | |
-| Your timing work kept per song | ✅ | Saved after every edit to the output folder's `Projects`; offered back after the song's next analysis |
-| Lock verified points | ✅ | Locked points survive re-analysis |
-| Exports: copy `.osu` timing, CSV, click track, `.osz` | ✅ | |
-| Inject into a `.osu` with a preview | ✅ | Keeps sample set, volume, kiai and slider velocity |
-| Map vs detected comparison | ✅ | |
-| Object alignment: do the map's notes land on real attacks? | ✅ | |
-| Object density over time | ✅ | |
-| Suggestions: red lines the map is missing | ✅ | Shown on the tempo map; applying one is P9 |
-| Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
-| Structure: the song's sections, each label with the evidence behind it | ✅ | Rust engine; edges snap to proven bar lines, a section opens in Timing. Labels are heuristics and say which rule decided them |
-| Mod report: every finding as osu! editor timestamps | ✅ | Red lines to check, missing red lines, unsnapped objects, objects away from the music; copy all, or open the editor at a timestamp |
-| Assisted timing: two marked downbeats fit the grid | ✅ | Where detection fails: marks snap to attacks, the grid grows across breakdowns but not tempo changes, refusals say why. Marks are typed in ms, or tapped from a downbeat |
-| Evidence: the engine's alternatives, candidates, octave margin, residual and coverage | ✅ | Timing card; Use writes a candidate's BPM into its red line |
-| Ramps: a tempo ramp as the fewest red lines within a chosen drift | ✅ | Timing card, Rust engine; the count-versus-drift trade-off shown, the lines loaded as hand-placed |
-| Offset lab: the MP3's own delay, both decoders side by side, a blind listening test | ✅ | Timing card; 18 blind trials give the preferred click shift with an interval |
-| Snap divisors: where the song needs 1/3, 1/4 or 1/6 | ✅ | Timing card, one line per section; thirds only where they are loud |
-| Detection settings drawer, presets | ✅ | Shared with the classic window |
-| English / Spanish | ✅ | |
-| Dark window caption, generated app icon | ✅ | |
-| Verdict strip | 🟡 | Engine pill and banners; one-line verdict is P3 |
-| Progress panel | ✅ | Finished stages ticked with their times, a running clock, Stop; the song panel keeps the times |
-| Drag red lines on the timeline | ✅ | Snaps to the nearest attack (Alt: free); one undo |
-| Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
-| Keyboard map | ✅ | `?` lists every key: seek, red lines, loop, click, tap, the rail's sections, undo, analyze |
-| Command palette | 📋 | P3 |
-| Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
-| Each song's own detection settings | ✅ | The ones its last analysis ran with, put back when the song is chosen again; the previous ones a click away |
-| The confidence threshold, tried live | ✅ | Detection drawer: the red lines another minimum confidence would give, dashed on the map, applied as one undoable edit; no re-analysis |
-| Sections: Audio | 📋 | P19 — Library, Timing, Structure, Map check, Mapset, Report, Export, History and Settings exist |
-| Light and dark themes, or the system's | ✅ | Settings → Theme; UI scale and reduced motion too |
-
-### Playback
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Click track export (accent on the detected meter) | ✅ | Listen to it against the song — the final arbiter |
-| Tap tempo | ✅ | In the app (T) and the classic window |
-| Play song + click inside the app | ✅ | One clock for both: attacks and clicks within 0.25 ms, measured; the click follows edits while playing |
-| Section loop at 75 / 50 % | ✅ | Resampled, so the pitch drops and every attack stays exactly in place; a pitch-kept stretch moved attacks ~24 ms |
-| Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
-| Draw a loop on the map | ✅ | Shift-drag the tempo map: the loop's ends go on the nearest beats (Alt: anywhere), and it wins over the section loop until a Shift-click clears it |
-| Tap-along check, tap latency calibration | ✅ | How far your taps land from the click; calibrate once, remembered |
-| Metronome options | ✅ | 1-4 clicks per beat, bar accent; one sound |
-| Percussion only: the percussive part against the click | ✅ | A transport toggle; librosa's HPSS, cached per analysis |
-
-### osu! files
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Full `.osu` reader (all sections, objects, sliders, SV, samples) | ✅ | Unknown keys kept |
-| Byte-identical writer | ✅ | BOM, line endings and a missing final newline survive |
-| Atomic writes with a `.bak` that is never overwritten | ✅ | |
-| Timing injection that keeps what the map plays | ✅ | Measured on a ranked map: 0 of 1341 objects change sound or scroll |
-| Legacy two-field timing lines | ✅ | |
-| `.osz` from a song: audio + a minimal `.osu` | ✅ | Named as the song's own maps name it, else by the audio's tags (Unicode and romanised fields apart) |
-| Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too. The 270 lazer (v128) maps here read, write back byte for byte and inject like stable's |
-| lazer format specifics | 📋 | P5 |
-| Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
-| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason. Section volumes leave every section where the map sets its own volumes alone |
-| SV normaliser across BPM changes | ✅ | Timing's Constant scroll card: every green under a BPM change scaled by the tempo ratio, never twice. A map with sliders there is refused: a slider lasts by its SV |
-| Re-snap objects after a timing change | ✅ | Map check; snapped objects stay snapped, off-grid ones are listed and never moved |
-| Export to Quaver and StepMania | 📋 | P21 |
-| Audio file check | ✅ | Mapset; bitrate, sample rate, length, clipping and lead-in against Overtone's own bars — no ranking number is encoded, none can be checked offline |
-| Audio swap: a mapset moved onto a new encode | ✅ | Mapset; the shift from the waveforms, refused on a tempo mismatch or a different cut; every time in every difficulty moves, backed up |
-| Write history: every `.osu` write, its diff, a restore | ✅ | History section; a restore keeps the current file as a new backup |
-| Reader fuzzing | 📋 | P5 |
-
-### Map checking
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Timing validation: duplicates, short sections, impossible changes, suspicious offsets, octave | ✅ | Shown as banners, never auto-fixed |
-| Alignment report | ✅ | |
-| Density analysis | ✅ | |
-| Snap audit: objects off the map's own grid, and what an inject would unsnap | ✅ | Object starts |
-| Mapset check: red lines, audio settings and metadata across difficulties | ✅ | Read only, never fixes |
-| Timing suggestions | ✅ | |
-| Apply a suggestion to the `.osu` | ✅ | Map check → Add: that red line alone, backed up, after a confirmation naming the objects and slider ends it moves |
-| Library health check across a Songs folder | 🟡 | Engine only (`overtone_library.py`, run by the measurement server): every map's red lines graded against its own audio where the map plays, kept in the library index, resumable; its page is parked with the Songs browser |
-
-### Audio analysis
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| 7-band onset functions | 🦀 | |
-| Harmonic / percussive separation (HPSS) | 🦀 | Also the planned percussive stem for P10 |
-| Chroma and MFCC | 🦀 | Bass notes on their true pitch class since 2026-09-23 |
-| Song structure and section labels (intro / verse / chorus) | ✅ | The Structure view, through the Rust engine |
-| Audio section: spectrogram, band lanes, energy with sections | 📋 | P19 |
-| Snap-divisor map | ✅ | Timing card, one line per section |
-| Swing lane | 📋 | P21 |
-
-### Hitsounds
-
-Parked. The hitsound engine (features, instrument templates, the decision and its
-profiles, the copier, the Samples card and the hitsound difficulty) never cleared the
-bar its own evaluation set against mappers (clap F1 0.59, finish F1 0.42), and it left
-master in phase W1 so the project's core is timing. It is kept whole on the
-`parked/desktop-extras` branch and the `v3-desktop-full` tag. What the timing and
-structure tools still read stays: every object as the sounds osu! plays, which the
-breaks, kiai and section-volume tools need.
-
-### Command line
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Analyse, stats, CSV, click track, `.osz`, inject | ✅ | |
-| `--json` machine-readable output | ✅ | |
-| Whole folders | ✅ | |
-| A map checked, `--check map.osu` | ✅ | The Report section's lines, one per finding; exit 3 on findings, 0 clean |
-| Unified command set (`analyze · timing · validate …`) | 📋 | P8 |
-| Rust engine as a JSON sidecar (`overtone-cli analyze --json` / `--full`) | ✅ | Exit codes: 0 grid, 3 refused, 1 unreadable, 2 usage |
-| The sidecar's other commands: `structure`, `ramps` | ✅ | What the Structure view and the Ramps card run |
-
-### Distribution
-
-| Feature | Status | Notes |
-|---|:--:|---|
-| Double-click launcher | ✅ | `Overtone.bat` |
-| Self-contained MSI + portable ZIP | ✅ | P10.13 — `installer\build.py` in one line: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the licence page, the same tree as a ZIP, the SBOM and the checksums. Published as [v0.1.0-alpha](https://github.com/Mides-Projects/Overtone/releases/tag/v0.1.0-alpha); not signed, no file associations yet ([what is built](docs/11-msi-distribution.md)) |
-
-### Deliberately not built
-
-| Idea | Status | Why |
-|---|:--:|---|
-| Difficulty / strain graphs | ✖ | osu!'s own star rating does it better |
-| Timing or hitsounding with no review | ✖ | Suggestions with confidence, yes; "trust me", no |
-| Anything in the cloud, telemetry, update checks | ✖ | Offline is a product property |
-| PySide6 desktop UI | ✖ | Superseded by the web window, which moves to Tauri unchanged |
-| SuperFlux onset function, tempogram from the coherence map | ✖ | Measured and lost |
-
----
-
-## Install & run
-
-Windows, Python 3.14:
+Open http://localhost:5173. The API runs on :3001 with a local analysis worker. No
+secrets and no database are needed in development. The worker needs the Python engine:
 
 ```bash
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r python/requirements.lock
 ```
 
-Then double-click **`Overtone.bat`**, or from a terminal:
-
-```bash
-.venv/Scripts/python.exe python/overtone_web.py [audio-file]   # the app (Edge WebView2 window)
-.venv/Scripts/python.exe python/overtone.py                    # the classic Tk window
-.venv/Scripts/python.exe python/overtone.py song.wav --stats   # command line
-.venv/Scripts/python.exe installer/build.py             # the MSI and portable ZIP, in dist/
-```
-
-The installer build needs a one-time toolchain (PyInstaller, a per-user .NET SDK and WiX
-5.0.2, no administrator): [docs/11](docs/11-msi-distribution.md#building-it).
-
-WAV, FLAC, OGG and most MP3s open directly (libsndfile 1.2); the odd MP3 it cannot read
-(one of the songs tested) and M4A / AAC need FFmpeg on `PATH` for the Python engine. The
-Rust engine decodes all of them in-process, AIFF too; Opus it refuses by name, by
-decision: its decoder would be a C build.
-
-Command-line flags:
-
-| Flag | Effect |
-|---|---|
-| `--delta 1.5` | minimum BPM gap before a new red line |
-| `--persistence 12` | beats a new tempo must hold (20+ for constant-tempo songs) |
-| `--min-confidence 75` | filters shaky sections |
-| `--subdivision 2` | multiplies the detected beat rate; `0.5` halves it — exact |
-| `--engine auto\|precision\|legacy` | `precision` refuses to fall back to the tracker |
-| `--decimal-offsets 3` | sub-millisecond offsets (lazer accepts them, stable does not) |
-| `--click click.wav` | metronome on the red lines |
-| `--stats` / `--json` | summary, or everything as JSON |
-| `--osz out.osz` | a complete beatmap archive; `--artist` / `--title` / `--creator` |
-| `--inject map.osu` | red lines into an existing map (`--no-backup` skips the `.bak`) |
-| `--no-refine` | skip sample-resolution re-timing (diagnostic) |
-| `--watch` | analyse again, with the same options, each time the audio file is saved; Ctrl+C stops |
-| `--check map.osu` | the modder's report for that map instead of the red lines; exits 3 when it finds something, 0 when clean |
-
-A folder instead of a file analyses every audio file in it. Presets: **Variable**
-1.5 / 12 / 75 (default), **Steady** 2.0 / 20 / 85.
-
----
-
-## How the engine works
-
-1. **Load** mono, normalised; files longer than an hour are refused from the header.
-2. **Attacks** are peak-picked from a 2.9 ms onset envelope and **re-timed on the raw
-   waveform at sample resolution** — a spectral-flux peak lags the real attack by about
-   one window.
-3. **Atomic pulse.** A weighted circular-coherence sweep `R(f) = |Σ w·e^{2πift}| / Σ w`
-   ranks every plausible rate by share × coverage.
-4. **Lock.** Expanding-window least squares walks that grid over the whole track; a
-   robust re-centring snaps the phase to the densest residual cluster, so swing and ghost
-   notes cannot drag the offset.
-5. **Octave.** Attacks grouped by index modulo *m*: if *m* atoms make a beat, one class
-   holds the kicks. Accent depth plus tempogram hints decide *m* and the downbeat — and
-   that class is re-expressed in each section's own index frame.
-6. **Sections** grow while attacks keep landing on the grid; each new region re-seeds its
-   own scan; boundaries settle where the two grids cross; each section is refitted alone.
-7. **Measures.** Where the accents prove a bar, red lines sit on downbeats and a signature
-   change over one constant bar gets its own red line and meter — but only when every
-   section divides that bar, so a real tempo change is never swallowed.
-8. **Fallback.** No grid fits (rubato, free time): the v2 tracker runs, after checking the
-   onset envelope is more periodic than itself shuffled — noise is refused, not timed. Its
-   beats sit on the envelope's peaks, after the attacks; the lag, read on the waveform for
-   each song, is taken off every beat and red line.
-
-Full specification: [`docs/05-dsp-pipeline.md`](docs/05-dsp-pipeline.md).
-
-### The octave is a judgement call
-
-BPM and offset are essentially exact. Which multiple of the pulse *you* call the beat is
-not: a 92 BPM song with eighth-note hats is also a valid 184 BPM map. *Prefer map BPM
-(120–300)* breaks the tie towards the range osu! is mapped in; **×2 / ÷2** fix it
-instantly and exactly; the click track is the arbiter.
-
----
-
-## Benchmarks and gates
-
-```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 784 tests
-.venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
-.venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
-.venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
-.venv/Scripts/python.exe bench/gates.py coverage       # density changes inside a section
-.venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
-.venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar
-.venv/Scripts/python.exe bench/gates.py robustness     # the audit's edge-case probes
-.venv/Scripts/python.exe bench/gates.py reference      # hand-timed maps graded by the attacks
-.venv/Scripts/python.exe bench/gates.py assisted       # two marked downbeats seed the grid
-.venv/Scripts/python.exe bench/gates.py real-audio     # six local songs keep analysing as pinned
-.venv/Scripts/python.exe bench/gates.py perf           # no stage got slower than its baseline
-.venv/Scripts/python.exe bench/fixtures.py             # Python and Rust read one fixture list
-.venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
-.venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (needs a local library)
-cargo test --workspace                                 # 231 tests
-cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
-```
-
-The corpus is **24 synthesized tracks** with exact ground truth: odd tempos (222.22,
-128.37), noise, ±8 ms jitter, swing and shuffle, drops, sparse bars, a 6-minute track and
-2–4 tempo changes per song, plus degenerate inputs that must be refused. The benchmark
-scores precision, not the octave — that is what `bpm-snapshot` is for — and it scores
-offsets modulo one beat, which is why an off-beat red line could hide in it until the
-2026-09-23 audit round found one.
-
-**Synthetic drums are cleaner than records.** Read Corpus A as an upper bound. On the 20
-hand-timed ranked maps in local Corpus B (`bench/corpus_b.py`), the raw engine grid lands
-within 5 ms of 2.0 % of Python's and 1.1 % of Rust's 1,152 red lines. The app's default
-28 ms osu! export lead raises those measured shares to 16.8 % and 5.2 % respectively
-(2026-10-24); it does not fix tempo/octave errors or drift. The Python export lands within
-50 ms of 55.7 % of the lines. Ranked maps put their lines a median 21 ms before the sound
-starts (`bench/corpus_b.py --onsets`). Improving the grid itself remains [Phase 10](docs/10-precision-plan.md).
-
-Corpus B and the `real-audio` gate read songs from an osu! Songs folder, which is never
-committed: the list of maps lives in a gitignored `bench/corpus_b.local.json` (the shape is
-in `bench/corpus_b.example.json`, and [`bench/local_data.py`](bench/local_data.py) explains
-the rest). Without it those two say so and check nothing; every other gate runs anywhere.
-
-Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
-takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"
-timed decoding and attack detection only.
-
----
-
-## Honest limits
-
-- **Real recordings are much harder than the corpus** — see above.
-- **Rubato and accelerating tempo** fall back to the tracker, which emits a staircase of
-  red lines in Python (8 on a 120 → 160 ramp). The Rust elastic grid handles ramps, and
-  Timing's Ramps card uses it; the analysis itself does not yet.
-- **An exact 2× tempo change** is one section in Python — the octave is decided globally.
-  Rust decides it per section.
-- **A signature change that keeps the beat and changes the bar's length** is not detected.
-- **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
-  number is telling the truth about the music.
-- **Offsets export as whole milliseconds** by default, what osu!stable reads; Settings →
-  Offset precision keeps up to 3 decimals for lazer. The fit is sub-millisecond.
-- **Every audit finding is closed** — fixed, found already fixed, or decided (Opus stays
-  refused) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
-- **Always check the first beat and every transition in the osu! editor.**
-
----
-
-## Documentation
-
-| Document | Contents |
-|---|---|
-| [01 · Audit of v3](docs/01-audit-v3.md) | What v3 does well; the original findings |
-| [02 · Stack evaluation](docs/02-stack-evaluation.md) | Stacks compared; why Rust + a web shell |
-| [03 · Architecture](docs/03-architecture.md) | Crates, dependency rules, threading |
-| [04 · UI / UX](docs/04-ui-ux.md) | Design tokens, screens, timeline |
-| [05 · DSP pipeline](docs/05-dsp-pipeline.md) | The porting contract and the gated improvements |
-| [07 · Roadmap](docs/07-roadmap.md) | Every phase, with status, priority and dependencies |
-| [08 · Machine learning](docs/08-machine-learning.md) | Where ML earns its place |
-| [09 · Naming](docs/09-naming.md) | Why "Overtone" |
-| [10 · Precision plan](docs/10-precision-plan.md) | Human-level accuracy on real songs, with a verified licence audit |
-| [11 · MSI distribution](docs/11-msi-distribution.md) | One self-contained installer |
-| [12 · Comfort features](docs/12-comfort-features.md) | Playback, projects, osu! integration, i18n, plugins |
-| [13 · Audit backlog](docs/13-audit-backlog.md) | The audit's findings, every one closed |
-| [14 · Other languages](docs/14-other-languages.md) | Which features another language serves better, and how they stay in step |
-| [16 · Web platform](docs/16-web-platform.md) | The site: architecture decisions and the phases from W1 on |
-| [Project map](docs/project-map.md) | Architecture, source facts, and links to the code and task/status graphs |
-| [timeline](docs/timeline.md) | Engineering log, with what was tried and dropped |
-| [workflow](docs/workflow.md) | The per-task routine: program, test, measure, commit, audit |
-
----
+The engine also works on its own: `python python/overtone.py song.ogg --stats` prints
+the red lines in osu!'s `[TimingPoints]` format.
 
 ## Development
 
 ```
-python/                   Python v3 engine + classic Tk window + CLI + web bridge + library
-  overtone_library.py       the library index: your Songs folder in SQLite
-tests/                    engine, I/O, classic-window and bridge tests (+ fixtures)
-app/                      the app's frontend (HTML/CSS/JS, nothing from the network)
-Overtone.bat              double-click launcher
-installer/                the MSI and portable ZIP: PyInstaller spec, WiX source,
-                          the one-line build and its smoke test
-bench/                    benchmark, gates, golden vectors
-crates/                   Rust workspace: core, audio, dsp, tempo, bench, cli
-proto/                    prototypes measured before any port
-assets/                   generated logo, icon and the Beat This! model
-docs/                     design documents, plans, workflow routine, timeline
+site/      the website: site/api (Express + PostgreSQL), site/web (React)
+worker/    the analysis worker the API hands jobs to
+python/    the v3 engine (the one in production), its CLI and the measurement server
+crates/    the v4 engine in Rust: decode, DSP, tempo, CLI, golden-vector bench
+bench/     benchmark, gates, golden vectors and the real-map corpus tooling
+deploy/    the Reviactyl eggs and the servers' updater
+docs/      design, roadmap (docs/16-web-platform.md), timeline
 ```
 
-Conventions: one logical change per commit, commits and branches in English
-as `type(scope/task): short imperative description` (see `AGENTS.md`); each
-fix with a test that fails on the old code; no accuracy or speed claim
-without a measurement in the same commit; `.osu` writes atomic and backed
-up; offline only; no GitHub Actions — every gate is a local one-liner.
-Start with [CONTRIBUTING.md](CONTRIBUTING.md); the routine is in
-[docs/workflow.md](docs/workflow.md), the full rules in [CLAUDE.md](CLAUDE.md).
-Security problems: [SECURITY.md](SECURITY.md) (privately, never a public issue).
+Every gate is a one-line local command; nothing runs in CI.
 
----
+```bash
+.venv/Scripts/python.exe -m unittest discover -s tests   # 537 tests
+cargo test --workspace                                   # 231 tests
+.venv/Scripts/python.exe bench/benchmark.py              # must be 24/24
+```
 
-## Resumen en español
+The full list, and the rules every change follows, are in [CLAUDE.md](CLAUDE.md). The
+per-task routine is in [docs/workflow.md](docs/workflow.md), and how to contribute is in
+[CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately, as
+[SECURITY.md](SECURITY.md) explains.
 
-**Overtone** es una herramienta offline y de código abierto (MIT) para timear canciones
-de osu!: propone BPM, offsets, compases y cambios de tempo, compara un mapa con el audio y
-escribe el timing en tu `.osu` sin tocar nada más (hitsounds, kiai y velocidad de sliders
-quedan igual).
+## Credits and licence
 
-- **Precisión, sin adornos:** exacto en el benchmark sintético (24/24 secciones dentro de
-  0,05 BPM y 5 ms); en mapas rankeados reales todavía es investigación: cerca del 17 % de
-  las red lines puestas a mano quedan dentro de 5 ms. Revisá siempre el primer beat y cada
-  transición en el editor de osu!.
+Made by **githalt** and contributors, as part of **Mides Projects**. Overtone is not
+affiliated with osu! or ppy Pty Ltd. "osu!" is their trademark.
 
-- **Qué funciona hoy (✅):** análisis, editor con deshacer, bloqueo de puntos, exportación
-  (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa (un mapa o el mapset
-  entero, con el diff), comparación con un mapa, alineación, densidad y sugerencias (cada una se agrega
-sola al mapa, con copia de seguridad y tras confirmar),
-  la canción con el clic dentro de la app, la estructura (kiai, breaks, bookmarks,
-  volúmenes por sección) y el historial de escrituras con restauración; cada canción recuerda los ajustes de detección de su último análisis;
-en inglés y español, oscuro o claro.
-- **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
-  de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura
-  y Rampas.
-- **Estacionado:** hitsounds, Compilar, Entrenar y el explorador de Songs salieron de
-  master en la fase W1 (el núcleo es el timing); siguen enteros en la rama
-  `parked/desktop-extras` y el tag `v3-desktop-full`.
-- **Próximo (📋):** la sección Audio y precisión en canciones reales. El instalador `.msi`
-  y el ZIP portable se construyen en una línea y están publicados (v0.1.0-alpha).
-
-Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,
-escuchá la pista de clic y usá **Inyectar .osu…**. La octava (92 vs 184) sigue siendo
-criterio tuyo: **×2 / ÷2** la corrige al instante.
-
----
-
-## License
-
-MIT, in [`LICENSE`](LICENSE) and declared in `Cargo.toml`. Contributions are accepted
-under the same licence.
-
-A release's tree carries `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` beside the
-executables: every bundled wheel, every Rust crate and every native library with its
-version, its licence and its own notice text, gathered by `installer/notices.py` and
-gated by `installer/notices.py --check`. The copyleft parts (libsndfile and libsoxr
-under LGPL-2.1, Symphonia and certifi under MPL-2.0) carry the offer of source the
-licence asks for.
+MIT licensed ([LICENSE](LICENSE)). Overtone builds on Beat This! (MIT), librosa, NumPy,
+SciPy and many others, all listed with their licences on the site's
+[credits page](https://overtone.midesprojects.com/credits).

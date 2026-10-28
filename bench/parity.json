@@ -4,6 +4,14 @@
    "where": "python-only",
    "why": "overtone_runs.py: the bench's timing stages run on a server, queued and kept on disk, which no Rust crate holds"
   },
+  "DeployScriptTests": {
+   "where": "python-only",
+   "why": "deploy/: the server's updater and the root-run script that installs it, shell on the owner's server, which no Rust crate holds"
+  },
+  "LibraryAudioPathTests": {
+   "where": "python-only",
+   "why": "overtone_library.py: an .osu's AudioFilename kept inside its song folder before the index stats or decodes it, which no Rust crate holds"
+  },
   "LibraryServerTests": {
    "where": "python-only",
    "why": "overtone_server.py: the library index and its BPM cache served over HTTP behind a token, which no Rust crate holds"
@@ -19,22 +27,6 @@
   "FixtureManifestTests": {
    "where": "bench",
    "why": "bench/fixtures.py, the one list of bench fixtures"
-  },
-   "InstallerAssocTests": {
-    "where": "python-only",
-    "why": "installer/Overtone.wxs: the .osz association the MSI registers, which no Rust crate holds"
-   },
-   "InstallerNoticesTests": {
-   "where": "bench",
-   "why": "installer/notices.py, the bundled licences gathered for publishing: packaging, not an engine stage"
-  },
-  "InstallerPortableSmokeTests": {
-   "where": "bench",
-   "why": "installer/smoke.py: which of a portable run's writes count as Overtone's own state, packaging not an engine stage"
-  },
-  "InstallerSbomTests": {
-   "where": "bench",
-   "why": "installer/sbom.py, the licence inventory for publishing: packaging, not an engine stage"
   },
   "LoadErrorMessageTests": {
    "where": "shell",
@@ -52,17 +44,9 @@
    "where": "bench",
    "why": "bench/gates.py perf, which times the stages it is given"
   },
-  "PortableDataTests": {
-   "where": "python-only",
-   "why": "python/overtone_paths.py: where a portable build keeps its state, which no Rust crate holds"
-  },
    "ProductVersionTests": {
     "where": "python-only",
-    "why": "python/overtone_paths.py: the product version a copy reports (the release, from its build or the workspace), which no Rust crate holds"
-   },
-   "TaskbarIdentityTests": {
-    "where": "shell",
-    "why": "the Windows app identity the taskbar groups by"
+    "why": "python/overtone_paths.py: the product version (the release, from the workspace) and Overtone's data folder, which no Rust crate holds"
    }
   },
  "format": 1,
@@ -78,14 +62,6 @@
     "overtone-dsp/src/multiband.rs::band_edges_cover_the_mel_range"
    ],
    "where": "rust"
-  },
-  "CONFIG_PATH": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "DEFAULT_LANGUAGE": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "FIT_HOP": {
    "rust": [
@@ -104,10 +80,6 @@
     "overtone-dsp/src/envelope.rs::front_pad_is_nine_frames_at_hop_128"
    ],
    "where": "rust"
-  },
-  "LEGACY_CONFIG_PATH": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "LOUDNESS_SILENT_DB": {
    "where": "python-only",
@@ -166,10 +138,6 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "ScrollMovesSliders": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "TimingAnalyzerApp": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
@@ -475,10 +443,6 @@
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
-  "load_config": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
   "log_write": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
@@ -625,10 +589,6 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "same_audio": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "save_config": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },

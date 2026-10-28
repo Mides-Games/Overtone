@@ -6,13 +6,17 @@ import express, { Router } from 'express';
 import { env } from '../config/env.js';
 import { bearerGuard } from '../middlewares/shared-secret.js';
 import { analyses, setEngineHash } from '../services/analysis.service.js';
+import { enqueueDm } from '../services/links.service.js';
 import { audioPath, discard } from '../services/spool.service.js';
+import { DEFAULT_MODE, MODES, parseOptions } from '../utils/analysis-options.js';
 import { HttpError } from '../utils/http-error.js';
+import { workerSeen } from '../utils/worker-status.js';
 
 /**
  * The worker's side of the queue, under /api/internal (worker/main.py).
  *
- *   POST /jobs/claim          { engine_hash } -> 204, or { id, attempt, filename, max_seconds }
+ *   POST /jobs/claim          { engine_hash, engine_hashes? } -> 204, or
+ *                             { id, attempt, filename, max_seconds, mode, options }
  *   GET  /jobs/:id/audio      the spooled audio of a running job
  *   POST /jobs/:id/progress   { attempt, stage, progress }
  *   POST /jobs/:id/result     { attempt, result }   -> the audio is deleted
@@ -30,6 +34,11 @@ import { HttpError } from '../utils/http-error.js';
 const router = Router();
 
 router.use(bearerGuard(env.workerToken));
+// Past the bearer, so only a real worker marks itself alive (/status).
+router.use((_req, _res, next) => {
+  workerSeen();
+  next();
+});
 // A result carries every red line and the [TimingPoints] text: larger than
 // the 16 kB the public routes allow, and only the worker can send it.
 router.use(express.json({ limit: '2mb' }));
@@ -67,7 +76,23 @@ router.post('/jobs/claim', async (req, res) => {
   if (typeof hash !== 'string' || !HASH.test(hash)) {
     throw new HttpError(400, 'engine_hash is required.', 'BAD_ENGINE_HASH');
   }
-  setEngineHash(hash);
+  // W11.1: each mode's hash, so each mode's cached results are keyed by the
+  // code that made them. Optional: a worker from before modes sends none.
+  const named = req.body.engine_hashes;
+  const hashes = {};
+  if (named !== undefined) {
+    if (!named || typeof named !== 'object' || Array.isArray(named)) {
+      throw new HttpError(400, 'engine_hashes maps each mode to its hash.', 'BAD_ENGINE_HASH');
+    }
+    for (const mode of MODES) {
+      if (named[mode] === undefined) continue;
+      if (typeof named[mode] !== 'string' || !HASH.test(named[mode])) {
+        throw new HttpError(400, 'engine_hashes maps each mode to its hash.', 'BAD_ENGINE_HASH');
+      }
+      hashes[mode] = named[mode];
+    }
+  }
+  setEngineHash(hash, hashes);
   await sweepStaleJobs();
   const job = await analyses().claim();
   if (!job) return res.status(204).end();
@@ -76,6 +101,8 @@ router.post('/jobs/claim', async (req, res) => {
     attempt: job.attempt,
     filename: job.filename,
     max_seconds: env.maxAudioSeconds,
+    mode: job.mode ?? 'normal',
+    options: job.options ?? {},
   });
 });
 
@@ -105,9 +132,44 @@ router.post('/jobs/:id/progress', async (req, res) => {
   res.status(204).end();
 });
 
-/** Just enough of `timing-result v1` to be sure what is stored is one. */
-const validResult = (result) =>
-  result &&
+// What a stored result may hold. The worker is trusted to be honest, not to be
+// right: a bug there, or a stolen WORKER_TOKEN, must not put a NaN, a
+// megabyte label or a formula into what every page and download reads back.
+// Fields not named here (a newer worker's) pass through unchecked.
+const MAX_LINES = 2000;
+const MAX_MS = 4 * 3600 * 1000;
+const LEVELS = new Set(['high', 'medium', 'check']);
+const REFUSAL_CODE = /^[a-z_]{1,32}$/;
+
+const finite = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+const nullOr = (check) => (value) => value === null || value === undefined || check(value);
+const text = (value, max) => typeof value === 'string' && value.length <= max;
+const time = (value) => finite(value, -60_000, MAX_MS);
+const bpm = (value) => finite(value, 1e-3, 10_000);
+
+const validLine = (line) =>
+  line && typeof line === 'object' &&
+  time(line.time_ms) &&
+  bpm(line.bpm) &&
+  finite(line.beat_length_ms, 6, 60_000_000) &&
+  Number.isInteger(line.meter) && line.meter >= 1 && line.meter <= 16 &&
+  (line.meter_known === undefined || typeof line.meter_known === 'boolean');
+
+const validSection = (section) =>
+  section && typeof section === 'object' &&
+  (section.index === undefined || (Number.isInteger(section.index) && section.index >= 0 && section.index < MAX_LINES)) &&
+  time(section.start_ms) &&
+  time(section.end_ms) &&
+  section.end_ms >= section.start_ms &&
+  bpm(section.bpm) &&
+  finite(section.confidence, 0, 1) &&
+  LEVELS.has(section.level) &&
+  nullOr((v) => finite(v, 0, 60_000))(section.residual_ms) &&
+  nullOr((v) => finite(v, 0, 1))(section.coverage);
+
+/** A `timing-result v1` whose every field the site reads is the type and size it should be. */
+export const validResult = (result) =>
+  Boolean(result) &&
   typeof result === 'object' &&
   result.format === 'timing-result' &&
   result.version === 1 &&
@@ -116,16 +178,65 @@ const validResult = (result) =>
   HASH.test(result.engine_hash) &&
   Array.isArray(result.red_lines) &&
   Array.isArray(result.sections) &&
-  typeof result.osu_timing === 'string' &&
+  result.red_lines.length <= MAX_LINES &&
+  result.sections.length <= MAX_LINES &&
+  result.red_lines.every(validLine) &&
+  result.sections.every(validSection) &&
+  text(result.osu_timing, 256 * 1024) &&
+  nullOr(bpm)(result.global_bpm) &&
+  nullOr(time)(result.offset_ms) &&
+  nullOr((v) => finite(v, 0, 86_400))(result.duration_s) &&
+  nullOr((v) => finite(v, 0, 1))(result.stability) &&
+  nullOr((v) => finite(v, 0, 60_000))(result.residual_ms) &&
+  nullOr((v) => text(v, 16))(result.meter) &&
+  nullOr((v) => text(v, 32))(result.engine_mode) &&
+  (result.findings === undefined || (Array.isArray(result.findings) && result.findings.length <= MAX_LINES)) &&
+  nullOr((r) => typeof r === 'object' && REFUSAL_CODE.test(r.code) && text(r.message, 1000))(result.refusal) &&
+  // v1.2 (W11.1, W3.21, W12.19): absent from older workers' results.
+  nullOr((m) => MODES.includes(m))(result.mode) &&
+  nullOr((s) => typeof s === 'object' && time(s.start_ms) && time(s.end_ms) && s.end_ms > s.start_ms)(result.stretch) &&
+  (result.hint_checks === undefined || (Array.isArray(result.hint_checks) && result.hint_checks.length <= 16 &&
+    result.hint_checks.every((c) => c && typeof c === 'object' && REFUSAL_CODE.test(c.key) && ['info', 'warn'].includes(c.level)))) &&
   (result.refused ? result.red_lines.length === 0 && result.global_bpm === null : result.red_lines.length > 0);
+
+/**
+ * The mode and hints a result was really made with, which the row takes on
+ * when it is stored: the cache then keys it by what ran, not by what was
+ * asked. A worker from before modes ran every job normal with no hints, and
+ * its result says nothing of either.
+ */
+export const askedOf = (result) => {
+  const mode = MODES.includes(result.mode) ? result.mode : DEFAULT_MODE;
+  try {
+    const { options, key } = parseOptions(result.options ?? null, { maxSeconds: 4 * 3600 });
+    return { mode, options, key };
+  } catch {
+    return { mode, options: {}, key: '' };
+  }
+};
+
+/**
+ * W9.4: an ended analysis of an account that asked for Discord DMs goes into
+ * the bot's outbox. Never in the way of the result: a failure here is logged
+ * and the worker's answer still succeeds.
+ */
+const noticeEnd = async (id) => {
+  try {
+    const row = await analyses().get(id, { position: false });
+    if (row?.accountId) await enqueueDm({ publicId: id, accountId: row.accountId });
+  } catch (error) {
+    console.warn(`[bot] the DM notice of ${id} was not queued: ${error.message}`);
+  }
+};
 
 router.post('/jobs/:id/result', async (req, res) => {
   const id = idOf(req);
   const attempt = attemptOf(req);
   const { result } = req.body;
   if (!validResult(result)) throw new HttpError(400, 'Not a timing-result v1.', 'BAD_RESULT');
-  if (!(await analyses().finish(id, attempt, result))) throw stale();
+  if (!(await analyses().finish(id, attempt, result, askedOf(result)))) throw stale();
   await discard(id);
+  await noticeEnd(id);
   res.status(204).end();
 });
 
@@ -135,6 +246,7 @@ router.post('/jobs/:id/fail', async (req, res) => {
   const error = String(req.body.error ?? 'The analysis failed.').slice(0, 500);
   if (!(await analyses().fail(id, attempt, error))) throw stale();
   await discard(id);
+  await noticeEnd(id);
   res.status(204).end();
 });
 

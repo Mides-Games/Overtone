@@ -29,36 +29,126 @@
     "eyebrow": "timing de osu!, medido",
     "title": "Timeá una canción en minutos, no en horas",
     "subtitle": "Subí el audio y Overtone encuentra el BPM, el offset y cada red line, y te dice qué tan seguro está de cada sección.",
-    "cta": "Timear una canción",
-    "secondary": "Entrá para guardar tu historial",
-    "honest": "Overtone no promete un timing perfecto. En el benchmark sintético es exacto; en mapas rankeados reales es un primer borrador sólido. La confianza está a la vista para que sepas dónde mirar.",
-    "features": {
-      "upload": {
-        "title": "Subís, salen red lines",
-        "body": "BPM, offset, compases y cambios de compás, listos para pegar en [TimingPoints]."
+    "cta": "Analizar una canción",
+    "checkByEar": "Revisar de oído",
+    "howCta": "Cómo funciona",
+    "draft": "Un primer borrador sólido, no un mapa terminado: revisalo de oído.",
+    "draftLink": "Lo que Overtone no promete",
+    "facts": {
+      "free": "Gratis",
+      "noAccount": "Sin cuenta",
+      "deleted": "El audio se borra al terminar"
+    },
+    "live": {
+      "title": "En vivo",
+      "analyses": "Análisis hechos",
+      "queue": "En la cola ahora"
+    },
+    "gain": {
+      "eyebrow": "Qué ganás",
+      "title": "Pasá la noche mapeando, no tapeando",
+      "time": {
+        "title": "Horas de timing, de vuelta",
+        "body": "El BPM, el offset y la primera red line en minutos, en vez de una noche tocando al ritmo y corriendo milisegundos."
       },
-      "confidence": {
-        "title": "Confianza por sección",
-        "body": "Cada sección dice cuánta evidencia la respalda, en vez de un número que parece preciso."
+      "variable": {
+        "title": "Cambios de tempo, separados para vos",
+        "body": "Una canción que acelera, frena o cambia de compás vuelve como red lines separadas, cada una con su BPM y su offset."
       },
-      "account": {
-        "title": "Con una cuenta de Mides",
-        "body": "Guardá tus análisis, publicá timings y mirá quién más timeó la misma canción."
+      "osz": {
+        "title": "Abre en osu!, listo para mapear",
+        "body": "Bajá un .osz con tu canción y sus red lines adentro. Abrilo en osu! y empezá a poner notas."
+      },
+      "check": {
+        "title": "Herramientas para revisar de oído",
+        "body": "Clicks sobre la canción, un loop en cualquier sección, reproducción hasta la mitad de velocidad y un nivel de confianza por sección que te dice dónde escuchar primero."
+      },
+      "free": {
+        "title": "Gratis, sin registro, sin guardar nada",
+        "body": "No hace falta cuenta. Tu audio se borra del servidor apenas termina su análisis; solo queda el timing."
+      },
+      "try": {
+        "title": "Probalo con una canción que conozcas",
+        "body": "Con una subida alcanza para ver si te ahorra tiempo."
       }
     },
-    "checkByEar": "Revisar de oído"
+    "steps": {
+      "eyebrow": "Cómo funciona",
+      "title": "Tres pasos, una canción",
+      "more": "Todo el proceso, explicado",
+      "upload": {
+        "title": "Subí",
+        "body": "Soltá un MP3, OGG, WAV, FLAC, M4A u Opus, o varios a la vez."
+      },
+      "analyse": {
+        "title": "Analizá",
+        "body": "Espera su turno en la cola y el engine encuentra los tiempos, el BPM, el offset y cada cambio de tempo. Lo seguís desde cualquier página."
+      },
+      "check": {
+        "title": "Revisá y bajá",
+        "body": "Escuchalo con los clicks, poné en loop y bajá la velocidad de las partes que importan, y después bajá el .osz o copiá los [TimingPoints]."
+      }
+    },
+    "recent": {
+      "eyebrow": "Recién timeadas",
+      "title": "Canciones que alguien acaba de timear",
+      "loading": "Cargando los últimos timings"
+    },
+    "about": {
+      "eyebrow": "Quiénes somos",
+      "title": "Una herramienta de Mides Projects, abierta a todos",
+      "body": "Overtone es parte de Mides Projects y lo fundó githalt. Empezó como una app de escritorio que timeaba canciones en tu propia compu, y se convirtió en este sitio para que cualquiera la use desde el navegador.",
+      "open": "Código abierto con licencia MIT: el engine y este sitio, en un solo repositorio.",
+      "desktop": "De herramienta de escritorio a la web, con el mismo engine abajo.",
+      "independent": "Sin relación con osu! ni con ppy.",
+      "source": "Código en GitHub",
+      "mides": "midesprojects.com"
+    },
+    "faq": {
+      "eyebrow": "Preguntas",
+      "title": "Antes de subir",
+      "more": "Todas las preguntas",
+      "free": {
+        "q": "¿Es gratis?",
+        "a": "Sí. Analizar, escuchar y bajar no cuesta nada. Hay un límite diario por persona para que la cola sea justa; entrando con Mides el límite sube."
+      },
+      "audio": {
+        "q": "¿Se guarda mi audio?",
+        "a": "No. El archivo se borra del servidor apenas su análisis termina o falla. Queda el timing y una huella del archivo (su SHA-1), para responder al instante la próxima vez que llegue la misma canción."
+      },
+      "accuracy": {
+        "q": "¿Qué tan preciso es?",
+        "a": "En el benchmark sintético cada sección queda a menos de 0,05 BPM y 5 ms. En canciones reales es un primer borrador sólido: cada sección muestra su confianza y las que hay que revisar de oído están marcadas."
+      },
+      "formats": {
+        "q": "¿Qué formatos acepta?",
+        "a": "MP3, OGG, WAV, FLAC, M4A y Opus. Podés mandar varias canciones de una vez."
+      },
+      "account": {
+        "q": "¿Necesito una cuenta?",
+        "a": "No. Podés analizar, bajar y hasta publicar sin cuenta. Una cuenta de Mides guarda tu historial en todos tus dispositivos y sube el límite diario."
+      }
+    },
+    "final": {
+      "title": "Tu próximo mapa empieza por su timing",
+      "body": "Subí una canción y en minutos tenés red lines para revisar.",
+      "community": "Comunidad",
+      "recent": "Todos los timings recientes"
+    }
   },
   "strip": {
     "title": "Análisis",
     "example": "Ejemplo",
-    "caption": "Un análisis de ejemplo: cuatro compases de 4/4 a 174 BPM con red lines en los compases 1 y 3.",
+    "caption": "Un análisis de ejemplo reproducido en tiempo real: cuatro red lines a 174, 186 y 160 BPM, con un tramo en 3/4. Las lecturas siguen a la red line que está bajo el cursor.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Compás",
     "confidence": "Confianza",
     "high": "Confianza alta",
     "medium": "Media",
-    "check": "Revisar de oído"
+    "check": "Revisar de oído",
+    "line": "red line {{n}} de {{count}}",
+    "osuRow": "Esta red line como la escribe osu! en [TimingPoints]"
   },
   "analyze": {
     "title": "Analizar una canción",
@@ -79,10 +169,11 @@
     "limitsNoteAccount": "La cuenta se reinicia a las 00:00 UTC.",
     "outputsTitle": "Lo que vas a descargar",
     "outputs": {
+      "osz": ".osz para abrir en osu!",
       "timingPoints": "Bloque [TimingPoints]",
-      "osu": ".osu con el timing agregado",
-      "csv": "CSV de red lines",
-      "click": "Pista de clic"
+      "csv": "CSV, JSON y un resumen",
+      "click": "Pista de clic (WAV)",
+      "osuPatch": "Tu propio .osu con las red lines puestas"
     },
     "ready": "listo",
     "soon": "pronto",
@@ -113,6 +204,13 @@
       "ready": "Lista para enviar",
       "sent": "Enviada",
       "remove": "Quitar {{name}}"
+    },
+    "batch": {
+      "notify": "Avisarme cuando termine todo el lote",
+      "notifyTitle": "Overtone: tu lote terminó",
+      "notifyBody": "{{done}} de {{total}} canciones tienen timing.",
+      "download_one": "Bajar {{count}} timing (ZIP)",
+      "download_other": "Bajar los {{count}} timings (ZIP)"
     }
   },
   "result": {
@@ -142,22 +240,28 @@
       "no_pulse": "Overtone no encontró un pulso estable en este audio, así que no informa un BPM.",
       "too_short": "Este audio es demasiado corto para timearlo: necesita al menos dos segundos.",
       "too_long": "Este audio supera el límite de duración.",
-      "refused": "Overtone no pudo timear este audio."
+      "refused": "Overtone no pudo timear este audio.",
+      "bad_stretch": "El tramo elegido tiene menos de diez segundos de este audio."
     },
     "refusedWhy": "Un BPM adivinado se vería preciso y estaría mal. El ruido, los pads ambientales y la música en tiempo libre terminan acá a propósito.",
     "redLines": "Red lines",
     "time": "Tiempo",
     "meterGuess": "Los acentos no probaron el compás: revisá dónde empieza.",
+    "downloadOsz": "Descargar .osz",
+    "oszBusy": "Armando el .osz…",
+    "oszFailed": "No se pudo armar el .osz con este archivo. La copia y el CSV siguen funcionando.",
+    "oszNote": "Abrí el .osz y osu! lo importa como un mapa nuevo con estas red lines y sin notas, listo para el editor. Se arma acá, con tu archivo: no se sube nada.",
+    "oszNeedsAudio": "El .osz lleva la canción: elegila arriba para armarlo.",
     "copy": "Copiar [TimingPoints]",
     "copied": "Copiado",
     "copyFailed": "No se pudo copiar: usá la descarga",
-    "downloadTxt": "Descargar timing.txt",
     "downloadCsv": "Descargar CSV",
     "honest": "Revisá estas red lines de oído antes de rankear. Overtone es exacto en su benchmark sintético, pero su precisión en mapas rankeados reales todavía es investigación: las secciones en ámbar piden una escucha primero, y el resto también puede.",
     "engine": "Engine v3 {{hash}} · voto de Beat This! {{vote}}",
     "voteOn": "activado",
     "voteOff": "desactivado",
-    "cached": "mismo audio analizado antes: resultado guardado"
+    "cached": "mismo audio analizado antes: resultado guardado",
+    "removed": "Un moderador sacó esta canción de la cola, así que no se analizó. Su archivo se borró."
   },
   "login": {
     "title": "Entrar",
@@ -178,15 +282,8 @@
   },
   "profile": {
     "signInFirst": "Entrá para ver tu perfil.",
-    "timingsSoon": "Tus timings, calificaciones y usos van a aparecer acá cuando se abra la publicación.",
     "onMides": "Abrir en midesprojects.com",
-    "since": "En Overtone desde el {{date}}",
-    "stats": {
-      "timings": "Timings",
-      "uses": "Usos",
-      "rating": "Calificación"
-    },
-    "timings": "Timings publicados"
+    "since": "En Overtone desde el {{date}}"
   },
   "footer": {
     "tagline": "Timing automático para osu!, medido y honesto sobre su confianza.",
@@ -194,7 +291,7 @@
     "ecosystem": "Mides Projects",
     "project": "Proyecto",
     "source": "Código fuente",
-    "docs": "Cómo funciona",
+    "docs": "Documentación",
     "rights": "© {{year}} Mides Projects"
   },
   "notFound": {
@@ -223,7 +320,1910 @@
       "running": "Analizando",
       "done": "Listo",
       "refused": "Rechazado",
-      "failed": "Falló"
+      "failed": "Falló",
+      "cancelled": "Cancelada"
+    }
+  },
+  "tempo": {
+    "mapTitle": "Mapa de tempo",
+    "mapLabel": "Mapa de tempo del análisis",
+    "canvasLabel": "La línea de tiempo de la canción con {{count}} red lines, el tempo local, la forma de onda, los ataques y su deriva respecto de la grilla. Las red lines también están en la tabla de abajo.",
+    "overview": "La canción entera: hacé clic o arrastrá para mover la vista",
+    "zoomIn": "Acercar (+)",
+    "zoomOut": "Alejar (-)",
+    "fit": "Todo",
+    "follow": "Seguir",
+    "followHint": "Pasar de página con el cursor de reproducción mientras suena (F)",
+    "tipTime": "Tiempo",
+    "tipLocal": "Tempo local",
+    "tipLine": "Red line",
+    "tipBefore": "Antes de la primera red line: osu! extiende su grilla hacia atrás, y eso solo funciona si la intro mantiene ese tempo.",
+    "legend": {
+      "lines": "Red lines y su BPM",
+      "tempo": "Tempo local",
+      "onsets": "Ataques; deriva de hasta 5 ms",
+      "grid": "Tiempos y compases de las red lines",
+      "drift": "Deriva de 5 a 15 ms (rojo: más)"
+    },
+    "howTo": "Rueda para acercar, arrastrá para moverte, clic para ir a ese punto o elegir una red line, Mayús y arrastrar para repetir un tramo (se ajusta a los tiempos; con Alt queda libre).",
+    "howToTouch": "Arrastrá para moverte, pellizcá para acercar, tocá para ir a ese punto o elegir una red line.",
+    "play": "Reproducir",
+    "pause": "Pausa",
+    "rate": "Velocidad",
+    "loop": "Repetir",
+    "loopSection": "la sección de la red line bajo el cursor",
+    "loopClear": "Quitar la repetición",
+    "song": "Canción",
+    "songVolume": "Volumen de la canción",
+    "clicks": "Clics",
+    "clickVolume": "Volumen de los clics",
+    "keys": "Espacio reproduce · ← → un tiempo (Mayús: un compás) · + − zoom · 0 todo · [ ] red lines · L repetir · C clics · F seguir · T tocar · A tus líneas / las del engine · S subdivisiones",
+    "audio": {
+      "none": "Elegí {{name}} de nuevo para escucharla con los clics y ver su forma de onda.",
+      "checking": "Comprobando que sea el mismo audio…",
+      "decoding": "Decodificando la canción en este navegador…",
+      "mismatch": "{{name}} no es el audio que midió este análisis: su huella no coincide. Elegí el mismo archivo que subiste.",
+      "unverifiable": "Este análisis no tiene una huella con la que comprobar un archivo, así que no se puede reproducir acá.",
+      "error": "Este navegador no puede decodificar este archivo. El timing de abajo no depende de eso.",
+      "ready": "Reproduciendo {{name}} desde este navegador.",
+      "pick": "Elegir el archivo",
+      "pickAgain": "Elegir otro archivo",
+      "privacy": "La canción se lee acá, en tu dispositivo, y se compara con el análisis por su SHA-1. El servidor nunca guarda ni envía audio."
+    },
+    "drift": "Deriva ms",
+    "driftHint": "Qué tan lejos de su grilla caen los ataques bajo esta red line (el tick de 1/1, 1/2, 1/3 o 1/4 más cercano): la mediana ponderada, en ms.",
+    "driftDetail": "Percentil 90, y hacia qué lado se inclinan los ataques (+: después de la grilla)",
+    "residual": "Ajuste ms",
+    "residualHint": "El residuo del ajuste de grilla del propio motor para esta sección, en ms.",
+    "actions": "Reproducir o repetir",
+    "playFrom": "Reproducir desde esta red line",
+    "loopLine": "Repetir la sección de esta red line",
+    "tableNote": "Pasá el cursor o elegí una fila para encontrar su red line en el mapa. La confianza es la lectura del propio motor sobre su ajuste, no una precisión medida; la deriva se mide con los ataques que conservó.",
+    "confidenceNote": "La confianza es la del propio motor, no una precisión medida: revisá cada sección de oído.",
+    "factorTitle": "Mitad o doble",
+    "factorNote": "Cada BPM a la mitad o al doble, para el mapa, los clics y las exportaciones. La lectura del motor no cambia; elegí la que suene bien contra los clics.",
+    "nudgeTitle": "Offset global",
+    "nudgeNote": "Mueve todas las red lines los mismos ms, y con ellas los clics y las exportaciones. Un ajuste para revisar de oído, no una medición.",
+    "reset": "Restablecer",
+    "adjusted": "Estos números los ajustaste vos: la copia y las descargas llevan el ajuste y lo dicen en una línea de comentario. Revisalo de oído antes de usarlo.",
+    "hint": "De {{from}} a {{to}} los ataques se espacian a uno cada dos tiempos: el motor lo lee como un posible medio tiempo o doble tiempo dentro de una red line (la marca ámbar). Es evidencia, no una red line: escuchalo.",
+    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído."
+  },
+  "moderation": {
+    "staff": "Staff",
+    "remove": "Sacar",
+    "requeue": "Devolver a la cola",
+    "removePrompt": "¿Sacar este trabajo de la cola? Falla y se borra su audio. Motivo para el registro (opcional):",
+    "requeuePrompt": "¿Devolver este trabajo a la cola? Motivo para el registro (opcional):",
+    "failed": "La acción falló.",
+    "errors": {
+      "NOT_LIVE": "Ya no está en cola ni analizándose.",
+      "NOT_RUNNING": "Solo se puede devolver uno que se está analizando.",
+      "AUDIO_GONE": "Su audio ya no está: no se puede analizar de nuevo.",
+      "STAFF_ONLY": "Solo el staff puede hacer esto."
+    },
+    "logTitle": "Registro de moderación",
+    "logEmpty": "Todavía no se moderó nada.",
+    "did": {
+      "remove": "@{{moderator}} sacó un trabajo",
+      "requeue": "@{{moderator}} devolvió un trabajo a la cola"
+    }
+  },
+  "cancel": {
+    "button": "Cancelar",
+    "busy": "Cancelando…",
+    "notQueued": "Ya se está analizando y no se puede cancelar.",
+    "failed": "No se pudo cancelar. Probá de nuevo."
+  },
+  "tray": {
+    "label": "Tus análisis",
+    "show": "Análisis",
+    "hide": "Ocultar",
+    "titleCount_one": "{{count}} en curso",
+    "titleCount_other": "{{count}} en curso",
+    "empty": "No hay nada en curso.",
+    "gone": "Ya no está disponible",
+    "dismiss": "Sacar {{name}} de la bandeja",
+    "clearFinished": "Limpiar terminados",
+    "inbox": "Avisos",
+    "noNotices": "Todavía no hay avisos.",
+    "clearInbox": "Limpiar",
+    "sound": "Sonido",
+    "notify": "Notificaciones",
+    "notifyBlocked": "El navegador bloquea las notificaciones de este sitio.",
+    "notifyTitle": "Overtone: terminó una canción",
+    "notice": {
+      "done": "{{name}} ya tiene timing.",
+      "refused": "{{name}} fue rechazada.",
+      "failed": "{{name}} falló.",
+      "batch": "Terminó el lote: {{done}} de {{total}} canciones tienen timing."
+    },
+    "showCount_one": "Tus análisis, {{count}} en curso",
+    "showCount_other": "Tus análisis, {{count}} en curso"
+  },
+  "legal": {
+    "footer": {
+      "title": "Legal",
+      "terms": "Términos",
+      "privacy": "Privacidad",
+      "disclaimer": "Aviso",
+      "credits": "Créditos",
+      "status": "Estado"
+    },
+    "draft": "Borrador: escrito para que lo revise el dueño, todavía no está vigente. El texto en recuadros ámbar falta completarlo.",
+    "updated": "Última actualización: {{date}}",
+    "date": "27 de octubre de 2026",
+    "toBeSet": "A definir",
+    "resultLink": "Qué significa “revisar a oído”",
+    "terms": {
+      "title": "Términos de uso",
+      "description": "Los términos para usar el sitio de Overtone: quién lo hace, qué podés subir y qué no promete.",
+      "intro": "Estos términos cubren el sitio de Overtone y su API. Al usar el sitio los aceptás; si no estás de acuerdo, por favor no lo uses.",
+      "sections": [
+        {
+          "h": "Quién hace Overtone",
+          "p": [
+            "Overtone forma parte de Mides Projects y fue fundado por githalt. Es una herramienta para timear beatmaps de osu!: escucha una canción y propone su BPM, su offset y sus red lines.",
+            "El responsable del sitio es [[el nombre legal y la dirección del responsable]]."
+          ]
+        },
+        {
+          "h": "Sin afiliación con osu!",
+          "p": [
+            "Overtone es un proyecto independiente. No está afiliado, avalado ni vinculado con osu! ni con ppy Pty Ltd. “osu!” es una marca de ppy Pty Ltd, nombrada acá solo para decir para qué sirve la herramienta."
+          ]
+        },
+        {
+          "h": "Código abierto",
+          "p": [
+            "El código de Overtone es público en github.com/Mides-Projects/Overtone bajo la licencia MIT. Esa licencia cubre el código. Estos términos cubren el uso de este sitio, un servicio que corre con ese código. El software sobre el que se apoya Overtone mantiene sus propias licencias, listadas en Créditos."
+          ],
+          "links": [
+            {
+              "label": "Créditos",
+              "to": "/credits"
+            }
+          ]
+        },
+        {
+          "h": "Tu cuenta",
+          "p": [
+            "Podés analizar canciones sin cuenta. Para entrar se usa tu cuenta de Mides Projects (con Discord o Google), que tiene sus propios términos. Overtone guarda solo los campos públicos del perfil que necesita, listados en Privacidad."
+          ],
+          "links": [
+            {
+              "label": "Privacidad",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "h": "Lo que subís",
+          "p": [
+            "Subí solo audio que tengas derecho a usar así: tu propia música, música para la que tenés licencia, o música cuyos titulares lo permiten. Sos responsable de lo que subís y de tener esos derechos. Subir un archivo no le da a Mides Projects ningún derecho sobre el audio, y Overtone no pide ninguno.",
+            "El audio se usa solo para calcular el timing y se borra del servidor cuando el análisis termina, se cancela o se quita. Nunca se publica ni se le sirve a nadie. Queda el resultado y lo que se lista en Privacidad.",
+            "Salvo que marques la subida como privada, el nombre de la canción (de las etiquetas del archivo, o el nombre del archivo) y, si entraste con tu cuenta, tu usuario de Mides se muestran en la cola pública mientras espera y entre los resultados recientes."
+          ]
+        },
+        {
+          "h": "Uso aceptable",
+          "li": [
+            "No subas audio que no tengas derecho a usar, ni archivos que no sean audio.",
+            "No abuses de la cola: nada de subidas masivas automatizadas, ni intentos de saltear los límites diarios, los límites de pedidos o el orden de la cola.",
+            "No intentes abrir análisis ajenos, entrar al servicio sin permiso ni interrumpirlo.",
+            "No pongas información ofensiva o personal en nombres de archivo o etiquetas: pueden aparecer en la cola pública."
+          ],
+          "after": [
+            "Los moderadores pueden quitar subidas de la cola, y el acceso se puede limitar o negar, cuando no se cumplen estas reglas."
+          ]
+        },
+        {
+          "h": "Sin garantías",
+          "p": [
+            "El sitio y sus resultados se ofrecen “tal cual” y “según disponibilidad”, sin ninguna garantía, en la medida en que la ley lo permite. Un timing es una estimación automática: puede estar mal y hay que revisarlo a oído antes de usarlo. El servicio puede andar lento o no estar disponible, y puede cambiar o terminar en cualquier momento. Un beatmap que mandes a rankear sigue siendo tu responsabilidad."
+          ],
+          "links": [
+            {
+              "label": "Aviso",
+              "to": "/disclaimer"
+            }
+          ]
+        },
+        {
+          "h": "Límites de responsabilidad",
+          "p": [
+            "En la medida en que la ley lo permite, ni Mides Projects, ni githalt, ni quienes contribuyen a Overtone responden por daños que surjan del uso del sitio o de sus resultados, incluidos trabajo perdido, datos perdidos o un beatmap rechazado. Nada en estos términos limita una responsabilidad que la ley no permite limitar."
+          ]
+        },
+        {
+          "h": "Cambios a estos términos",
+          "p": [
+            "Estos términos pueden cambiar, por ejemplo cuando lleguen funciones nuevas. La fecha de arriba dice cuándo cambiaron por última vez, y los cambios importantes se van a avisar en el sitio. Seguir usando el sitio después de un cambio es aceptar los términos nuevos."
+          ]
+        },
+        {
+          "h": "Ley aplicable y contacto",
+          "p": [
+            "Estos términos se rigen por las leyes de [[la jurisdicción]].",
+            "Consultas sobre estos términos: [[una dirección de contacto]]."
+          ]
+        }
+      ]
+    },
+    "disclaimer": {
+      "title": "Aviso",
+      "description": "El timing de Overtone es confiable y repetible, pero no 100 % preciso: un buen primer borrador que se revisa a oído.",
+      "intro": "El análisis de Overtone es confiable y repetible, pero no es 100 % preciso. Tomá cada timing como un buen primer borrador y revisalo a oído antes de usarlo.",
+      "sections": [
+        {
+          "h": "Repetible, no perfecto",
+          "p": [
+            "El mismo audio con el mismo engine da el mismo resultado siempre. En el benchmark sintético del proyecto, donde se conoce la respuesta exacta, las 24 secciones quedan a menos de 0,05 BPM y 5 ms. Las canciones reales son más difíciles: música tocada en vivo, cambios de tempo, intros suaves y swing pueden correr una red line, o partir o duplicar un BPM.",
+            "El proyecto publica sus mediciones tal cual, sin redondearlas para arriba. Describen el engine en sus canciones de prueba, no en las tuyas."
+          ]
+        },
+        {
+          "h": "Qué significa la confianza",
+          "p": [
+            "Cada sección muestra un nivel: alta, media o revisar a oído. Es una lectura de la confianza del propio engine y de qué tan bien encajan los beats en la grilla, no una precisión medida. Un nivel alto dice que la evidencia fue consistente, no que la línea esté garantizada."
+          ]
+        },
+        {
+          "h": "Cómo revisar un timing",
+          "li": [
+            "Reproducí la canción con el click en la página del resultado y escuchá cada sección: el comienzo, y alrededor de cada red line.",
+            "Empezá por las secciones marcadas “revisar a oído”.",
+            "Corregí lo que suene mal en el editor de osu! antes de mapear encima."
+          ]
+        },
+        {
+          "h": "Tu beatmap, tu responsabilidad",
+          "p": [
+            "Overtone no da garantías sobre sus resultados. El timing de un beatmap, y que el beatmap se rankee, siguen siendo responsabilidad de quien lo mapea. Overtone no está afiliado a osu! ni a ppy Pty Ltd."
+          ],
+          "links": [
+            {
+              "label": "Términos",
+              "to": "/terms"
+            }
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacidad",
+      "description": "Qué guarda el sitio de Overtone, para qué y por cuánto tiempo, leído de su código. El audio no se guarda nunca.",
+      "intro": "Esta página lista qué guarda el sitio de Overtone, para qué y por cuánto tiempo, tal como lo hace su código. No hay rastreo, ni publicidad, ni analíticas.",
+      "sections": [
+        {
+          "h": "El audio no se guarda",
+          "p": [
+            "El archivo que subís espera en el disco del servidor con un id al azar hasta que se analiza, y se borra cuando el análisis termina, falla, se cancela o lo quita un moderador. Si el mismo audio ya se había analizado, se borra en el acto y se reusa el resultado guardado. Nunca se te vuelve a servir, ni a vos ni a nadie, y nunca se publica.",
+            "Tu navegador guarda su propia copia solo en la pestaña abierta, para reproducirla en la página del resultado. No se guarda ni se vuelve a enviar."
+          ]
+        },
+        {
+          "h": "Qué se guarda de cada análisis",
+          "li": [
+            "La huella SHA-1 del audio, su duración y su tamaño en bytes. La huella reconoce el mismo audio otra vez; no se puede volver a convertir en sonido.",
+            "El nombre del archivo (hasta 200 caracteres), y el título y el artista que tu navegador leyó de las etiquetas del archivo, si tenía.",
+            "Si lo marcaste como privado.",
+            "El resultado: el tempo, el offset, las red lines, los beats, los ataques sobre los que se ajustó la grilla y la confianza del engine, con la versión del engine que lo hizo.",
+            "Su estado y sus horarios: cuándo entró en la cola y cuándo terminó.",
+            "De quién es: tu cuenta si entraste con ella; si no, el hash de tu cookie anónima (abajo), nunca la cookie misma.",
+            "Un hash con clave (HMAC) de tu dirección IP y el día, para los límites diarios. La dirección en sí no se guarda. Pero no es anónimo: quien tenga la clave secreta del servidor podría comprobar si una dirección dada subió algo un día dado."
+          ]
+        },
+        {
+          "h": "Tu cuenta",
+          "p": [
+            "Si entrás con tu cuenta, Overtone guarda tu id de usuario de Mides, tu usuario y tu nombre visible, las direcciones de tu foto de perfil y tu banner, tu id de Discord si tu cuenta de Mides lo tiene, y tu rol en Mides (para saber quién modera). No guarda e-mail, ni teléfono, ni la contraseña o el token de Mides. Estos campos se actualizan cada vez que entrás.",
+            "El ingreso se hace en midesprojects.com, bajo los términos de privacidad de Mides Projects."
+          ]
+        },
+        {
+          "h": "Otros registros",
+          "li": [
+            "Límites de pedidos: por dirección, un hash con clave y un contador, que se borran alrededor de un minuto después de que termina su ventana.",
+            "Moderación: cuando un moderador quita una subida de la cola o la devuelve, se registran su usuario, la acción, el análisis y el motivo."
+          ]
+        },
+        {
+          "h": "Por cuánto tiempo",
+          "li": [
+            "El audio: hasta que termina su análisis, normalmente minutos.",
+            "Una subida cancelada mientras espera: se borra en el acto, registro y audio.",
+            "Los contadores de límites: alrededor de un minuto después de su ventana.",
+            "La cookie de sesión: 30 días (lo que trae el servidor por defecto). Cerrar sesión termina todas las sesiones de tu cuenta.",
+            "Análisis, resultados, registros de cuenta y el registro de moderación: todavía no hay un vencimiento automático. [[cuánto tiempo se guardan]]"
+          ]
+        },
+        {
+          "h": "Cookies",
+          "p": [
+            "Solo las cookies que el sitio necesita para funcionar. Todas son propias, HttpOnly (ningún script las puede leer) y SameSite=Lax. No hay cookies de terceros, y por eso no hay banner de cookies. En el sitio publicado sus nombres llevan el prefijo __Host-."
+          ],
+          "li": [
+            "overtone_session: tu sesión iniciada (el id de tu cuenta, su vencimiento y una versión que cambia al cerrar sesión), por 30 días.",
+            "overtone_anon: un id al azar que le permite a este navegador abrir los análisis que empezó sin cuenta, por un año. El servidor guarda solo su hash.",
+            "overtone_sso: se pone por diez minutos mientras entrás, para que nadie te pueda hacer entrar en otra cuenta."
+          ]
+        },
+        {
+          "h": "Lo que queda en tu navegador",
+          "p": [
+            "Esto queda en el almacenamiento local de tu navegador y nunca se manda al servidor:"
+          ],
+          "li": [
+            "mides.theme y mides.lang: claro u oscuro, inglés o español.",
+            "overtone.player.volumes: el volumen de la canción y del click.",
+            "overtone.player.latencyMs: la latencia de tu audio, si la calibraste.",
+            "overtone.player.listening: la subdivisión de los clics, su volumen y si los clics se corren por tu latencia.",
+            "overtone.recentAnalyses: los ids y nombres de archivo de los últimos 10 análisis que empezó este navegador, para volver a encontrarlos.",
+            "overtone.sso: adónde volver después de entrar; se borra al volver."
+          ],
+          "after": [
+            "Borrar los datos de este sitio en tu navegador los elimina todos. Una notificación del navegador se usa solo si la pedís al final de un lote."
+          ]
+        },
+        {
+          "h": "Sin rastreo",
+          "p": [
+            "Sin analíticas, sin telemetría, sin publicidad y sin scripts ni fuentes de terceros. Aparte de este sitio, tu navegador solo se conecta con midesprojects.com: para entrar y para mostrar las fotos de perfil.",
+            "Los proveedores de hosting y de red del sitio pueden guardar sus propios registros técnicos, como direcciones IP: [[qué proveedores, y qué guardan]]."
+          ]
+        },
+        {
+          "h": "Borrado y consultas",
+          "p": [
+            "Para que se borren tus análisis o el registro de tu cuenta, o para preguntar algo sobre esta página, escribí a [[una dirección de contacto]]. Indicá los análisis (sus links) o tu usuario de Mides.",
+            "Una canción que todavía espera en la cola se puede cancelar desde su página, y eso la borra en el acto."
+          ]
+        }
+      ]
+    },
+    "contents": "Contenido"
+  },
+  "credits": {
+    "title": "Créditos",
+    "description": "Quién hace Overtone, y el software libre y el modelo sobre los que está hecho, cada uno con su licencia.",
+    "intro": "Overtone se apoya en el trabajo libre de otras personas. Las listas de abajo se generan desde los metadatos de los propios paquetes instalados (site/web/scripts/credits.mjs), no se escriben a mano.",
+    "team": "Equipo",
+    "founder": "Fundador",
+    "projectOf": "Un proyecto de Mides Projects",
+    "contributors": "Contribuidores",
+    "contributorsBody": "Todas las personas que contribuyeron al código están listadas en GitHub.",
+    "overtone": "Overtone",
+    "overtoneBody": "Overtone es de código abierto bajo la licencia {{licence}}, copyright {{year}} {{holder}}.",
+    "model": "El modelo de beats",
+    "modelBody": "{{what}}, licencia {{licence}}, copyright {{year}} {{holder}}. Overtone corre su checkpoint {{checkpoint}} para votar los beats.",
+    "engine": "El engine de análisis (Python)",
+    "engineBody": "Los paquetes que el engine fija en python/requirements.lock, en esas versiones.",
+    "site": "El sitio (npm)",
+    "siteBody": "Las dependencias de la web y de la API, y cada paquete que traen las que corren. Las herramientas de build se listan sin sus propias dependencias, que no se publican.",
+    "web": "Web, en el navegador",
+    "webBuild": "Web, herramientas de build",
+    "api": "API, en el servidor",
+    "package": "Paquete",
+    "version": "Versión",
+    "licence": "Licencia",
+    "direct": "directa",
+    "fonts": "Fuentes",
+    "noFonts": "Ninguna descargada: el sitio usa las fuentes que ya tiene tu dispositivo (Segoe UI, Bahnschrift, Cascadia Mono o sus equivalentes del sistema).",
+    "count_one": "{{count}} paquete",
+    "count_other": "{{count}} paquetes"
+  },
+  "status": {
+    "title": "Estado del servicio",
+    "description": "Si la API de Overtone, su base de datos y el worker de análisis están funcionando ahora.",
+    "intro": "Lo que dice ahora el chequeo de salud del propio sitio. Vuelve a preguntar cada 30 segundos mientras esta página está abierta, y más espaciado mientras el servicio no contesta.",
+    "api": "API",
+    "database": "Base de datos",
+    "worker": "Worker de análisis",
+    "states": {
+      "ok": "Funcionando",
+      "down": "No contesta",
+      "none": "En memoria (desarrollo)",
+      "unknown": "Todavía no se vio",
+      "unreachable": "Inalcanzable"
+    },
+    "notes": {
+      "api": "Contesta los pedidos del sitio.",
+      "database": "Guarda la cola, los resultados y las cuentas.",
+      "worker": "Corre los análisis. Mientras no anda, las subidas esperan en la cola.",
+      "workerSeen": "Se supo de él hace {{seconds}} s.",
+      "workerUnknown": "Ningún worker llamó desde que la API arrancó por última vez.",
+      "unreachable": "La API no contestó, así que el resto no se puede chequear."
+    },
+    "checked": "Chequeado a las {{time}}",
+    "retry": "Chequear ahora",
+    "checking": "Chequeando…"
+  },
+  "errorPage": {
+    "title": "Algo salió mal",
+    "body": "Esta página tuvo un error y se detuvo. Recargarla suele arreglarlo; tus subidas y resultados en el servidor no se ven afectados.",
+    "reload": "Recargar la página",
+    "home": "Ir al inicio"
+  },
+  "check": {
+    "title": "Revisá acá",
+    "note": "Ordenado por tiempo. Escuchá esto primero.",
+    "empty": "Nada marcado: todas las secciones tienen confianza alta, sus ataques caen cerca de la grilla y el motor no encontró medio tiempo, doble tiempo ni swing. Igual escuchalo antes de rankear.",
+    "show": "Ver",
+    "play": "Repetir este tramo con los clicks",
+    "how": "Ver marca el tramo en el mapa; ⟲ lo repite con los clicks. Cada ítem es evidencia que el motor ya reportó, no una lectura nueva.",
+    "needsAudio": "Ver marca el tramo en el mapa. Elegí la canción arriba para repetirlo con los clicks.",
+    "line": "red line {{n}}",
+    "lines": "red lines {{from}}–{{to}}",
+    "drift": "desvío p90 {{ms}} ms",
+    "pulse": "¿medio o doble tiempo?",
+    "triplets": "tresillos",
+    "reason": {
+      "check": "Revisar",
+      "medium": "Media",
+      "drift": "Desvío",
+      "hint": "Pulso",
+      "swing": "Swing"
+    },
+    "why": {
+      "check": "El motor no está seguro de esta sección: confianza baja, un ajuste flojo o un aviso.",
+      "medium": "Confianza media: probablemente bien, vale una escucha.",
+      "drift": "Uno de cada diez ataques cae a más de {{ms}} ms de esta grilla.",
+      "hint": "Acá los ataques se espacian a uno cada dos tiempos: posible medio o doble tiempo.",
+      "swing": "Acá la corchea a contratiempo cae tarde: swing."
+    }
+  },
+  "exports": {
+    "more": "Más descargas",
+    "patchTitle": "Poné el timing en tu .osu",
+    "patchPick": "Elegí tu .osu…",
+    "patchNote": "Sus red lines se reemplazan por estas (con tus ajustes); las green lines, los hit objects y cada otra línea quedan como estaban, byte a byte. Se parchea acá: el archivo no se sube. Guardá el original hasta revisar el nuevo en osu!.",
+    "patched": "Descargado con {{added}} red lines en lugar de {{removed}}; {{kept}} green lines quedaron como estaban.",
+    "greensBefore_one": "{{count}} green line ahora queda antes de la primera red line. Se mantiene: osu! la lee con la primera red line.",
+    "greensBefore_other": "{{count}} green lines ahora quedan antes de la primera red line. Se mantienen: osu! las lee con la primera red line.",
+    "carried_one": "Se agregó {{count}} green line donde una red line quitada fijaba los hitsounds, el kiai o la velocidad de los sliders, para que el mapa suene y se deslice como antes.",
+    "carried_other": "Se agregaron {{count}} green lines donde red lines quitadas fijaban los hitsounds, el kiai o la velocidad de los sliders, para que el mapa suene y se deslice como antes.",
+    "objects_one": "{{count}} hit object no se movió: puede que ya no caiga en la grilla nueva. Revisalo en el editor.",
+    "objects_other": "{{count}} hit objects no se movieron: puede que ya no caigan en la grilla nueva. Revisalos en el editor.",
+    "patchError": {
+      "notOsu": "Eso no es un beatmap de osu! (.osu): su primera línea no es \"osu file format\".",
+      "noTimingPoints": "Ese .osu no tiene una sección [TimingPoints] donde poner las red lines.",
+      "noLines": "No hay red lines para poner.",
+      "tooBig": "Ese archivo es demasiado grande para ser un .osu.",
+      "failed": "No se pudo leer el .osu."
+    },
+    "clickTitle": "Pista de clic (WAV)",
+    "clicksOnly": "Solo los clicks",
+    "clicksMix": "Clicks sobre la canción",
+    "rendering": "Renderizando…",
+    "clickNote": "Los clicks que escuchás, con el primer tiempo del compás acentuado, al largo de la canción (hasta {{minutes}} minutos). Sobre la canción, a tus volúmenes. Se renderiza acá; no se sube nada.",
+    "clickNeedsAudio": "Los clicks que escuchás, con el primer tiempo del compás acentuado, al largo de la canción (hasta {{minutes}} minutos). Elegí la canción arriba para mezclarlos sobre ella.",
+    "clickCapped": "La canción dura más de {{minutes}} minutos: la pista termina ahí.",
+    "clickFailed": "No se pudo renderizar la pista de clic en este navegador.",
+    "filesTitle": "Archivos",
+    "json": "Resultado (JSON)",
+    "summary": "Resumen (TXT)",
+    "filesNote": "El CSV y el resumen siguen tus ajustes; el JSON es el resultado del motor tal como lo mandó el servidor."
+  },
+  "community": {
+    "nav": "Comunidad",
+    "title": "Comunidad",
+    "subtitle": "Sugerí qué debería hacer Overtone, contá qué te parece y mirá qué cambió.",
+    "tabs": {
+      "suggestions": "Sugerencias",
+      "reviews": "Reseñas",
+      "changelog": "Cambios"
+    },
+    "more_one": "Ver {{count}} más",
+    "more_other": "Ver {{count}} más",
+    "cancel": "Cancelar",
+    "yours": "Tuya",
+    "loading": "Cargando…",
+    "deletedAccount": "una cuenta borrada",
+    "states": {
+      "open": "Abierta",
+      "review": "En revisión",
+      "planned": "Planeada",
+      "progress": "En progreso",
+      "done": "Hecha",
+      "rejected": "Rechazada"
+    },
+    "errors": {
+      "failed": "No funcionó. Probá de nuevo.",
+      "load": "No se pudo cargar. Probá de nuevo en un rato.",
+      "NETWORK": "No se pudo llegar al servidor.",
+      "TOO_SHORT": "Es demasiado corto.",
+      "TOO_LONG": "Es demasiado largo.",
+      "REASON_REQUIRED": "Hace falta un motivo.",
+      "STAFF_ONLY": "Solo el staff puede hacer esto.",
+      "SIGN_IN_REQUIRED": "Primero entrá con tu cuenta.",
+      "RATE_LIMITED": "Demasiados seguidos. Esperá unos minutos.",
+      "REVIEW_LIMIT": "Sin cuenta podés dejar dos reseñas por día. Entrá para dejar una que puedas editar.",
+      "FORM_TOO_FAST": "El formulario venció o se mandó demasiado rápido. Recargá la página y probá de nuevo.",
+      "NOT_ACCEPTED": "Esta reseña no se aceptó.",
+      "BAD_STARS": "Elegí de 1 a 5 estrellas.",
+      "SAME_STATE": "Ya está en ese estado.",
+      "NO_CHANGE": "No hay nada que cambiar.",
+      "NOT_FOUND": "Ya no está."
+    },
+    "suggestions": {
+      "signInToPost": "Entrá con Mides para sugerir o votar.",
+      "signInToVote": "Entrá para votar",
+      "sortBy": "Orden",
+      "sort": {
+        "votes": "Más votadas",
+        "new": "Más nuevas"
+      },
+      "filter": "Estado",
+      "allStates": "Todas",
+      "empty": "Todavía no hay sugerencias acá.",
+      "new": "Sugerir algo",
+      "title": "Título",
+      "body": "Qué y por qué",
+      "post": "Publicar sugerencia",
+      "voteLabel_one": "{{count}} voto. Votar esta",
+      "voteLabel_other": "{{count}} votos. Votar esta",
+      "staffSaid": "Staff:",
+      "details": "Historial",
+      "less": "Menos",
+      "noHistory": "Todavía no cambió de estado."
+    },
+    "reviews": {
+      "empty": "Todavía no hay reseñas. Dejá la primera.",
+      "starsLabel_one": "{{count}} estrella de 5",
+      "starsLabel_other": "{{count}} estrellas de 5",
+      "starsLegend": "Estrellas",
+      "count_one": "{{count}} reseña",
+      "count_other": "{{count}} reseñas",
+      "weighting_one": "Las reseñas anónimas cuentan la mitad en el promedio ({{count}} hasta ahora).",
+      "weighting_other": "Las reseñas anónimas cuentan la mitad en el promedio ({{count}} hasta ahora).",
+      "formTitle": "Dejá una reseña",
+      "editTitle": "Tu reseña",
+      "yoursHidden": "Un moderador ocultó tu reseña. Solo vos y el staff la ven.",
+      "body": "Tus palabras",
+      "pickStars": "Elegí de 1 a 5 estrellas.",
+      "anonymousNote": "Sin cuenta la reseña es anónima, cuenta la mitad en el promedio y no se puede editar después.",
+      "post": "Publicar reseña",
+      "update": "Actualizar reseña",
+      "delete": "Borrar",
+      "deleteConfirm": "¿Borrar tu reseña?",
+      "thanks": "Gracias. Tu reseña ya está publicada.",
+      "anonymous": "Anónima",
+      "edited": "editada"
+    },
+    "moderation": {
+      "report": "Reportar",
+      "reported": "Reportado",
+      "reportPrompt": "¿Qué tiene de malo? Lo lee el staff.",
+      "hide": "Ocultar",
+      "unhide": "Mostrar",
+      "hidePrompt": "Ocultarlo a todos menos al staff. Motivo para el registro (obligatorio):",
+      "unhidePrompt": "Mostrarlo de nuevo. Motivo para el registro (opcional):",
+      "statePrompt": "Motivo, se muestra en la sugerencia (opcional):",
+      "rejectPrompt": "¿Por qué se rechaza? Se muestra en la sugerencia (obligatorio):",
+      "moveTo": "Mover a…",
+      "hiddenChip": "Oculta",
+      "hiddenBecause": "Oculta: {{reason}}",
+      "reports_one": "{{count}} reporte abierto",
+      "reports_other": "{{count}} reportes abiertos",
+      "staffTitle": "Staff: reportes y registro",
+      "openReports": "Reportes abiertos",
+      "noReports": "No hay reportes abiertos.",
+      "logTitle": "Registro de moderación",
+      "logEmpty": "Todavía no se moderó nada.",
+      "kind": {
+        "suggestion": "sugerencia",
+        "review": "reseña",
+        "comment": "comentario"
+      },
+      "did": {
+        "state": "@{{moderator}} la pasó de {{from}} a {{to}}",
+        "hide": "@{{moderator}} ocultó una {{kind}}",
+        "unhide": "@{{moderator}} volvió a mostrar una {{kind}}"
+      }
+    },
+    "changelog": {
+      "source": "En inglés: sale del registro de ingeniería del proyecto (docs/timeline.md), que se escribe en inglés. Las últimas entradas y qué cambió en cada una.",
+      "empty": "No hay entradas.",
+      "unreleased": "Sin publicar"
+    }
+  },
+  "timings": {
+    "nav": {
+      "recent": "Recientes",
+      "history": "Historial"
+    },
+    "untitled": "Sin título",
+    "unknownArtist": "Artista desconocido",
+    "variable": "Variable",
+    "redLines_one": "{{count}} red line",
+    "redLines_other": "{{count}} red lines",
+    "anonymous": "anónimo",
+    "timedBy": "timeado por {{name}}",
+    "timedAnonymously": "timeado de forma anónima",
+    "loadFailed": "No se pudo leer la lista. Probá de nuevo en un momento.",
+    "more": "Ver más",
+    "publish": {
+      "title": "Compartir",
+      "note": "Solo vos podés abrir este resultado. Publicalo para darle una página pública y sumarlo a los recientes; lo podés sacar cuando quieras.",
+      "isPublic": "Público en",
+      "privateWarning": "Esta subida es privada. Publicarla la hace pública: se van a ver la canción y tu nombre.",
+      "publish": "Publicar",
+      "busy": "Publicando…",
+      "makePublic": "Hacerla pública y publicar",
+      "keepPrivate": "Dejarla privada",
+      "unpublish": "Despublicar",
+      "copyLink": "Copiar enlace",
+      "copied": "Enlace copiado",
+      "failed": "No funcionó. Probá de nuevo en un momento."
+    },
+    "page": {
+      "eyebrow": "Timing publicado",
+      "published": "publicado el {{date}}",
+      "yourOwn": "Timeá tu propia canción",
+      "notFoundTitle": "No encontramos el timing",
+      "notFound": "Este timing no existe, o quien lo publicó lo sacó.",
+      "toRecent": "Ver timings recientes"
+    },
+    "audio": {
+      "none": "Elegí tu propia copia de esta canción para escucharla con los clicks, ver su forma de onda y armar el .osz.",
+      "mismatch": "{{name}} no es el audio con el que se hizo este timing: su huella es distinta. Elegí la misma versión de la canción.",
+      "privacy": "Tu archivo se lee acá, en tu dispositivo. Al servidor solo va su SHA-1, y responde si coincide; el archivo nunca se sube."
+    },
+    "recent": {
+      "title": "Timings recientes",
+      "subtitle": "Canciones que la gente timeó y eligió publicar, las más nuevas primero. Cada una abre su mapa de tempo, sus red lines y sus exportaciones.",
+      "empty": "Todavía nadie publicó un timing.",
+      "noMatch": "Ningún timing publicado coincide con estos filtros.",
+      "analyze": "Timeá una canción"
+    },
+    "home": {
+      "title": "Publicados hace poco",
+      "all": "Todos los recientes"
+    },
+    "filters": {
+      "search": "Título o artista",
+      "searchPlaceholder": "Buscar…",
+      "tempo": "Tempo",
+      "any": "Cualquiera",
+      "single": "Tempo único",
+      "variable": "Tempo variable",
+      "bpm": "BPM",
+      "bpmMin": "BPM mínimo",
+      "bpmMax": "BPM máximo",
+      "from": "desde",
+      "to": "hasta",
+      "status": "Estado",
+      "dates": "Analizado entre",
+      "fromDate": "Primer día",
+      "toDate": "Último día",
+      "clear": "Limpiar filtros"
+    },
+    "history": {
+      "title": "Historial",
+      "subtitle": "Todo lo que analizaste con esta cuenta. Publicá, despublicá o borrá cada uno desde acá.",
+      "anonymousSubtitle": "Sin cuenta, solo este navegador recuerda tus últimos análisis.",
+      "signInPrompt": "Entrá para tener todos tus análisis en un lugar, encontrarlos desde cualquier dispositivo y publicarlos con tu nombre.",
+      "browserEmpty": "Este navegador todavía no tiene análisis.",
+      "forget": "Olvidar",
+      "empty": "Todavía no analizaste nada con esta cuenta.",
+      "noMatch": "Ninguno de tus análisis coincide con estos filtros.",
+      "public": "Público",
+      "openPublic": "Abrir página pública",
+      "delete": "Borrar",
+      "deleteConfirm": "¿Lo borrás para siempre?",
+      "deleteYes": "Borrar",
+      "deleteNo": "Cancelar",
+      "deleteNote": "Borrar un análisis borra su resultado y baja su página pública en el momento. Una canción que todavía espera se cancela desde su propia página; una que se está analizando se puede borrar cuando termine.",
+      "failed": "No funcionó. Probá de nuevo en un momento.",
+      "all": "Historial"
+    }
+  },
+  "exportOptions": {
+    "title": "Opciones de exportación",
+    "reset": "Volver al timing como está",
+    "offsetDecimals": "Decimales del offset (ms)",
+    "offsetDecimalsNote": "Para Quaver y StepMania, que aceptan fracciones de milisegundo. osu! siempre lee ms enteros; Clone Hero cuenta en ticks.",
+    "bpmDecimals": "Redondear el BPM a",
+    "bpmFull": "Completo",
+    "bpmNote": "Cada BPM se escribe como lo tiene la página. Redondearlo lo hace más fácil de leer, y corre la grilla al final de cada red line.",
+    "driftEnd": "Con el BPM redondeado, la grilla se corre hasta {{ms}} ms al final de la canción.",
+    "driftLine": "Con el BPM redondeado, la grilla se corre hasta {{ms}} ms al final de la red line {{line}}.",
+    "firstOnly": "Solo la primera red line",
+    "firstOnlyNote": "Para una canción que querés en un solo tempo: el resto corre con la grilla de la primera línea, sin revisar.",
+    "firstOnlyOn_one": "{{count}} red line posterior queda afuera de las exportaciones.",
+    "firstOnlyOn_other": "{{count}} red lines posteriores quedan afuera de las exportaciones.",
+    "globalOffset": "Sumar a cada offset",
+    "globalOffsetNote": "Para la convención de sincronía de un juego o de un pack. A diferencia del nudge, solo mueve lo que se escribe, nunca los clicks que escuchás, y se recuerda entre canciones.",
+    "inForce": {
+      "label": "Opciones de exportación activas: {{list}}. El .osz, la copia y los otros archivos las siguen; los clicks no.",
+      "bpm_one": "BPM a {{count}} decimal",
+      "bpm_other": "BPM a {{count}} decimales",
+      "first": "solo la primera red line",
+      "offset": "{{ms}} ms sumados"
+    }
+  },
+  "gameFormats": {
+    "title": "Otros juegos (solo timing, sin notas)",
+    "note": "Las red lines como las exportás, en las unidades de cada juego: abrí el archivo en el editor del juego y charteá encima. Se arma acá; no se sube nada, y ningún juego confirmó todavía que acepte el archivo.",
+    "etterna": "Etterna lee el .sm de StepMania: usá ese. No tiene un formato de timing propio para escribir.",
+    "cloneHero": "Clone Hero: se guarda como notes.chart. Ponelo en una carpeta con tu canción llamada song{{ext}}.",
+    "rows_one": "StepMania pone un cambio de tempo en el 1/48 de tiempo más cercano: acá eso mueve {{count}} cambio hasta {{ms}} ms.",
+    "rows_other": "StepMania pone un cambio de tempo en el 1/48 de tiempo más cercano: acá eso mueve {{count}} cambios hasta {{ms}} ms.",
+    "smMeter": "Un .sm no tiene compases, así que se leen como 4/4. El .ssc los conserva.",
+    "quaMeter_one": "Quaver solo conoce 4/4 y 3/4: {{count}} red line en otro compás se escribe como 4/4.",
+    "quaMeter_other": "Quaver solo conoce 4/4 y 3/4: {{count}} red lines en otro compás se escriben como 4/4.",
+    "chartFitted_one": "{{count}} cambio de tempo cae entre los ticks de Clone Hero: el BPM anterior se ajusta apenas para que caiga a tiempo (a menos de {{ms}} ms).",
+    "chartFitted_other": "{{count}} cambios de tempo caen entre los ticks de Clone Hero: el BPM anterior a cada uno se ajusta apenas para que caigan a tiempo (a menos de {{ms}} ms).",
+    "failed": "No se pudo armar ese archivo con estas red lines."
+  },
+  "oszPlus": {
+    "title": "Opciones del .osz",
+    "suggestion": "sugerencia",
+    "note": "El preview, el lead-in y el kiai son sugerencias a partir del volumen de la canción y las red lines, no mediciones: revisalos en el editor de osu! antes de rankear.",
+    "cover": "Portada como fondo",
+    "coverFound": "De los tags del propio archivo, guardada como {{name}}.",
+    "coverNone": "Los tags del archivo no tienen una portada JPEG o PNG.",
+    "coverReading": "Leyendo los tags del archivo…",
+    "coverAlt": "La portada de la canción, de sus tags",
+    "preview": "Preview time",
+    "previewAt": "{{time}}: donde empiezan los 15 s más fuertes, en un compás.",
+    "previewNone": "Ningún tramo se destaca: la selección de canciones elige el suyo.",
+    "needsSong": "Necesita la canción decodificada arriba.",
+    "leadIn": "Audio lead-in",
+    "leadInAt": "{{ms}} ms: el primer sonido llega a los {{first}} s, muy pronto para agarrar el pulso.",
+    "leadInNone": "No hace falta: el primer sonido llega a los {{first}} s.",
+    "leadInUnknown": "No hay de dónde sacarlo: ni red line ni ataque.",
+    "kiai": "Kiai time",
+    "kiaiAt": "Green lines sobre los compases claramente más fuertes que el resto: {{spans}}.",
+    "kiaiNone": "Ningún tramo es claramente más fuerte que el resto: nada que sugerir.",
+    "openTipTitle": "¿Querés que el .osz se abra solo en osu!?",
+    "openTipChromium": "En Chrome o Edge, abrí el menú de la descarga (los ⋯ al lado, en la lista de descargas) y elegí “Abrir siempre archivos de este tipo”. El próximo .osz va directo a osu!.",
+    "openTipFirefox": "En Firefox, abrí Ajustes → General → Archivos y aplicaciones, buscá el tipo .osz y ponelo para abrir con osu!. El próximo .osz va directo a osu!.",
+    "openTipOsu": "Hace falta tener osu! instalado con los .osz asociados, cosa que hace su instalador. El sitio no puede abrir el archivo por vos: una página web nunca ejecuta lo que descarga.",
+    "openTipClose": "Entendido",
+    "openTipNever": "No mostrar más"
+  },
+  "listening": {
+    "subdivision": "Entre tiempos",
+    "subOff": "No",
+    "subVolume": "Volumen de las subdivisiones",
+    "legendSubs": "Subdivisiones de 1/{{n}} que tocan los clics",
+    "exportSubs": "Con las subdivisiones de 1/{{n}}",
+    "ab": "Clics de",
+    "abLabel": "Qué red lines tocan los clics (A)",
+    "abYours": "Tus líneas",
+    "abEngine": "Las del engine",
+    "abSame": "son las mismas hasta que las ajustes",
+    "tap": "Tocar",
+    "clear": "Borrar toques",
+    "tapHint": "Tocá T (o el botón) en cada tiempo: con cuatro toques sale un tempo; mientras suena la canción, con ocho sale un offset.",
+    "tapMore_one": "Un toque más para un tempo.",
+    "tapMore_other": "{{count}} toques más para un tempo.",
+    "taps_one": "{{count}} toque",
+    "taps_other": "{{count}} toques",
+    "compare": {
+      "match": "coincide con la red line de acá ({{bpm}})",
+      "double": "cerca de ×2 la red line de acá ({{bpm}}): puede estar a medio tiempo",
+      "half": "cerca de ×0,5 la red line de acá ({{bpm}}): puede estar a doble tiempo",
+      "other": "{{ratio}}× la red line de acá ({{bpm}})"
+    },
+    "offsetHint": "Seguí tocando en los tiempos: con {{count}} toques la página propone un offset global.",
+    "offsetReading_one": "Tus toques caen a {{ms}} ms de la grilla, ±{{spread}} ({{count}} toque contado).",
+    "offsetReading_other": "Tus toques caen a {{ms}} ms de la grilla, ±{{spread}} ({{count}} toques contados).",
+    "offsetApply": "Poner el offset global en {{ms}} ms",
+    "offsetNoLatency": "Sin latencia calibrada: los toques se toman como se oyen, y una mano tarde parece una canción tarde.",
+    "latency": "Latencia",
+    "latencyNone": "sin calibrar",
+    "calibrate": "Calibrar…",
+    "shiftClicks": "Adelantar los clics esa cantidad",
+    "note": "Los toques son tu mano, no una medición: cada propuesta muestra su dispersión y nada cambia hasta que apretás. La latencia corre tus toques (y los clics, si lo pedís); nunca corre una exportación.",
+    "calTitle": "Calibrá tu latencia",
+    "calIntro": "Vas a oír {{count}} clics parejos. Tocá Espacio, T o el panel en cada uno, de oído: a propósito no hay nada que mirar. Los primeros cuatro son para agarrar el pulso.",
+    "calStart": "Empezar",
+    "calAgain": "Probar de nuevo",
+    "calClose": "Cerrar",
+    "calPad_one": "Tocá acá en cada clic · {{count}} toque",
+    "calPad_other": "Tocá acá en cada clic · {{count}} toques",
+    "calTooFew": "Muy pocos toques cayeron cerca de los clics para decir algo. Probá de nuevo y seguí hasta el final.",
+    "calUnsteady": "Los toques fueron muy desparejos para decir algo (±{{spread}} ms). Probá de nuevo, más relajado.",
+    "calKept": "{{kept}} toques contados, {{dropped}} descartados",
+    "calSave": "Guardar {{ms}} ms",
+    "calNote": "Es lo que tu navegador no informa de su demora de audio (el Bluetooth suele sumar 100 ms o más), más tu propio timing. Se guarda solo en este navegador."
+  },
+  "compare": {
+    "action": "Comparar",
+    "other": "Otro timing",
+    "result": "Resultado",
+    "resultAdjusted": "Resultado (ajustado)",
+    "map": "Mapa",
+    "withAnother": "Comparar con otro timing",
+    "withAdjusted": "Comparar el timing del engine con tu ajuste",
+    "clicksFrom": "Clics de",
+    "verdict": {
+      "same": "La misma grilla, a menos de {{ms}} ms.",
+      "later": "El mismo tempo, pero {{b}} va {{ms}} ms después que {{a}} en cada tiempo.",
+      "earlier": "El mismo tempo, pero {{b}} va {{ms}} ms antes que {{a}} en cada tiempo.",
+      "double": "{{b}} va al doble del tempo de {{a}}; por lo demás, la misma grilla a menos de {{ms}} ms.",
+      "half": "{{b}} va a la mitad del tempo de {{a}}; por lo demás, la misma grilla a menos de {{ms}} ms.",
+      "different": "Distintos: coincide el {{share}} % de la canción; se separan por primera vez en {{at}}.",
+      "noOverlap": "No hay nada que comparar: un timing empieza después de que termina la canción."
+    },
+    "tolerance": "Juzgado con las tolerancias de las pruebas de precisión, {{ms}} ms y {{bpm}} BPM, en cada tiempo desde {{from}} hasta el final. Una línea a un número entero de tiempos es la misma grilla.",
+    "related": "Otro {{share}} % cae en los mismos tiempos a la mitad o al doble del tempo.",
+    "meterDiffers_one": "El compás cambia en {{count}} red line.",
+    "meterDiffers_other": "El compás cambia en {{count}} red lines.",
+    "barsShifted_one": "En {{count}} red line el compás arranca en otro tiempo.",
+    "barsShifted_other": "En {{count}} red lines el compás arranca en otro tiempo.",
+    "unmatchedCount_one": "{{count}} red line no tiene pareja en el otro timing.",
+    "unmatchedCount_other": "{{count}} red lines no tienen pareja en el otro timing.",
+    "tableCaption": "Las red lines de {{a}} y {{b}}, emparejadas por tiempo",
+    "col": {
+      "time": "{{name}} en",
+      "offset": "Offset",
+      "offsetHint": "Cuánto se corre la segunda grilla de la primera donde arrancan las dos líneas, en ms. A un número entero de tiempos da 0.",
+      "end": "Al final",
+      "endHint": "Lo mismo, en el último tiempo que comparten las dos líneas: una diferencia que no estaba al principio es drift.",
+      "status": "Coincidencia"
+    },
+    "kind": {
+      "double": "×2",
+      "half": "×½",
+      "other": "otro tempo"
+    },
+    "barShift_one": "compás +{{count}} tiempo",
+    "barShift_other": "compás +{{count}} tiempos",
+    "agree": "coinciden",
+    "apart": "difieren",
+    "only": "solo {{name}}",
+    "onlyAgrees": "{{own}} tiene una línea acá; la grilla de {{other}} ya coincide, así que no cambia nada.",
+    "onlyMissing": "{{own}} tiene una línea acá y {{other}} no.",
+    "signNote": "Las diferencias son {{b}} menos {{a}}: un offset positivo quiere decir que {{b}} llega después.",
+    "playHere": "Reproducir desde acá",
+    "withMap": {
+      "title": "Comparar con un mapa",
+      "note": "Elegí un .osu de la misma canción para ver, red line por red line, en qué difiere su timing de este: BPM, offset y compás.",
+      "privacy": "El .osu se lee en este navegador y se olvida cuando te vas: nunca se sube ni se guarda.",
+      "pick": "Elegir un .osu",
+      "pickAgain": "Otro .osu",
+      "clear": "Dejar de comparar",
+      "lines_one": "{{count}} red line",
+      "lines_other": "{{count}} red lines",
+      "otherAudio": "El audio de este mapa es {{map}} y este análisis es de {{file}}. Si no son el mismo audio, la comparación no dice nada.",
+      "errors": {
+        "notOsu": "Ese archivo no es un .osu.",
+        "noTimingPoints": "Ese .osu no tiene sección [TimingPoints].",
+        "noRedLines": "Ese .osu no tiene ninguna red line para comparar.",
+        "tooManyLines": "Ese .osu tiene más de 2000 red lines.",
+        "tooBig": "Ese archivo pesa más de 16 MB.",
+        "unreadable": "No se pudo leer ese archivo."
+      }
+    },
+    "page": {
+      "title": "Comparar dos timings",
+      "eyebrow": "Comparar",
+      "subtitle": "Dos análisis de la misma canción, tuyos o publicados, o uno contra su propia versión ajustada: red line por red line y en un solo mapa de tempo.",
+      "side": "Timing {{letter}}",
+      "swap": "Intercambiar A y B",
+      "change": "Cambiar",
+      "cancel": "Cancelar",
+      "yours": "tuyo",
+      "published": "publicado",
+      "adjust": "Ajuste",
+      "nudge": "Corrimiento",
+      "sameAdjusted": "El otro a ×{{factor}}",
+      "noneYours": "Todavía no tenés análisis terminados en tu historial.",
+      "noneHere": "Todavía no hay análisis en este navegador. Iniciá sesión para elegir de tu historial.",
+      "pasteLabel": "Un id de análisis o un enlace a un timing publicado",
+      "pastePlaceholder": "Pegá un enlace /t/ o un id",
+      "use": "Usar",
+      "badRef": "Eso no es un enlace a un timing ni un id de análisis.",
+      "errors": {
+        "notDone": "Ese análisis no terminó o no tiene red lines.",
+        "notFound": "No existe ese timing, o no es tuyo y no está publicado.",
+        "network": "No se pudo llegar al servidor. Probá de nuevo en un momento."
+      },
+      "difference": "Red line por red line",
+      "otherAudio": "A y B son análisis de dos archivos de audio distintos: la comparación solo dice algo si son la misma canción, cortada igual.",
+      "mapNote": "El mapa de tempo de A, con las red lines de B punteadas en azul. La canción es tu propio archivo del audio de A, leído en este navegador; los clics tocan la grilla de A o la de B encima."
+    }
+  },
+  "palette": {
+    "open": "Buscar páginas y comandos ({{shortcut}})",
+    "title": "Ir a o ejecutar",
+    "placeholder": "Una página, un análisis o un comando…",
+    "results": "Resultados",
+    "empty": "Nada coincide con “{{query}}”.",
+    "footer": "↑ ↓ para moverte · Enter para abrir · Esc para cerrar · ? para todos los atajos",
+    "inProgress": "Analizando",
+    "waiting": "En la cola",
+    "current": "Actual",
+    "groups": {
+      "page": "Página",
+      "analysis": "Análisis",
+      "action": "Acción"
+    },
+    "actions": {
+      "theme": {
+        "dark": "Tema oscuro",
+        "light": "Tema claro",
+        "system": "Tema como el sistema"
+      },
+      "contrastOn": "Activar alto contraste",
+      "contrastOff": "Desactivar alto contraste",
+      "settings": "Abrir ajustes",
+      "shortcuts": "Atajos de teclado"
+    },
+    "help": {
+      "title": "Atajos de teclado",
+      "close": "Cerrar",
+      "note": "Ninguna de estas teclas actúa mientras escribís en un campo, salvo Ctrl+K (⌘K), que nunca escribe nada.",
+      "global": {
+        "title": "En cualquier página",
+        "palette": "Ir a una página, un análisis o un comando",
+        "help": "Esta lista",
+        "close": "Cerrar un diálogo"
+      },
+      "result": {
+        "title": "En un resultado",
+        "play": "Reproducir o pausar",
+        "beat": "Un pulso atrás o adelante",
+        "bar": "Un compás atrás o adelante",
+        "zoom": "Acercar o alejar",
+        "fit": "Ver la canción entera",
+        "lines": "Red line anterior o siguiente",
+        "loop": "Activar o desactivar el bucle",
+        "clicks": "Activar o desactivar los clics",
+        "follow": "Seguir o no el cabezal"
+      }
+    }
+  },
+  "settings": {
+    "title": "Ajustes",
+    "description": "Cómo se ve y se escucha Overtone en este navegador: tema, contraste, tamaño de letra, colores del mapa, movimiento, volúmenes y latencia.",
+    "subtitle": "Cómo se ve y se escucha Overtone en este navegador. Cada opción se aplica al instante y queda guardada acá, en este dispositivo: sin cuenta y sin enviar nada.",
+    "appearance": {
+      "title": "Apariencia",
+      "note": "Solo para este navegador. Otro dispositivo guarda los suyos."
+    },
+    "theme": {
+      "label": "Tema",
+      "system": "Como el sistema",
+      "dark": "Oscuro",
+      "light": "Claro",
+      "hint": "“Como el sistema” sigue el modo claro u oscuro de tu dispositivo y cambia con él."
+    },
+    "contrast": {
+      "label": "Alto contraste",
+      "hint": "Texto más oscuro y líneas más marcadas en modo claro, más brillantes en oscuro: cada color de texto a 7:1 o más contra su fondo (WCAG AAA)."
+    },
+    "font": {
+      "label": "Tamaño de letra",
+      "hint": "De 90 % a 130 %. Los espacios crecen con el texto, así las líneas mantienen su largo."
+    },
+    "palette": {
+      "label": "Colores del mapa de tempo",
+      "default": "Predeterminados",
+      "cb": "Aptos para daltonismo",
+      "hint": "Separa las red lines, “revisar de oído” y el tempo para protanopia, deuteranopia y tritanopia, en el mapa y en todo lugar donde aparecen.",
+      "preview": "Los colores del mapa ahora",
+      "swatch": {
+        "red": "Red lines",
+        "amber": "Revisar de oído",
+        "lavender": "Tempo",
+        "accent": "Confianza alta"
+      }
+    },
+    "motion": {
+      "label": "Movimiento",
+      "system": "Como el sistema",
+      "reduce": "Reducir",
+      "allow": "Permitir",
+      "systemReduce": "Tu sistema pide movimiento reducido ahora.",
+      "systemAllow": "Tu sistema no pide movimiento reducido ahora."
+    },
+    "reset": "Restablecer contraste, tamaño, colores y movimiento",
+    "language": {
+      "title": "Idioma",
+      "label": "Idioma del sitio",
+      "en": "English",
+      "es": "Español"
+    },
+    "audio": {
+      "title": "Reproductor",
+      "note": "Dónde arrancan la canción y los clics en un resultado. Mover un control allá también cambia estos.",
+      "song": "Volumen de la canción",
+      "click": "Volumen de los clics",
+      "clicksOn": "Clics activados al abrir un resultado"
+    },
+    "latency": {
+      "label": "Latencia del dispositivo",
+      "none": "Sin medir",
+      "value": "{{ms}} ms",
+      "hint": "Cuánto tardan en sonar los parlantes o auriculares de este dispositivo. El reproductor corre solo sus clics, nunca una exportación. Medila de oído en",
+      "calibrateLatest": "tu último resultado.",
+      "calibrateRecent": "cualquier resultado.",
+      "type": "O escribila",
+      "placeholder": "p. ej. 40",
+      "save": "Fijar",
+      "reset": "Olvidarla",
+      "invalid": "Escribí un número de milisegundos entre {{min}} y {{max}}."
+    }
+  },
+  "learn": {
+    "footer": {
+      "title": "Aprender",
+      "how": "Cómo funciona",
+      "faq": "Preguntas",
+      "glossary": "Glosario",
+      "stats": "Estadísticas"
+    },
+    "source": "Dónde está escrito",
+    "term": {
+      "open": "¿Qué es “{{term}}”?",
+      "more": "Más en el glosario",
+      "close": "Cerrar"
+    },
+    "how": {
+      "title": "Cómo funciona",
+      "description": "Qué pasa entre que subís el audio y las red lines: decodificación, ataques, el barrido de tempo, la octava, las secciones y la confianza, paso a paso.",
+      "intro": "Qué pasa entre que subís el audio y las red lines. Cada paso de abajo es el engine v3 (python/overtone.py) tal como lo corre el worker del sitio, con los valores por defecto de una instalación nueva de escritorio. Cada uno nombra el documento donde está especificado, así esta página se puede contrastar con el código.",
+      "diagram": {
+        "title": "El pipeline",
+        "desc": "Seis pasos del archivo de audio al timing: decodificar, ataques, barrido de tempo y ajuste de grilla, octava con el voto de Beat This!, secciones y red lines, niveles de confianza."
+      },
+      "steps": [
+        {
+          "id": "decode",
+          "label": "Decodificar",
+          "h": "1. Decodificar",
+          "p": [
+            "El archivo se decodifica a un solo canal mono a 44,1 kHz y se normaliza su pico. Un archivo de menos de 2 s se rechaza, y el sitio también pone un tope de duración (los límites actuales están en las preguntas).",
+            "El audio espera en el servidor solo hasta que termina el análisis, con el id del análisis y sin nombre, y después se borra (ADR-W4)."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.1",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "docs/site.md, How an analysis goes",
+              "path": "docs/site.md"
+            }
+          ]
+        },
+        {
+          "id": "attacks",
+          "label": "Ataques",
+          "h": "2. La envolvente de onsets y los ataques",
+          "p": [
+            "Un espectrograma mel (128 bandas hasta 11 kHz, un frame cada 2,9 ms) se convierte en una envolvente de onsets: cuánto más fuerte sonó cada banda de un frame al siguiente, la mediana entre bandas. Sus picos son los ataques: golpes de batería, punteos, el comienzo de las notas.",
+            "Después cada ataque se vuelve a ubicar sobre la onda cruda, con resolución de muestra: el momento en que la energía en una ventana de 1,5 ms empieza a subir. Un pico que no se destaca de lo que lo rodea se queda con su tiempo de la envolvente en vez de pegarse al ruido. En el benchmark sintético, este paso es la diferencia entre unos 8 ms y 0,16 ms."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.2-A.4",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "tempo",
+          "label": "Tempo y grilla",
+          "h": "3. El barrido de tempo y el ajuste de la grilla",
+          "p": [
+            "Cada período de beat entre 55 ms y 1,35 s (de unos 44 a 1090 BPM) se puntúa según qué tan bien se alinean los ataques con él (coherencia circular). Los candidatos más fuertes, y sus múltiplos, se prueban como semillas.",
+            "Una semilla se ajusta como una grilla recta, el beat k en offset + k × período, por mínimos cuadrados reponderados: los ataques que caen entre beats quedan afuera, y la tolerancia se achica en cada pasada. Las semillas arrancan con ventanas de 30 s y se achican hasta que una grilla engancha; después la grilla se extiende a todo el tramo que explica."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.5-A.7",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "octave",
+          "label": "Octava + Beat This!",
+          "h": "4. La octava y el voto de Beat This!",
+          "p": [
+            "Una grilla que encaja a 120 BPM también encaja a 60 y a 240. El engine puntúa cada nivel de beat según el patrón de acentos, la cobertura y un prior de tempo, y después lee el resultado en la octava en la que se suelen timear los mapas de osu!, de 120 a 240 BPM, y en el BPM entero de al lado cuando los ataques coinciden.",
+            "Después vota Beat This!, un detector de beats con una red neuronal. Sus beats se vuelven red lines candidatas, y reemplazan las del engine solo donde explican claramente mejor los ataques de la canción. También juzga octavas: una red line a una octava del resto de su canción se vuelve a leer en la octava de la canción cuando Beat This! la escucha ahí. Sin el modelo el voto no corre, y la página del resultado dice “voto desactivado”."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.8",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, analyze_audio y _beat_this_vote",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "sections",
+          "label": "Secciones",
+          "h": "5. Secciones y red lines",
+          "p": [
+            "La grilla avanza por la canción mientras cada tramo nuevo siga encajando. Donde uno deja de encajar, empieza una sección nueva con su propio barrido de tempo. Las vecinas con tempos demasiado parecidos se unen, los bordes se fijan donde se cruzan las dos grillas, y cada sección se vuelve a ajustar con sus propios ataques.",
+            "Cada sección se vuelve una red line. La primera se pone en un downbeat solo cuando los acentos prueban el compás; si no, el compás es una suposición y la tabla lo marca con “?”. El seguimiento de la deriva agrega una red line donde el tempo de una canción estable se aparta de su grilla fija, y solo cuando las líneas nuevas encajan con los ataques al menos un 10 % mejor."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.9-A.10",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, _follow_drift",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "confidence",
+          "label": "Confianza",
+          "h": "6. Niveles de confianza",
+          "p": [
+            "Cada sección recibe una confianza según qué tan ajustado es su fit, cuántos de sus beats tienen un ataque y cuánto dura. El sitio la muestra en tres niveles: alta desde 0,90 (y solo para un ajuste de grilla), media desde 0,75, y revisar de oído por debajo, con un residuo de ajuste de más de 30 ms, o cuando lo marcaron los propios controles del engine.",
+            "Estos niveles son lecturas de la evidencia del engine, no una precisión medida. 0,90 es donde una sección deja de necesitar una segunda mirada en las pistas sintéticas, donde todas las secciones dan 0,99 o más.",
+            "Cuando no encaja ninguna grilla estable (rubato, tiempo libre, sin percusión) el engine recurre a un detector de beats, y esas secciones nunca llegan a alta. El ruido blanco no recibe un BPM: se rechaza, con el motivo."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.10-A.11",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "worker/timing_result.py, HIGH, MEDIUM y LOOSE_RESIDUAL_MS",
+              "path": "worker/timing_result.py"
+            }
+          ]
+        }
+      ],
+      "ear": {
+        "h": "Qué quiere decir “revisar de oído”",
+        "p": [
+          "Todo timing es un primer borrador sólido. Revisarlo de oído es escucharlo contra la canción antes de mapear encima:"
+        ],
+        "li": [
+          "reproducí la canción con los clicks en la página del resultado, y escuchá el comienzo y alrededor de cada red line;",
+          "empezá por las secciones marcadas para revisar de oído (en ámbar), y mirá la columna de deriva;",
+          "si los clicks suenan antes o después en todos lados, probá el offset global; si llegan el doble o la mitad de seguido que el beat que sentís, probá mitad o doble;",
+          "corregí lo que todavía suene mal en el editor de osu!."
+        ],
+        "after": [
+          "Un nivel alto dice que la evidencia fue consistente, no que la línea esté bien."
+        ]
+      },
+      "time": {
+        "h": "Por qué un análisis tarda lo que tarda",
+        "p": [
+          "Una canción de 60 s tardó unos 10 s en la máquina de desarrollo con el voto prendido, más la espera en la cola si la hay. Casi todo se va en dos lugares: detectar los ataques (el espectrograma, y después la onda alrededor de cada ataque) y Beat This!, una red neuronal que lee el espectrograma de toda la canción en la CPU, 50 frames por segundo, en tramos de 30 s.",
+          "Los jueces de octava le preguntan a Beat This! solo cuando una red line parece estar a una octava, y guardan su respuesta para el resto de la canción. El primer análisis después de que arranca el worker además carga el modelo, unos segundos más. La página de estadísticas muestra la mediana y el percentil 90 del tiempo de la subida al resultado en este sitio."
+        ],
+        "src": [
+          {
+            "label": "docs/site.md, Run it on another machine",
+            "path": "docs/site.md"
+          },
+          {
+            "label": "worker/timing_result.py, STAGES",
+            "path": "worker/timing_result.py"
+          }
+        ]
+      },
+      "bench": {
+        "h": "Qué está medido, y qué todavía no",
+        "p": [
+          "El benchmark sintético (bench/benchmark.py) timea 24 pistas generadas cuya respuesta exacta se conoce: tempos estables de lentos a 300 BPM, cambios de tempo y de compás, un BPM decimal, swing y shuffle, jitter y ruido, una intro en silencio, drops y una pista de seis minutos. Las 24 secciones quedan a menos de 0,05 BPM y 5 ms; el error mediano es 0,0000 BPM y 0,16 ms. Al lado hay compuertas que fijan lo que el benchmark no puede ver, como la octava, que él normaliza.",
+          "Lo que no dice es cómo le va al engine con tu canción. La música real se mide en el Corpus B, 20 mapas ranked timeados a mano cuyas red lines el engine debería igualar a menos de 5 ms, y en muestras más grandes de mapas ranked en el servidor del dueño. Eso es investigación: los números cambian con cada cambio del engine y todavía no se publican en el sitio."
+        ],
+        "src": [
+          {
+            "label": "CLAUDE.md, Verification",
+            "path": "CLAUDE.md"
+          },
+          {
+            "label": "docs/timeline.md",
+            "path": "docs/timeline.md"
+          }
+        ]
+      }
+    },
+    "faq": {
+      "title": "Preguntas",
+      "description": "Por qué el BPM sale al doble, por qué dos red lines, el offset, la deriva, qué se guarda de tu audio, límites, formatos, el .osz y las cuentas.",
+      "intro": "Las preguntas que se hace un mapper sobre un resultado. Para las palabras, mirá el glosario; para los pasos, cómo funciona.",
+      "items": [
+        {
+          "id": "doubled",
+          "q": "¿Por qué mi BPM sale al doble (o a la mitad)?",
+          "a": [
+            "Un pulso que encaja a 90 BPM también encaja a 180 y a 45: los ataques coinciden con los tres. Cuál usa un mapa es en parte una convención. Overtone lee su resultado entre 120 y 240 BPM, donde se suelen timear los mapas de osu!, salvo que los ataques o Beat This! digan claramente otra cosa.",
+            "Si el tuyo es el otro, usá Mitad o doble en la página del resultado: el mapa, los clicks y todas las descargas cambian con eso, y la lectura del engine queda como estaba."
+          ],
+          "links": [
+            {
+              "label": "Octava",
+              "to": "/glossary#octave"
+            }
+          ]
+        },
+        {
+          "id": "two-lines",
+          "q": "¿Por qué hay dos red lines (o más)?",
+          "a": [
+            "Una red line empieza una grilla nueva. Overtone escribe una donde cambia el tempo, donde cambia el compás (una red line nueva con el mismo BPM), y donde el tempo de una canción estable se apartó lo suficiente de su grilla como para que un comienzo nuevo encaje con los ataques al menos un 10 % mejor.",
+            "Si te parece que alcanza con una, reproducí desde la segunda y escuchá: las columnas de deriva y de ajuste dicen qué tan bien cae cada línea sobre los ataques que tiene debajo."
+          ]
+        },
+        {
+          "id": "offset",
+          "q": "El offset está corrido unos ms. ¿Por qué?",
+          "a": [
+            "Overtone pone un beat donde la energía del ataque empieza a subir, medido sobre la onda. Los ataques suaves, la reverb y una mezcla cargada hacen ese momento menos nítido que en las pistas de clicks del benchmark, así que en canciones reales puede haber unos ms para un lado o el otro.",
+            "Si todos los clicks suenan antes o después por lo mismo, usá Offset global en la página del resultado y volvé a revisar de oído. El offset universal de osu! es la latencia de audio de tu dispositivo, no la del mapa: no lo metas en el mapa."
+          ]
+        },
+        {
+          "id": "drift",
+          "q": "¿Qué es la deriva (drift)?",
+          "a": [
+            "Qué tan lejos de su grilla caen los ataques que hay bajo una red line: la distancia mediana ponderada al tick de 1/1, 1/2, 1/3 o 1/4 más cercano, en ms. Hasta 5 ms es verde en la tabla, de 5 a 15 ms ámbar, más es rojo. Mucha deriva quiere decir que la grilla y lo que escuchás no coinciden ahí: un cambio de tempo que no vio, un baterista en vivo, o swing."
+          ],
+          "links": [
+            {
+              "label": "Deriva",
+              "to": "/glossary#drift"
+            }
+          ]
+        },
+        {
+          "id": "audio",
+          "q": "¿Se guarda mi audio?",
+          "a": [
+            "No. Lo que subís espera en el servidor con el id del análisis solo hasta que llega el resultado o un error, y después se borra; una canción que se contesta desde el caché se borra en el momento. Es una regla del proyecto (ADR-W4), no una opción.",
+            "Lo que queda es el SHA-1 del audio (para contestar desde el caché el mismo archivo), el resultado, el nombre del archivo y sus tags, hasta que borres el análisis. La página del resultado reproduce la canción desde tu propio navegador; el servidor nunca devuelve audio."
+          ],
+          "links": [
+            {
+              "label": "Privacidad",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "id": "limits",
+          "q": "¿Cuáles son los límites?",
+          "a": [
+            "Una canción que se contesta desde el caché (el mismo archivo con el mismo engine) no cuenta. Los contadores vuelven a cero a las 00:00 UTC."
+          ]
+        },
+        {
+          "id": "formats",
+          "q": "¿Qué formatos funcionan?",
+          "a": [
+            "MP3, OGG, WAV, FLAC, M4A y Opus. El archivo se controla por su extensión cuando llega y lo decodifica el engine; un archivo que no es audio, o que no puede decodificar, falla con un mensaje y no cuesta nada más."
+          ]
+        },
+        {
+          "id": "osz",
+          "q": "¿Cómo uso el .osz?",
+          "a": [
+            "El .osz se arma en tu navegador con tu propio archivo y el timing tal como lo ajustaste: un beatmap set con una dificultad que tiene las red lines y nada más. Hacele doble clic y osu!stable lo importa; abrilo en el editor y mapeá encima.",
+            "Necesita el audio que subiste, elegido de nuevo en la página del resultado y comparado con el análisis por su huella, porque el servidor no guarda audio para meterle."
+          ]
+        },
+        {
+          "id": "accounts",
+          "q": "¿Necesito una cuenta?",
+          "a": [
+            "No: cualquiera puede timear una canción (ADR-W6). Una cuenta de Mides, con Discord o Google, sube el límite diario, deja tus análisis legibles desde cualquier navegador y los lista en tu historial, y te deja publicar un timing con tu nombre.",
+            "Overtone guarda tu usuario, tus nombres y tu avatar de Mides, nunca tu e-mail ni un token de Mides."
+          ]
+        },
+        {
+          "id": "privacy",
+          "q": "¿Dónde está la política de privacidad?",
+          "a": [
+            "En su propia página, que dice qué se guarda, por cuánto tiempo y para qué, leído del código."
+          ],
+          "links": [
+            {
+              "label": "Privacidad",
+              "to": "/privacy"
+            }
+          ]
+        }
+      ],
+      "limits": {
+        "anon": "Sin cuenta: {{daily}} canciones por día, {{pending}} esperando a la vez.",
+        "user": "Con una cuenta de Mides: {{daily}} canciones por día, {{pending}} esperando a la vez.",
+        "size": "Cada canción hasta {{minutes}} min y {{mb}} MB.",
+        "loading": "Leyendo los límites actuales…",
+        "unreachable": "No se pudieron leer los límites ahora. La página de estado dice si la API está funcionando."
+      }
+    },
+    "glossary": {
+      "title": "Glosario",
+      "description": "Red line, green line, offset, BPM, compás, kiai, deriva, ajuste, onset, confianza, octava y Beat This!, como los usa Overtone.",
+      "intro": "Las palabras de la página del resultado, como las usa Overtone. Cada una es también un enlace en esa página: un subrayado de puntos abre su versión corta.",
+      "terms": {
+        "redLine": {
+          "term": "Red line",
+          "short": "Un punto de timing que fija el BPM, el comienzo del beat 1 y el compás desde su tiempo en adelante, hasta la próxima red line.",
+          "long": "En osu! una red line es un punto de timing no heredado: empieza una grilla de beats nueva en su propio tiempo, con su BPM y su compás, y todo lo que un mapper acomoda sigue a la red line anterior. Overtone escribe una donde cambia el tempo o el compás, y donde un tempo estable se apartó lo suficiente de su grilla como para necesitar un comienzo nuevo."
+        },
+        "greenLine": {
+          "term": "Green line (punto heredado)",
+          "short": "Un punto de timing que mantiene la grilla de la red line y cambia solo la velocidad de sliders, el volumen y el sampleset de los hitsounds, o el kiai.",
+          "long": "Las green lines son decisiones del mapa, no del timing de la canción, así que el timing de Overtone no tiene ninguna. Heredan el BPM y el offset de la red line anterior."
+        },
+        "offset": {
+          "term": "Offset",
+          "short": "El tiempo, en ms desde el comienzo del audio, del primer beat de una red line.",
+          "long": "El offset de la primera red line es al que se refiere la gente cuando dice “el offset”. Overtone lo pone donde la energía del ataque empieza a subir, medido sobre la onda, y escribe milisegundos enteros, que es lo que lee osu!stable."
+        },
+        "bpm": {
+          "term": "BPM",
+          "short": "Beats por minuto: qué tan seguido vienen los beats de la grilla. Un beat dura 60 000 ÷ BPM ms, el número que guarda osu!.",
+          "long": "El BPM principal de la página del resultado es la mediana de los BPM de las secciones, cada una pesada por lo que dura. Un BPM es una lectura de un pulso que también encaja a la mitad y al doble: mirá octava."
+        },
+        "meter": {
+          "term": "Compás",
+          "short": "Cuántos beats tiene un compás: 4/4, 3/4, 7/4. osu! guarda solo el número de arriba.",
+          "long": "Overtone pone el compás 1 en un downbeat solo cuando los acentos prueban el compás. Si no, el compás es una suposición, y la tabla lo marca con “?”."
+        },
+        "kiai": {
+          "term": "Kiai",
+          "short": "Un tramo destacado de un mapa, en general el estribillo, que se prende y se apaga con green lines.",
+          "long": "El kiai es una elección del mapper, no parte del timing de la canción: el timing de Overtone no lo pone."
+        },
+        "drift": {
+          "term": "Deriva (drift)",
+          "short": "Qué tan lejos de su grilla caen los ataques bajo una red line: la distancia mediana ponderada al tick de 1/1, 1/2, 1/3 o 1/4 más cercano, en ms.",
+          "long": "Poca deriva quiere decir que la grilla cae sobre lo que escuchás. La tabla lo colorea, hasta 5 ms verde, de 5 a 15 ms ámbar y más en rojo, y agrega el percentil 90 y para qué lado se inclinan los ataques (+ después de la grilla). Una canción tocada en vivo deriva; un timing la sigue solo con más red lines, que Overtone agrega cuando encajan al menos un 10 % mejor."
+        },
+        "fit": {
+          "term": "Ajuste",
+          "short": "El residuo propio del engine al ajustar la grilla de una sección, en ms: qué tan lejos de los beats ajustados caen los ataques que usó.",
+          "long": "Con más de 30 ms una sección se marca para revisar de oído, por más confiada que sea el resto de su lectura: un mapper rechazaría una grilla tan floja."
+        },
+        "onset": {
+          "term": "Onset (ataque)",
+          "short": "El comienzo de un sonido: un golpe de batería, un punteo, una nota. La grilla se ajusta a los onsets que detecta el engine.",
+          "long": "Son los picos de la envolvente de onsets (qué tan rápido sube el espectro), vueltos a ubicar sobre la onda donde la energía empieza a subir. El mapa de tempo los dibuja como marcas debajo de la onda."
+        },
+        "confidence": {
+          "term": "Nivel de confianza",
+          "short": "Alta, media o revisar de oído: una lectura de la evidencia del propio engine para una sección, no una precisión medida.",
+          "long": "Pesa qué tan ajustado es el fit, cuántos beats tienen un ataque y cuánto dura la sección. Alta desde 0,90, y solo para un ajuste de grilla; media desde 0,75; revisar de oído por debajo, con un residuo de ajuste de más de 30 ms, o cuando los controles del propio engine marcan la sección."
+        },
+        "octave": {
+          "term": "Octava",
+          "short": "El mismo pulso leído a la mitad o al doble de velocidad: 87,5, 175 y 350 BPM encajan todos con la misma canción.",
+          "long": "Cuál es la correcta es en parte una convención. Los mapas de osu! se suelen timear entre 120 y 240 BPM, y Overtone lee su resultado ahí salvo que los ataques o Beat This! digan otra cosa. Mitad o doble en la página del resultado la cambia para el mapa, los clicks y las descargas."
+        },
+        "beatThis": {
+          "term": "Beat This!",
+          "short": "Una red neuronal que marca los beats en el espectrograma de una canción. Overtone la usa como segunda opinión, nunca sola.",
+          "long": "Beat This! (Foscarin, Schlüter y Widmer, ISMIR 2024; licencia MIT) lee la canción a 50 frames por segundo. Sus beats reemplazan las red lines del engine solo donde explican claramente mejor los ataques de la canción, y juzga las red lines que parecen estar a una octava. Sola es menos precisa a 10 ms, porque sus beats caen en una grilla de 20 ms."
+        }
+      }
+    }
+  },
+  "siteStats": {
+    "title": "Estadísticas",
+    "description": "Cuántas canciones timeó este sitio, sus BPM, cuántas cambian de tempo, cuánto tarda un análisis y qué tan larga está la cola.",
+    "intro": "Cuentas de la propia base de datos del sitio, agregadas: no se muestra ninguna canción, nombre ni cuenta. Se recalculan como mucho una vez por minuto.",
+    "loading": "Contando…",
+    "error": "No se pudieron leer las estadísticas ahora.",
+    "retry": "Probar de nuevo",
+    "updated": "Contado a las {{time}}",
+    "totals": {
+      "title": "Totales",
+      "done": "Timeadas",
+      "refused": "Rechazadas",
+      "failed": "Fallidas",
+      "published": "Publicadas",
+      "songs": "Canciones distintas",
+      "cached": "Contestadas desde el caché",
+      "note": "Análisis que corrió el engine. Rechazada: no encontró un pulso que pudiera sostener, así que no hay BPM. Un análisis borrado no se cuenta."
+    },
+    "bpm": {
+      "title": "BPM de las canciones timeadas",
+      "label": "Histograma del BPM principal de {{count}} análisis timeados, en pasos de 20 BPM.",
+      "below": "menos de {{to}}",
+      "range": "{{from}}-{{to}}",
+      "above": "{{from}}+",
+      "axis": "BPM",
+      "count": "Análisis",
+      "empty": "Todavía no hay canciones timeadas.",
+      "table": "Ver como tabla"
+    },
+    "tempo": {
+      "title": "Un tempo o varios",
+      "single": "Un tempo",
+      "variable": "Cambios de tempo",
+      "label": "{{single}} análisis timeados con un tempo y {{variable}} con cambios de tempo.",
+      "note": "Cambios de tempo: red lines con más de un BPM. Un cambio de compás solo mantiene un tempo."
+    },
+    "time": {
+      "title": "Tiempo hasta el resultado",
+      "median": "Mediana",
+      "p90": "9 de cada 10 en menos de",
+      "seconds": "{{value}} s",
+      "note": "De la subida al resultado, con la espera en la cola incluida, sobre los {{count}} análisis terminados en los últimos {{days}} días.",
+      "notEnough": "Menos de {{min}} análisis terminados en los últimos {{days}} días: muy pocos para una mediana."
+    },
+    "queue": {
+      "title": "La cola ahora",
+      "queued": "Esperando",
+      "running": "Analizándose",
+      "link": "Ver la cola"
+    }
+  },
+  "modes": {
+    "names": {
+      "fast": "Rápido",
+      "normal": "Normal",
+      "strict": "Estricto"
+    },
+    "about": {
+      "fast": "El engine solo, sin la red Beat This!: se saltean su voto sobre las red lines y sus chequeos de octava. Una fracción de la espera; en música real, la octava y las red lines se revisan menos.",
+      "normal": "El análisis de siempre: el engine, después el voto de Beat This! y los chequeos de octava.",
+      "strict": "Por ahora, el mismo análisis que Normal: todavía no se midió nada extra que ayude. Acá va a ir una revisión más fina de cada red line."
+    },
+    "options": {
+      "title": "Opciones (opcionales)",
+      "changed": "cambiadas",
+      "defaults": "por defecto",
+      "mode": "Modo",
+      "modeNote": "Elegí según cuánto querés esperar. La misma canción en otro modo es otro resultado.",
+      "tempo": "Tempo",
+      "unknown": "No sé",
+      "constant": "Un solo BPM en toda la canción",
+      "changes": "El tempo cambia",
+      "meter": "Tiempos por compás",
+      "beats_one": "{{count}} tiempo por compás",
+      "beats_other": "{{count}} tiempos por compás",
+      "bpm": "BPM",
+      "about": "Aproximado",
+      "range": "Entre",
+      "aboutBpm": "BPM aproximado",
+      "fromBpm": "BPM más bajo",
+      "toBpm": "BPM más alto",
+      "stretch": "Solo un tramo (inicio – fin)",
+      "from": "Inicio (m:ss)",
+      "to": "Fin (m:ss)",
+      "stretchNote": "Dejá los dos vacíos para toda la canción. Los tiempos del resultado siguen en la línea de tiempo de la canción.",
+      "stretchOne": "Un tramo se puede elegir para una canción por vez.",
+      "honest": "Las pistas nunca pisan al audio. Un tempo esperado elige la octava en la que el engine lee la canción, y un compás completa solo los compases que el engine no pudo probar; donde el audio no coincide con una pista, el resultado lo dice.",
+      "reset": "Volver a lo de por defecto"
+    },
+    "errors": {
+      "bpm": "Un BPM es un número de 30 a 400.",
+      "range": "El primer BPM del rango tiene que ser el más bajo.",
+      "meter": "Los tiempos por compás son un número entero de 1 a 16.",
+      "stretch": "Escribí el tramo como m:ss o en segundos, con un fin.",
+      "stretchBatch": "Un tramo se puede elegir para una canción por vez: borralo, o mandá una sola canción.",
+      "stretchPast": "El tramo termina después que la canción.",
+      "stretchShort": "El tramo tiene que durar al menos 10 segundos.",
+      "server": "El server rechazó las opciones: {{message}}"
+    },
+    "estimate": {
+      "label": "Estimación:",
+      "left": "Lista en",
+      "seconds_one": "{{count}} s",
+      "seconds_other": "{{count}} s",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "about": "≈ {{value}}",
+      "range": "≈ {{low}} – {{high}}",
+      "atLeast": "al menos {{value}}",
+      "why": "una estimación con el costo medido por minuto de audio, con un worker",
+      "queueNote": "Los tiempos para terminar son estimaciones (≈): lo que se midió que cuesta un análisis por minuto de audio, según su modo, con un worker; por eso un rango y nunca una promesa. Si no se sabe cuánto dura una canción, las que vienen detrás dicen \"al menos\"."
+    },
+    "result": {
+      "title": "Cómo se analizó",
+      "noVote": "(El worker no tenía el modelo de Beat This!, así que no votó.)",
+      "stretch": "Se analizó solo {{from}} – {{to}} de la canción. Las red lines y todos los tiempos de acá están en la línea de tiempo de la canción; fuera de ese tramo no se midió nada.",
+      "hints": "Tus pistas:",
+      "aboutBpm": "unos {{bpm}} BPM",
+      "rangeBpm": "{{low}}–{{high}} BPM",
+      "stretchShort": "solo {{from}}–{{to}}"
+    },
+    "checks": {
+      "tempo_not_constant_one": "Dijiste un solo BPM, y el engine encontró {{count}} tempo.",
+      "tempo_not_constant_other": "Dijiste un solo BPM; el engine encontró {{count}} tempos distintos. Sus red lines quedan: escuchá dónde cambian.",
+      "tempo_constant": "Dijiste que el tempo cambia; el engine encontró un solo BPM ({{bpm}}) en toda la canción.",
+      "bpm_far": "Esperabas unos {{expected}} BPM; el engine lee {{bpm}}.",
+      "bpm_outside_one": "{{count}} red line queda fuera de tu rango de {{low}}–{{high}} BPM.",
+      "bpm_outside_other": "{{count}} red lines quedan fuera de tu rango de {{low}}–{{high}} BPM.",
+      "double": "Al doble entraría: probá ×2 en los ajustes.",
+      "half": "A la mitad entraría: probá ÷2 en los ajustes.",
+      "octave_window": "Tu tempo eligió la octava en la que el engine leyó la canción ({{low}}–{{high}} BPM).",
+      "octave_window_moved": "Tu tempo eligió la octava en la que el engine leyó la canción ({{low}}–{{high}} BPM). Sin él, el engine la habría leído a {{bpm}} BPM.",
+      "meter_differs": "Dijiste {{meter}} tiempos por compás; donde el engine pudo probar el compás encontró {{found}}, y dejó el suyo.",
+      "meter_applied_one": "{{count}} red line no tenía un compás que el engine pudiera probar: usa tus {{meter}} tiempos por compás.",
+      "meter_applied_other": "{{count}} red lines no tenían un compás que el engine pudiera probar: usan tus {{meter}} tiempos por compás."
+    },
+    "reanalyse": {
+      "title": "Analizar de nuevo",
+      "note": "La misma canción en otro modo, con las mismas pistas. Este navegador manda el archivo que todavía tiene, o te pide que lo elijas de nuevo y primero comprueba que sea el mismo audio. Si ya se pidió antes, la respuesta sale del resultado guardado.",
+      "go": "Analizar en {{mode}}",
+      "pick": "Elegí {{name}} de nuevo para mandarlo: antes se compara con este análisis.",
+      "mismatchFile": "{{name}} no es el audio de este análisis.",
+      "mismatch": "Ese archivo no es el audio del análisis que querías volver a analizar.",
+      "related": "Análisis vinculados",
+      "from": "El original",
+      "into": "Analizado de nuevo",
+      "compare": "Comparar"
+    }
+  },
+  "links": {
+    "title": "Cuentas vinculadas",
+    "loadFailed": "No se pudieron cargar tus cuentas vinculadas. Recargá la página para intentar de nuevo.",
+    "unlink": "Desvincular",
+    "back": "Volver a tu perfil",
+    "discord": {
+      "linked": "Vinculada. El bot de Overtone te conoce y /time-song cuenta en tu cuenta.",
+      "notLinked": "Sin vincular. Vinculala para usar el bot de Overtone con tu cuenta y su cupo.",
+      "onMides": "Vincular en Mides",
+      "code": "Vincular con el bot",
+      "codeHint": "Escribí esto en Discord, al bot de Overtone, dentro de {{minutes}} minutos:",
+      "unavailable": "Vincular Discord todavía no está disponible en este servidor.",
+      "notify": "Mandame un DM por Discord cuando termine un análisis",
+      "notifyHint": "Del bot de Overtone, para las canciones de esta cuenta. Lo podés apagar acá o con /notify off.",
+      "botOff": "El bot de Overtone todavía no corre en este servidor: no se manda nada hasta que corra."
+    },
+    "osu": {
+      "title": "Vincular osu!",
+      "link": "Vincular osu!",
+      "notLinked": "Sin vincular.",
+      "unavailable": "Vincular osu! todavía no está disponible en este servidor.",
+      "ranked_one": "{{count}} mapa rankeado",
+      "ranked_other": "{{count}} mapas rankeados",
+      "scope": "Overtone le pide a osu! solo tu identidad pública (el scope identify): tu id, nombre, foto y cantidad de mapas rankeados, leídos una vez. No guarda ningún token de osu! y nunca actúa en tu cuenta.",
+      "working": "Vinculando tu cuenta de osu!…",
+      "denied": "osu! no se vinculó: rechazaste el pedido en osu!.",
+      "stateMissing": "Este vínculo no empezó en este navegador o tardó demasiado. Empezá de nuevo desde tu perfil.",
+      "failed": "No se pudo vincular osu!: {{message}}"
+    }
+  },
+  "social": {
+    "nav": {
+      "timers": "Timers"
+    },
+    "title": "Qué hizo la gente con este timing",
+    "failed": "No funcionó. Probá de nuevo en un momento.",
+    "cancel": "Cancelar",
+    "more": "Ver más",
+    "stars": {
+      "title": "Estrellas",
+      "count_one": "{{count}} calificación",
+      "count_other": "{{count}} calificaciones",
+      "pick_one": "{{count}} estrella",
+      "pick_other": "{{count}} estrellas",
+      "yours": "Tu calificación",
+      "yoursHint": "Calificá qué tan bien le queda a la canción. Una por cuenta; la podés cambiar.",
+      "again": "Tocá tu calificación de nuevo para sacarla.",
+      "own": "Es tu timing: no lo podés calificar.",
+      "signIn": "Iniciá sesión para calificarlo",
+      "notRanked_one": "\"Mejor puntuados\" cuenta un timing desde {{count}} calificación.",
+      "notRanked_other": "\"Mejor puntuados\" cuenta un timing desde {{count}} calificaciones."
+    },
+    "uses": {
+      "title": "Usado en mapas",
+      "count_one": "Lo usó {{count}} persona",
+      "count_other": "Lo usaron {{count}} personas",
+      "short_one": "{{count}} uso",
+      "short_other": "{{count}} usos",
+      "mark": "Lo usé",
+      "marked": "Lo usaste",
+      "save": "Guardar",
+      "editLink": "Cambiar el link del mapa",
+      "unmark": "Desmarcar",
+      "link": "Tu mapa en osu! (opcional)",
+      "linkHint": "Un link de beatmapset de osu.ppy.sh. Se muestra tal cual, como link, al lado de tu nombre.",
+      "badLink": "Eso no es un link de beatmapset de osu.ppy.sh.",
+      "own": "Es tu timing: los usos cuentan solo de otras personas.",
+      "signIn": "Iniciá sesión para decir que lo usaste",
+      "goneAccount": "una cuenta borrada"
+    },
+    "collections": {
+      "title": "Colecciones",
+      "eyebrow": "Colección",
+      "description": "Una lista de timings publicados que alguien armó en Overtone.",
+      "publicTitle": "Colecciones públicas",
+      "public": "Pública",
+      "private": "Privada",
+      "count_one": "{{count}} timing",
+      "count_other": "{{count}} timings",
+      "none": "Todavía no tenés colecciones. Armá una acá abajo.",
+      "noneYet": "Todavía no tenés colecciones.",
+      "newName": "Nombre de la colección nueva",
+      "newPlaceholder": "Colección nueva, por ej. \"Mi mapset\"",
+      "create": "Crear",
+      "privateNote": "Una colección nueva es privada.",
+      "manage": "Administrar tus colecciones",
+      "signIn": "Iniciá sesión para guardarlo en una colección",
+      "intro": "Tus listas de timings publicados. Una privada la abrís solo vos; una pública tiene su propia página y aparece en tu perfil.",
+      "rename": "Renombrar",
+      "save": "Guardar",
+      "makePublic": "Hacerla pública",
+      "makePrivate": "Hacerla privada",
+      "delete": "Borrar",
+      "deleteYes": "Borrarla",
+      "full": "Esa colección está llena.",
+      "tooMany": "Tenés tantas colecciones como puede guardar una cuenta.",
+      "empty": "Todavía no hay nada, o quien publicó cada timing lo sacó.",
+      "notFoundTitle": "No se encontró la colección",
+      "notFound": "Esta colección no existe, o es privada."
+    },
+    "comments": {
+      "title": "Comentarios",
+      "empty": "Todavía no hay comentarios.",
+      "signIn": "Iniciá sesión para comentar",
+      "body": "Tu comentario",
+      "placeholder": "¿Qué notaste? Decí dónde con un tiempo.",
+      "at": "En (m:ss)",
+      "atHint": "Opcional: un tiempo de la canción, así un clic ahí reproduce desde ese punto.",
+      "here": "Posición del reproductor",
+      "post": "Comentar",
+      "badTime": "Eso no es un tiempo dentro de la canción (m:ss).",
+      "seek": "Llevar el reproductor acá",
+      "seekTo": "Llevar el reproductor a {{at}}",
+      "delete": "Borrar",
+      "deleteConfirm": "¿Borrar tu comentario?",
+      "deleteYes": "Borrar",
+      "openTiming": "Abrir su timing"
+    },
+    "errors": {
+      "TOO_LONG": "Es demasiado largo.",
+      "TOO_SHORT": "Escribí algo primero.",
+      "BAD_TIME": "Eso no es un tiempo dentro de la canción.",
+      "RATE_LIMITED": "Demasiados de golpe. Esperá un momento."
+    },
+    "sort": {
+      "label": "Orden",
+      "new": "Más nuevos",
+      "rated": "Mejor puntuados",
+      "used": "Más usados",
+      "ratedNote_one": "Solo timings con al menos {{count}} calificación, ordenados para que muchas buenas calificaciones le ganen a pocas perfectas.",
+      "ratedNote_other": "Solo timings con al menos {{count}} calificaciones, ordenados para que muchas buenas calificaciones le ganen a pocas perfectas.",
+      "usedNote": "Timings que la gente dijo haber usado en un mapa, los más usados primero.",
+      "ratedEmpty": "Todavía ningún timing tiene calificaciones suficientes para el ranking.",
+      "usedEmpty": "Todavía nadie dijo haber usado uno."
+    },
+    "timers": {
+      "title": "Timers",
+      "subtitle": "Las personas cuyos timings publicados otros usaron en sus mapas, o calificaron mejor. Chico y honesto: hay un mínimo para entrar.",
+      "link": "Ranking de timers",
+      "by": {
+        "uses": "Por usos",
+        "stars": "Por estrellas"
+      },
+      "minUses_one": "Un timer entra con {{count}} uso de sus timings por otras personas.",
+      "minUses_other": "Un timer entra con {{count}} usos de sus timings por otras personas.",
+      "minStars_one": "Un timer entra con {{count}} calificación recibida.",
+      "minStars_other": "Un timer entra con {{count}} calificaciones recibidas.",
+      "published_one": "{{count}} publicado",
+      "published_other": "{{count}} publicados",
+      "empty": "Todavía nadie llegó al mínimo.",
+      "howOrdered": "Las estrellas se ordenan por un promedio que suma tres calificaciones más de 3, así unas pocas perfectas no le ganan a muchas buenas. Los perfiles privados quedan afuera."
+    },
+    "profile": {
+      "title": "Timer",
+      "description": "Los timings publicados de @{{name}} en Overtone, con sus estrellas, usos e insignias.",
+      "edit": "Editar tu perfil",
+      "publicPage": "Tu página pública",
+      "notFoundTitle": "No se encontró el perfil",
+      "notFound": "Nadie usa ese nombre acá, o su perfil es privado.",
+      "privateNote": "Tu perfil es privado: esta página la ves solo vos.",
+      "timings": "Timings publicados",
+      "badges": "Insignias",
+      "noBadges": "Todavía no hay insignias: llegan con lo que publicás.",
+      "noTimings": "Todavía no publicó nada.",
+      "noOwnTimings": "Todavía no publicaste un timing. Publicalo desde su resultado o tu historial.",
+      "isPublic": "Tu perfil es público",
+      "isPrivate": "Tu perfil es privado",
+      "privateHint": "Un perfil privado no se le muestra a nadie más (su página dice \"no se encontró\") y salís del ranking de timers. Tus timings publicados siguen publicados, con tu nombre.",
+      "makePrivate": "Hacerlo privado",
+      "makePublic": "Hacerlo público",
+      "tabs": {
+        "timings": "Timings",
+        "collections": "Colecciones"
+      },
+      "totals": {
+        "published": "Publicados",
+        "timed": "Canciones timeadas",
+        "uses": "Usos",
+        "rating": "Estrellas"
+      }
+    },
+    "badges": {
+      "first-timing": {
+        "name": "Primer timing",
+        "why": "Publicó un timing."
+      },
+      "published-10": {
+        "name": "10 publicados",
+        "why": "Publicó diez timings."
+      },
+      "published-50": {
+        "name": "50 publicados",
+        "why": "Publicó cincuenta timings."
+      },
+      "suggestion-accepted": {
+        "name": "Idea aceptada",
+        "why": "Una sugerencia suya se planeó, empezó o terminó."
+      },
+      "used-by-others": {
+        "name": "Usado por otros",
+        "why": "Alguien más dijo haber usado uno de sus timings en un mapa."
+      },
+      "ranked-match": {
+        "name": "Coincide con el rankeado",
+        "why": "Un timing coincidió con el mapa rankeado de su canción."
+      }
+    }
+  },
+  "platform": {
+    "tokens": {
+      "eyebrow": "Ajustes",
+      "title": "Tokens de la API",
+      "intro": "Un token personal deja que un script, un bot o una herramienta de la comunidad use la API de Overtone en tu nombre, sin navegador. Dale a cada herramienta el suyo, solo con los permisos que necesita, y revocalo cuando la dejes de usar.",
+      "docs": "Cómo usar la API",
+      "fromProfile": "Tokens personales de la API",
+      "yours": "Tus tokens",
+      "count_one": "{{count}} de {{max}}",
+      "count_other": "{{count}} de {{max}}",
+      "none": "Todavía no tenés tokens.",
+      "loadFailed": "No se pudieron cargar tus tokens. Probá de nuevo en un rato.",
+      "never": "nunca",
+      "created": "creado {{when}}",
+      "lastUsed": "último uso {{when}}",
+      "revoke": "Revocar",
+      "revokeConfirm": "Revocarlo ahora",
+      "keep": "Dejarlo",
+      "revokeFailed": "No se pudo revocar. Probá de nuevo.",
+      "newTitle": "Token nuevo",
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. mi bot de Discord",
+      "scopes": "Qué puede hacer",
+      "scope": {
+        "read_analyses": "Leer tus propios análisis, su [TimingPoints], el CSV y las versiones.",
+        "upload": "Mandar canciones a analizar con tu cuenta, dentro de su cupo diario.",
+        "read_timings": "Leer los timings publicados, con el límite propio del token."
+      },
+      "make": "Crear token",
+      "making": "Creando…",
+      "note": "El token se muestra una sola vez y Overtone guarda solo un hash. Nunca maneja tokens, ni publica, borra o postea: eso queda en el sitio. Cerrar sesión no lo revoca.",
+      "problems": {
+        "name": "Ponele un nombre, así después sabés qué lo usa.",
+        "long": "El nombre tiene como máximo {{max}} caracteres.",
+        "scopes": "Elegí al menos una cosa que pueda hacer.",
+        "limit": "Ya tenés la cantidad máxima de tokens por cuenta. Revocá uno primero.",
+        "failed": "No se pudo crear el token. Probá de nuevo en un rato."
+      },
+      "madeTitle": "“{{name}}” está listo",
+      "madeOnce": "Copialo ahora: no se va a mostrar de nuevo. Quien lo tenga puede actuar en tu nombre dentro de sus permisos, así que no lo pongas en código público.",
+      "copy": "Copiar token",
+      "copied": "Copiado",
+      "copyFailed": "No se pudo copiar: seleccionalo a mano",
+      "done": "Ya lo copié",
+      "tryIt": "Probalo desde una terminal:",
+      "settingsNote": "Los tokens personales dejan que tus scripts y bots usen la API en tu nombre. A diferencia de los ajustes de arriba son de tu cuenta, no de este navegador, así que necesitan iniciar sesión.",
+      "manage": "Administrar tokens de la API"
+    },
+    "developers": {
+      "eyebrow": "Para desarrolladores",
+      "title": "La API de Overtone",
+      "intro": "Todo lo que hace el sitio pasa por esta API. Con un token personal, tus scripts y bots pueden leer tus análisis, mandar canciones y leer los timings publicados.",
+      "footer": "API para desarrolladores",
+      "startTitle": "Para empezar",
+      "step1": "Iniciá sesión y creá un token personal con los permisos que necesita tu herramienta.",
+      "step2": "Mandalo en el encabezado Authorization como \"Bearer <token>\" desde tu script, bot o servidor.",
+      "step3": "Usá las operaciones marcadas con un permiso más abajo. Las demás son del propio sitio.",
+      "tokensLink": "Tus tokens",
+      "ruleScopes": "Un token llega solo a las operaciones de sus permisos; cualquier otra responde 403. Un token revocado responde 401.",
+      "ruleLimit": "Cada token tiene su propio límite: 120 pedidos por minuto, y las subidas y lecturas tienen sus propios límites contados por token. Un 429 dice cuánto esperar en Retry-After.",
+      "ruleBrowser": "La API no responde pedidos de navegador desde otro origen, así que un token es para scripts y servidores, no para la página de otro sitio. Nunca lo pongas en código público.",
+      "ruleAudio": "El audio subido se borra apenas se analiza y nunca se vuelve a servir.",
+      "base": "Ruta base",
+      "englishNote": "la referencia está en inglés, como el documento de la API.",
+      "filter": "Mostrar operaciones",
+      "show": {
+        "all": "Todas",
+        "token": "Con token"
+      },
+      "overview": "Sobre esta API",
+      "tokenHint": "El permiso de token que necesita esta operación",
+      "anyToken": "cualquier token",
+      "browserOnly": "Solo desde el sitio: no se llega con un token.",
+      "params": "Parámetros",
+      "required": "obligatorio",
+      "body": "Cuerpo",
+      "responses": "Respuestas",
+      "schemas": "Esquemas"
+    },
+    "versions": {
+      "title": "Versiones",
+      "note": "Cada análisis que hiciste de este mismo audio, y los ajustes que guardaste. Una versión guardada se queda solo con su ×2 / ÷2 y el corrimiento: el timing en sí es el del engine.",
+      "engine": "como lo leyó el engine",
+      "thisOne": "este",
+      "now": "como se ve ahora",
+      "open": "Abrir",
+      "labelPlaceholder": "Una nota para esta versión (opcional)",
+      "save": "Guardar {{adjustment}} como versión",
+      "saved": "Este ajuste ya está guardado como versión.",
+      "howToSave": "Probá ×2, ÷2 o un corrimiento arriba y guardalo acá para no perderlo.",
+      "saveFailed": "No se pudo guardar la versión. Probá de nuevo.",
+      "limit": "Este timing ya tiene la cantidad máxima de versiones guardadas. Borrá una primero.",
+      "loadFailed": "No se pudieron cargar las versiones.",
+      "apply": "Aplicar",
+      "forget": "Borrar la versión {{name}}",
+      "compare": "Comparar dos versiones",
+      "loading": "Leyendo la otra versión…",
+      "otherFailed": "No se pudo leer la otra versión.",
+      "same": "Estas dos versiones tienen las mismas red lines.",
+      "summary": "Las red lines se corren hasta {{ms}} ms y {{bpm}} BPM; {{onlyA}} solo en A, {{onlyB}} solo en B.",
+      "dTime": "B − A ms",
+      "dBpm": "B − A BPM",
+      "none": "ninguna"
+    },
+    "copy": {
+      "hint": "Marcá red lines para copiarlas como filas de [TimingPoints] (Shift-clic para un tramo).",
+      "ticked_one": "{{count}} red line marcada",
+      "ticked_other": "{{count}} red lines marcadas",
+      "copyTicked": "Copiar filas",
+      "clear": "Limpiar",
+      "all": "Marcar todas las red lines",
+      "tick": "Marcar la red line {{n}}",
+      "one": "Copiar esta red line como fila de [TimingPoints]",
+      "copied": "Copiado: pegalo bajo [TimingPoints]",
+      "failed": "No se pudo copiar"
+    },
+    "image": {
+      "title": "Imagen y embed",
+      "png": "Mapa de tempo en PNG",
+      "svg": "Mapa de tempo en SVG",
+      "embed": "Copiar código para embeber",
+      "copied": "Código copiado",
+      "copyFailed": "No se pudo copiar",
+      "preview": "Ver el embed",
+      "failed": "No se pudo armar la imagen en este navegador. El SVG puede funcionar igual.",
+      "note": "El PNG es el mapa de arriba para toda la canción, el SVG un dibujo más simple de las red lines y el tempo. El embed muestra la tarjeta de este timing en otro sitio, con un enlace de vuelta acá.",
+      "notePrivate": "El PNG es el mapa de arriba para toda la canción, el SVG un dibujo más simple de las red lines y el tempo. Publicá el timing para embeberlo en otro sitio."
+    },
+    "embed": {
+      "title": "Timing",
+      "loading": "Cargando el timing…",
+      "notFound": "Este timing no está publicado.",
+      "failed": "No se pudo cargar el timing.",
+      "chartAlt": "El mapa de tempo: red lines y tempo a lo largo de la canción",
+      "more_one": "y {{count}} red line más",
+      "more_other": "y {{count}} red lines más",
+      "open": "Abrir en Overtone"
+    },
+    "batch": {
+      "title": "Todo el lote",
+      "adjust": "Un ajuste para todas las canciones",
+      "adjustNote": "×2, ÷2 o un corrimiento acá se aplican a todas las canciones del lote en las dos descargas. Revisá cada canción de oído en su página.",
+      "adjusted": "Todas las canciones se escriben {{adjustment}}: las descargas lo dicen en una línea de comentario. Revisalas de oído.",
+      "osz_one": "Bajar {{count}} canción como .osz (zip)",
+      "osz_other": "Bajar las {{count}} canciones como .osz (zip)",
+      "oszBusy": "Armando .osz {{done}} de {{total}}…",
+      "oszNote": "Cada .osz lleva su canción, armado acá con los archivos que elegiste, de a uno. Hasta {{max}} MB de audio por zip.",
+      "tooLarge": "Estas canciones suman {{mb}} MB, más de los {{max}} MB que entran en un zip acá. Bajá sus .osz de a uno desde sus páginas.",
+      "oszFailed": "No se pudieron armar los .osz en este navegador.",
+      "oszSome": "Quedaron afuera, no se pudo armar su .osz: {{names}}"
+    },
+    "pwa": {
+      "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
+      "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
   }
 }

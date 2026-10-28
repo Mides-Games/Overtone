@@ -13,17 +13,42 @@
  * cached for a year; index.html is never cached, so a release is visible on
  * the next load.
  *
- * TRUSTED_PROXY_HOPS (default 1) is how many proxies sit in front of this
- * process: 1 for the TLS proxy (Cloudflare, nginx or Caddy). The API counts its
- * rate limit per client address, and everything it receives comes from here,
- * so the X-Forwarded-For it reads has to be one this process vouches for: the
- * last TRUSTED_PROXY_HOPS entries of the incoming header (the ones those
- * proxies appended) plus the address of the connection itself. Whatever a
- * client wrote further left is dropped. The API then trusts this process and
- * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
+ * TRUSTED_PROXY_ADDRS is the comma-separated addresses or CIDR ranges of the
+ * TLS proxy in front (Cloudflare's published ranges, docs/deploy.md). The API
+ * counts its rate limit and quotas per client address, and everything it
+ * receives comes from here, so the X-Forwarded-For it reads has to be one this
+ * process vouches for. A connection from inside TRUSTED_PROXY_ADDRS keeps the
+ * last TRUSTED_PROXY_HOPS (default 1) entries of its header (the ones the
+ * proxies appended) plus its own address; whatever a client wrote further left
+ * is dropped. Any other connection, including everyone while the variable is
+ * empty, has its header discarded whole and is forwarded as its own address.
+ * The API trusts this process and those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS
+ * + 1, which names the real client in both cases.
+ *
+ * API_TIMEOUT_S (default 60) cuts a forwarded request whose connection to the
+ * API has been idle that long (504), so an API that hangs cannot pin this
+ * process's sockets. Idle, not total: an upload that keeps moving is not cut.
+ *
+ * MIDES_WEB_URL and MIDES_IMAGE_ORIGINS (the API's own values) are the only
+ * origins besides this one that images load from (img-src). Unset, only this
+ * origin and data: are allowed, and avatars show their initials.
  *
  * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
  * 0 only when the site is served over plain http, as on a laptop.
+ *
+ * /t/<id>, a published timing's page (W3.27), is index.html with that
+ * timing's title and Open Graph tags written into its head, read from the
+ * API's /timings/<id>/card and escaped, so a link shared on Discord shows
+ * the song, its BPM and who timed it. Without a card in 1.5 s, or for a
+ * timing that is not published, it is the plain index.html.
+ *
+ * /embed/<id> (W12.18) is the one page another site may frame: its CSP says
+ * frame-ancestors * and it has no X-Frame-Options. Every other response keeps
+ * frame-ancestors 'none' and X-Frame-Options: DENY.
+ *
+ * /sw.js, the service worker (W12.23), is served no-cache with
+ * Service-Worker-Allowed: /, and a POST to /share-target that no worker
+ * answered is a 303 to /analyze, its body never read.
  *
  * PROXY_SECRET is the same value as the API's: every request forwarded to the
  * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
@@ -35,13 +60,17 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
+const TRUSTED = trustedProxies(process.env.TRUSTED_PROXY_ADDRS);
+const IMAGE_ORIGINS = imageOrigins(process.env.MIDES_WEB_URL, process.env.MIDES_IMAGE_ORIGINS);
 const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
+const API_TIMEOUT_MS = seconds(process.env.API_TIMEOUT_S, 60) * 1000;
 const PROXY_HEADER = 'x-overtone-proxy';
 const PROXY_SECRET = (process.env.PROXY_SECRET || '').trim();
 if (PROXY_SECRET && PROXY_SECRET.length < 32) {
@@ -54,6 +83,38 @@ function hops(raw) {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0 || n > 10) {
     console.error(`overtone-web: TRUSTED_PROXY_HOPS must be an integer from 0 to 10 (got "${raw}")`);
+    process.exit(1);
+  }
+  return n;
+}
+
+// The origins of MIDES_WEB_URL and MIDES_IMAGE_ORIGINS, the same values the
+// API has: where profile pictures may load from.
+function imageOrigins(web, extra) {
+  const out = new Set();
+  for (const raw of [web, ...String(extra ?? '').split(',')]) {
+    const value = String(raw ?? '').trim().replace(/\/+$/, '');
+    if (!value) continue;
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      url = null;
+    }
+    if (!url || !['http:', 'https:'].includes(url.protocol) || (raw !== web && url.origin !== value)) {
+      console.error(`overtone-web: "${value}" in MIDES_WEB_URL / MIDES_IMAGE_ORIGINS is not an http(s) origin`);
+      process.exit(1);
+    }
+    out.add(url.origin);
+  }
+  return [...out];
+}
+
+function seconds(raw, fallback) {
+  if (raw === undefined || String(raw).trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 3600) {
+    console.error(`overtone-web: API_TIMEOUT_S must be a number of seconds from 1 to 3600 (got "${raw}")`);
     process.exit(1);
   }
   return n;
@@ -75,7 +136,10 @@ const TYPES = {
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  // robots.txt, sitemap.xml and the web app manifest (W10.3): crawlers and
+  // browsers read these by type, and nosniff forbids them guessing.
   '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -91,16 +155,48 @@ function forwardable(headers) {
   return out;
 }
 
-// The chain the API reads: the last HOPS entries the trusted proxies appended,
-// then the connection's own address. Never what a client typed before them.
-function forwardedFor(req) {
+function trustedProxies(raw) {
+  const list = new net.BlockList();
+  const ranges = String(raw ?? '').split(',').map((r) => r.trim()).filter(Boolean);
+  for (const range of ranges) {
+    const [address, bits, ...rest] = range.split('/');
+    const family = net.isIP(address);
+    const max = family === 6 ? 128 : 32;
+    const prefix = bits === undefined ? max : Number(bits);
+    if (!family || rest.length || !/^\d*$/.test(bits ?? '') || !Number.isInteger(prefix) || prefix < 0 || prefix > max) {
+      console.error(`overtone-web: TRUSTED_PROXY_ADDRS holds "${range}", not an address or CIDR range`);
+      process.exit(1);
+    }
+    list.addSubnet(address, prefix, family === 6 ? 'ipv6' : 'ipv4');
+  }
+  return { list, count: ranges.length };
+}
+
+// The connection's own address; an IPv4 client on a dual-stack socket arrives
+// as ::ffff:a.b.c.d and is matched, and forwarded, as a.b.c.d.
+function peerOf(req) {
+  const raw = req.socket.remoteAddress || '';
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  return mapped ? mapped[1] : raw;
+}
+
+function fromTrustedProxy(peer) {
+  const family = net.isIP(peer);
+  return TRUSTED.count > 0 && family > 0 && TRUSTED.list.check(peer, family === 6 ? 'ipv6' : 'ipv4');
+}
+
+// The chain the API reads. From a trusted proxy: the last HOPS entries it
+// appended, then its own address. From anyone else: their address alone,
+// whatever X-Forwarded-For they wrote, since nothing vouches for it.
+function forwardedFor(req, peer, trusted) {
+  if (!trusted) return peer || 'unknown';
   const raw = req.headers['x-forwarded-for'];
   const incoming = (Array.isArray(raw) ? raw.join(',') : raw || '')
     .split(',')
     .map((a) => a.trim())
     .filter(Boolean);
   const kept = HOPS > 0 ? incoming.slice(-HOPS) : [];
-  return [...kept, req.socket.remoteAddress || 'unknown'].join(', ');
+  return [...kept, peer || 'unknown'].join(', ');
 }
 
 // The worker's routes are reached on the API's own port with their own bearer
@@ -130,9 +226,12 @@ function proxy(req, res) {
   // through here, with an X-Forwarded-For this process wrote.
   delete headers[PROXY_HEADER];
   if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
-  headers['x-forwarded-for'] = forwardedFor(req);
-  headers['x-forwarded-proto'] ||= 'http';
-  headers['x-forwarded-host'] ||= req.headers.host || '';
+  const peer = peerOf(req);
+  const trusted = fromTrustedProxy(peer);
+  headers['x-forwarded-for'] = forwardedFor(req, peer, trusted);
+  // The same rule for the scheme and host a proxy reports.
+  if (!trusted || !headers['x-forwarded-proto']) headers['x-forwarded-proto'] = 'http';
+  if (!trusted || !headers['x-forwarded-host']) headers['x-forwarded-host'] = req.headers.host || '';
   headers.host = UPSTREAM.host;
   const up = http.request(
     { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: req.method, path: req.url, headers },
@@ -141,14 +240,24 @@ function proxy(req, res) {
       r.pipe(res);
     },
   );
+  // An API that stops answering, or a connection that stops moving, must not
+  // hold this process's sockets forever: idle for API_TIMEOUT_S, it is cut.
+  up.setTimeout(API_TIMEOUT_MS, () => {
+    up.destroy(Object.assign(new Error(`no answer in ${API_TIMEOUT_MS / 1000} s`), { code: 'ETIMEDOUT' }));
+  });
   up.on('error', (err) => {
     console.error(`overtone-web: ${req.method} ${req.url} -> api failed: ${err.code || err.message}`);
     if (!res.headersSent) {
-      res.writeHead(502, { 'content-type': 'application/json' });
-      res.end('{"error":"api_unreachable"}');
+      const timedOut = err.code === 'ETIMEDOUT';
+      res.writeHead(timedOut ? 504 : 502, { 'content-type': 'application/json' });
+      res.end(timedOut ? '{"error":"api_timeout"}' : '{"error":"api_unreachable"}');
     } else {
       res.destroy();
     }
+  });
+  // A client that leaves takes its forwarded request with it.
+  res.on('close', () => {
+    if (!res.writableFinished) up.destroy();
   });
   req.pipe(up);
 }
@@ -158,11 +267,17 @@ function proxy(req, res) {
 // the policy follows the build and nothing else inline runs.
 let policy = { mtime: -1, value: '' };
 
-async function contentSecurityPolicy() {
+async function contentSecurityPolicy(framable = false) {
   const index = path.join(ROOT, 'index.html');
   const s = await file(index);
   const mtime = s ? s.mtimeMs : 0;
-  if (mtime === policy.mtime) return policy.value;
+  if (mtime !== policy.mtime) policy = { mtime, value: await basePolicy(s, index) };
+  // W12.18: an embed card (/embed/<id>) may be framed by any site; every
+  // other page by none.
+  return policy.value.replace("frame-ancestors 'none'", framable ? 'frame-ancestors *' : "frame-ancestors 'none'");
+}
+
+async function basePolicy(s, index) {
   const html = s ? await readFile(index, 'utf8') : '';
   const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
     .filter((m) => m[1].length)
@@ -170,8 +285,9 @@ async function contentSecurityPolicy() {
   const value = [
     "default-src 'self'",
     `script-src 'self'${hashes.length ? ' ' + hashes.join(' ') : ''}`,
-    // Avatars and banners come from Mides, on whatever host it serves them.
-    "img-src 'self' data: https:",
+    // Avatars and banners come from Mides' own origins and nowhere else: the
+    // API keeps no image URL outside them either (site/api mides.service.js).
+    ["img-src 'self' data:", ...IMAGE_ORIGINS].join(' '),
     "font-src 'self' data:",
     "style-src 'self'",
     "connect-src 'self'",
@@ -180,17 +296,20 @@ async function contentSecurityPolicy() {
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
-  policy = { mtime, value };
   return value;
 }
 
-async function securityHeaders() {
+// The embed card's path, and nothing else, may be framed (W12.18).
+const EMBED_PAGE = /^\/embed\/[0-9a-f]{32}\/?$/;
+
+async function securityHeaders(framable = false) {
   const headers = {
-    'content-security-policy': await contentSecurityPolicy(),
+    'content-security-policy': await contentSecurityPolicy(framable),
     'x-content-type-options': 'nosniff',
-    'x-frame-options': 'DENY',
     'referrer-policy': 'strict-origin-when-cross-origin',
   };
+  // X-Frame-Options has no "anyone": it is left out where frame-ancestors allows framing.
+  if (!framable) headers['x-frame-options'] = 'DENY';
   if (HSTS) headers['strict-transport-security'] = 'max-age=31536000';
   return headers;
 }
@@ -202,6 +321,112 @@ async function file(p) {
   } catch {
     return null;
   }
+}
+
+// ── A shared timing's link preview (W3.27) ──────────────────────────────────
+//
+// Discord, Slack and the like read a link's Open Graph tags and never run the
+// page's script, so the tags of /t/<id> are written here: the API's card of
+// that timing (title, artist, BPM, red lines, uploader; no result) into the
+// served index.html. Every value is the uploader's own text and is escaped
+// for an HTML attribute. A card that does not come in time, or a timing that
+// is not published, gets the plain page: the app says what is wrong.
+const TIMING_PAGE = /^\/t\/([0-9a-f]{32})\/?$/;
+const CARD_TIMEOUT_MS = 1500;
+const CARD_MAX_BYTES = 16 * 1024;
+
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(INVISIBLE, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// The card, read from the API as overtone-web forwards anything else: the
+// proxy secret, and the visitor's address so the API's read limit counts them.
+function timingCard(req, id) {
+  return new Promise((resolve) => {
+    const headers = { accept: 'application/json', host: UPSTREAM.host };
+    if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
+    const peer = peerOf(req);
+    headers['x-forwarded-for'] = forwardedFor(req, peer, fromTrustedProxy(peer));
+    headers['x-forwarded-proto'] = 'http';
+    const up = http.request(
+      { hostname: UPSTREAM.hostname, port: UPSTREAM.port || 80, method: 'GET', path: `/api/v1/timings/${id}/card`, headers },
+      (r) => {
+        if (r.statusCode !== 200) {
+          r.resume();
+          return resolve(null);
+        }
+        let body = '';
+        let card = null;
+        r.setEncoding('utf8');
+        r.on('data', (chunk) => {
+          body += chunk;
+          if (body.length > CARD_MAX_BYTES) up.destroy();
+        });
+        r.on('end', () => {
+          try {
+            card = JSON.parse(body);
+          } catch {
+            card = null;
+          }
+        });
+        r.on('error', () => {});
+        // After 'end', or instead of it when the answer was cut: either way, done.
+        r.on('close', () => resolve(card && typeof card === 'object' ? card : null));
+      },
+    );
+    up.setTimeout(CARD_TIMEOUT_MS, () => up.destroy());
+    up.on('error', () => resolve(null));
+    up.end();
+  });
+}
+
+/** index.html with the timing's title and Open Graph tags in its head. */
+function withCard(html, card) {
+  const song = [card.artist, card.title].filter(Boolean).join(' - ') || 'A timing';
+  const bpm = Number.isFinite(card.bpm) ? `${Math.round(card.bpm * 100) / 100} BPM` : null;
+  const lines = Number.isInteger(card.redLines) ? `${card.redLines} red line${card.redLines === 1 ? '' : 's'}` : null;
+  const who = card.uploader?.username ? `timed by ${card.uploader.username}` : 'timed anonymously';
+  const title = escapeAttr(`${song} · Overtone`);
+  const description = escapeAttr([bpm, lines, who].filter(Boolean).join(' · '));
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Overtone" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${description}" />`,
+    `<meta name="twitter:card" content="summary" />`,
+  ].join('\n    ');
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${title}</title>`)
+    .replace(/<meta name="description" content="[^"]*"\s*\/?>/i, () => `<meta name="description" content="${description}" />`)
+    .replace(/<\/head>/i, () => `    ${tags}\n  </head>`);
+}
+
+async function serveTimingPage(req, res, id) {
+  const index = path.join(ROOT, 'index.html');
+  if (!(await file(index))) return false;
+  const card = await timingCard(req, id);
+  if (!card) return false;
+  const body = Buffer.from(withCard(await readFile(index, 'utf8'), card), 'utf8');
+  res.writeHead(200, {
+    'content-type': TYPES['.html'],
+    'content-length': body.length,
+    // Never kept: an unpublished timing must stop being described at once.
+    'cache-control': 'no-store',
+    ...(await securityHeaders()),
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
 }
 
 async function serve(req, res) {
@@ -216,6 +441,8 @@ async function serve(req, res) {
     res.writeHead(400);
     return res.end();
   }
+  const timing = TIMING_PAGE.exec(rel);
+  if (timing && (await serveTimingPage(req, res, timing[1]))) return;
   // Resolved against ROOT and checked to stay inside it: `..` never escapes.
   let target = path.join(ROOT, path.normalize(rel));
   if (target !== ROOT && !target.startsWith(ROOT + path.sep)) {
@@ -232,18 +459,35 @@ async function serve(req, res) {
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
+  // W12.23: the service worker is checked on every visit, never kept stale by
+  // an HTTP cache, and its scope is the whole site (it sits at the root, so
+  // the header only says so outright).
+  const worker = rel === '/sw.js';
   res.writeHead(200, {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
-    'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
-    ...(await securityHeaders()),
+    'cache-control': immutable ? 'public, max-age=31536000, immutable' : worker ? 'no-cache, max-age=0' : 'no-cache',
+    ...(worker ? { 'service-worker-allowed': '/' } : {}),
+    ...(await securityHeaders(EMBED_PAGE.test(rel))),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
 }
 
+// W12.23: the installed app's share target posts the shared audio to
+// /share-target, and the service worker answers it in the browser. When no
+// worker does (it was cleared, or not installed yet), the post reaches here:
+// the file is not read, and the visitor lands on the Analyze page, told to
+// pick it there.
+function shareWithoutWorker(req, res) {
+  req.resume();
+  res.writeHead(303, { location: '/analyze?shared=unavailable', connection: 'close', 'cache-control': 'no-store', 'content-length': 0 });
+  res.end();
+}
+
 const server = http.createServer((req, res) => {
   if (req.url === '/api' || req.url.startsWith('/api/')) return proxy(req, res);
+  if (req.method === 'POST' && /^\/share-target\/?(\?.*)?$/.test(req.url)) return shareWithoutWorker(req, res);
   serve(req, res).catch((err) => {
     console.error(`overtone-web: ${req.url}: ${err.message}`);
     if (!res.headersSent) res.writeHead(500);
@@ -259,6 +503,6 @@ server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
   console.log(
     `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
-      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}, proxy secret ${PROXY_SECRET ? 'set' : 'NOT set'}`,
+      `${HOPS} trusted proxy hop(s) from ${TRUSTED.count} trusted range(s), HSTS ${HSTS ? 'on' : 'off'}, proxy secret ${PROXY_SECRET ? 'set' : 'NOT set'}`,
   );
 });

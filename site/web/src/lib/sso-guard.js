@@ -54,7 +54,22 @@ export function takeSignInNote() {
     return null
   }
   if (!note || !(Date.now() - note.at < FRESH_MS)) return null
-  // Only a path on this site: a stored full URL would be an open redirect.
-  const returnTo = typeof note.returnTo === 'string' && /^\/(?!\/)/.test(note.returnTo) ? note.returnTo : '/profile'
-  return { returnTo }
+  return { returnTo: sitePath(note.returnTo) ?? '/profile' }
+}
+
+/**
+ * Only a path on this site: a stored full URL would be an open redirect.
+ * Browsers read `/\evil.example` (and `/<tab>/evil.example`) as
+ * `//evil.example`, another host, so the check is the resolved URL's origin,
+ * not the text's first characters.
+ */
+export function sitePath(value, origin = window.location.origin) {
+  if (typeof value !== 'string' || !/^\/(?![/\\])/.test(value)) return null
+  let url
+  try {
+    url = new URL(value, origin)
+  } catch {
+    return null
+  }
+  return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : null
 }

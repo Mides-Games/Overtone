@@ -2,8 +2,8 @@
 
 `python/overtone_server.py` sirve el índice de una carpeta Songs y su caché de
 BPM por HTTP. Está pensado para una máquina que guarda la carpeta y la analiza
-sola, por ejemplo una VPS. La caché vive en el mismo índice SQLite que usa la
-app (`library.sqlite3`, esquema v3, tabla `analysis`). Cada audio se analiza
+sola, por ejemplo una VPS. La caché vive en el índice SQLite de la
+biblioteca (`library.sqlite3`, esquema v3, tabla `analysis`). Cada audio se analiza
 una sola vez y se vuelve a analizar solo si cambia el archivo o el código del
 motor (`engine_hash`).
 
@@ -14,8 +14,19 @@ Qué hace y qué no:
   proxy con TLS. **Nunca** lo publiques sin TLS, porque el token viajaría en
   claro.
 - Cada petición lleva `Authorization: Bearer <token>`.
+- Una conexión que no manda nada en 30 s se cierra. Atiende 64 a la vez; a
+  la siguiente le contesta `503` y la cierra, sin darle un hilo.
+- Tokens equivocados (cabecera o `/login`): 20 por minuto en todo el
+  servidor, porque detrás de Caddy todos llegan desde la misma dirección.
+  Pasado eso no comprueba ningún token, tampoco el bueno, y contesta `429`
+  con `Retry-After` hasta que el fallo más viejo cumple un minuto. Una
+  sesión del navegador ya abierta sigue valiendo.
 - Un audio sin pulso (ruido, pads, silencio) queda como `refused`, con el
   motivo del motor y sin BPM. No se inventa nada.
+- El audio de un mapa sale del `AudioFilename` de su `.osu`, que cualquiera
+  puede escribir. Solo se lee si es un nombre de archivo a secas (sin `/`,
+  `\`, unidad ni `..`) y, seguidos los enlaces, un archivo normal dentro de
+  la carpeta de la canción. Si no, queda como `no_audio` con el motivo.
 
 ## Endpoints
 
@@ -27,6 +38,14 @@ Qué hace y qué no:
 | POST | `/api/stop` | Pide parar el análisis en curso (lo terminado se guarda) |
 | GET | `/api/songs?q=texto&limit=n` | Búsqueda; cada mapa trae su `analysis` |
 | GET | `/api/analysis?path=<audio>` | El análisis guardado de un audio |
+| GET | `/api/v1/runs` | Las corridas de medición, la cola y las etapas |
+| POST | `/api/v1/runs` | Encola una corrida (`{"tool": "stages", "stage": ...}`) |
+| GET | `/api/v1/runs/<id>` | Una corrida y el final de su log |
+| GET | `/api/v1/runs/<id>/result` | El informe JSON del tool |
+| GET | `/api/v1/runs/<id>/log` | El log entero, texto plano |
+| POST | `/api/v1/runs/<id>/stop` | Cancela la corrida o la corta si corre |
+| GET/POST | `/login` | La página de entrada (token → cookie de sesión) |
+| GET | `/` | La página de tests (con sesión) |
 
 Solo puede correr un escaneo y un análisis a la vez. Si se pide otro mientras
 corre uno, la respuesta es `409`. El progreso se lee en `status.jobs`.
@@ -35,6 +54,14 @@ corre uno, la respuesta es `409`. El progreso se lee en `status.jobs`.
 
 Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
 
+**Quién ejecuta qué.** El checkout (`/opt/overtone`) es del usuario
+`overtone`, que es quien lo actualiza. root nunca ejecuta nada de ahí: ni
+un script, ni una compilación, ni `git`. Un archivo de una carpeta que otro
+usuario puede escribir, ejecutado por root, es root para quien la escriba;
+y `git` lee la configuración y los hooks del repositorio, que también son de
+`overtone`. Por eso cada paso sobre el checkout va con `sudo -u overtone -H`,
+y nunca hace falta `safe.directory`.
+
 1. Paquetes del sistema (sin escritorio ni ffmpeg: el motor Rust decodifica
    solo):
 
@@ -42,38 +69,39 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
    apt-get install -y --no-install-recommends build-essential curl git ca-certificates libsndfile1
    ```
 
-2. El código. Sube el repositorio sin `.venv/` ni `target/`, o clónalo:
+2. El usuario del servicio y el código, clonado por ese usuario:
 
    ```bash
-   git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
-   ```
-
-3. Python 3.14 con `uv` y las dependencias del motor. `pywebview` no hace falta
-   en un servidor:
-
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
+   useradd --system --create-home --home-dir /var/lib/overtone --shell /bin/sh overtone && install -d -o overtone -g overtone /opt/overtone
    ```
 
    ```bash
-   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/overtone-server.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/overtone-server.lock
+   sudo -u overtone -H git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
+   ```
+
+3. Python 3.14 con `uv` y las dependencias del motor, como `overtone`:
+
+   ```bash
+   sudo -u overtone -H sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+   ```
+
+   ```bash
+   sudo -u overtone -H sh -c 'cd /opt/overtone && ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python -r python/requirements.lock'
    ```
 
    Las versiones salen de `python/requirements.lock`, las mismas que midió
-   el benchmark; solo se dejan afuera las del escritorio (pywebview y lo que
-   arrastra en Windows).
+   el benchmark. `uv` y el intérprete quedan en la carpeta de `overtone`
+   (`/var/lib/overtone`), donde el servicio los alcanza.
 
-   `UV_PYTHON_INSTALL_DIR` deja el intérprete fuera de `/root`, para que el
-   usuario del servicio (abajo) pueda usarlo.
-
-4. El motor Rust, que es el que hace rápido el análisis:
+4. El motor Rust, que es el que hace rápido el análisis, también como
+   `overtone` (así el actualizador puede recompilarlo):
 
    ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+   sudo -u overtone -H sh -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
    ```
 
    ```bash
-   cd /opt/overtone && ~/.cargo/bin/cargo build --release -p overtone-cli
+   sudo -u overtone -H sh -c 'cd /opt/overtone && ~/.cargo/bin/cargo build --release -p overtone-cli'
    ```
 
    Compilar en release puede pedir más de 1 GB de RAM. Si la VPS tiene poca,
@@ -86,31 +114,31 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
 6. Comprobar que el motor y la API funcionan ahí:
 
    ```bash
-   cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests
+   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests'
    ```
 
-7. Arrancarlo a mano una vez. La primera vez escribe un token en
-   `~/Overtone/api-token`:
+7. Arrancarlo a mano una vez, como `overtone`. La primera vez escribe un
+   token en `/var/lib/overtone/Overtone/api-token`:
 
    ```bash
-   cd /opt/overtone && .venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60
+   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60'
    ```
 
    `--every 60` escanea y analiza lo nuevo cada 60 minutos. `--jobs N` fija
    cuántos audios analiza Rust a la vez (2 por defecto, solo sin el voto).
 
-   **Memoria: el voto de Beat This!.** La app, por defecto, deja que Beat
+   **Memoria: el voto de Beat This!.** El motor, por defecto, deja que Beat
    This! vote sobre las red lines. Ese voto carga la canción en Python y corre
    un modelo ONNX. Medido en un fixture de 90 s (2026-10-25):
 
    | Camino | RAM pico | Tiempo |
    |---|---|---|
-   | Rust + voto (lo que hace la app) | 1.46 GB | 50 s |
+   | Rust + voto (por defecto) | 1.46 GB | 50 s |
    | Rust sin voto (`--no-beat-vote`) | 101 MB | 2.3 s |
    | v3 Python (`--engine python`) | 1.78 GB | 42 s |
 
    En una VPS con 1 GB, usa `--no-beat-vote`. Las red lines quedan como las
-   ajusta el motor, y pueden diferir de la app donde el voto las habría
+   ajusta el motor, y pueden diferir de las del voto donde este las habría
    cambiado. La caché guarda con qué modo se hizo cada análisis, así que
    cambiar de modo vuelve a analizar todo en vez de mezclar resultados.
 
@@ -136,7 +164,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-useradd --system --create-home overtone && chown -R overtone /opt/overtone && systemctl daemon-reload && systemctl enable --now overtone-api
+systemctl daemon-reload && systemctl enable --now overtone-api
 ```
 
 El checkout es de `overtone` y la actualización automática
@@ -145,9 +173,9 @@ como root: root ejecutando código de una carpeta que otro usuario puede
 escribir le daría root a quien la escriba. Su único paso con privilegios,
 reiniciar el servicio, pasa por una regla de sudo solo para ese comando, que
 instala `deploy/setup-deploy-user.sh`. Para que pueda recompilar
-`overtone-cli`, Rust tiene que estar al alcance de `overtone` (instalalo con
-rustup como ese usuario, o apuntá `OVERTONE_CARGO` a un `cargo` que pueda
-ejecutar); si no, el binario anterior sigue y el log lo dice.
+`overtone-cli`, Rust tiene que estar al alcance de `overtone` (el paso 4 lo
+instala como ese usuario; si no, apuntá `OVERTONE_CARGO` a un `cargo` que
+pueda ejecutar); si no, el binario anterior sigue y el log lo dice.
 
 Si un proceso del servicio llega al tope de memoria, systemd para el
 servicio entero salvo que se le diga lo contrario. Para que una medición o
@@ -164,29 +192,23 @@ la máquina. `MemoryMax=1G` vale con el motor Rust y `--no-beat-vote`. Con el vo
 solo análisis pasa de 1.4 GB (tabla de arriba), así que ese límite
 lo mataría.
 
-## La app en el navegador
+## La página de tests
 
-El mismo servidor sirve la app en `/`: es la misma página que la ventana de
-escritorio (`app/`), con las mismas vistas, y todo el análisis corre en el
-servidor. Se entra en `/login` con el token. La sesión es una cookie firmada
-con el token: sobrevive a reinicios del servidor, y cambiar el token cierra
-todas las sesiones.
+El servidor es una API de medición, sin interfaz propia: la interfaz de
+Overtone es la web (`site/`, ver `docs/site.md`). La app de escritorio que
+este servidor servía en `/` se archivó el 2026-10-26 (rama
+`parked/desktop-app`, etiqueta `v3-desktop-app`).
 
-Qué cambia respecto al escritorio:
-
-- **Abrir un archivo o una carpeta** muestra un selector propio. Puedes
-  subir desde tu PC (un archivo, varios o una carpeta entera) o elegir algo
-  que el servidor ya tenga: la carpeta Songs, `uploads` o `exports`.
-- **Guardar** (paquete `.osz`, CSV, pista de clic) no pregunta: escribe en
-  `exports` del servidor, sin pisar uno anterior, y la página ofrece
-  descargarlo a tu PC. En Chrome y Edge el navegador pregunta dónde
-  guardarlo; en los demás es una descarga normal.
-- **Los `.osu` que la app escribe** van a la copia de Songs del servidor,
-  con su `.bak`, como en el escritorio. No tocan tu PC.
-- El navegador nunca ve rutas fuera de Songs, `uploads` y `exports`.
+La única página que queda es la de tests, en `/`
+(`python/server_page/runs.html`). Se entra en `/login` con el token. La
+sesión es una cookie firmada con el token: sobrevive a reinicios del
+servidor, y cambiar el token cierra todas las sesiones. Con la cookie sola
+no se puede cambiar nada: la página manda además la cabecera `X-Overtone`,
+que un formulario de otro sitio no puede poner. Los scripts siguen usando
+`Authorization: Bearer <token>`.
 
 Para entrar desde fuera sin túnel, pon Caddy delante. Pide y renueva solo
-el certificado HTTPS, y deja pasar los eventos del servidor sin cortarlos.
+el certificado HTTPS.
 Hace falta un dominio que apunte a la VPS; uno gratuito tipo DuckDNS sirve.
 
 `/etc/caddy/Caddyfile`:
@@ -219,7 +241,7 @@ una en una, cada una en su propio proceso, y quedan guardadas en
 
 Se lanzan de tres formas:
 
-- **Desde la web:** el botón **Tests**, abajo a la derecha (`/runs.html`).
+- **Desde el navegador:** la página de tests, en `/`.
 - **Desde tu PC**, con el túnel abierto:
   ```bash
   python bench/remote.py --token-file token.txt run anime-single --split dev --jobs 2 --wait
@@ -238,9 +260,9 @@ mapa. En la página Tests es la casilla "Ranked and loved maps only"; en
 `bench/remote.py`, `--all-maps` la desactiva. Cada modo guarda su propio
 informe y su propio baseline.
 
-**Motor.** `rust` mide el motor Rust solo; `app` mide lo que hace la app:
-Rust, y v3 donde Rust se niega o falla (`overtone_web.run_analysis`);
-`python` mide v3 solo. Para saber cómo le va a quien usa la app, `app`.
+**Motor.** `rust` mide el motor Rust solo; `app` mide Rust, y v3 donde
+Rust se niega o falla (lo que hacía la app de escritorio, y lo que
+`bench/corpus_b.py --engine app` sigue midiendo); `python` mide v3 solo.
 
 **Memoria.** Las corridas cuentan dentro del `MemoryMax` del servicio. Sin
 el voto de Beat This!, un análisis con Rust usa unos 100 MB, así que
@@ -254,8 +276,8 @@ voto. Una lectura con voto nunca se sirve a una corrida sin él.
 
 **Gates y suite en el servidor.** Las mismas comprobaciones de
 `CLAUDE.md` corren en el servidor, para no cargar el PC: `gates` (todos los
-gates de Python, o los que se nombren) y `suite` (toda la suite, o solo
-`engine` o `web`). Cada gate se informa por separado, con el final de su
+gates de Python, o los que se nombren) y `suite` (la suite de Python,
+`tests/test_overtone.py`). Cada gate se informa por separado, con el final de su
 salida. Los gates de Rust necesitan cargo, que el servicio no tiene. `perf`
 mide los presupuestos en la máquina que lo corre, que en un servidor es la
 del servidor.
@@ -271,24 +293,30 @@ python bench/remote.py --token-file token.txt suite --wait
 `sbom` y `notices` no corren en el servidor: revisan el venv y los crates
 del build del instalador de Windows. El modelo de Beat This! es un archivo
 de Git LFS; sin git-lfs, la VPS tiene un puntero en su lugar (y `perf` falla
-en esa etapa). Una sola vez, como root:
+en esa etapa). Una sola vez: el paquete como root, y git-lfs, como todo
+`git` sobre el checkout, como `overtone`:
 
 ```bash
-apt-get install -y git-lfs && cd /opt/overtone && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+apt-get install -y git-lfs
+```
+
+```bash
+sudo -u overtone -H git -C /opt/overtone lfs install --local && sudo -u overtone -H git -C /opt/overtone lfs pull && ls -la /opt/overtone/assets/models/beat_this_final0.onnx
 ```
 
 Desde ahí el actualizador baja los archivos LFS en cada versión.
 
 Los gates generan su audio de prueba en `bench/audio`, dentro del código,
-donde el servicio no puede escribir. Una sola vez, como root:
+donde el servicio no puede escribir. Una sola vez, como `overtone` (el
+enlace va dentro de su checkout, que root no toca):
 
 ```bash
-mkdir -p /var/lib/overtone/bench-audio && chown overtone:overtone /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio
+sudo -u overtone -H sh -c 'mkdir -p /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio'
 ```
 
 **Probar otra versión del algoritmo:** en la VPS,
-`cd /opt/overtone && git pull && systemctl restart overtone-api`, y lanza
-la corrida. Cada informe guarda el commit que lo produjo, así que dos
+`sudo -u overtone -H git -C /opt/overtone pull --ff-only && systemctl restart overtone-api`,
+y lanza la corrida. Cada informe guarda el commit que lo produjo, así que dos
 corridas se comparan sabiendo qué código respondió cada una. Las mediciones
 no son gates: lo que decide si un cambio entra siguen siendo los gates
 locales de `CLAUDE.md`.
@@ -304,6 +332,11 @@ Cada push a `experimental` (la rama de staging) llega solo a la VPS:
 2. Ese servicio (`deploy/overtone-update.sh`) baja la rama (solo
    fast-forward), recompila `overtone-cli` si cambió el código Rust y
    reinicia Overtone. Si corre una medición, los gates o la suite, espera.
+   También espera si el servicio está activo pero la API no contesta (o
+   rechaza el token): sin respuesta no se sabe si corre algo, y el log dice
+   por qué esperó. Si el servicio está parado no corre nada, así que
+   despliega igual: un servidor caído puede estar esperando justo ese
+   arreglo.
 3. Un timer hace lo mismo cada 5 minutos, por si GitHub falla o la VPS
    estaba apagada.
 
@@ -312,11 +345,25 @@ la VPS en otra rama a mano, el actualizador la deja en paz y lo dice en el
 log.
 
 Instalarlo, una vez, como root (la llave pública la da quien configura los
-secretos de GitHub):
+secretos de GitHub). root no ejecuta el script desde el checkout, que es de
+`overtone`: primero lo copia a un archivo suyo (git lo lee como `overtone`),
+lo revisa entero, y ejecuta esa copia. El script escribe él mismo las
+unidades de systemd del actualizador; no copia nada del checkout.
 
 ```bash
-sh /opt/overtone/deploy/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+sudo -u overtone -H git -C /opt/overtone show HEAD:deploy/setup-deploy-user.sh > /root/setup-deploy-user.sh
 ```
+
+```bash
+less /root/setup-deploy-user.sh
+```
+
+```bash
+sh /root/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+```
+
+Si el script cambia en el repositorio, se repite igual: copiar, revisar,
+ejecutar la copia.
 
 Qué hizo cada vez:
 

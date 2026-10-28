@@ -128,11 +128,28 @@ def web():
              "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, "
              "the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
              rules="required|string|starts_with:http://"),
+         var("Trusted proxy addresses", "TRUSTED_PROXY_ADDRS",
+             "Comma-separated addresses or CIDR ranges of the TLS proxy in front (behind Cloudflare: its "
+             "published IPv4 and IPv6 ranges, docs/deploy.md §9). Only a connection from inside them has "
+             "its X-Forwarded-For read; anyone else is counted by their own address. Empty = trust no one.",
+             rules="nullable|string"),
          var("Trusted proxy hops", "TRUSTED_PROXY_HOPS",
-             "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many "
-             "X-Forwarded-For entries plus the connection's address and drops what a client wrote "
-             "before them. The API's TRUST_PROXY is this + 1.",
+             "Proxies in front of this server: 1 for the TLS proxy. From a trusted address, serve.mjs keeps "
+             "that many X-Forwarded-For entries plus the connection's address and drops what a client "
+             "wrote before them. The API's TRUST_PROXY is this + 1.",
              default="1", rules="required|integer|between:0,10"),
+         var("Mides web URL", "MIDES_WEB_URL",
+             "The same value as this environment's overtone-api MIDES_WEB_URL: profile pictures may load "
+             "from its origin (img-src).",
+             rules="nullable|string|starts_with:http"),
+         var("Mides image origins", "MIDES_IMAGE_ORIGINS",
+             "The same value as overtone-api's: other origins profile pictures may load from. Nothing "
+             "else but this site and data: is allowed.",
+             rules="nullable|string"),
+         var("API timeout", "API_TIMEOUT_S",
+             "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). "
+             "Idle, not total: an upload that keeps moving is not cut.",
+             default="60", rules="required|integer|between:1,3600"),
          var("HSTS", "HSTS",
              "1 = every page carries Strict-Transport-Security (one year). The site is served over "
              "https only; 0 is for a server reached over plain http.",
@@ -160,6 +177,9 @@ def api():
                    "This server's secret for the Mides code exchange; the same value as SSO_SECRET_OVERTONE in Mides."),
             var("Mides auth URL", "MIDES_AUTH_URL", "The Mides SSO."),
             var("Mides web URL", "MIDES_WEB_URL", "Mides-Dev-Web, for profiles and the wall."),
+            var("Mides image origins", "MIDES_IMAGE_ORIGINS",
+                "Other origins Mides serves profile pictures from (comma-separated, e.g. its CDN). A picture "
+                "anywhere but here and MIDES_WEB_URL is not kept. The same value as overtone-web's."),
             var("Mides app", "MIDES_APP", "This app's name in the Mides SSO."),
             var("Site URL", "SITE_URL", "The public origin of this environment, https, no trailing slash."),
             var("Trust proxy", "TRUST_PROXY",
@@ -186,6 +206,56 @@ def api():
                 "Where uploads wait for the worker; deleted when the result arrives (ADR-W4). Inside the "
                 "server's disk, so a restart does not lose the queue's audio.",
                 default="/home/container/.overtone/spool", rules="required|string|starts_with:/home/container/"),
+            var("Spool budget MB", "SPOOL_MAX_MB",
+                "The most the spool holds, waiting audio and uploads still arriving together; past it an "
+                "upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk "
+                "(default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it."),
+            var("Queue max", "QUEUE_MAX", "Songs waiting or running at once, everyone's together (default 30)."),
+            secret("Bot token", "BOT_TOKEN",
+                   "32+ characters, the same value as this environment's overtone-bot BOT_TOKEN, and not "
+                   "WORKER_TOKEN: the bearer of /api/internal/bot. Empty = the bot's routes answer 503 BOT_OFF."),
+            var("Mides Discord link path", "MIDES_DISCORD_LINK_PATH",
+                "The Mides page that links Discord to a Mides account and returns to the profile "
+                "(docs/bot.md). Default /connections/discord/link."),
+            var("osu! client id", "OSU_CLIENT_ID",
+                "The osu! OAuth app's id (docs/bot.md). With the secret and the redirect URI, or none: "
+                "empty = linking osu! is off.",
+                rules="nullable|string|regex:/^[0-9]{1,12}$/"),
+            secret("osu! client secret", "OSU_CLIENT_SECRET", "The osu! OAuth app's secret."),
+            var("osu! redirect URI", "OSU_REDIRECT_URI",
+                "SITE_URL + /link/osu, exactly as registered with the osu! app.",
+                rules="nullable|string|starts_with:https://"),
+        ],
+    )
+
+
+def bot():
+    return app_egg(
+        "bot", "bot",
+        "The Overtone Discord bot (bot/, discord.js): /time-song and the other slash commands, through "
+        "overtone-api's /api/internal/bot with BOT_TOKEN. Needs no allocation of its own: it only makes "
+        "outbound connections (Discord's gateway, the API). Off, and stopped, until DISCORD_TOKEN, "
+        "BOT_TOKEN and OVERTONE_API are set.",
+        NODE_IMAGES, "overtone-bot: ready as",
+        [
+            secret("Discord token", "DISCORD_TOKEN",
+                   "The bot user's token (Discord developer portal -> the application -> Bot). Never in a file."),
+            secret("Bot token", "BOT_TOKEN",
+                   "The same value as this environment's overtone-api BOT_TOKEN.",
+                   rules="nullable|string|min:32"),
+            var("API", "OVERTONE_API",
+                "This environment's overtone-api, http://<allocation ip>:<port>, reached directly (never "
+                "through overtone-web, which does not forward /api/internal). No trailing slash.",
+                rules="nullable|string|starts_with:http"),
+            var("Discord application id", "DISCORD_APP_ID",
+                "The application the slash commands belong to. With it, every start registers them "
+                "(bot/scripts/register.mjs), so new commands arrive with the code.",
+                rules="nullable|string|regex:/^[0-9]{17,20}$/"),
+            var("Discord server id", "DISCORD_GUILD_ID",
+                "Register the commands on this one server, at once, instead of globally (for staging).",
+                rules="nullable|string|regex:/^[0-9]{17,20}$/"),
+            var("Poll ms", "BOT_POLL_MS", "How often a waiting /time-song asks the API (default 3000)."),
+            var("DM poll ms", "BOT_DM_POLL_MS", "How often the DM outbox is read (default 15000)."),
         ],
     )
 
@@ -213,8 +283,47 @@ def worker():
                 "the server's CPU limit / 100. Empty = one per core of the whole node, which a CPU limit "
                 "then throttles.",
                 default="4", rules="nullable|integer|min:1"),
+            var("Analysis memory MB", "WORKER_MEMORY_MB",
+                "Address-space cap of the process that runs each analysis (RLIMIT_AS). A job past it fails "
+                "as too_heavy and the worker goes on. Below the server's RAM, which also holds the worker "
+                "itself; 0 turns the cap off.",
+                default="1800", rules="required|integer|min:0"),
+            var("Analysis timeout minimum", "WORKER_TIMEOUT_MIN_S",
+                "The shortest wall-clock limit of one analysis, in seconds. A job past its limit is stopped "
+                "and fails as timeout.",
+                default="120", rules="required|numeric|min:10"),
+            var("Analysis timeout factor", "WORKER_TIMEOUT_FACTOR",
+                "The limit in multiples of the audio's length (the larger of this and the minimum).",
+                default="3", rules="required|numeric|min:1"),
         ],
     )
+
+
+HBA_FILE = "pg_hba.overtone.conf"
+HBA_LINE = f"hba_file = '/home/container/{HBA_FILE}'"
+# Prefix -> the line Wings writes in its place before every start.
+HBA_RULES = {
+    "local": "local all all trust",
+    "host overtone ": "host overtone {{server.build.env.DB_ROLE}} all scram-sha-256",
+    "host overtone_experimental ": "host overtone_experimental {{server.build.env.DB_ROLE_STAGING}} all scram-sha-256",
+    "host all ": "host all all all reject",
+    # Spellings that would open more than the lines above: commented out.
+    "host replication": "# (host replication: removed by the egg)",
+    "hostssl": "# (hostssl: removed by the egg)",
+    "hostnossl": "# (hostnossl: removed by the egg)",
+    "hostgssenc": "# (hostgssenc: removed by the egg)",
+    "hostnogssenc": "# (hostnogssenc: removed by the egg)",
+    "include": "# (include: removed by the egg)",
+}
+
+
+def hba_errors(rules):
+    """No line may match two keys: Wings would write both values on it."""
+    keys = list(rules)
+    return [f"pg_hba keys {a!r} and {b!r} share a prefix" for a in keys for b in keys
+            if a != b and b.startswith(a)] + \
+           [f"pg_hba value for {k!r} does not start with it" for k, v in rules.items()
+            if not v.startswith("#") and not v.startswith(k.rstrip())]
 
 
 def db():
@@ -240,8 +349,24 @@ def db():
             # file", seen on NA-01 on 2026-10-27). Before every start Wings
             # rewrites this line to /tmp, which is writable. The very first start
             # creates the file and still stops once; the next one runs.
-            "files": json.dumps({"pgdata/postgresql.conf": {"parser": "file", "find": {
-                "unix_socket_directories": "unix_socket_directories = '/tmp'"}}}),
+            #
+            # Who may connect is enforced the same way. postgresql.conf is
+            # pointed at pg_hba.overtone.conf (install-db.sh writes it), and each
+            # of that file's lines is rewritten by its prefix: the superuser by
+            # the socket only, each environment's role to its own database, and
+            # every other network connection refused. Wings replaces a line that
+            # starts with a key and appends nothing, so no two keys may share a
+            # prefix (a line matching two would get both values), and each value
+            # starts with its own key so the rewrite is stable. A line someone
+            # adds in another spelling survives until the next reinstall, which
+            # is why the panel's file access stays with the admin (docs/deploy.md).
+            "files": json.dumps({
+                "pgdata/postgresql.conf": {"parser": "file", "find": {
+                    "unix_socket_directories": "unix_socket_directories = '/tmp'",
+                    "#hba_file": HBA_LINE,
+                    "hba_file": HBA_LINE}},
+                HBA_FILE: {"parser": "file", "find": HBA_RULES},
+            }),
             "startup": json.dumps({"done": "database system is ready to accept connections"}),
             "logs": "{}",
             # SIGINT is PostgreSQL's fast shutdown: open transactions roll back, nothing is lost.
@@ -265,7 +390,14 @@ def db():
                    "At least 24 characters. Read on the first start only; change it later with ALTER ROLE.",
                    rules="required|string|min:24"),
             var("First database", "POSTGRES_DB", "Created on the first start: production's.",
-                default="overtone", rules="required|string|alpha_dash"),
+                default="overtone", rules="required|string|in:overtone"),
+            var("Production role", "DB_ROLE",
+                "The role overtone-api connects as, to the overtone database only (docs/deploy.md §4). "
+                "Never the superuser. Changing it takes effect on the next start.",
+                rules="required|string|alpha_dash|max:63"),
+            var("Staging role", "DB_ROLE_STAGING",
+                "The role overtone-api-exp connects as, to overtone_experimental only. Never the superuser.",
+                rules="required|string|alpha_dash|max:63"),
             var("Data directory", "PGDATA",
                 "Under /home/container, or the data is outside the server's disk and its backups.",
                 default="/home/container/pgdata", rules="required|string|in:/home/container/pgdata"),
@@ -273,7 +405,7 @@ def db():
     }
 
 
-EGGS = {"overtone-web": web, "overtone-api": api, "overtone-worker": worker, "overtone-db": db}
+EGGS = {"overtone-web": web, "overtone-api": api, "overtone-worker": worker, "overtone-bot": bot, "overtone-db": db}
 
 
 def render(make):
@@ -315,7 +447,7 @@ def shape_errors(name, egg):
 
 def main(argv):
     check = "--check" in argv
-    failed = []
+    failed = hba_errors(HBA_RULES)
     for name, make in EGGS.items():
         out = HERE / f"egg-{name}.json"
         text = render(make)

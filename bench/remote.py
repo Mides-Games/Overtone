@@ -20,7 +20,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py log <id> --grep FAIL            # the whole log, or its matching lines
     python bench/remote.py gates --wait                    # every Python gate, on the server
     python bench/remote.py gates benchmark golden --wait   # some of them
-    python bench/remote.py suite --wait                    # the Python suite (all, engine, web)
+    python bench/remote.py suite --wait                    # the Python suite (all, engine)
 
 A report holds one row per map with its folder name, so it stays in
 bench/.cache (git-ignored), never in the repository. A measurement, not a gate.
@@ -97,7 +97,10 @@ def _line(meta: dict) -> str:
                      if k not in ("tool", "stage") and v not in (None, "", False))
     took = f"{meta['seconds']:.0f} s" if meta.get("seconds") is not None else ""
     commit = (meta.get("commit") or "")[:8]
-    return f"{meta['id']}  {meta['state']:<11} {what:<16} {extra:<40} {commit}  {took}"
+    peak = f"  peak {meta['peak_mb']} MB" if meta.get("peak_mb") else ""
+    why = f"
+  {meta['why']}" if meta.get("why") else ""
+    return f"{meta['id']}  {meta['state']:<11} {what:<16} {extra:<40} {commit}  {took}{peak}{why}"
 
 
 def _summary(summary: dict | None) -> None:
@@ -150,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     gates.add_argument("only", nargs="*", help="some gates (default: all of them)")
     gates.add_argument("--wait", action="store_true")
     suite = commands.add_parser("suite", help="run the Python suite on the server")
-    suite.add_argument("which", nargs="?", default="all", choices=("all", "engine", "web"))
+    suite.add_argument("which", nargs="?", default="all", choices=("all", "engine"))
     suite.add_argument("--wait", action="store_true")
     for name in ("show", "wait", "stop"):
         commands.add_parser(name).add_argument("id")

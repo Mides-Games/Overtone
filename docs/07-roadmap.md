@@ -13,24 +13,30 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ## Where we are — 2026-10-16
 
-**Stage: the app is usable end to end in ten sections and can analyse with the Rust engine
-(opt-in; v3 stays the default and the fallback). On 2026-10-26 (W1) hitsounds, Compile,
+**Stage: Overtone is web-only since 2026-10-26: the website (`site/`) is its interface,
+and the engine (Python v3 and Rust v4) runs on its own from the command line. The desktop
+app -- the web window, the classic Tk window and the MSI -- was parked that day on
+`parked/desktop-app` (tag `v3-desktop-app`); its editing tools come back on the web in W7
+([`16-web-platform.md`](16-web-platform.md)). Earlier on 2026-10-26 (W1) hitsounds, Compile,
 Train and the Songs browser were parked on `parked/desktop-extras`: the core is timing.**
+
+> The rows below that describe the app, its playback and its installer record what the
+> desktop app had when it was parked, not what master ships.
 
 | Area | State |
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`) and Ramps (`ramps`) |
-| App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Map check, Mapset, Audio, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, EN/ES, dark and light |
+| App (web shell) | **parked** 2026-10-26 on `parked/desktop-app` (tag `v3-desktop-app`); it was usable in ten sidebar sections: Library, Timing, Structure, Map check, Mapset, Audio, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **parked** (W1, 2026-10-26) on `parked/desktop-extras` and the tag `v3-desktop-full`: the copier, the Hitsounds section, the consistency check, the Rust decision engine and the Samples card. Its evaluation never cleared its own bar (clap F1 0.59, finish F1 0.42) |
-| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone |
+| Playback | **parked with the app** (2026-10-26) — it had play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
-| Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
+| Installer (MSI) | **parked with the app** (2026-10-26; `parked/desktop-app`) — v0.1.0-alpha was published: per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **784** Python (523 engine + 252 web shell + 9 worker) · **231** Rust.
+Tests: **537** Python (503 engine + 34 worker) · **231** Rust.
 
 ### Current priorities — 2026-10-16
 

@@ -4,7 +4,28 @@ import { test } from 'node:test';
 process.env.MIDES_AUTH_URL = 'https://mides.example/api';
 process.env.MIDES_WEB_URL = 'https://mides.example';
 process.env.MIDES_CLIENT_SECRET = 'test-client-secret-test-client-secret';
-const { exchangeCode } = await import('../src/services/mides.service.js');
+process.env.MIDES_IMAGE_ORIGINS = 'https://cdn.mides.example';
+const { absolute, exchangeCode } = await import('../src/services/mides.service.js');
+
+test('only images on Mides\' own origins are kept', () => {
+  assert.equal(absolute('/api/profile/avatar/a.png'), 'https://mides.example/api/profile/avatar/a.png');
+  assert.equal(absolute('https://mides.example/b.png'), 'https://mides.example/b.png');
+  assert.equal(absolute(' https://cdn.mides.example/c.webp '), 'https://cdn.mides.example/c.webp');
+  for (const value of [
+    'https://tracker.example/pixel.png', // anyone else's host learns who views the queue
+    'https://mides.example.evil.test/a.png',
+    'http://mides.example/a.png', // the right host, the wrong scheme: another origin
+    'https://user:pw@mides.example/a.png',
+    '//tracker.example/a.png',
+    'javascript:alert(1)',
+    'data:image/png;base64,AAAA',
+    'avatar.png',
+    '',
+    null,
+  ]) {
+    assert.equal(absolute(value), null, String(value));
+  }
+});
 
 const answer = (status, body) => async (url, init) => {
   answer.last = { url, body: JSON.parse(init.body) };

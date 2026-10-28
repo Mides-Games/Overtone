@@ -20,6 +20,1671 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Releases carry executables, built in one line
+
+### Changed
+
+- `scripts/release.py <version>` builds a release's assets into `dist/release/<version>/`:
+  the Rust engine's `overtone-cli-<version>-windows-x64.exe`; the Python engine's
+  command line frozen by PyInstaller into `overtone-engine-<version>-windows-x64.zip`
+  (`overtone.exe` with the Beat This! model, so the vote works offline and no Python is
+  needed); the site for self-hosting in `overtone-site-<version>.zip` (built web, the
+  API's tracked source, `serve.mjs`, a README); `SHA256SUMS.txt`; and `notes.md`, the
+  "Changed" bullets of every timeline entry since the previous release tag.
+  `--publish` tags `v<version>`, pushes the tag and runs `gh release create`, as a
+  prerelease for `alpha`, `beta` and `rc`. docs/release.md is the routine.
+- One version everywhere: the script refuses to build unless Cargo.toml's workspace
+  version (which the Python engine's `app_version()` reads), the crates' path pins,
+  Cargo.lock and both site packages agree. `scripts/release.py bump <version>` sets
+  them all; the site's packages, still at 0.1.0, were aligned to 0.2.0-alpha with it.
+- PyInstaller is pinned in `scripts/requirements-release.txt`, apart from the
+  engine's requirements; the script refuses a venv that differs from the pins.
+
+### Hardening
+
+- `--publish` refuses a dirty tree, any branch but `master`, an existing tag and notes
+  over GitHub's 125,000 characters, before anything is built.
+- The frozen engine is smoke-tested before it is zipped: one run in a scratch profile
+  with PATH holding only Windows' folders, on the benchmark's `change-128-142` case. It
+  must print exactly two red lines within 0.05 BPM under a `v<version>` header, and the
+  run is checked for writes into its own folder.
+- The site ZIP takes the API from `git ls-files`, so neither `node_modules` nor a real
+  `.env` can ride along; a Git LFS pointer in place of the model stops the build.
+
+### Measured
+
+- 2026-10-27, this machine, version 0.2.0-alpha, `--since v0.2.0-alpha`: CLI 5.01 MB,
+  engine ZIP 198.70 MB (594 files, 397.7 MB unpacked), site ZIP 0.45 MB (80 files);
+  `sha256sum -c` passes on all three.
+- Smoke: `overtone.exe` read `400,468.750000973913` and `30400,422.535211267606`, that is
+  128.000 and 142.000 BPM, in 23.3 s and 23.7 s on two builds; no writes into its folder.
+- Build times, cold then warm: cargo 84.2 s / 0.2 s, PyInstaller 98.2 s / 62.8 s, site
+  build 1.8 s / 1.5 s; the warm run took 113.6 s end to end. Notes: 94 entries since
+  v0.2.0-alpha, 63,586 characters.
+- Not measured: the executables on a clean Windows without Python or the Visual C++
+  runtime; any Linux or macOS build (none exists); the Rust executable is built, not
+  smoke-tested.
+
+### Rejected / tried and dropped
+
+- A release workflow in GitHub Actions: CLAUDE.md keeps Actions to deploying, and a
+  check a person cannot run in one line does not exist.
+- Bundling the model into `_internal` as the desktop spec did: the engine now reads its
+  data one folder above its code, which frozen is the folder holding `overtone.exe`, so
+  the model and a one-line version file go there instead and the engine's code is left
+  as it is.
+- The site's API with its `node_modules` (`pnpm deploy --prod`): the asset is source for
+  self-hosting, and a native module built here would not match the host it lands on.
+
+---
+
+## Unreleased — 2026-10-27 · API tokens, versions, whole batches, images, the app and copied rows
+
+### Changed
+
+- A public API with personal tokens (W12.20): `/settings/tokens` (linked from
+  `/settings` and the profile) makes, lists and revokes them; the secret is shown once
+  and kept as a SHA-256. Three scopes: `read:analyses`, `upload`, `read:timings`. A
+  token reaches an allow-list of `/api/v1` reads and the upload, each under its scope,
+  with its own rate limit (120 a minute, and every route's own limit counted per
+  token). `/developers` explains it and renders `site/api/docs/openapi.yaml`.
+- Versions of a timing (W12.21): the owner's re-analyses of the same audio and the
+  adjustments saved on them (factor and nudge only, never a copy of the result), on the
+  result page, with Apply and the difference per red line between any two.
+- Whole batches (W12.22): one ×2 / ÷2 and nudge for every song of the Analyze page's
+  batch, and every song's `.osz` in one zip, built one song at a time.
+- The tempo map as PNG and SVG, and `/embed/<id>` for a published timing (W12.18).
+  `deploy/web/serve.mjs` lets that path, and only that path, be framed.
+- An installable app (W12.23): `public/sw.js` keeps the shell and the visitor's own
+  final results for offline reading, and the manifest's share target sends an audio
+  file shared from a phone to the Analyze page.
+- Copy one red line, or ticked rows (Shift-click for a stretch), as `[TimingPoints]`
+  rows ready to paste (W12.24), written with the export options as the whole block is.
+- Decided: a token request drops its cookies and never falls back to them, skips the
+  same-origin header (an `Authorization` header is not ambient: no other site can make
+  a browser send it) and is refused everywhere outside its allow-list. No CORS: tokens
+  are for scripts and servers, not other sites' pages.
+- Decided: the API reference is rendered by a YAML reader of our own at build time,
+  not Swagger UI (about a megabyte for one page) or a YAML package; it throws on any
+  YAML it does not read, so nothing is misread into the page.
+- Decided: the tokens stay on their own sub-page of `/settings`, not a section of it:
+  the settings are this browser's and need no account, tokens are an account's.
+- Decided: a batch's `.osz` zip is capped at 1 GiB of audio (inside a zip without
+  zip64 and a phone's patience), said before it starts.
+- Decided: the worker caches only `GET /analyses/<id>` once final, never public
+  timings (they can be unpublished), lists, the account, tokens or audio, and the copies
+  go on sign-out.
+
+### Fixed
+
+- Publishing from the result page called a setter the page no longer had, so a
+  published timing showed "could not publish". Experimental fixed the same bug with
+  `tracker.patch`; this branch's fix was dropped in the merge in favour of it.
+- Two flow descriptions in `openapi.yaml` held an unquoted comma, which YAML reads as a
+  second key: both are quoted. The new reader refuses that construct.
+
+### Hardening
+
+- `requireSameOrigin` passes a token request only because its cookies are already gone;
+  tests send a token beside another account's session cookie, a broken Bearer beside a
+  valid cookie, and token requests to publish, delete, save a version, mint a token,
+  post a suggestion and sign out: every one is a 401 or 403 and nothing changes.
+- A test holds the document's `x-token-scope` marks equal to the allow-list.
+- `/embed/<id>` has `frame-ancestors *` and no `X-Frame-Options`; look-alike paths keep
+  `'none'` and `DENY` (tested). The card has nothing to click but its link.
+
+### Measured
+
+- Not measured: nothing here touches the engine. `site/api` 173/173, `site/web` 233/233 (after merging experimental),
+  `vite build`. The `/developers` chunk is 59 kB (13 kB gzip). A two-song batch's `.osz`
+  zip was 10.6 MB; a two-line PNG 2800×748, 90 kB.
+
+### Rejected / tried and dropped
+
+- Swagger UI and a YAML dependency for `/developers` (above).
+- Answering CORS preflights for token requests: it would weaken the reasoning the
+  same-origin guard rests on, for a use (another site's page holding a token) that
+  should not exist.
+- A section of `/settings` holding the whole tokens UI (above).
+
+---
+
+## Unreleased — 2026-10-27 · Analysis modes, hints, a stretch, re-analysis and the queue's estimate
+
+### Changed
+
+- **Modes (W11.1).** Each job runs in a mode the person picks by how long they want to
+  wait. `fast`: no Beat This! vote and no octave judges (each judge reads "no answer"
+  as "keep the engine's octave"). `normal`: the call the worker always made, untouched.
+  `strict`: `normal` for now (see Rejected). The worker announces one engine hash per
+  mode, the result says its mode (`timing-result v1.2`), and the API keys every cache
+  lookup by mode and hints: the same audio asked another way is another result.
+- **Hints (W3.21)** touch the engine only where it has a real knob. An expected tempo
+  outside 120-240 moves `MAP_OCTAVE_RANGE`, the engine's own octave preference, for that
+  job (restored after); a meter fills only the bars the engine could not prove, where
+  its fallback was a guess. "One BPM" / "it changes" have no honest knob and only flag
+  the result. Every hint is compared with the result (`hint_checks`): a hint the audio
+  contradicts is said on the page, never folded silently into the timing.
+- **A stretch (W12.19)** is cut by the worker out of the engine's own decode, analysed
+  alone and shifted back into the song's timeline; the page says what it covered.
+- **Re-analysis (W3.24)** from the result page, with the file the browser holds or one
+  picked again and checked by SHA-1; the two results are linked (`reanalysis_of`) and
+  each links to `/compare?a=&b=`.
+- **The queue's estimate (W3.16):** each live row says "done in ≈ a – b", from W2.4's
+  cost per audio minute and mode, one worker assumed, "at least" behind a job of unknown
+  length.
+
+### Hardening
+
+- Options are validated on the API (known keys only, bounds, 512 bytes in the header)
+  before the upload's body is read; a re-analysis of someone else's analysis is the 404
+  of one that does not exist, and of other audio a 400 `NOT_SAME_AUDIO`.
+- A stored result's mode and hints are taken from the result, not from the request: a
+  worker from before modes cannot file a normal result under `fast`.
+
+### Measured
+
+- `long-6min` of the benchmark, one fresh process per run, four threads, on this PC
+  while other sessions loaded it: **fast 7.2 s and 14.3 s, normal 94.5 s and 82.3 s**
+  (engine and model load apart: 5-13 s), the same reading (186 BPM, one red line).
+  In the dev stack, a 60 s click track: fast on a 40 s stretch 5.7 s, normal on the
+  whole 61.4 s.
+- The default path is pinned by construction, not by a local gate run (the owner's
+  rule: no suite or gates on this PC): `DefaultModeTests` checks the exact
+  `analyze_audio` call, the octave window and the judges for the default mode. The
+  suite and the gates run on the server after merging.
+- `strict` candidates: not measured. A first local pass ran without the Beat This!
+  model (the worktree held its Git LFS pointer), so its numbers are void and not
+  recorded.
+
+### Rejected / tried and dropped
+
+- **Trimming in the browser** (W12.19's first idea): the browser's decoder is not the
+  engine's (an MP3's encoder delay would shift every time), a WAV of the stretch changes
+  the SHA-1 the cache and re-analysis rely on, and can pass the upload cap. The worker
+  cuts instead; the whole file is uploaded.
+- **Hints as constraints** (`min_delta` high for "one BPM", `force_subdivision` for a
+  tempo): the first hides a real change behind the hint, the second skips the osu!
+  conventions, the vote and drift following. Left for W11.5, which measures first.
+- **Turning on PIECEWISE_GRID, CONSTANT_GRID or SONG_OCTAVE_BEAT_THIS for strict:**
+  each is "off until measured on the server" and has no held-out number; strict stays
+  normal until W11.3/W11.4.
+
+---
+
+## Unreleased — 2026-10-27 · A front page that answers why
+
+### Changed
+
+- `/` is a landing page (W12.25, the owner's request): what a mapper gains, how it
+  works in three steps, recently timed songs, live numbers from `GET /stats`, who
+  makes Overtone, five questions and a closing call, in EN and ES. Every claim is
+  one the site keeps today (`docs/site.md`, "The front page").
+- The example strip on it has four red lines (174, 186, a passage in 3/4, 160) and
+  plays them: a playhead crosses in real time and the BPM, offset, meter, confidence
+  and `[TimingPoints]` row follow the line under it (the owner's request). The data
+  is osu! timing: whole-ms offsets on downbeats, `beatLength = 60000 / BPM`.
+
+### Hardening
+
+- The strip runs only on screen and in a visible tab, and with reduced motion (the
+  system's or the site setting) steps a line every 4 s instead of sweeping.
+- The live numbers hide on any failure of `/stats`, and while nothing has been
+  analysed: they are colour, never an error.
+
+### Measured
+
+- Not measured: the page's load time and the strip's frame cost. The strip renders
+  React only on a line change (four times a 13 s loop) and moves one SVG transform
+  per frame.
+
+### Rejected / tried and dropped
+
+- Guessing the `/stats` shape before it existed: the first version read several
+  likely field names. Once W12.13 landed it reads exactly `totals.done` and
+  `queue.queued + queue.running`, so a renamed field shows as a hidden block, not a
+  wrong number.
+- Showing "0 analyses done" on a fresh site: dropped, the block waits for the first.
+
+---
+
+## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
+
+### Changed
+
+- An account links Discord (W9.1) and osu! (W9.2) from its profile, and a Discord
+  bot (`bot/`, discord.js 14.27.0) times songs and reads timings through a new
+  `/api/internal/bot` (W9.3-W9.5): `/time-song`, `/timing`, `/queue`, `/compare`,
+  `/recent`, `/link`, `/notify`. DMs when an analysis ends, opt-in (W9.4).
+  Everything is off until its secrets exist, and says so. `docs/bot.md`.
+- Discord through Mides needs two things Mides does not have yet (`discord_id` in
+  the SSO's user, a link page with `return_to`); until then a ten-minute code from
+  the profile, typed to the bot as `/link`, links the Discord user the bot names.
+- **Decided:** an unlinked Discord user gets the anonymous quota of one visitor,
+  counted by an HMAC of their id per day. Refusing them would leave the bot unused
+  until Mides sends Discord ids; a Discord account costs about what a fresh address
+  does, and both the bot and the API limit per Discord user.
+- The API's upload became `acceptUpload`, shared by the browser's route and the
+  bot's, so the bot is held to exactly the site's checks. A new `overtone-bot` egg.
+
+### Hardening
+
+- `BOT_TOKEN` is its own key: refused when equal to `WORKER_TOKEN`, neither opens
+  the other's routes, and overtone-web refuses `/api/internal/bot` in any spelling
+  (a test tries six).
+- The Discord id travels in a header, never a URL, and is stored raw only on the
+  account it is linked to (the DMs need it); quotas and limits count an HMAC of it.
+- osu!: state in a signed cookie bound to the account, a PKCE verifier derived
+  server side (never in the browser), the token dropped after one `/me`, the
+  avatar kept only on `ppy.sh`. Link codes are stored as an HMAC and spent once.
+- The bot checks an attachment before downloading (extension, type, the API's
+  `MAX_UPLOAD_MB`, Discord's CDN hosts) and while downloading (no redirects, type,
+  a byte count cut at the cap); the audio lives in memory until uploaded (ADR-W4).
+  A song name cannot write markdown or mentions into an embed.
+
+### Measured
+
+- Not measured: no performance claim. Tests: `site/api` 123 (23 new), `bot` 29,
+  `site/web` 90; the bot's contract suite runs it against the real API.
+
+### Rejected / tried and dropped
+
+- An image of the tempo chart in the embed: rendering the site's chart server side
+  needs a headless browser or a canvas library for one picture. The embed links
+  the page.
+- Refusing unlinked Discord users (above).
+- Showing the osu! avatar: widening the site's `img-src` to `ppy.sh` for a picture
+  only its owner sees is not worth a third-party request.
+
+---
+
+## Unreleased — 2026-10-27 · Stars, uses, comments, collections and timer profiles
+
+### Changed
+
+- Published timings get the social layer (W5.6, W6, W13.15, W13.18): 1-5 stars (one
+  per account, editable), "I used this" with an optional osu! beatmapset link, comments
+  that can point at a time in the song (its m:ss moves the player there), and
+  collections, private or public, with their own page (`/c/:id`).
+- `/recent` orders by newest, best rated or most used; each row shows its stars and
+  uses. `/u/<username>` is a timer's public profile (published timings, totals, badges,
+  public collections); `/profile` gains Timings and Collections tabs and a private
+  switch. `/timers` ranks timers by uses or by stars. Navbar link to Timers.
+- Decisions taken in the owner's absence:
+  - "Best rated" counts a timing from **3** ratings and orders by a Bayesian average
+    (3 prior ratings at 3 stars), as docs/16 §4 asks: 3 is the least that says more
+    than one person agreed; a higher bar would leave the sort empty while the site is
+    small. The page shows the plain average and states the bar.
+  - The timer ranking needs **3** uses by others or **5** ratings received, again small
+    on purpose, and stated on the page.
+  - The uploader can neither rate nor mark their own timing used.
+  - Uses need an account; the draft's anonymous uses by address hash were dropped (a
+    count anyone could push again from each new address).
+  - Comment moderation reuses the community's (reports, hide with reason,
+    `moderation_log`) with `comment` as a third kind: one place for staff.
+  - A private profile is a 404 and leaves the ranking; its published timings stay
+    published with the name on them.
+- Schema: the drafted social tables pointed at `timings` (W4, not built yet). Each
+  gained `analysis_id` and a check naming exactly one target, so W4 reuses them; the
+  one-per-account primary keys became unique indexes per target. `accounts` gained
+  `profile_private`; `moderation_log` admits `comment`.
+
+### Hardening
+
+- Every new mutating route has the same-origin guard, a per-address rate limit and
+  capped, cleaned input; "not yours" is the same 404 as "not there" for collections,
+  comments and private profiles. Beatmap links are stored only as
+  `https://osu.ppy.sh/beatmapsets/<set>[#<mode>/<map>]` and rendered as their own text
+  with `rel="noopener nofollow ugc"`. A test reads every response the social suite
+  saw and finds no SHA-1, address hash or anonymous hash in any of them.
+
+### Measured
+
+- site/api 121/121 (13 new), site/web 186/186 (3 new), `vite build` ok, after merging
+  `origin/experimental`. Before the merge, the 13 social tests also passed against
+  PostgreSQL 18.6 through PGlite 0.5.12 over HTTP, and `check` applied the schema
+  twice. No performance figure: not measured.
+
+### Rejected / tried and dropped
+
+- New `published_*` tables beside the drafted ones: they would have left two sets of
+  social tables once W4 lands. Amending the drafted ones keeps one.
+- A keyset cursor for "best rated" and "most used": a cursor over a score that moves
+  while someone reads skips or repeats rows just the same, so those orders page by
+  offset (`o<n>`) and say so.
+
+---
+
+## Unreleased — 2026-10-27 · Other games' formats and export options
+
+### Changed
+
+- "More downloads" offers the red lines for Quaver (`.qua`), StepMania and Etterna
+  (`.sm`), StepMania 5 (`.ssc`) and Clone Hero (`notes.chart`), timing only, built in
+  the browser (W12.7). The Quaver and StepMania timing matches v3's exporters.
+- Export options (W12.8): offset decimals, the BPM rounded (with the drift it causes
+  by the song's end), the first red line only, and an offset added to every line.
+  They shape the `.osz`, the copy, the patched `.osu` and the games' files, never the
+  clicks; remembered in `overtone.exports`, and named under the `.osz` while on.
+- Decided: the added offset is separate from the nudge. The nudge is a correction
+  heard in the clicks and forgotten with the page; the added offset is a target's
+  convention (a game's or a pack's sync), so it must not move the clicks, and it is
+  remembered, which is why the page always says when it is on.
+- Decided: Clone Hero's `[Song] Offset` is written as 0 and a lead-in bar puts the
+  first downbeat on its time, because the field is treated as legacy by Moonscraper
+  as far as we know and its sign has not been read the same way everywhere.
+- Decided: StepMania keeps v3's fractional beats rather than bending BPMs onto its
+  1/48 rows, so the two exporters agree; the page shows how far the game will move
+  each change instead (from 0.5 ms).
+
+### Measured
+
+- The site's Quaver and StepMania text against v3's `quaver_timing_text` and
+  `stepmania_timing_text`: 67 sets of red lines, 536 texts, 0 differ (one-off script,
+  not committed; see `docs/site.md`).
+- On the fixture lines (a change 151.3 ms past beat 75 at 150 BPM), StepMania's rows
+  would move the change 1.3 ms; Clone Hero lands every change within 0.02 ms.
+- Not measured: whether any game opens the files. None was run.
+
+### Rejected / tried and dropped
+
+- Fitting StepMania's BPMs so each change sits on a row: exact in the game, but the
+  file would no longer match v3's, and the BPMs written would not be the reader's.
+- Writing Clone Hero's first line at `Offset` = its time: simpler, but it rests on a
+  field whose meaning we are least sure of.
+
+---
+
+## Unreleased — 2026-10-27 · A fuller .osz
+
+### Changed
+
+- W12.9: the site's `.osz` can carry the file's own cover as `bg.jpg`/`bg.png` (ID3 `APIC`,
+  MP4 `covr`, FLAC `PICTURE`, Ogg Vorbis/Opus `METADATA_BLOCK_PICTURE`), a suggested
+  `PreviewTime` (the loudest 15 s, on a bar), a suggested `AudioLeadIn` (first sound under
+  1.5 s → brought to 2 s) and suggested kiai green lines (bars clearly louder than the
+  song, at most three runs). Checkboxes under ".osz options": cover and preview on, lead-in
+  and kiai off, because the first two change nothing a player feels and the last two are
+  mapping decisions a loudness heuristic should not make unasked. The rules and their
+  reasons are in `docs/site.md`.
+- Every `.osu` the site builds is tagged `overtone overtone_timings` (owner's rule), so maps
+  made with it can be found; extra tags are kept after those two.
+- After the `.osz` downloads, a dismissible tip says how to make the browser open `.osz`
+  files in osu! by itself (Chrome/Edge "Always open files of this type", Firefox's Files and
+  Applications) and that osu! must be installed with `.osz` associated.
+
+### Hardening
+
+- The cover reader never throws, skips tags over 16 MB, keeps only images whose first bytes
+  are JPEG or PNG, and bounds every walk (boxes, blocks, Ogg pages) by a step count.
+
+### Measured
+
+- Not measured on real music: the suggestions were checked on two bench-derived FLACs
+  (see `docs/site.md`), where the whole synthetic corpus is flat (-20 dB a bar) and
+  rightly gets no kiai. site/web tests 90 → 114.
+
+### Rejected / tried and dropped
+
+- Opening the `.osz` in osu! straight from the page: a page cannot run a download, and
+  `osu://` (stable and lazer) only reaches online beatmaps, not a local file. Anything
+  more would need the reader's machine configured behind their back.
+- Considered, not built: a fixed-percentile kiai threshold (top quarter of bars), which on
+  a song mastered flat would mark noise as the chorus; the 3 dB spread requirement refuses
+  instead. And the preview at the loudest window's own start, which on a long chorus is an
+  arbitrary tie somewhere inside it; walking back to the earliest start within 5 % finds
+  the top (the 61.3 s chorus test pins it).
+
+---
+
+## Unreleased — 2026-10-27 · Listening tools: latency, taps, A/B, subdivisions
+
+### Changed
+
+- The result page has a listening panel under the transport (W12.2-W12.6): clicks at
+  1/2, 1/3 or 1/4 between beats with their own quieter tone and volume, also drawn on
+  the zoomed-in map and offered in the click-track WAV; an A/B (A) between the
+  engine's lines' clicks and the reader's adjusted ones at the same playhead; a tap
+  pad (T) that reads a tempo with its spread and compares it with the red line there
+  (matches, about ×2, about ×0.5); while playing, the taps' median offset from the
+  grid proposed as the global nudge, applied only on a press; and a latency test in a
+  dialog, saved in `overtone.player.latencyMs`.
+- `clickGrid` takes `{ subdivision }` and builds the engine's `click_schedule`
+  subdivisions (level 0, counted from the line's offset).
+- A change of clicks (A/B, subdivision, adjustment, latency switch) is heard at once:
+  the scheduled clicks are dropped and rescheduled from the playhead, the song plays on.
+
+### Hardening
+
+- Every stored value (latency, subdivision, its volume, the shift switch) is read
+  inside a try and validated field by field; a broken one falls back alone.
+- The page-wide keys step aside while a modal dialog is open.
+
+### Measured
+
+- Not measured on people. With synthesised taps in the browser pane: 128 BPM ±0.0 read
+  from 12 taps on the grid; taps 20 ms late proposed +20 ms ±2.0; a 35 ms calibration
+  with one stray tap read 35 ms ±1.0 (1 dropped). Figures in `docs/site.md`.
+
+### Rejected / tried and dropped
+
+- **Moving the clicks by the latency by default.** The roadmap row says the latency
+  moves the clicks. The song and the clicks go through the same audio context and the
+  same output, so any device delay reaches both alike: moving the clicks alone puts
+  them off the song by exactly the latency, which is what the reader is trying to
+  judge. Decided (owner away): the latency always corrects the taps, and moving the
+  clicks is a switch, off by default, with the reason in its note. The exports never
+  carry it.
+- **A flash or moving marker in the calibration.** People tap to what they see rather
+  than what they hear; the test is audio only, as osu!'s offset wizard.
+- **Tempo from a least-squares line through the taps.** Slightly more exact on a steady
+  hand, but one missed tap shifts every index after it; the median interval with
+  stray ones dropped survives a missed or doubled tap.
+
+---
+
+## Unreleased — 2026-10-27 · Comparing timings
+
+### Changed
+
+- W12.10: the result page (and a published timing's page) compares the result with an
+  `.osu` the reader picks: a verdict in plain words, a table of matched red lines, the
+  lines only one side has, the map's lines dashed in a new blue on the tempo map, and its
+  clicks playable instead of the result's. The `.osu` is read in the browser and kept in
+  the page's state only: never uploaded, never stored.
+- W12.11: `/compare?a=<id>&b=<id>` puts two timings side by side: the visitor's own
+  analyses or published ones, each with its own x0.5 / x2 and nudge in the address, so
+  "an analysis against its adjusted version" is one link. Offered from the history, a
+  public timing and the result page. No API change.
+- The comparison (`site/web/src/lib/compare.js`) compares **grids**, not first-beat
+  times: a red line a whole number of beats from the other's, at the same tempo, is the
+  same grid in osu!. Each pair's offset is the phase of one grid against the other where
+  both lines start, and again at their last shared beat (a growing difference is drift);
+  the verdict checks every beat of the sparser grid from the later first line to the end.
+- Decided (owner away): the tolerances are the accuracy baseline's, 0.05 BPM and 5 ms,
+  and the page names them. Two red lines pair when they are within four beats of the
+  slower one (at least 1 s), in order; a verdict is `same`, `offset` (one constant shift
+  past 5 ms), `double`, `half` or `different` (with the share on the same grid, the share
+  at half or double, and where they first part). `/compare` is private-ish: out of the
+  sitemap and disallowed in robots.txt, since what it shows depends on who asks.
+
+### Fixed
+
+- A tempo change a few ms apart in the two timings (x2 and +3 ms on a two-line song) read
+  as `different`: for those ms the governing lines are an unrelated tempo. Each beat is now
+  judged against the line that owns the other grid's nearest beat. Found in the browser.
+
+### Measured
+
+- `site/web` 107/107 (17 new in `test/compare.test.js`), `vite build`, `bench/facts.py` ok.
+- In the browser, against the dev API with one real worker (Beat This! off):
+  `change-128-142.wav` against a hand-made map with its second line 2 ms late and in 3/4,
+  "same grid within 1.9 ms" with the meter change named; the same analysis at x2 +3 ms,
+  "double within 3.0 ms"; at -8 ms, "8.0 ms earlier on every beat". The map's clicks: 136,
+  including one at 30.400 s that the map's own lines imply 2 ms before its second line.
+- Speed not measured: one comparison is a few thousand beat lookups and an alignment of
+  at most 2000 x 2000 lines, done once per change.
+
+### Rejected / tried and dropped
+
+- Comparing first-beat times (offset = map's time minus the result's): a map whose red line
+  sits one bar later on the same grid would read hundreds of ms off. Phase is what osu! plays.
+- Counting agreeing beats from both grids: where both are as dense every beat was counted
+  twice, so a song half agreeing read 67 %. Only A's beats count there, weighted by length.
+
+---
+
+## Unreleased — 2026-10-27 · Command palette and settings
+
+### Changed
+
+- **Command palette (W12.14).** Ctrl+K (⌘K) or the bar's search button: pages, this
+  browser's analyses (the tray's in-flight ones first), and actions (language, theme,
+  high contrast, settings, sign in or out, the shortcuts), ranked by a subsequence
+  match in `lib/commands.js`. `?` lists every shortcut, the result page's included.
+- **`/settings` (W12.15).** Theme (system, dark, light), high contrast, font size 90 to
+  130 %, a colour-blind-safe palette, motion (system, reduce, allow), the default
+  volumes, the device latency of W12.2 (shown, typed or forgotten) and the language,
+  all in this browser. Linked from the account menu and the footer; kept out of the
+  sitemap and disallowed in `robots.txt`, since a browser's own settings have nothing
+  to find.
+- The theme stays in `mides.theme`, shared with midesprojects.com, which gains the
+  value `system`; a reader there that knows only `light` falls back to its dark
+  default, as for a missing key. The other settings are `overtone.settings`.
+- The colour-blind palette moves red lines, "check by ear" and tempo on the whole
+  site, not only on the map, so the map, the table and the chips keep meaning the same.
+- The result page's keys ignore key presses from inside an open dialog.
+
+### Fixed
+
+- The tempo map hard-coded the ink of its red chips: it is a token now (`--red-ink`),
+  so a palette that moves the red can move its ink.
+
+### Hardening
+
+- `index.html`'s inline script applies the stored settings before the first frame. It
+  is still the only inline script and `serve.mjs` still allows it by its hash; a new
+  serve test checks the policy names exactly the real script's hash and no
+  `unsafe-inline`, and a web test runs the script in a `vm` and checks it leaves
+  `<html>` as the library does, so the page never jumps when the app starts.
+- Every stored value is read defensively: a font scale out of range is ignored (not
+  clamped) by both the early script and the library, so the two agree.
+
+### Measured
+
+- High contrast: every text token at 7:1 or more against every surface, down to the
+  darkest panel, in both themes; the strong line at 3:1 against the page. Computed
+  from `index.css` by `test/settings.test.js`.
+- Colour-blind palette: the smallest CIELAB distance between the map's four colours,
+  over normal vision and Machado et al.'s (2009) protanopia, deuteranopia and
+  tritanopia at full severity, goes from 14.1 to 33.7 in light and from 30.4 to 42.1
+  in dark (the default's weakest pair in light was amber and red under deuteranopia).
+  Every new colour is at 5.5:1 or more against the panel.
+- Tests: `site/web` 90 to 113, `site/api` 100 to 101.
+
+### Rejected / tried and dropped
+
+- **Okabe-Ito colours by hand** (vermillion, yellow, reddish purple): scored worse than
+  the default in light (5.8 against 14.1, vermillion and dark yellow collapse under
+  deuteranopia once darkened to 4.5:1 on white). The search, with the contrast floor
+  as a constraint, replaced them.
+- **Clamping a stored font scale** into range: the early script cannot share the
+  library's code, and a clamp in one and a refusal in the other made the text jump
+  when the app started. Both now ignore an out-of-range value.
+- **The palette's search button in the phone's top row:** at 130 % the row overflowed
+  375 px by 29 px; it leads the places' row instead.
+- **Ctrl+K blocked inside fields**, like `?`: it never types a character, and editors
+  open their palettes from anywhere, so it fires from a field too.
+
+---
+
+## Unreleased — 2026-10-27 · How it works, a glossary, and the site's statistics
+
+### Changed
+
+- `/how-it-works` explains the pipeline for a mapper (decode, attacks, tempo sweep and
+  grid fit, octave and the Beat This! vote, sections and red lines, confidence levels),
+  what "check by ear" means, why an analysis takes the time it does, and what the
+  synthetic benchmark measures against what Corpus B is still measuring. Each step cites
+  the file it was written from. W12.12.
+- `/faq` answers the ten questions of the roadmap row; its limits are read from
+  `GET /api/v1/health`. `/glossary` holds twelve terms, and `components/Term.jsx` puts
+  them on the result page: a dotted underline on the readouts, the confidence legend and
+  the red lines table's headers that opens the short definition. W12.12.
+- `GET /api/v1/stats` and `/stats`: totals, the BPM histogram, one tempo against tempo
+  changes, the median and 90th-percentile time from upload to result over 30 days, and
+  the queue. Aggregates only, cached a minute per process, rate limited. W12.13.
+- A Learn column in the footer; the GitHub docs link there is now "Documentation".
+
+### Hardening
+
+- The statistics are built field by field (`utils/stats.js` `shapeStats`) from counts the
+  stores make; a test reads the whole body for every id, hash, file name, title and
+  username the rows carried, and for any field `shapeStats` does not write.
+- The analysis times are withheld below five finished analyses in the window: a median
+  of two jobs looks measured and is not (CLAUDE.md rule 2).
+- `lib/repo.js` links only plain relative paths, so a locale string cannot become a link
+  elsewhere.
+
+### Measured
+
+- Not measured: these pages state the engine's existing numbers (the synthetic
+  benchmark's 24/24 within 0.05 BPM and 5 ms, median 0.16 ms; about 10 s for a 60 s song
+  with the vote, from docs/site.md) and measure nothing new. The pg store's `stats()` gave
+  the same answer as the memory store's on the same rows through PGlite 0.5.11.
+
+### Rejected / tried and dropped
+
+- Counting cache hits as analyses: one song looked up ten times would count ten. They
+  are their own total; the BPM histogram and the times read only the engine's runs.
+- A vertical BPM histogram: at 375 px its eleven bucket names shrink below reading size.
+  Horizontal rows, drawn at the box's own pixel width, keep them at 12 px.
+- A chart library: two charts did not justify a dependency.
+- Keeping the table headers' `title` hints next to the popovers: they said what the
+  glossary's short definitions say.
+
+---
+
+## Unreleased — 2026-10-27 · One grid where the tracker drifts, and two ideas dropped
+
+### Changed
+
+- `CONSTANT_GRID` is on, at 30 ms and 0.8: where the precision grid gives way to the
+  beat tracker and Beat This!'s beats over the whole song sit on one steady grid, the
+  song is read as that one red line instead of the tracker's dozens. On bands-variable
+  dev every one of the 185 maps that reached the tracker missed the tempo; 72 of them
+  are mapped with a single line, and the tracker gave a median of 78.
+- The piecewise grid (`PIECEWISE_GRID`, still off) now splits only the tracker's lines;
+  the precision grid's one line is never split.
+
+### Fixed
+
+- A stage report keeps an analysis error's message, so a map lost to an error names
+  its cause instead of only the word "error".
+
+### Measured
+
+On the server, ranked maps, engine `app`, tempo ok / octave ×1 (2026-10-27):
+
+| Run | bands dev | bands held out | anime-variable dev | anime-variable held out |
+|---|---|---|---|---|
+| base | 46.7 / 83.5 | 59.9 / 82.4 | 31.5 / 84.8 | 19.5 / 77.6 |
+| constant grid, 20 ms / 0.9 | 50.3 / 83.5 | 59.9 / 82.4 | 31.5 / 85.1 | 20.4 / 77.6 |
+| constant grid, 30 ms / 0.8 | 51.1 / 83.5 | 59.9 / 82.4 | — | — |
+| constant grid, 40 ms / 0.7 | 51.1 / 83.5 | — | — | — |
+
+anime-single (78.8 / 92.8 dev, 81.9 / 94.3 held out) never reaches the tracker, so the
+constant grid cannot move it. The 30 ms setting is on for its dev gain; its anime
+numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 239849c.
+
+### Rejected / tried and dropped
+
+- **The song's octave from Beat This! (`SONG_OCTAVE_BEAT_THIS`).** bands dev 46.7 → 43.7,
+  held out 59.9 (octave ×1 82.4 → 84.9); anime-single dev 78.8 → 73.6 and octave ×1
+  92.8 → 86.7, held out 81.9 → 75.8. On bands it fixed 4 maps and broke 8, and both
+  groups halved to the same 92–115 BPM, so no rule on the tempo tells them apart.
+- **Splitting the precision grid's line into steady stretches** (`_piecewise_grid` on
+  the precision path). bands dev 46.7 → 32.4 (penalty 40), 32.4 (penalty 120), 33.5
+  (with the constant grid); held out 59.9 → 30.1. Map by map, 23 one-line songs split
+  into 2–10 lines lost 119 maps and an error lost 8, against 8 gained. A penalty three
+  times higher changed nothing: Beat This!'s beats wander by more than 1.5 % within a
+  steady song, which no price per line separates from a real change. On the tracker
+  path the same split gained 28 maps and lost none, so it stays there to be measured.
+
+---
+
+## Unreleased — 2026-10-27 · A cleaner logo for the web
+
+### Changed
+
+- The owner found the full logo untidy in a browser tab. `assets/logo.py` gains a web
+  variant of the same mark (`web_svg_text`, `render_web`): the fundamental alone,
+  thicker and inset from the edges, and the red line as a rounded bar inside the
+  panel; no faint harmonics, which turned to noise at 16 px. Every site icon and the
+  favicon use it; `logo.png` and `logo.ico` keep the desktop app's full mark.
+
+### Measured
+
+- `logo.png` and `logo.ico` byte-identical (md5 unchanged). Looked at in the browser
+  pane at 256, 64, 32, 22 and 16 px on the light and dark page colours.
+
+---
+
+## Unreleased — 2026-10-27 · The site shows Overtone's own logo
+
+### Fixed
+
+- The site's mark was a redrawn ring with a bar, and its favicon and icons the Mides
+  mark: the owner called it an imitation of the app's logo. `assets/logo.py`, which
+  drew the desktop app's icon, now also writes `assets/logo.svg` (the same geometry as
+  vectors) and the site's icons from the same renderer; `Mark.jsx` shows that SVG in
+  the navbar, footer and sign-in. The Mides mark stays where Mides Projects is named.
+  `site/web/scripts/icons.mjs`, which rasterised the old favicon, is gone.
+
+### Measured
+
+- `assets/logo.png` and `logo.ico` come out byte-identical (md5 unchanged); the new
+  files take 2 min 24 s to render on this machine (the 512-px ones, in pure Python).
+- site/web 88/88 (`icons.test.js`, 4 tests, replaced by `logo.test.js`, 2).
+
+---
+
+## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
+
+### Changed
+
+- The song and the clicks start at 20 % (were 80 % and 60 %), at the owner's request:
+  most people keep the browser and the system at full volume. A volume the reader
+  set is still remembered and wins.
+- `docs/16-web-platform.md` gains phase W12, 24 tools for timers (latency calibration,
+  tap tempo and tap offset, A/B clicks, subdivisions, other games' formats, export
+  options, a fuller .osz, comparing with an existing map or another timing, how-it-works,
+  FAQ and glossary, site stats, a command palette, settings and accessibility, and more).
+
+### Measured
+
+- Not measured: a default.
+
+---
+
+## Unreleased — 2026-10-27 · The analysis tray and its notices
+
+### Changed
+
+- W3.22: a tray on every page lists the songs this tab sent — name, state, queue
+  place, stage and %, a link to the result, Cancel while queued — so the person
+  can browse while they wait. Wide screens get a corner button, open by default;
+  phones get a button in the navbar and a bottom sheet, closed by default.
+- The polling moved out of the Analyze page's cards and the result page into one
+  store (`site/web/src/lib/tracker.js`): every view reads it and each id is read
+  once. It slows with age, queue place, the number in flight, failures and a
+  hidden tab, and stops when a song is final.
+- The ids, statuses, batches and inbox survive a reload in `sessionStorage`
+  (per tab, so two tabs do not notify twice); sound and notifications are
+  remembered in `localStorage`.
+- W3.23: a browser notification per finished song and per finished batch (opt-in,
+  only after the browser grants it, only when the tab is not in focus), an
+  optional two-note chime made with Web Audio (off by default), the tab title
+  counting everything in flight on any page ("3 in progress"), and an inbox of
+  the last 20 notices, cleared by the person.
+- W3.14's "2/5 ready" title and its once-per-batch notification are replaced by
+  the above; its checkbox on the Analyze page is now the tray's setting.
+
+### Hardening
+
+- Saved state is read field by field: 32-hex ids, known statuses, short batch ids,
+  names stripped of control and bidi characters; anything else is dropped, and
+  blocked storage means a tray that forgets on reload rather than one that breaks.
+- With N songs in flight each id waits at least N × 0.5 s, so a batch stays near two
+  requests a second, well inside the API's 300 a minute per address.
+
+### Measured
+
+- site/web tests: 33 → 47 (16 new in `tracker.test.js`; W3.14's two title and
+  notification tests moved there as `trayTitle` and `alertFor`).
+- A queued song on its result page, with the tray following it: 6 requests in 6 s
+  (one per id per second), not two streams.
+- Build: 459 kB JS (147 kB gzip), up from 457 kB.
+
+### Rejected / tried and dropped
+
+- **A floating corner button on phones.** At 375 px it sat on top of the Analyze
+  page's full-width button; the phone button moved into the navbar's top row.
+- **localStorage for the ids.** Every open tab would poll the same songs and send
+  the same notification; sessionStorage keeps the work with the tab that started it
+  and still survives a reload.
+- **A notification even while the person looks at the page.** The tray, the title
+  and the live region already say it there; a system notification on top was noise.
+- **A chime per song of a batch.** Ten songs, ten chimes: a batch's songs only
+  update its one notification (same `tag`), and the batch's end chimes once.
+- **An API change** (a batch endpoint, server-sent events): not needed; the
+  per-id GET is cheap and the API stays as it was.
+
+---
+
+## Unreleased — 2026-10-27 · Terms, privacy, disclaimer, credits and a status page
+
+### Changed
+
+- New pages, EN and ES, linked from the footer: `/terms`, `/privacy`, `/disclaimer`,
+  `/credits`, `/status`. **The terms and the privacy page are drafts** for the owner's
+  review, and say so on the page: the operator's legal name and address, the
+  jurisdiction, a contact address, how long analyses are kept and which hosting
+  providers keep logs are marked placeholders, not invented. The privacy text is read
+  from the code (schema, services, cookies, `localStorage` keys); where the code has
+  no expiry (analyses, songs, accounts, the moderation log) it says none is set yet.
+- The result page's "Check by ear" note links to `/disclaimer` instead of repeating it.
+- `/credits` lists the team (founder githalt, Mides Projects), Overtone's MIT licence,
+  Beat This! (MIT) and every Python pin and npm package with its licence, generated by
+  `site/web/scripts/credits.mjs` from the installed packages' own metadata.
+- `GET /api/v1/health` adds `worker: { status, seenSecondsAgo }`: whether a worker
+  called `/api/internal` in the last 120 s. `/status` shows it with the API and the
+  database, and retries with backoff while the API does not answer.
+- Every page sets its own `<title>` and description (`usePageMeta`); `index.html`
+  carries Open Graph and Twitter tags; `robots.txt`, `sitemap.xml`, a web app manifest
+  and PNG icons (favicon, apple-touch, 192, 512, maskable, a link-preview image) are in
+  `site/web/public`. The PNGs are drawn from `favicon.svg` by `scripts/icons.mjs`
+  without a new dependency.
+- An error boundary around the routes and one around the app: a page that throws
+  shows a reload button and no stack trace.
+
+### Hardening
+
+- `deploy/web/serve.mjs` serves `.xml` as `application/xml`; with `nosniff` the
+  sitemap would otherwise have gone out as `application/octet-stream`.
+
+### Measured
+
+- `site/api` 73/73 (4 new: the worker status, serve.mjs serving the new static files),
+  `site/web` 50/50 (17 new: credits shape and readers, icons pixel for pixel, the
+  title helper, the backoff, sitemap against routes). `pnpm --dir site/web build`:
+  main chunk 481.38 kB (154.46 kB gzip), the credits page its own 15.28 kB chunk.
+  `bench/facts.py` ok. `credits.mjs` run twice wrote the same bytes.
+- In the browser pane at 375 px, EN/ES, dark/light: the new pages, no horizontal
+  scroll. Not measured: Lighthouse or any SEO score; link previews on a real network.
+
+### Rejected / tried and dropped
+
+- **A rasterizer package for the icons** (sharp, resvg): a native or WebAssembly
+  binary in the install for six PNGs from one rounded square and one stroked path.
+  Drawing the shape's distance field with Node's zlib is a small script, and the test
+  compares its output with the committed files.
+- **Using the Overtone ring mark for the favicon set** instead of the Mides mark that
+  `favicon.svg` already holds: the owner picked that favicon, so the PNGs follow it.
+- **Counting the worker as down for the health status code**: an API without a worker
+  still answers and queues uploads; a 503 there would page a monitor for a queue that
+  is only waiting. The worker's state is a field, the code stays the database's.
+
+---
+
+## Unreleased — 2026-10-27 · More downloads and "Check here"
+
+### Changed
+
+- The result page patches the reader's own `.osu` in the browser (W3.20): its red
+  lines replaced by the page's, every byte outside `[TimingPoints]` identical, green
+  lines kept as written (also those that end up before the first red line: osu! reads
+  them against it, and deleting them would lose velocity and hitsounds). Where a
+  removed red line's hitsound state or velocity reset would otherwise change, a green
+  line carries it; hit objects are not moved and the page warns that they may be off
+  the new grid. The file never reaches the server.
+- A click-track WAV, rendered with an `OfflineAudioContext` by the player's own click
+  function: the clicks alone, or over the song at the player's volumes. Capped at
+  600 s, the site's analysis limit (ten minutes of 16-bit stereo at 48 kHz is 115 MB).
+- The result as JSON (as the API served it) and a plain-text summary. The CSV moved
+  with them into a folded "More downloads" group; the `.osz` stays the one primary
+  button.
+- "Check here" (W3.25): one list, sorted by time, of the `check`/`medium` sections,
+  the sections with a 90th-percentile drift over 20 ms, the half/double hints and the
+  swing spans, each shown on the map or looped with the clicks. Evidence the engine
+  already reported, gathered; not a new reading.
+
+### Measured
+
+- The drift threshold, on 2026-10-27, through the worker's own `build_result` with
+  the vote off (scratch script, not committed): the 34 synthetic files (exact grids)
+  have every section's `drift_p90_ms` under 10 ms (median 0.5) except the two built to
+  be hard, very-noisy-132 (27.0) and swing-120 (39.9). Corpus B's 20 hand-timed songs
+  (one refused): 30 sections with a drift, p10 22.0, median 29.3, max 50.2 ms; 28 over
+  20 ms, and all 30 already graded `check`. So 20 ms keeps a clean grid off the list
+  with twice the margin, and on real music the level is what flags it: the measure
+  nears its ceiling there (an eighth of a beat, 34 ms at 222 BPM) and cannot tell a
+  right grid from a wrong one.
+- The click track of `change-128-142.wav`: 135 of 135 clicks within 0.024 ms (one
+  sample) of the grid, accents on the bar; rendered in about 1 s for 60 s of audio.
+
+### Rejected / tried and dropped
+
+- Dropping green lines that end up before the first red line: osu! reads them, and a
+  silent loss of slider velocity or hitsounds is worse than a line in an odd place.
+- A green line for every removed red line: a red line moved 2 ms would leave a green
+  line 2 ms before it for nothing. Only where the state would change.
+- Decoding the `.osu` as UTF-8 (or `TextDecoder('latin1')`, which is really
+  windows-1252): either can change bytes. One char per byte is lossless.
+- A drift threshold relative to the beat (p90 over half the eighth-beat ceiling): it
+  would flag most Corpus B sections too (the ones worked out by hand sit at 0.53-0.8
+  of the ceiling), and those are already `check`; an
+  absolute 20 ms is simpler to explain and separates the synthetic corpus the same way.
+
+---
+
+## Unreleased — 2026-10-27 · W5.2-W5.5: a Community page
+
+### Changed
+
+- The site has a Community page with three tabs. **Suggestions**: anyone reads,
+  a Mides account posts and votes (one vote each), sorted by votes or date and
+  filtered by state; staff move a suggestion through open, under review,
+  planned, in progress, done or rejected, a rejection always with a reason, and
+  every change is on the suggestion for anyone to read. **Reviews**: 1 to 5
+  stars and a few words, with an account (one, editable) or anonymous, with the
+  average and the distribution; an anonymous review counts half in the average,
+  and the page says so. **Changelog**: the latest 30 entries of this timeline,
+  their titles, dates and Changed bullets, in English.
+- Anyone can report a suggestion or a review; staff hide or unhide it with a
+  reason, and see the open reports and the log of what they did.
+
+### Hardening
+
+- Anonymous reviews: two a day per address, counted by the daily address HMAC
+  the uploads already use, a hidden honeypot field and a signed form token at
+  least 3 s old. No third-party CAPTCHA, since the site calls no outside
+  service. Suggestions need an account: a suggestion is answered by its state
+  changes, and an anonymous one has nobody to answer.
+- A hidden item is the same 404 as a missing one for everyone but staff and its
+  author. Text is cleaned of control and bidi characters and rendered as text;
+  too long is refused, never cut. The changelog's markdown becomes tokens, not
+  HTML, and only absolute http(s) links stay links. Same-origin guard and a
+  per-address rate limit on every new mutating route.
+- One moderation log: `moderation_log` (W3.18) gained `target_kind`,
+  `target_ref` and the states before and after; the queue's log reads its own
+  rows only.
+
+### Measured
+
+- `node --test` in `site/api`: 81/81 (12 new). The same 12 and the queue's 5
+  moderation tests against PostgreSQL 18.6 (PGlite 0.5.11 behind
+  `pglite-socket`): 12/12 and 5/5; `check` applies the schema twice, 18 tables.
+- `node --test` in `site/web`: 36/36 (3 new). `vite build` passes; the main
+  bundle is 476 kB as before, the changelog its own 31 kB chunk (10 kB gzipped).
+- In the browser: a staff review moved the average from 3.75 to 4.17, as
+  computed by hand with anonymous reviews at half.
+
+### Rejected / tried and dropped
+
+- Anonymous suggestions: see Hardening. Reviews are where an anonymous opinion goes.
+- A generated `changelog.json` committed or written into `src/`: it would go
+  stale the first time the timeline changed without a build. A Vite virtual
+  module reads the timeline on every build instead.
+- A client-reported time on the form: it can be any number. The minimum time is
+  a server-signed token instead.
+
+---
+
+## Unreleased — 2026-10-27 · Published timings, recent ones and a history
+
+### Changed
+
+- A finished analysis can be published by its uploader (W3.27): opt-in, one press,
+  undone by Unpublish. It then has a public page at `/t/<id>` with the result, title
+  and artist, who uploaded it (Mides username or "anonymous") and when. A private
+  upload is published only when the same action makes it public, after the page asks.
+- `/recent` and a section on Home list published timings from everyone (W5.1), with
+  search, a BPM range, single or variable tempo and cursor paging.
+- `/history` lists everything a signed-in account analysed (W3.26), searchable and
+  filtered by status, BPM and date, with publish, unpublish and delete per row.
+  Signed out it shows this browser's own list and asks to sign in.
+- `DELETE /analyses/:id` also deletes a finished analysis, not only a queued one.
+- `deploy/web/serve.mjs` writes `/t/<id>`'s title and Open Graph tags into the
+  served HTML, so link previewers that do not run scripts see the song.
+- Schema: `analyses.published_at` and `analyses.deleted_at` (idempotent `ADD COLUMN
+  IF NOT EXISTS`) and a partial index for the recent list.
+
+### Hardening
+
+- The public views never carry the audio's SHA-1, the file name, `anon_hash` or
+  `ip_hash`; they are built field by field, and the tests look for each value in
+  every public body.
+- A visitor's file is checked by `POST /timings/:id/check`, which answers only
+  match or no match (20 per 10 minutes), so the hash never leaves the server.
+- Every new mutating route has the same-origin header and a rate limit; the list
+  reads are rate limited and capped at 50 a page; filters are parsed strictly (a
+  malformed one is a 400, never "everything"); search text loses control and bidi
+  characters; LIKE wildcards in it are taken literally.
+- Deleting a finished analysis keeps the erased, marked row until its UTC day ends,
+  so delete-and-analyse-again cannot get around the daily quota.
+- Open Graph values are stripped of control and bidi characters and escaped for an
+  attribute; the served page is never cached, so an unpublish stops the preview.
+
+### Measured
+
+- `site/api` 84/84 (15 new), `site/web` 36/36 (3 new), `vite build` ok,
+  `bench/facts.py` ok.
+- PostgreSQL 18 through PGlite 0.5.12 (temporary install outside the repository):
+  `check` (15 tables, twice), `db:migrate` twice, and the store's publish, list,
+  history, delete and purge paths in one script: all as on the memory store.
+- No timing or accuracy number moves: the engine is untouched.
+
+### Rejected / tried and dropped
+
+- **A row in `timings` per published analysis.** That table is for timings people
+  edit and fork (W4); a published analysis is the engine's reading as it came, and a
+  column keeps one source of truth for its result.
+- **A second, publish-only id.** It would only matter if the analysis id were a
+  secret, and it is not: reading `/analyses/<id>` still needs the uploader.
+- **No .osz on public pages.** Simpler, but the visitor would get a timing they
+  cannot hear against the song; the match-only check costs one rate-limited route.
+- **Truncating `published_at` to milliseconds** so a JS Date reads it back exactly:
+  the cursor carries microseconds computed in SQL instead, and two publishes in the
+  same millisecond still page correctly.
+- **A hard delete of a finished analysis.** It handed the day's quota back.
+- **Filters in the URL.** Search text in a URL ends up in logs and history; the
+  filters live in the page.
+
+---
+
+## Unreleased — 2026-10-27 · The result page hands over an .osz
+
+### Changed
+
+- The result page downloads a `.osz`: the reader's own file as `audio.<ext>` and one
+  `.osu` (format v14) with the red lines as the page has them (×2 / ÷2 and the
+  nudge included), no hit objects and no comment rows. Opened, osu!stable imports
+  it as a new set ready for the editor. Title and artist are the file's tags, else
+  its name read as `Artist - Title`; ASCII in `Title`/`Artist`, the spelling as
+  written in the `*Unicode` fields; the creator is the signed-in Mides username or
+  "Overtone". It is built in the browser (ADR-W4): the audio is never sent again.
+  The API's per-analysis view now carries `tagTitle` and `tagArtist` for it.
+- "Download timing.txt" is gone from the page (the owner's call: the .osz replaces
+  it). Copying the `[TimingPoints]` block and the CSV stay, and so does the API's
+  `timing.txt` route, for scripts and the batch zip.
+- The song and click volumes, and whether the clicks are on, are kept in this
+  browser's storage and restored on the next result page. Storage that is blocked
+  falls back to the old defaults.
+
+### Measured
+
+- `site/web` tests 33/33 (6 new, `osz.test.js`: the rows, an adjusted timing,
+  non-ASCII names, the audio byte for byte with its CRC, cleaned file names).
+- In the browser pane, `pnpm dev`: `change-128-142.wav` uploaded as
+  `Test Band - Two Tempos.wav` gave `Test Band - Two Tempos.osz`, 5 293 087 bytes:
+  `audio.wav` (5 292 044, the file's size) and the `.osu` with `400,468.750000973913`
+  and `30400,422.535211267606`. Volumes set to 35 and 20 read back 35 and 20 after a
+  reload. Without the file (after a reload) the button is disabled and says why.
+- Not checked: importing the .osz in osu!stable itself (no osu! on this machine), and
+  lazer.
+
+---
+
+## Unreleased — 2026-10-27 · The measurement server, hardened
+
+A security review of the measurement server (`python/overtone_server.py`, the library
+behind it) and its updater (`deploy/`) found four problems. All four are fixed here.
+
+### Fixed
+
+- **The updater's busy check failed open.** When the runs API did not answer (or
+  refused the token), the check read "idle", so a loaded server got its code moved
+  and restarted under a measurement. It now waits unless the API says the queue is
+  empty, and logs why it waited. A service systemd reports as not running is the
+  one exception: its runs are its own processes, so none can be going, and waiting
+  would keep a crashed server from ever getting its fix.
+
+### Hardening
+
+- **Root no longer runs anything from the checkout.** `setup-deploy-user.sh` copied
+  `overtone-update.service` and `.timer` out of `/opt/overtone`, a tree `overtone`
+  can write, into `/etc/systemd/system` as root. The script now carries both units
+  inline (a test holds them byte for byte to the committed files) and is run from
+  a root-owned copy the owner has read. `docs/server.md` runs every git and git-lfs
+  step on the checkout as `sudo -u overtone -H git` (no `safe.directory`), and the
+  venv, cargo, first-start and bench-audio steps as `overtone` too.
+- **Connections are capped and timed out.** Each connection had a thread and no
+  socket timeout. Now a connection silent for 30 s is dropped, at most 64 are
+  served at once, and one more is answered 503 from the accepting thread and closed.
+- **Wrong tokens are limited across the server.** The 1 s sleep per wrong token
+  held a thread asleep per guess, so parallel guesses piled up sleeping threads.
+  It is replaced by a server-wide limiter: past 20 wrong tokens (bearer or
+  `/login`) a minute, no token is checked, the right one included, and the reply
+  is 429 with `Retry-After`. An open browser session keeps working.
+- **An .osu's audio name stays inside its song folder.** `AudioFilename` was joined
+  to the folder as written, then stat'ed and decoded: `../../x`, an absolute path or
+  a link out sent the decoder to any file the server could read. The scan keeps
+  only a bare file name, and analysis and health open an audio file only when,
+  with links followed, it is a regular file inside its folder. An older index keeps
+  old names, so the check is where files are opened; a refused name is a
+  `no_audio` row that says why.
+
+### Measured
+
+- Suite: 511 tests OK in 1239 s, 5 skipped (500 before; 11 new: `DeployScriptTests` 5, `LibraryAudioPathTests`
+  4, `LibraryServerTests` 2). The updater tests run the real script against a
+  scratch checkout one commit behind its origin, with `systemctl` and `sudo`
+  stubbed; the no-answer case fails on the old script.
+- `bench/facts.py` ok, `bench/parity.py` matches (247 of 502), `bench/fuzz_reader.py`
+  3000 mutants with no crash, `sh -n` on both deploy scripts.
+- Headless smoke (a free port, a temp Songs folder, `LOCALAPPDATA` in a temp dir):
+  401 without the token, a scan and `/api/songs` with it; with 55 idle connections
+  open a real request answered 200 in 0.19 s; with 64 open the 65th got
+  `503 Service Unavailable`; after closing them, 200.
+- Not measured: the engine gates (no engine code changed), anything on the server
+  itself, Caddy in front.
+
+### Rejected / tried and dropped
+
+- **A per-address limiter.** Behind Caddy every client is 127.0.0.1, and
+  `X-Forwarded-For` is only as honest as the proxy's configuration; a server-wide
+  count needs neither. The price: someone sending wrong tokens can keep bearer
+  clients (scripts, the updater) out while they do. The updater then waits, which
+  is the safe side, and an open browser session still works.
+- **Letting the right token through while limited.** Then the limiter would slow
+  nothing: the guess that is right still gets in.
+
+---
+
+## Unreleased — 2026-10-27 · Security hardening of the site and its servers
+
+A security review of the site once every Reviactyl allocation port turned out to be
+public (overtone-web on a public port, soon behind Cloudflare; the API and Postgres
+reachable from every container on the node) found thirteen things to fix. One commit
+each on `fix/security-hardening`.
+
+### Changed
+
+- `QUEUE_MAX` defaults to 30 (was 200), so `QUEUE_MAX × MAX_UPLOAD_MB` fits the new
+  spool budget on the API server's 2 GB disk.
+- New variables: worker `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120),
+  `WORKER_TIMEOUT_FACTOR` (3); API `SPOOL_MAX_MB` (1280), `SPOOL_MIN_FREE_MB` (256),
+  `MIDES_IMAGE_ORIGINS`; web `TRUSTED_PROXY_ADDRS`, `API_TIMEOUT_S` (60),
+  `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS`; db `DB_ROLE`, `DB_ROLE_STAGING` (required).
+- Over https the session and anonymous cookies are `__Host-overtone_session` and
+  `__Host-overtone_anon`. Deploying this signs everyone out once, and anonymous
+  uploads from before it are no longer readable by their uploader.
+- The worker no longer imports the engine: a warm child process does.
+
+### Hardening
+
+- **Decompression bombs (high).** A header claiming more than 192 kHz, 8 channels or
+  `max_seconds × 192000` frames is refused (`too_heavy`) before decoding. Each
+  analysis runs in a spawned child kept warm between jobs, with a wall-clock limit of
+  `max(120 s, 3 × length)` and, on Linux, `RLIMIT_AS` of `WORKER_MEMORY_MB`; a job
+  that runs out of time or memory, or whose child is killed, fails alone (`timeout`,
+  `too_heavy`) and the next job gets a fresh child. The child proves itself on 8 s of
+  clicks before the worker says ready. The worker re-sends the last progress every
+  60 s, so the API's `JOB_TIMEOUT_S` sweep never takes a long live job for a dead one.
+- **Spool exhaustion (medium-high).** Uploads reserve their size against
+  `SPOOL_MAX_MB` (and the disk's free space less `SPOOL_MIN_FREE_MB`) before a byte is
+  read and release it in a `finally`; past it, 503 `SPOOL_FULL`. Uploads in flight
+  count toward the person's pending cap and the queue's. serve.mjs cuts a forwarded
+  request whose API connection is idle for `API_TIMEOUT_S` (504).
+- **Forged X-Forwarded-For (medium).** serve.mjs reads the header only from a peer
+  inside `TRUSTED_PROXY_ADDRS` (Cloudflare's ranges are in docs/deploy.md §9); from
+  anyone else it discards it, and `-Proto`/`-Host`, and forwards the socket address.
+  With `TRUST_PROXY=2`, `req.ip` is the real client either way.
+- **IPv6 rotation (medium).** Rate limits, the anonymous quota and the queue's turns
+  count IPv6 clients by their /64, and `::ffff:a.b.c.d` as `a.b.c.d`.
+- **Postgres open to every container (medium).** The db egg's own
+  `pg_hba.overtone.conf`: the superuser by the container's socket only, each
+  environment's role to its own database with scram, everything else rejected;
+  Wings points `hba_file` at it and rewrites its lines on every start. Existing
+  servers need one Reinstall with `DB_ROLE`/`DB_ROLE_STAGING` set.
+- **Backups (medium).** The nightly `pg_dump` uses `-h /tmp` (the old line failed
+  since the socket moved, and left an empty dump named for the day), `umask 077`, a
+  `.partial` file renamed only after a successful dump and a `pg_restore --list`
+  read, and runs at 04:00, before the panel's 04:30 stop. To be run once by hand.
+- **Cookies (low).** `__Host-` names over https (Secure, Path=/, no Domain), so no
+  sibling `*.midesprojects.com` host can plant an anonymous cookie and read a
+  visitor's uploads; a cookie name sent twice counts as absent.
+- **Labels (low).** File names and tags lose C1 controls, bidi marks, overrides and
+  isolates, zero-width characters and the BOM.
+- **Result validation (low).** Every red-line and section number must be finite and
+  in range, `level` one of high/medium/check, arrays capped at 2000 and strings at
+  fixed sizes; unknown fields still pass. CSV text cells starting with `= + - @` get
+  a leading apostrophe.
+- **Avatars (low).** A profile picture is kept only on `MIDES_WEB_URL`'s origin or
+  `MIDES_IMAGE_ORIGINS`; serve.mjs's `img-src` is `'self' data:` and those origins
+  (was any `https:`), so no uploader's chosen host learns who views the queue.
+- **Return path (low).** The sign-in return path is resolved and kept only when it
+  stays on this origin (`/\evil.example` read as `//evil.example` before).
+- **Deploy (low).** `start.sh` unsets `GIT_TOKEN` after the checkout; `package.json`
+  pins `pnpm@11.25.0` by its sha512 for corepack. docs/deploy.md: panel subusers on
+  these servers get no file, SFTP, startup or backup permission, since anyone who can
+  edit files can read every secret.
+
+### Measured
+
+- Python suite: 794 tests, all pass (8 skipped), up from 784: 10 new worker tests.
+  Worker tests 19/19. `pnpm --dir site/api test`: 56/56, up from 31 (25 new, among
+  them serve.mjs run in front of stand-in APIs and the upload route against a real
+  server). `pnpm --dir site/web build` passes. `egg.py --check`, `node --check
+  deploy/web/serve.mjs`, `sh -n`/`bash -n` on the scripts pass.
+- Worker, 120 s bench track with the vote, Windows: warm-up 24.9 s in process
+  (no self-test) against 42.8–55.5 s in the child (with it); per analysis the same
+  within this machine's noise: child medians 45.4 and 59.3 s, in process 46.8 s
+  (and 26–84 s in other in-process runs the same morning).
+- Not measured or not run: `RLIMIT_AS` on Linux (the start-up log prints the
+  child's peak address space after the self-test: the number to size
+  `WORKER_MEMORY_MB` by), pg_hba against real PostgreSQL and Wings, corepack with the
+  pin, anything on NA-01.
+
+### Not fixed here
+
+- Python dependencies are pinned but not hash-checked (`pip --require-hashes` needs a
+  hashed lock of the worker's manylinux wheels; a W-item).
+- The refusal code `too_heavy` has no sentence of its own in the site's two languages
+  yet: the result page falls back to "could not time this audio" plus the engine's
+  English message (left for the result-view branch, which is rewriting that page).
+
+---
+
+## Unreleased — 2026-10-27 · Timing a song on the site
+
+### Changed
+
+- The result page is a tempo map instead of a table: the red lines over the
+  waveform, the local tempo, each section's level, the beat and bar grid, the
+  onsets and their drift from the grid, swing and the half/double hints, with
+  zoom, pan, an overview and a following playhead. The song plays from the
+  reader's own file with the red lines' clicks mixed over it, at 0.5-1.5, looped
+  over a drawn span or a section, from any red line, by keys. The red lines'
+  table follows the map both ways and shows drift and the fit residual. x2 / /2
+  and a global nudge in ms change the map, the clicks and the exports together,
+  labelled as the reader's adjustment to check by ear. docs/site.md has it all.
+- The worker writes `timing-result v1.1`: `version` 1, `minor` 1, plus the
+  engine's beats and local tempo, the click track's bar starts, the attacks, the
+  onset envelope, swing_lane's spans, density_hints, and each red line's drift.
+  All read-only: `python/overtone.py` is untouched. The engine hash takes the
+  minor, so v1.0 results are not served from the cache as v1.1.
+- The API's analysis view carries the audio's `sha1`, for its owner.
+
+### Hardening
+
+- The audio still never reaches the server's answers (ADR-W4): playback and the
+  waveform come from the file the reader picked, kept in the page for the
+  session. A reopened result asks for the file again and plays it only when its
+  SHA-1 equals the analysis's, so another song is never lined up with these red
+  lines.
+
+### Measured
+
+- Payload, vote off: 14.7 kB for `change-128-142.wav` (60 s), 49.2 kB for
+  `long-6min.wav`, against a budget of 300 kB for six minutes.
+- Clicks against the red lines' grid, read back from the scheduled oscillators:
+  within 0.0001 ms at rates 0.75, 1, 1.25 and 1.5, across a loop's wrap, and
+  after x2 with +5 ms. The page's bar starts equal the worker's `downbeats_ms`.
+- `long-6min.wav` playing at 1.5 for 8 s, zoomed in: 399 frames, the worst
+  31.7 ms, no long task (the machine was running other agents' benchmarks).
+- `tests.test_worker` 10 (one new, and the v1.1 fields checked on audio),
+  `pnpm test` 31, `pnpm build` 428 kB JS / 137 kB gzip, `bench/facts.py` ok after
+  the stated counts moved to 785. The full Python suite: 785 OK, 8 skipped, in
+  1349 s (other agents' suites and benchmarks were running beside it). The engine
+  gates were not run: no engine file changed.
+- Not measured: Safari, Firefox, a real phone, and nothing was listened to (the
+  page's output was muted during the checks).
+
+### Rejected / tried and dropped
+
+- Sending onsets at 0.1 ms: twice the bytes for a drift the page only recomputes
+  after the reader nudges, where whole ms read at most 0.5 ms off the worker's
+  own figure, which the table shows unadjusted.
+- A pitch-kept time stretch for the slower rates: the desktop app measured one
+  moving attacks by about 24 ms, which is the error the clicks are there to hear.
+  Resampling keeps every attack at t / rate.
+
+---
+
+## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
+
+### Changed
+
+- `overtone-cli analyze <audio> --timing-result` prints the `timing-result v1` document
+  the worker writes from v3, key for key, with `engine` "v4": red lines snapped as the
+  exporter snaps them, one section per red line with its level (the worker's 0.90 /
+  0.75 / 30 ms, copied), the `[TimingPoints]` rows, and a refusal with the engine's
+  reason when there is no grid. W2.1 said both engines emit it; until now only v3 did.
+- Three differences, on purpose: `findings` is absent (v4 does not validate timing
+  points yet, and an empty list would claim it did); `beat_vote` is false (the vote is
+  not ported); `engine_hash` is FNV-1a over the running executable, so a cache keyed by
+  it never mixes the two engines and any rebuild that changes the code changes it.
+  `site/api/docs/openapi.yaml` still says `engine: const v3`; the API does not check
+  that field, and the site is another session's.
+
+### Measured
+
+- `tests/test_worker.py` (2 new): on the golden fixture `change-128-142`, v3 (vote off)
+  and v4 write the same keys and JSON types at every level, red lines 128 and 142
+  within 0.01 BPM and 5 ms of each other, the same levels and meter. Not measured: how
+  often v4 refuses where v3 falls back, on real music (Corpus B's business).
+
+---
+
+## Unreleased — 2026-10-27 · W2.4: what one worker job costs
+
+### Changed
+
+- `bench/worker_perf.py`: each job in a fresh process, as a worker runs it (engine and
+  model loaded, then `timing_result.analyse`), threads capped as `deploy/eggs/start.sh`
+  caps them from `WORKER_THREADS` (4, prod). Prints load time, job time, seconds per
+  minute of audio and peak memory, vote on and off, for 1, 6 and 10 minutes (the API's
+  `MAX_AUDIO_SECONDS`). Fails past 45 s per audio minute (a 600 s track in half of
+  `JOB_TIMEOUT_S`) or past the container's memory.
+
+### Fixed
+
+- The worker's thread-capped Beat This! loader (`limit_onnx_threads`, used by every
+  deployed worker) built its own ONNX Runtime session without the
+  `enable_mem_pattern = False` the engine's loader got in #20, so the deployed path kept
+  the old peak. It sets it now: 1824 -> 1200 MB with the vote at 10 minutes.
+- `docs/deploy.md` said a worker without the vote fits in 512 MB. Never measured: a
+  10-minute track peaks at 565 MB. It now says 768 MB, and the gate holds that.
+
+### Measured
+
+- Windows, 12 cores, 4 threads, one pass per case. First run: machine loaded by other
+  sessions, before the loader fix. Second run: quiet machine, with #20 and the fix.
+
+  | audio | vote | s/min loaded | peak MB before | s/min quiet | peak MB fixed |
+  |---|---|---|---|---|---|
+  | 60 s | on | 34.1 | 1628 | 8.2 | 1002 |
+  | 60 s | off | 10.6 | 291 | 2.1 | 292 |
+  | 360 s | on | 15.5 | 1738 | 5.4 | 1113 |
+  | 360 s | off | 3.3 | 445 | 0.9 | 444 |
+  | 600 s | on | 20.7 | 1824 | 5.4 | 1200 |
+  | 600 s | off | 4.7 | 565 | 0.9 | 566 |
+
+  Load (engine + model, once per worker start): 7-38 s loaded, 1.5-4.8 s quiet. The
+  machine's load moved the times by four, more than any code did; the peak moved only
+  with the fix. The cost has a fixed part, so short tracks are the worst per minute.
+  W3.16 can quote 35 s per audio minute with the vote (the loaded figure), marked as
+  an estimate, until the container is measured.
+- Not measured: the Linux container (same blocker as W2.3); Windows' peak working set
+  is not Linux's peak RSS, so the margin is to be re-read there.
+
+### Rejected / tried and dropped
+
+- Keeping 512 MB as the no-vote budget: the gate would be red for a figure nobody
+  measured. The first run's peak (565 MB) rounded up is the budget instead.
+
+---
+
+## Unreleased — 2026-10-27 · W3.19: the site's checks in the verification list
+
+### Changed
+
+- W3.19 of [the web platform](16-web-platform.md): the Verification section of
+  `CLAUDE.md` and `AGENTS.md` lists `pnpm --dir site/api test`, with its count, and
+  `pnpm --dir site/web build`, to run before any commit that touches `site/`.
+- `bench/facts.py` counts the top-level `test(` calls in `site/api/test` and
+  `site/web/test`, as `node --test` runs them, and fails when the stated count
+  differs. `site/web` has no tests on `master` yet: its line is required from its
+  first test on, and refused once it has none.
+
+### Measured
+
+- `facts.py`: ok, with 31 `site/api` tests read from the source, the same number
+  `node --test` reports. With the stated count set to 30 it named the mismatch;
+  with one `site/web` test added and no line for it, it said so.
+- `node --test` in `site/api`: 31/31. `vite build` passes.
+## Unreleased — 2026-10-27 · W3.5–W3.7 checked against the code
+
+### Changed
+
+- W3.5, W3.6 and W3.7 of [the web platform](16-web-platform.md) were open in the
+  roadmap although the site had shipped them. Read against the code, they are done:
+  the ticker, the user menu and the Home, Analyze, Result and Login pages (W3.5);
+  separate anonymous and account quotas, the address stored as a daily HMAC (W3.6);
+  every string in English and Spanish (W3.7).
+- Recorded as deviations, not changed: the palette and type are the desktop app's
+  "Console" look rather than midesprojects.com's (whose Horizon font has no known
+  licence), and the navigation is underlined tabs, not a pill. The rate limit's
+  key becomes a hash with W3.17.
+
+### Rejected / tried and dropped
+
+- A pill navigation, as W3.5's row words it. Decided under the owner's delegation:
+  the tabs belong to the app's look the site already adopted, work on a phone and
+  with a keyboard, and a pill would change only the style, not what anyone can do.
+
+### Hardening
+
+- `site/web/test/i18n.test.js` holds W3.7 in place: it fails when a key exists in
+  one language only, when a string's `{{placeholders}}` differ between the two,
+  when a plural lacks its `_one` or `_other`, or when the code asks for a key that
+  does not exist. `site/web` gets a `test` script for it.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4; with one Spanish placeholder removed on
+  purpose it failed on that key, as it should. `site/api` 31/31, untouched.
+  `vite build` passes.
+## Unreleased — 2026-10-27 · W3.18: the queue, moderated
+
+### Changed
+
+- W3.18 of [the web platform](16-web-platform.md), the first piece of W6's
+  moderation panel: a Mides moderator sees on `/queue` a Remove button on every
+  waiting or running job and Back to the queue on a running one, each asking for
+  an optional reason, and the moderation log under the queue.
+- `POST /api/v1/analyses/:id/moderate` and `GET /api/v1/analyses/moderation`,
+  staff only; the new `moderation_log` table records who did what, when and why,
+  in the same transaction as the change.
+- A removed song's page says a moderator took it off the queue instead of
+  suggesting the file was damaged.
+- The dev login's Google user is a moderator, so the buttons can be tried without
+  Mides.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` did not parse on this branch either (see W3.12);
+  the same fix is carried here so the new paths could be added.
+
+### Hardening
+
+- Staff get an opaque `ref` on live rows, not the `id` that opens a result, and a
+  private row still shows them no song and no uploader.
+- A requeue keeps the attempt count, so the worker that had the job cannot
+  overwrite the next attempt's answer; it is refused without its spooled audio.
+- The log keeps the moderator's username at the time, so it still says who after
+  the account is gone.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new, over HTTP with dev sign-ins: only
+  staff may act or read the log; staff see a `ref` and a private row stays
+  private; a removal fails the job, deletes its audio, tells the uploader and is
+  logged with reason and username; a requeued job waits again, the old attempt is
+  refused and the next claim's attempt is higher; no requeue without audio).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; remove, a second remove
+  refused, requeue of a running job, its stale answer refused, a new claim at
+  attempt 2, the log read back newest first.
+- In the browser (`pnpm dev` in memory, signed in as the Google dev user): the
+  staff row showed Remove and Back to the queue; a running job went back to
+  position 1, a queued one was removed, and the log listed both with the reason.
+
+---
+## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
+
+### Changed
+
+- `bench/worker_parity.py`: the 24 benchmark cases through `worker/timing_result.py`
+  as a job runs them (the Beat This! vote on), each `timing-result v1` checked against
+  `bench/bpm_snapshot.json` with its own tolerance (0.01 BPM): global BPM, every red
+  line, their count, the meter and the engine path. `gates.py bpm-snapshot` pins the
+  engine; this pins what the worker makes of it -- written-out parameters, snapping,
+  the filter on non-finite points, the rounding into JSON. It imports neither
+  `gates.py` nor the desktop shell, and refuses to run without the vote, since a host
+  missing the model would differ for that reason alone.
+
+### Measured
+
+- Windows (Python 3.14.7, numpy 2.5.3, scipy 1.18.1, libsndfile 1.2.2, worker engine
+  `88089672ec54bf2d`): **24/24** match. Wall time 10.8-37.3 s per case, 129 s for
+  `long-6min`, on a machine shared with other runs.
+- **Linux: not measured.** This machine has no WSL distribution (`wsl.exe` only
+  prints its usage; turning it on needs admin and a reboot) and no Docker; the
+  measurement server tracks `feature/library-api`, which has no `worker/`. On the
+  VPS, in a clone of its own so the running server is untouched:
+
+  ```bash
+  git clone --branch bench/worker-parity https://github.com/Mides-Projects/Overtone.git /opt/overtone-w23
+  cd /opt/overtone-w23 && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+  cd /opt/overtone-w23 && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/w23.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/w23.lock
+  cd /opt/overtone-w23 && .venv/bin/python bench/worker_parity.py && .venv/bin/python bench/gates.py bpm-snapshot
+  ```
+
+  W2.3 is done when both print 24/24 there.
+
+### Rejected / tried and dropped
+
+- Queuing the Linux run on the measurement server now (decided 2026-10-27, owner away
+  and decisions delegated). `bench/remote.py run` only queues `stages` and
+  `single_bpm` against the code the server already runs (`feature/library-api`, no
+  `worker/`), so the gate cannot go through that queue. Switching the server's branch
+  or opening an SSH shell beside it would cut into the engine experiment matrix it is
+  running for hours, and the matrix's timings with it. So the run waits for the matrix
+  to finish, then follows the steps above in a separate clone.
+
+---
+
+## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
+
+### Changed
+
+- W3.17 of [the web platform](16-web-platform.md): with a database, the request
+  limits (`/api` 300 a minute, uploads 10 and lookups 120 per ten minutes,
+  sign-in 20 per ten minutes) count in a new `rate_limits` table, one upsert per
+  request, so two APIs behind the proxy share every count. Without a database
+  they count in memory, as before.
+
+### Hardening
+
+- The address is no longer the key, even in memory: it is an HMAC under
+  `SESSION_SECRET`, so the table holds no address (the rate-limit half of W3.6).
+- A client alternating between two processes used to get twice every limit.
+- If the table cannot be reached, the request is counted in the process's own
+  memory and the outage is logged once: a limit must not take the site down.
+
+### Measured
+
+- `node --test` in `site/api`: 36/36 (5 new: the 429 and its Retry-After, two
+  processes apart in memory and together on one counter, the counter seeing only
+  the hash, the fallback when the count fails, a window starting again).
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `check` passes with 14 tables; two API processes on one
+  database, twelve uploads sent alternately: ten passed, the 11th and 12th got 429
+  (Retry-After 588 s) from whichever process they hit; `rate_limits` held the HMAC
+  and the count, no address.
+- Not measured: the upsert's cost on the server's PostgreSQL. It adds one write to
+  every request; PGlite's timings say nothing about a real server.
+
+---
+
+## Unreleased — 2026-10-27 · W3.15: a batch in one ZIP
+
+### Changed
+
+- W3.15 of [the web platform](16-web-platform.md): under the cards of a batch, a
+  button downloads `overtone-timings.zip` with the `timing.txt` of every song that
+  is done. It is built in the browser from the results the cards already polled:
+  no request, no server code, no dependency.
+- `lib/zip.js` writes a stored (uncompressed) ZIP with UTF-8 names and a CRC-32;
+  `lib/timing.js` writes each file exactly as the API's `timing.txt` does. Each
+  card now hands the page its whole analysis, not only its status (W3.14).
+
+### Hardening
+
+- A name repeated within a batch (two `intro.mp3` from different folders) gets
+  " (2)" before its extension, compared without case, so no entry hides another
+  when unpacked on Windows.
+
+### Rejected / tried and dropped
+
+- Deflate. A `[TimingPoints]` block is a few kilobytes and a batch at most 50 of
+  them: compression would save little and need a dependency or a hand-written
+  deflater. The row asked for none if a stored ZIP would do, and it does.
+
+### Measured
+
+- `node --test` in `site/web`: 10/10 (6 new: the CRC against `zlib.crc32`, an
+  archive read back entry by entry from its central directory, repeated names,
+  an empty batch, the timing file byte for byte against the API's helpers, which
+  songs go in). `vite build` passes.
+- An archive from `zipStore` opens in Python's `zipfile` (`testzip()` clean) and
+  in Windows' `Expand-Archive`, accented names included.
+- In the browser (`pnpm dev` in memory, a fake worker): a batch of two finished
+  songs offered "Download all 2 timings (ZIP)" and produced a 322-byte
+  `overtone-timings.zip` whose first entry was `zip one-timing.txt`.
+
+---
+
+## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
+
+### Changed
+
+- W3.14 of [the web platform](16-web-platform.md): while a batch runs, the tab's
+  title carries its count ("2/5 ready · Overtone"), and goes back to the page's
+  own title when the page is left. A checkbox under the list asks the browser for
+  permission to notify; if granted, one notification says "3 of 5 songs have a
+  timing" when the last one finishes.
+- Each card reports the status it polls to the page, which is all the count
+  needs: nothing leaves the browser that did not before.
+- `site/web` gets a `test` script (`node --test`) for its pure modules.
+
+### Hardening
+
+- A file still uploading or waiting to upload counts in the batch's total, so
+  two songs answered at once from the cache do not end a batch of five early.
+- The notification is sent once per batch, only when asked for and granted; a
+  browser that only notifies from a service worker (Android Chrome) gets the
+  title alone instead of an error.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4 (the count, the single-song case, the title,
+  when the notification goes). `site/api` 31/31, untouched. `vite build` passes.
+- In the browser (`pnpm dev` in memory, a fake worker answering one job at a
+  time, `Notification` stubbed to record calls): the title read 0/3, 1/3 and
+  3/3 ready; one notification, "3 of 3 songs have a timing."; the title came back
+  on leaving the page.
+- Not checked: a real system notification (the pane's permission prompt was
+  stubbed).
+
+---
+## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+
+### Changed
+
+- W3.12 of [the web platform](16-web-platform.md): `DELETE /api/v1/analyses/:id`
+  takes back a song that is still waiting. Whoever may read the analysis (the
+  session or the anonymous cookie that created it) may cancel it; anyone else
+  gets the same 404 as for an id that does not exist. The job, the row and the
+  spooled audio are deleted, so the song does not count against the day's quota.
+- A Cancel button on the upload card, on the analysis page while it is queued and
+  on the caller's own queued rows in `/queue`. A cancelled analysis is dropped
+  from the browser's recent list.
+
+### Fixed
+
+- `site/api/docs/openapi.yaml` was not YAML since W3.11: a `$'` in that edit's
+  replacement string meant "the text after the match", which pasted a second copy
+  of the queue and analysis paths into the lookup's `sha1` pattern. Two unquoted
+  descriptions did not parse either. It loads again, each path once.
+
+### Hardening
+
+- A song the worker has claimed is not cancelled (409 `NOT_QUEUED`): the worker
+  has no way to hear about it mid-stage. The delete checks `state = 'queued'` in
+  the same statement, so a claim and a cancel arriving together are decided by
+  the job's row lock, not by whichever read first.
+
+### Measured
+
+- `node --test` in `site/api`: 34/34 (3 new, over HTTP against the app: the
+  owner cancels and the row, the audio and the quota count go; a stranger gets
+  404 and a request without the same-origin header 403; a claimed job gets 409).
+  `vite build` passes.
+- Against PostgreSQL 18.6 (PGlite 0.5 behind `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; a queued analysis
+  cancelled, the day's count went from 2 to 1; a claimed one refused.
+- In the browser (`pnpm dev` in memory, no worker): cancelled from `/queue`, from
+  the analysis page (back to `/analyze`) and from a batch card; the queue showed
+  each one gone.
+
+---
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
+## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+
+### Changed
+
+- `_load_beat_this` turns off `enable_mem_pattern`. The pattern plans a buffer layout
+  per input shape and keeps it; the vote runs 1500-frame chunks plus a last chunk of
+  another length on every song, so it only adds to the peak.
+
+### Measured
+
+- Beat This! alone over three Corpus B songs (135, 257 and 477 s) in one process,
+  ONNX Runtime 1.31.0, this PC with other sessions' runs in the background: peak
+  working set 1904 MB (twice) -> 1278 MB. CPU seconds 116 / 179 / 392 against
+  120-121 / 238-248 / 422-507 for the default. Every beat of the 1425 within 1 ms
+  of the default's.
+- Gates: see the PR.
+
+### Rejected / tried and dropped
+
+- `enable_cpu_mem_arena = False`: 1045 MB, beats identical, but the CPU cost moved
+  between +23 % and -27 % per song; not a clear win on a contended machine.
+  Both switches off: 991 MB at +40 % CPU.
+- Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
+  and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
+  by more than 20 ms. That is a precision change; it waits for a Corpus B run.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed
@@ -311,6 +1976,8 @@ five are fixed here.
   repository, and a server must never pick up a developer's saved settings; the
   defaults are written out in the worker.
 
+---
+
 ## Unreleased — 2026-10-26 · W1: the unfinished desktop extras parked
 
 ### Changed
@@ -396,6 +2063,8 @@ tool, and none of these had reached the bar it was built against.
 - Size: 94 files, 31,620 lines out and 320 in against `origin/master`
   (`git diff --shortstat`), this entry included.
 
+---
+
 ## Unreleased — 2026-10-26 · red lines read at their song's octave
 
 ### Changed
@@ -413,6 +2082,8 @@ tool, and none of these had reached the bar it was built against.
   anime-single held out unchanged (81.9 %, 94.3 %). anime-single dev not
   measured: the run was killed twice mid-way, likely memory.
 
+
+---
 
 ## Unreleased — 2026-10-26 · local-tempo octave experiments, off by default
 
@@ -446,6 +2117,8 @@ tool, and none of these had reached the bar it was built against.
   local-fold-judge 83.5 / 80.1 (x0.5 stays 32, x2 81 -> 68). Tempo ok
   unchanged everywhere; beat F at 10 ms -0.1 to +0.2. The judge is on by
   default from this entry; doubling alone changed nothing.
+
+---
 
 ## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
 
@@ -484,6 +2157,8 @@ tool, and none of these had reached the bar it was built against.
   now has OOMPolicy=continue, each run volunteers to be killed first
   (oom_score_adj 800), and "all" runs the two modules one after the other.
 
+---
+
 ## Unreleased — 2026-10-26 · a push updates the server
 
 ### Changed
@@ -512,6 +2187,8 @@ tool, and none of these had reached the bar it was built against.
 
 - Not measured: the first deploy on the server is pending its setup.
 
+---
+
 ## Unreleased — 2026-10-26 · gates and the suite on the server
 
 ### Changed
@@ -535,6 +2212,8 @@ tool, and none of these had reached the bar it was built against.
 - Not measured: the suite and the gates on the server are this entry's
   first job.
 
+---
+
 ## Unreleased — 2026-10-26 · measuring what the app runs
 
 ### Changed
@@ -554,6 +2233,8 @@ tool, and none of these had reached the bar it was built against.
   or refused. Rust alone measured a refusal the app does not make.
 - Checked: Corpus B with `--engine app`, calm-down-juliet (Rust refuses)
   read by v3's tracker, 71 % of its red lines within 5 ms; martyr by Rust.
+
+---
 
 ## Unreleased — 2026-10-26 · clean BPMs in what is written for osu!
 
@@ -581,6 +2262,8 @@ tool, and none of these had reached the bar it was built against.
   140.084 -> 140.1 with 7, torikago 113.95 -> 113.9 with 2); every written
   BPM on a tenth or rounder (51/51).
 
+---
+
 ## Unreleased — 2026-10-25 · BPMs shown to the tenth
 
 ### Changed
@@ -598,6 +2281,8 @@ tool, and none of these had reached the bar it was built against.
 - Checked in the page on this machine (2026-10-25): "If You Can't Hang"
   shows 192 with 192.000 BPM on hover; the toast reads the same in English
   and Spanish; no app.js error in the console. test_overtone_web 310/310.
+
+---
 
 ## Unreleased — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
 
@@ -623,6 +2308,8 @@ tool, and none of these had reached the bar it was built against.
   for reading (the app's display, the export untouched) remains open; it
   needs no engine change.
 
+---
+
 ## Unreleased — 2026-10-25 · exports from the web page land on the person's computer
 
 ### Changed
@@ -642,6 +2329,8 @@ tool, and none of these had reached the bar it was built against.
 - Checked by hand on this machine (2026-10-25): an analysed song's "Save
   .osz" wrote exports/audio.osz with no dialog, the page offered it, and
   the download endpoint returned all 1,129,566 bytes, a valid zip.
+
+---
 
 ## Unreleased — 2026-10-25 · stages scored on ranked and loved maps only
 
@@ -669,6 +2358,8 @@ tool, and none of these had reached the bar it was built against.
   491 -> 433 (2,599 -> 2,278), bands-variable 339 -> 167 (1,540 -> 887).
   Half the bands stage was unranked. How the engine scores on the ranked
   part: not measured yet (the server's first full runs).
+
+---
 
 ## Unreleased — 2026-10-25 · measurement runs on the server
 
@@ -710,6 +2401,8 @@ tool, and none of these had reached the bar it was built against.
   for the run; tempo ok 100.0 %, joint 5 ms 0.0 %, conv. 10 ms 73.3 %,
   signed error +35.8 ms. Five songs: a smoke test of the pipeline, not a
   reading of the engine.
+
+---
 
 ## Unreleased — 2026-10-25 · the app as a web page
 
@@ -753,6 +2446,8 @@ tool, and none of these had reached the bar it was built against.
 - Reading `webview.OPEN_DIALOG` and friends to name a dialog: pywebview 6
   warns on every read; `FileDialog` is read when present, and a stand-in
   module supplies the names on a server without pywebview.
+
+---
 
 ## Unreleased — 2026-10-25 · the library API and its BPM cache
 
@@ -1088,6 +2783,8 @@ tool, and none of these had reached the bar it was built against.
   running. Its repository carries no licence, so it can be measured here
   but not shipped without the author's permission.
 
+---
+
 ## Unreleased — 2026-10-24 · the installer with Beat This! inside
 
 ### Changed
@@ -1120,6 +2817,8 @@ tool, and none of these had reached the bar it was built against.
   `overtone-py.exe` votes: on Pierce The Veil - A Match Into Water, where
   the vote turns 1 red line into 332, it writes the same 332 red lines as
   the development engine, byte for byte.
+
+---
 
 ## Unreleased — 2026-10-24 · Beat This! votes (owner decision)
 
@@ -1174,6 +2873,8 @@ tool, and none of these had reached the bar it was built against.
   and Tcl/Tk 9.0 against notices.json's 3.14.4 and 8.6. Not run: an MSI
   build with the model inside.
 
+---
+
 ## Unreleased — 2026-10-24 · Beat This! through ONNX, without PyTorch
 
 ### Changed
@@ -1218,6 +2919,8 @@ tool, and none of these had reached the bar it was built against.
   83 MB model in the installer, ~5 s more per minute of song; for the held-
   out gains measured in the previous entry (+1 to +3 points within 10 ms).
 
+---
+
 ## Unreleased — 2026-10-24 · Beat This! as an extra voter (10.3)
 
 ### Changed
@@ -1260,6 +2963,8 @@ tool, and none of these had reached the bar it was built against.
   CPU, for +1 to +3 points at 10 ms and up to +5 at 20 ms on held-out songs.
   An ONNX export of the model would cut the runtime; not tried.
 
+---
+
 ## Unreleased — 2026-10-24 · drums alone, the 3:4 readings and the refusals
 
 ### Changed
@@ -1300,6 +3005,8 @@ tool, and none of these had reached the bar it was built against.
   beat signal the engine does not have. The roadmap's candidate is Beat This!
   (10.3, MIT code and weights, offline at run time), which needs its weights
   downloaded once -- an owner decision.
+
+---
 
 ## Unreleased — 2026-10-23 · choosing between the two grids per song
 
@@ -1342,6 +3049,8 @@ tool, and none of these had reached the bar it was built against.
   beats (S3 beats within 10 ms 43.8 %), the 3:4 readings (141 of S1's 4,611
   maps), and the 6 songs the noise guard refuses.
 
+---
+
 ## Unreleased — 2026-10-23 · osu!'s red-line lead at export (owner decision)
 
 ### Changed
@@ -1380,6 +3089,8 @@ tool, and none of these had reached the bar it was built against.
   24/24, golden 27/27, real-audio 6/6, robustness, combine, parity, facts.
   Not run: the browser check of the new setting (the bridge tests cover its
   default, validation and every export it reaches).
+
+---
 
 ## Unreleased — 2026-10-23 · the Rust path and the song-level octave
 
@@ -1420,6 +3131,8 @@ tool, and none of these had reached the bar it was built against.
 
 - The export convention (10.0a): decided the same day, see the entry above.
 
+---
+
 ## Unreleased — 2026-10-23 · where S1 still misses, and the first-edge phase
 
 ### Changed
@@ -1456,6 +3169,8 @@ tool, and none of these had reached the bar it was built against.
   57.0 % (within 10 ms 78.9 -> 71.9 %); gating on the onset's contrast was
   worse still. On maps whose tempo is right the grid already sits within
   10 ms of the map after the convention for 79 % (held out) of red lines.
+
+---
 
 ## Unreleased — 2026-10-23 · full-stage measurement after the day's changes
 
@@ -1497,6 +3212,8 @@ tool, and none of these had reached the bar it was built against.
   the local-tempo tracker needs the Rust result to carry an onset envelope
   for refused songs, which it does not (Rust refuses them).
 - `installer/notices.py --check` fails as on master (Tcl/Tk 8.6 notice).
+
+---
 
 ## Unreleased — 2026-10-23 · local-tempo tracker for the songs v3 refuses
 
@@ -1555,6 +3272,8 @@ tool, and none of these had reached the bar it was built against.
   parts at all.
 - Tightness 3000-30000 and a stronger fast bias (0.2-0.5): all worse on dev.
 
+---
+
 ## Unreleased — 2026-10-23 · drift following on, with a 10 % guard
 
 ### Changed
@@ -1588,6 +3307,8 @@ tool, and none of these had reached the bar it was built against.
 
 - A per-window gain (a window's refit kept only when it fits that window
   10-20 % better): it costs S1 and S2 0.7-1.4 points on dev for little on S3.
+
+---
 
 ## Unreleased — 2026-10-23 · S2/S3 baselines and drift following
 
@@ -1664,6 +3385,8 @@ tool, and none of these had reached the bar it was built against.
   41.4 % against 48.6 % at 32 beats); 24 to 128 beats were all better, 96
   chosen on dev.
 
+---
+
 ## Unreleased — 2026-10-23 · S1: the whole BPM mappers use
 
 ### Changed
@@ -1702,6 +3425,8 @@ tool, and none of these had reached the bar it was built against.
   Take You Down 174.0156 -> 174.0, Shinkou 189.98 -> 190.0, Noble
   163.97 -> 164.0, Palette 179.97 -> 180.0, each its map's BPM. 1012 Python
   tests pass.
+
+---
 
 ## Unreleased — 2026-10-22 · S1: the beat octave osu! maps use
 
@@ -1757,6 +3482,8 @@ tool, and none of these had reached the bar it was built against.
 - The global fold alone: held-out octave only 75.2 → 76.3 %, because the
   section flips were below it.
 
+---
+
 ## Unreleased — 2026-10-22 · Phase 10 stage plan and the anime baseline
 
 ### Changed
@@ -1790,6 +3517,8 @@ tool, and none of these had reached the bar it was built against.
   conv. 5 ms 24.1 %, conv. 10 ms 47.0 %. Wrong octaves: x2 550, x0.5 434,
   x0.25 61, x4 21 of 4,611 -- the octave (10.0g) is S1's first target,
   then the phase (10.0e/f).
+
+---
 
 ## Unreleased — 2026-10-16 · T6 resumable independent-sample audit
 
@@ -1939,8 +3668,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -2030,6 +3757,8 @@ tool, and none of these had reached the bar it was built against.
   diagnostic still misses the 5 ms target on most maps and does not address
   wrong tempo octaves.
 
+---
+
 ## Unreleased — 2026-10-15 · Hitsounds roadmap reconciled
 
 ### Changed
@@ -2055,6 +3784,8 @@ tool, and none of these had reached the bar it was built against.
 - No new classifier measurement. The existing 2026-10-07 Rust results remain
   the basis for deferring H6: median `P(snare)+P(clap)` 0.189 and crash-vs-snare
   0.408 over 12 songs.
+
+---
 
 ## Unreleased — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
 
@@ -2124,8 +3855,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed
@@ -2153,8 +3882,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -2173,8 +3900,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -2189,8 +3914,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · Train harness passes by owner hand
 
 ### Changed
@@ -2201,6 +3924,8 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is a witnessed check. `bench/facts.py` ok.
+
+---
 
 ## Unreleased — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
 
@@ -2215,6 +3940,8 @@ tool, and none of these had reached the bar it was built against.
   inherits the halves, the bar — and the warning that n≈13 held-out songs make ±7
   point noise, so it should bring a bigger sample or a significance-aware bar.
 
+---
+
 ## Unreleased — 2026-10-07 · Templates on real audio, re-measured: still blocked
 
 ### Measured
@@ -2228,6 +3955,8 @@ tool, and none of these had reached the bar it was built against.
 - One direction noted, not taken: sample→role by similarity to the map's own bank
   instead of by absolute templates would dodge the transfer problem entirely — but
   that redesigns H6 rather than executing it, so it waits for a decision, not a turn.
+
+---
 
 ## Unreleased — 2026-10-07 · Audio-only evidence for the Propose card
 
@@ -2249,6 +3978,8 @@ tool, and none of these had reached the bar it was built against.
 - `facts.py` green; static UI pass clean EN/ES.
 - Not checked: the browser harness, and the sidecar on real songs through this path
   (the engine's own 0.29 clap F1 stands as the number).
+
+---
 
 ## Unreleased — 2026-10-07 · Labels measured against kiai: a miss, recorded
 
@@ -2276,6 +4007,8 @@ tool, and none of these had reached the bar it was built against.
   equal-or-better precision, which tempts — but the bar missed twice, and more
   proposals at 38 % precision on a card that *writes* kiai is not the same as
   better proposals. The conservative refusal stands until a better signal exists.
+
+---
 
 ## Unreleased — 2026-10-07 · Setup choices without bespoke XML
 
@@ -2306,6 +4039,8 @@ tool, and none of these had reached the bar it was built against.
   `ADDLOCAL=ALL`, absent by default, gone after uninstall. URI stays out: no
   linker exists, and a scheme nobody links to is dead surface.
 
+---
+
 ## Unreleased — 2026-10-07 · Dropping spinners, allowed and named
 
 ### Changed
@@ -2321,6 +4056,8 @@ tool, and none of these had reached the bar it was built against.
 
 - 1005 Python tests (4 new), all green; `facts.py`, `parity.py` green.
 - Not checked: the browser harness.
+
+---
 
 ## Unreleased — 2026-10-07 · One hotkey, no hook
 
@@ -2341,6 +4078,8 @@ tool, and none of these had reached the bar it was built against.
 - 1001 Python tests, all green; `facts.py`, `parity.py` green.
 - Not checked: the browser harness, and a physical keypress (a posted message covers
   everything this code owns; the OS delivers the rest).
+
+---
 
 ## Unreleased — 2026-10-07 · Picking the map, opening .osz, refusing pitch-keeping
 
@@ -2370,6 +4109,8 @@ tool, and none of these had reached the bar it was built against.
 - 997 Python tests (12 new), all green; `facts.py`, `parity.py` green.
 - Not checked: the browser harness.
 
+---
+
 ## Unreleased — 2026-10-07 · Phase 26: feel, mods, copies, presets
 
 ### Changed
@@ -2391,6 +4132,8 @@ tool, and none of these had reached the bar it was built against.
 - 985 Python tests (11 new), all green; `facts.py`, `parity.py` green; static UI pass
   clean in both languages.
 - Not checked: the browser harness, like the section's.
+
+---
 
 ## Unreleased — 2026-10-07 · Phase 26: rate ladders, one run one mapset
 
@@ -2419,6 +4162,8 @@ tool, and none of these had reached the bar it was built against.
   sharing would mean resampling on load, which no player does. One file per distinct
   rate is the only shape an osu! folder can hold honestly.
 
+---
+
 ## Unreleased — 2026-10-07 · The way out of alpha: 0.3.0 scoped, 1.0.0 pathed
 
 ### Changed
@@ -2440,6 +4185,8 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
+
+---
 
 ## Unreleased — 2026-10-06 · The 0.2.0-alpha checklist, run end to end
 
@@ -2485,6 +4232,8 @@ tool, and none of these had reached the bar it was built against.
 - Not published: no tag, no GitHub release. R6's verdicts are still owed, and a
   release is the one thing that cannot be taken back.
 
+---
+
 ## Unreleased — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
 
 ### Changed
@@ -2501,6 +4250,8 @@ tool, and none of these had reached the bar it was built against.
 
 - Nothing: this is a decision. `bench/facts.py` ok, so the counts these documents
   state still match the source.
+
+---
 
 ## Unreleased — 2026-10-06 · Phase 26 step 3: the Train section
 
@@ -2527,6 +4278,8 @@ tool, and none of these had reached the bar it was built against.
   event the worker emits has a handler.
 - Not checked: the browser harness in either language, which needs the pane. The row
   says so until somebody runs it.
+
+---
 
 ## Unreleased — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
 
@@ -2567,6 +4320,8 @@ tool, and none of these had reached the bar it was built against.
 - **Carrying videos into the copy.** A 20 s video at 1.37x plays 14.6 s of pictures over
   14.6 s of song only if something re-times it, and nothing here does. The note names the
   files left behind.
+
+---
 
 ## Unreleased — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
 
@@ -2613,6 +4368,8 @@ tool, and none of these had reached the bar it was built against.
   the source never stated, so 1.0x differed by two lines instead of one. Patching the raw
   lines keeps the file's own separators and never invents a key.
 
+---
+
 ## Unreleased — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
 
 ### Fixed
@@ -2637,6 +4394,8 @@ tool, and none of these had reached the bar it was built against.
 
 - **Reading a last error for the copy-out.** The window shows errors inline and nothing keeps them, so the copy-out cannot carry one without a new error log. That is a row of its own if it is wanted; putting a half-kept log in a bug report would be worse than none.
 - **Keeping `APP_VERSION = "3.0"` for the .osu headers.** It is the engine's generation, and a header that says v3.0 in a 0.1.0 release is a file that names a version nobody downloaded.
+
+---
 
 ## Unreleased — 2026-10-03 · What 0.2.0-alpha has to hold
 
@@ -2682,6 +4441,8 @@ tool, and none of these had reached the bar it was built against.
 
 Nothing: this is a plan. `bench/facts.py` ok, so the counts these documents
 state still match the source.
+
+---
 
 ## Unreleased — 2026-10-03 · The octave stage's cost: a block eight times too wide
 
@@ -2763,6 +4524,8 @@ commit grew this cost, and the previous entry's suspect is wrong.
   own tempogram is blocked by it, so a second width tuned to this machine's L2
   would be a number to re-measure whenever the machine changes, for 0.17 s on
   one stage of one fixture. 0.359 s is inside the pin with room.
+
+---
 
 ## Unreleased — 2026-10-03 · A rate trainer, specified
 
@@ -8354,9 +10117,6 @@ bpm-snapshot 24/24 · golden.py 27/27 · facts
 UI                              unit-tested bridge only; ids, both languages, no
                                 duplicates cross-checked. Harness pass owed, stated.
 ```
-
----
-
 
 ---
 

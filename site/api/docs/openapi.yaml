@@ -7,11 +7,27 @@ info:
     the browser never calls it cross-origin, so there is no CORS.
 
     Sign-in is Mides SSO only. The browser holds one cookie,
-    `overtone_session` (HttpOnly, SameSite=Lax); Mides tokens never leave the
+    `__Host-overtone_session` (HttpOnly, SameSite=Lax, Secure, Path=/; plain
+    `overtone_session` over http in development); Mides tokens never leave the
     server. Every state-changing request carries
     `X-Requested-With: overtone-web` or is refused with 403.
 
     Errors share one shape: `{ "error": { "status", "message", "code"? } }`.
+
+    Personal API tokens (W12.20). A signed-in person makes them on the
+    website (`/settings/tokens`); a token is `ot_` and 43 characters, shown
+    once and stored only as a hash. Send it as `Authorization: Bearer <token>`
+    from a script, a bot or a server: there is still no CORS, so another
+    website's page cannot use one. A token request carries no cookie (any
+    Cookie header beside it is ignored), needs no `X-Requested-With`, and
+    reaches only the operations marked `x-token-scope` below, each under its
+    scope (`any` means every token): `read:analyses` (your analyses, their
+    exports and versions), `upload` (send songs as your account, within its
+    quota) and `read:timings` (published timings). Anything else is 403
+    `TOKEN_NOT_ALLOWED`, a missing scope 403 `TOKEN_SCOPE`, an unknown or
+    revoked token 401 `INVALID_TOKEN`. Each token has its own rate limit (120
+    requests a minute, and the route's own limits counted per token) instead
+    of its address's.
 
     Not described here: `/api/internal/*`, the worker's side of the queue
     (claim, audio, progress, result, fail), which demands
@@ -28,7 +44,11 @@ components:
     session:
       type: apiKey
       in: cookie
-      name: overtone_session
+      name: __Host-overtone_session
+    token:
+      type: http
+      scheme: bearer
+      description: A personal API token (W12.20), on the operations marked `x-token-scope` only.
   parameters:
     sameOrigin:
       name: X-Requested-With
@@ -41,12 +61,56 @@ components:
       required: true
       description: 128 random bits in hex.
       schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    cursor:
+      name: cursor
+      in: query
+      description: The `next` of the previous page, as given. Keyset paging, so a row published meanwhile neither repeats nor skips a row.
+      schema: { type: string, pattern: '^\d{1,17}-[0-9a-f]{32}$' }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, default: 24, description: Capped at 50. }
+    q:
+      name: q
+      in: query
+      description: Text in the title, the artist or the file name, any case; at most 100 characters are read.
+      schema: { type: string }
+    bpmMin:
+      name: bpmMin
+      in: query
+      schema: { type: number, minimum: 0, maximum: 1000 }
+    bpmMax:
+      name: bpmMax
+      in: query
+      schema: { type: number, minimum: 0, maximum: 1000 }
+    sort:
+      name: sort
+      in: query
+      description: |
+        `new` (default): newest published first. `rated`: timings with at
+        least `minRatings` (3) ratings, by a Bayesian average (the ratings plus
+        3 more at 3 stars), so a few 5s do not outrank many 4.6s. `used`:
+        timings marked used at least once, most uses first. The last two page
+        by offset (`o<n>`): their numbers move while someone reads.
+      schema: { type: string, enum: [new, rated, used], default: new }
+    username:
+      name: username
+      in: path
+      required: true
+      description: A Mides username, any case.
+      schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,40}$' }
+    collectionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[0-9a-f]{32}$' }
   schemas:
     QueueEntry:
       type: object
       required: [mine, status, private, song, uploader, anonymous, cached, createdAt, elapsedS]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{32}$", description: Only on the caller's own rows. }
+        ref: { type: string, pattern: "^[0-9a-f]{32}$", description: "Staff only, on waiting and running rows: what /analyses/{id}/moderate takes. Opens nothing." }
         mine: { type: boolean }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         position: { type: integer, minimum: 1 }
@@ -64,7 +128,42 @@ components:
         cached: { type: boolean }
         createdAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
-        elapsedS: { type: integer, description: Seconds from upload to finish, or to now. }
+        elapsedS: { type: integer, description: 'Seconds from upload to finish, or to now.' }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        estimate: { $ref: '#/components/schemas/Estimate' }
+    Estimate:
+      type: object
+      description: |
+        W3.16, while waiting or running: seconds until it is done, by the
+        cost per audio minute measured in W2.4 (utils/estimate.js), assuming
+        one worker. Always a range and always an estimate: `highS` is null
+        ("at least lowS") when a job ahead, or this one, has no known length.
+      required: [lowS, highS]
+      properties:
+        lowS: { type: integer, minimum: 0 }
+        highS: { type: [integer, 'null'], minimum: 0 }
+    AnalysisMode:
+      type: string
+      enum: [fast, normal, strict]
+      default: normal
+    AnalysisOptions:
+      type: object
+      additionalProperties: false
+      description: |
+        W3.21 and W12.19: hints, every one optional. `bpm` and the range
+        exclude each other. An expected tempo outside 120-240 moves the
+        octave the engine reads the song at; a meter fills the bars the
+        engine could not prove; a stretch is analysed alone and its times put
+        back in the song's timeline. The result's `hint_checks` say where the
+        audio disagrees with a hint.
+      properties:
+        tempo: { type: string, enum: [constant, changes] }
+        bpm: { type: number, minimum: 30, maximum: 400 }
+        bpm_min: { type: number, minimum: 30, maximum: 400 }
+        bpm_max: { type: number, minimum: 30, maximum: 400 }
+        meter: { type: integer, minimum: 1, maximum: 16 }
+        start_s: { type: number, minimum: 0 }
+        end_s: { type: number, description: 'At most MAX_AUDIO_SECONDS, and at least 10 s after start_s.' }
     Queue:
       type: object
       required: [live, more, recent, at]
@@ -73,6 +172,7 @@ components:
         more: { type: integer, minimum: 0 }
         recent: { type: array, items: { $ref: '#/components/schemas/QueueEntry' } }
         at: { type: string, format: date-time }
+        staff: { const: true, description: Present when the caller is a Mides moderator. }
     AnalysisCreated:
       type: object
       required: [id, status, cached]
@@ -87,6 +187,13 @@ components:
         id: { type: string }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         filename: { type: [string, 'null'] }
+        sha1:
+          type: [string, 'null']
+          description: >-
+            The audio's SHA-1. The result page compares it with the file picked
+            again in the browser before it plays it; the audio itself is never kept or served.
+        tagTitle: { type: [string, 'null'], description: "The file's title tag, cleaned; the .osz the page builds names its map by it." }
+        tagArtist: { type: [string, 'null'], description: "The file's artist tag, cleaned." }
         createdAt: { type: string, format: date-time }
         cached: { type: boolean, description: Answered from an earlier analysis of the same audio and engine. }
         position: { type: integer, minimum: 1, description: While queued; 1 is next. }
@@ -97,15 +204,63 @@ components:
           enum: [load, attacks, coherence, fallback, tracker, octave, sections, vote, result, null]
         result: { $ref: '#/components/schemas/TimingResult' }
         error: { type: string, description: When failed. }
+        private: { type: boolean, description: Kept off the public queue's song and uploader (W3.8). }
+        published: { type: boolean, description: "Its uploader published it: /timings/{id} shows it to anyone (W3.27)." }
+        publishedAt: { type: string, format: date-time, description: While published. }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        options: { $ref: '#/components/schemas/AnalysisOptions' }
+        estimate: { $ref: '#/components/schemas/Estimate' }
+        reanalysisOf: { type: [string, 'null'], description: "W3.24: the analysis this one re-analyses, when it does." }
+        related:
+          type: array
+          description: |
+            W3.24, once finished: the analyses linked to this one by a
+            re-analysis, either way, that the caller may open.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              mode: { $ref: '#/components/schemas/AnalysisMode' }
+              status: { type: string }
+              options: { $ref: '#/components/schemas/AnalysisOptions' }
+              source: { type: boolean, description: This one was re-analysed from it. }
     TimingResult:
       type: object
       description: |
-        `timing-result v1`, written by worker/timing_result.py. A refusal
+        `timing-result v1.1`, written by worker/timing_result.py. A refusal
         (`refused: true`) has no BPM and no red lines, and says why.
+        `version` stays 1, so a v1 reader reads a v1.1 result unchanged; `minor`
+        1 adds the read-only evidence the result page draws (`beats`,
+        `downbeats_ms`, `onsets`, `onset_envelope`, the drift fields of
+        `sections`, `swing`, `pulse_hints`). A v1.0 result, stored before, has
+        none of them, and a refusal has none either. `minor` 2 (v1.2) adds how
+        it was asked for: `mode`, `options`, `hint_checks` and `stretch`.
       required: [format, version, engine, engine_hash, refused, red_lines, sections, osu_timing]
       properties:
         format: { const: timing-result }
         version: { const: 1 }
+        minor: { type: integer, description: '1 for v1.1, 2 for v1.2; absent on v1.0 results.' }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        options: { $ref: '#/components/schemas/AnalysisOptions' }
+        hint_checks:
+          type: array
+          description: |
+            v1.2. What the result says about each hint: `warn` where the audio
+            contradicts it (tempo_not_constant, tempo_constant, bpm_far,
+            bpm_outside, meter_differs), `info` where the hint decided
+            something (octave_window, meter_applied). `values` carries the numbers.
+          items:
+            type: object
+            properties:
+              level: { type: string, enum: [info, warn] }
+              key: { type: string }
+              values: { type: object }
+        stretch:
+          type: [object, 'null']
+          description: v1.2. The stretch analysed, in the song's own timeline; every time in the result is in that timeline too.
+          properties:
+            start_ms: { type: number }
+            end_ms: { type: number }
         engine: { type: string, const: v3 }
         engine_mode: { type: [string, 'null'], enum: [precision, legacy, null] }
         engine_hash: { type: string }
@@ -117,7 +272,7 @@ components:
         refusal:
           type: [object, 'null']
           properties:
-            code: { type: string, enum: [no_pulse, too_short, too_long, refused] }
+            code: { type: string, enum: [no_pulse, too_short, too_long, too_heavy, bad_stretch, refused] }
             message: { type: string }
         global_bpm: { type: [number, 'null'] }
         offset_ms: { type: [number, 'null'] }
@@ -147,8 +302,48 @@ components:
               level: { type: string, enum: [high, medium, check] }
               residual_ms: { type: [number, 'null'] }
               coverage: { type: [number, 'null'] }
+              drift_ms:
+                type: [number, 'null']
+                description: v1.1. Weighted median distance, ms, of the attacks under this line from its nearest 1/1, 1/2, 1/3 or 1/4 tick; null under 4 attacks.
+              drift_p90_ms: { type: [number, 'null'], description: v1.1. Its 90th percentile. }
+              drift_bias_ms: { type: [number, 'null'], description: 'v1.1. Weighted median signed distance: positive, the music lands after the grid.' }
+              onsets: { type: integer, description: v1.1. Attacks under this line. }
         findings: { type: array, items: { type: object } }
-        osu_timing: { type: string, description: The engine's own [TimingPoints] rows. }
+        osu_timing: { type: string, description: "The engine's own [TimingPoints] rows." }
+        beats:
+          type: object
+          description: v1.1. The engine's beats (whole ms) and its local tempo at each, the tempo curve.
+          properties:
+            t_ms: { type: array, items: { type: integer } }
+            bpm: { type: array, items: { type: number } }
+        downbeats_ms:
+          type: array
+          items: { type: integer }
+          description: v1.1. The bar starts the click track plays (click_schedule), whole ms.
+        onsets:
+          type: object
+          description: v1.1. The attacks the grid was fitted to, whole ms, weights 0-100 of the strongest. Empty for the fallback tracker.
+          properties:
+            t_ms: { type: array, items: { type: integer } }
+            w: { type: array, items: { type: integer } }
+        onset_envelope:
+          type: object
+          description: v1.1. The onset envelope, max-pooled to at most 4000 values of 0-100 over span_ms.
+          properties:
+            span_ms: { type: integer }
+            start_ms: { type: integer, description: 'v1.2, a stretch only: where the envelope starts in the song.' }
+            v: { type: array, items: { type: integer } }
+        swing:
+          type: [object, 'null']
+          description: v1.1. The engine's swing lane (swing_lane), its swung spans only.
+          properties:
+            measured: { type: integer }
+            swung: { type: integer }
+            spans: { type: array, items: { type: object } }
+        pulse_hints:
+          type: array
+          description: v1.1. Half- or double-time regions inside one section (density_hints). Evidence, never a red line.
+          items: { type: object }
     Error:
       type: object
       required: [error]
@@ -176,6 +371,253 @@ components:
         bannerUrl: { type: [string, 'null'], format: uri }
         role: { type: [string, 'null'] }
         createdAt: { type: string, format: date-time }
+        profilePrivate: { type: boolean, description: 'Whether the public profile, /u/{username}, is hidden (W13.18).' }
+    Author:
+      type: [object, 'null']
+      description: The public face of a Mides account. `null` for an anonymous review or a deleted account.
+      properties:
+        username: { type: string }
+        displayName: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'], format: uri }
+    Suggestion:
+      type: object
+      description: |
+        Text is plain text: cleaned of control and bidi characters, never HTML.
+        `hidden` appears only when it is true (staff, or the author opening their
+        own). `hiddenReason` and `reports` (open reports) are sent to staff only.
+      required: [id, title, body, state, votes, voted, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        title: { type: string, minLength: 3, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 4000 }
+        state: { type: string, enum: [open, review, planned, progress, done, rejected] }
+        stateReason: { type: [string, 'null'], description: The latest state change's reason. A rejection always has one. }
+        votes: { type: integer }
+        voted: { type: boolean, description: Whether the session account has voted for it. }
+        author: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+        reports: { type: integer }
+    Review:
+      type: object
+      description: As a suggestion, `hidden`, `hiddenReason` and `reports` appear only as said there. No address or hash is ever sent.
+      required: [id, stars, body, anonymous, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        stars: { type: integer, minimum: 1, maximum: 5 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        author: { $ref: '#/components/schemas/Author' }
+        anonymous: { type: boolean }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+        reports: { type: integer }
+
+    Uploader:
+      type: [object, 'null']
+      description: The uploader's public Mides profile; null for an anonymous upload.
+      properties:
+        username: { type: string }
+        displayName: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'] }
+
+    TimingSummary:
+      type: object
+      description: |
+        One published timing in the recent list (W5.1). Never the audio's
+        SHA-1, the file name, `anon_hash` or `ip_hash`.
+      required: [id, title, artist, bpm, redLines, variable, uploader, anonymous, publishedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$', description: 'Its page is /t/{id} on the web.' }
+        title: { type: [string, 'null'], description: "The title tag, else read from the file name." }
+        artist: { type: [string, 'null'], description: "The artist tag, else read from the file name as \"Artist - Title\"." }
+        bpm: { type: [number, 'null'], description: The main BPM (`global_bpm`). }
+        redLines: { type: integer, minimum: 0 }
+        variable: { type: boolean, description: Red lines at more than one BPM (to 0.01); a meter change alone is not. }
+        uploader: { $ref: '#/components/schemas/Uploader' }
+        anonymous: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+
+    PublicTiming:
+      description: A published timing's own page (W3.27).
+      allOf:
+        - $ref: '#/components/schemas/TimingSummary'
+        - type: object
+          required: [createdAt, result]
+          properties:
+            createdAt: { type: string, format: date-time, description: When it was analysed. }
+            result: { $ref: '#/components/schemas/TimingResult' }
+
+    RatingSummary:
+      type: object
+      description: The plain average of 1-5 stars (to two decimals) and how many rated; null with none.
+      required: [average, count]
+      properties:
+        average: { type: [number, 'null'], minimum: 1, maximum: 5 }
+        count: { type: integer, minimum: 0 }
+
+    RankedTiming:
+      description: A timing in a list (W5.1, W6), with its stars and how many accounts marked it used.
+      allOf:
+        - $ref: '#/components/schemas/TimingSummary'
+        - type: object
+          required: [rating, uses]
+          properties:
+            rating: { $ref: '#/components/schemas/RatingSummary' }
+            uses: { type: integer, minimum: 0 }
+
+    TimingPage:
+      type: object
+      description: A page of timings. `next` is the cursor of the next page, null on the last.
+      required: [timings, next, minRatings]
+      properties:
+        timings: { type: array, items: { $ref: '#/components/schemas/RankedTiming' } }
+        next: { type: [string, 'null'] }
+        minRatings: { type: integer, description: The ratings a timing needs before "best rated" counts it. }
+
+    Uses:
+      type: object
+      required: [count, mine, recent]
+      properties:
+        count: { type: integer, minimum: 0 }
+        mine:
+          type: [object, 'null']
+          description: The session account's own use, or null.
+          properties:
+            beatmapUrl: { type: [string, 'null'] }
+        recent:
+          type: array
+          description: The latest 20 uses, newest first.
+          items:
+            type: object
+            required: [user, beatmapUrl, at]
+            properties:
+              user: { $ref: '#/components/schemas/Author' }
+              beatmapUrl:
+                type: [string, 'null']
+                description: 'Always `https://osu.ppy.sh/beatmapsets/<set>`, optionally `#<mode>/<beatmap>`: the only form stored.'
+              at: { type: string, format: date-time }
+
+    Comment:
+      type: object
+      description: |
+        Plain text, cleaned of control and bidi characters. `hidden` appears
+        only when true (staff, or its author); `hiddenReason` only to staff.
+        No address or hash is ever sent.
+      required: [id, body, atMs, author, mine, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        body: { type: string, minLength: 1, maxLength: 1000 }
+        atMs: { type: [integer, 'null'], minimum: 0, description: 'The time in the song it is about (W13.15), or null.' }
+        author: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        hidden: { type: boolean, const: true }
+        hiddenReason: { type: [string, 'null'] }
+
+    Collection:
+      type: object
+      required: [id, name, public, count, owner, mine, createdAt, updatedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        public: { type: boolean }
+        count: { type: integer, description: Its timings that are published now. }
+        owner: { $ref: '#/components/schemas/Author' }
+        mine: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        has: { type: boolean, description: 'Only in `/me/collections?timing=`: whether it holds that timing.' }
+
+    Profile:
+      type: object
+      description: |
+        A timer's public profile (W5.6, W13.18): only what they published.
+        `timed` counts the songs they analysed that were never private; the
+        other totals count published timings. Badges are earned by counts:
+        `first-timing`, `published-10`, `published-50`, `suggestion-accepted`,
+        `used-by-others`; `ranked-match` waits for the osu! link (W9.2).
+      required: [user, totals, badges, collections, mine]
+      properties:
+        user:
+          type: object
+          properties:
+            username: { type: string }
+            displayName: { type: [string, 'null'] }
+            avatarUrl: { type: [string, 'null'] }
+            bannerUrl: { type: [string, 'null'] }
+        totals:
+          type: object
+          properties:
+            timed: { type: integer }
+            published: { type: integer }
+            uses: { type: integer, description: 'Uses of their published timings, by other accounts.' }
+            rating: { $ref: '#/components/schemas/RatingSummary' }
+        badges:
+          type: array
+          items: { type: string, enum: [first-timing, published-10, published-50, suggestion-accepted, used-by-others, ranked-match] }
+        collections: { type: array, items: { $ref: '#/components/schemas/Collection' }, description: Their public collections. }
+        mine: { type: boolean }
+        private: { type: boolean, description: Sent to the profile's owner only. }
+
+    HistoryEntry:
+      type: object
+      description: One of the signed-in account's own analyses (W3.26).
+      required: [id, filename, title, artist, status, bpm, redLines, variable, private, published, cached, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        filename: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        artist: { type: [string, 'null'] }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        bpm: { type: [number, 'null'] }
+        redLines: { type: integer, minimum: 0 }
+        variable: { type: boolean }
+        private: { type: boolean }
+        published: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+        cached: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Token:
+      type: object
+      description: A personal API token (W12.20), as listed. The secret itself is only in the answer that made it.
+      required: [id, name, scopes, createdAt, lastUsedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        name: { type: string, maxLength: 60 }
+        scopes: { type: array, items: { type: string, enum: [read:analyses, upload, read:timings] } }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time, description: To the minute. }
+
+    Reading:
+      type: object
+      description: An analysis of the same audio by the same owner (W12.21). A copy answered from the cache is not one.
+      required: [id, status, engineHash, createdAt, current]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        engineHash: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        current: { type: boolean, description: The analysis asked about. }
+
+    Version:
+      type: object
+      description: A saved adjustment of a reading (W12.21). Only the adjustment is stored; the page applies it to the reading's result.
+      required: [id, analysisId, factor, nudgeMs, label, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        analysisId: { type: string, pattern: '^[0-9a-f]{32}$', description: The reading it adjusts. }
+        factor: { type: number, enum: [0.5, 1, 2] }
+        nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+        label: { type: [string, 'null'], maxLength: 60 }
+        createdAt: { type: string, format: date-time }
   responses:
     Error:
       description: An error.
@@ -187,6 +629,7 @@ paths:
   /health:
     get:
       summary: Liveness, database state and the upload limits
+      x-token-scope: any
       responses:
         '200':
           description: Up. `database` is `none` when running without one (development only).
@@ -197,6 +640,15 @@ paths:
                 properties:
                   status: { type: string, enum: [ok, degraded] }
                   database: { type: string, enum: [ok, down, none] }
+                  worker:
+                    type: object
+                    description: >-
+                      Whether an analysis worker called /api/internal in the last 120 s, as
+                      this API process saw it. `unknown` until one calls after a restart.
+                      Does not change the status code.
+                    properties:
+                      status: { type: string, enum: [ok, down, unknown] }
+                      seenSecondsAgo: { type: [integer, 'null'] }
                   devLogin: { type: boolean }
                   limits:
                     type: object
@@ -304,8 +756,10 @@ paths:
   /me:
     get:
       summary: Who is signed in
+      x-token-scope: any
       security:
         - session: []
+        - token: []
       responses:
         '200':
           description: The account.
@@ -320,11 +774,12 @@ paths:
   /analyses:
     post:
       summary: Upload a song for analysis
+      x-token-scope: upload
       description: |
         The body is the audio itself, streamed to the spool and hashed (SHA-1)
         on the way; it is deleted once the worker answers (ADR-W4). No account
-        is needed: an anonymous uploader gets the HttpOnly `overtone_anon`
-        cookie (path /api/v1/analyses), which with the id is what lets it read
+        is needed: an anonymous uploader gets the HttpOnly `__Host-overtone_anon`
+        cookie (Path=/; `overtone_anon` over http), which with the id is what lets it read
         the analysis back.
 
         Checked before a byte is read: the content type, the extension
@@ -356,6 +811,36 @@ paths:
           required: false
           description: The artist tag, as X-Title.
           schema: { type: string, maxLength: 1024 }
+        - name: X-Mode
+          in: header
+          required: false
+          description: |
+            How long the person is willing to wait (W11.1): `fast` (no Beat
+            This! vote and no octave judges), `normal` (the default, the
+            analysis as it always was) or `strict` (today the same as normal;
+            W11.4 is what will fill it). Part of the cache key.
+          schema: { $ref: '#/components/schemas/AnalysisMode' }
+        - name: X-Options
+          in: header
+          required: false
+          description: |
+            The hints (W3.21, W12.19) as percent-encoded JSON, at most 512
+            bytes decoded: `AnalysisOptions`. Part of the cache key. A bad one
+            is a 400 `BAD_OPTIONS` before the body is read.
+          schema: { type: string, maxLength: 1536 }
+        - name: X-Duration
+          in: header
+          required: false
+          description: The audio's length in seconds as the browser read it; used only for the queue's estimate (W3.16).
+          schema: { type: string }
+        - name: X-Reanalysis-Of
+          in: header
+          required: false
+          description: |
+            W3.24: the id of the caller's own analysis this one re-analyses
+            (in another mode, say). It must be the same audio (400
+            `NOT_SAME_AUDIO`); someone else's is the 404 of one that does not exist.
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
       requestBody:
         required: true
         content:
@@ -370,16 +855,17 @@ paths:
         '202':
           description: Queued.
           headers:
-            Set-Cookie: { schema: { type: string }, description: overtone_anon, without an account }
+            Set-Cookie: { schema: { type: string }, description: 'overtone_anon, without an account' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnalysisCreated' }
         '400':
-          description: '`UNSUPPORTED_FORMAT` or `EMPTY_UPLOAD`.'
+          description: '`UNSUPPORTED_FORMAT`, `EMPTY_UPLOAD`, `BAD_MODE`, `BAD_OPTIONS` or `NOT_SAME_AUDIO`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '413':
           description: '`TOO_LARGE`; `details.maxUploadMb` says the limit.'
           content:
@@ -404,11 +890,13 @@ paths:
   /analyses/lookup:
     post:
       summary: Answer from the stored result without uploading
+      x-token-scope: upload
       description: |
         The audio's SHA-1, computed by the browser. When the current engine
-        has analysed that audio, a new analysis is made from the stored
-        result (as a cached upload would be) and returned; nothing counts
-        against the quota or the queue. Otherwise `{ cached: false }`.
+        has analysed that audio in the same mode with the same hints, a new
+        analysis is made from the stored result (as a cached upload would be)
+        and returned; nothing counts against the quota or the queue.
+        Otherwise `{ cached: false }`.
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
       requestBody:
@@ -419,79 +907,19 @@ paths:
               type: object
               required: [sha1, filename]
               properties:
-                sha1: { type: string, pattern: '^[0-9a-f]{40}
-    get:
-      summary: The public queue
-      description: |
-        Every analysis waiting or running (running first, then queued in the
-        order the worker takes them, at most 100; `more` counts the rest) and
-        those finished in the last hour (at most 20). A private upload shows
-        its status and timing only. `id` appears on the caller's own rows,
-        recognised by the session or the anonymous cookie. Polled by the page;
-        served from a one-second snapshot.
-      responses:
-        '200':
-          description: The queue.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Queue' }
-
-  /analyses/{id}:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: An analysis's state, and its result once there is one
-      description: |
-        Readable by the session account or the anonymous cookie that created
-        it; anyone else gets the same 404 as for an id that does not exist.
-        Poll it: `position` while queued (1 = next), `progress` and `stage`
-        while running.
-      responses:
-        '200':
-          description: The analysis.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Analysis' }
-        '404': { $ref: '#/components/responses/Error' }
-
-  /analyses/{id}/timing.txt:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: The `[TimingPoints]` block, CRLF, as an .osu file holds it
-      responses:
-        '200':
-          description: An attachment.
-          content:
-            text/plain: { schema: { type: string } }
-        '404': { $ref: '#/components/responses/Error' }
-        '409':
-          description: '`NO_TIMING`: still running, refused or failed.'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /analyses/{id}/timing.csv:
-    parameters:
-      - $ref: '#/components/parameters/analysisId'
-    get:
-      summary: 'The red lines as CSV: time_ms, bpm, beat_length_ms, meter, confidence, level'
-      responses:
-        '200':
-          description: An attachment.
-          content:
-            text/csv: { schema: { type: string } }
-        '404': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
- }
+                sha1: { type: string, pattern: '^[0-9a-f]{40}$' }
                 filename: { type: string }
                 size: { type: integer, minimum: 1 }
                 private: { type: boolean }
                 title: { type: [string, 'null'] }
                 artist: { type: [string, 'null'] }
+                mode: { $ref: '#/components/schemas/AnalysisMode' }
+                options: { $ref: '#/components/schemas/AnalysisOptions' }
+                duration: { type: number, description: As X-Duration on upload. }
+                reanalysisOf: { type: string, pattern: '^[0-9a-f]{32}$', description: As X-Reanalysis-Of on upload. }
       responses:
         '200':
-          description: A hit (`AnalysisCreated` with `cached: true`) or `{ cached: false }`.
+          description: "A hit (`AnalysisCreated` with `cached: true`) or `{ cached: false }`."
           content:
             application/json:
               schema:
@@ -499,7 +927,7 @@ paths:
                   - { $ref: '#/components/schemas/AnalysisCreated' }
                   - { type: object, required: [cached], properties: { cached: { const: false } } }
         '400':
-          description: '`BAD_SHA1` or `UNSUPPORTED_FORMAT`.'
+          description: '`BAD_SHA1`, `UNSUPPORTED_FORMAT`, `BAD_MODE`, `BAD_OPTIONS` or `NOT_SAME_AUDIO`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -523,11 +951,84 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Queue' }
 
+  /analyses/moderation:
+    get:
+      summary: Staff only, the latest moderations of the queue
+      description: |
+        The last 50 removals and requeues, newest first, each with the
+        moderator's username at the time, the analysis's ref and the reason.
+      responses:
+        '200':
+          description: The log.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [log]
+                properties:
+                  log:
+                    type: array
+                    items:
+                      type: object
+                      required: [action, moderator, ref, at]
+                      properties:
+                        action: { type: string, enum: [remove, requeue] }
+                        moderator: { type: string }
+                        ref: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/{id}/moderate:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, remove a job from the queue or hand a running one back
+      description: |
+        `remove` fails a waiting or running job with "Removed from the queue by
+        a moderator." and deletes its audio; a worker already on it has its
+        answer refused. `requeue` puts a running job (a stuck one) back in the
+        queue while its audio is still spooled. Both are recorded in
+        `moderation_log` with who did it.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [remove, requeue] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '204': { description: Done and recorded. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403':
+          description: '`STAFF_ONLY`, or `CSRF_HEADER_MISSING`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_LIVE` (remove: it has finished), `NOT_RUNNING` (requeue: it is not running) or `AUDIO_GONE`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /analyses/{id}:
     parameters:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: An analysis's state, and its result once there is one
+      x-token-scope: read:analyses
       description: |
         Readable by the session account or the anonymous cookie that created
         it; anyone else gets the same 404 as for an id that does not exist.
@@ -540,12 +1041,36 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Analysis' }
         '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Cancel an analysis that is still waiting, or delete one that has finished
+      description: |
+        Only by whoever may read it (the session account or the anonymous
+        cookie that created it). While it waits (W3.12) the job, the row and
+        the spooled audio are deleted, so the song does not count against the
+        day's quota. Once finished (W3.26) its result, names and publication
+        are erased at once and the analysis is gone for everyone; the row
+        itself stays, marked, until its UTC day is over so that it still
+        counts in that day's quota. A song the worker has already taken is
+        neither cancelled nor deleted. Rate limited (60 per 10 minutes).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Cancelled or deleted. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_QUEUED`: it is being analysed.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /analyses/{id}/timing.txt:
     parameters:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: The `[TimingPoints]` block, CRLF, as an .osu file holds it
+      x-token-scope: read:analyses
       responses:
         '200':
           description: An attachment.
@@ -563,6 +1088,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: 'The red lines as CSV: time_ms, bpm, beat_length_ms, meter, confidence, level'
+      x-token-scope: read:analyses
       responses:
         '200':
           description: An attachment.
@@ -570,3 +1096,1190 @@ paths:
             text/csv: { schema: { type: string } }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+
+  # ── Community (W5.2-W5.4) ─────────────────────────────────────────────────
+
+  /community/suggestions:
+    get:
+      summary: Suggestions, a page of 50
+      description: |
+        For anyone. Hidden ones are left out, except for staff (who also get
+        `staff: true`). `total` counts the filtered list.
+      parameters:
+        - { name: sort, in: query, schema: { type: string, enum: [votes, new], default: votes } }
+        - { name: state, in: query, schema: { type: string, enum: [open, review, planned, progress, done, rejected] } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        '200':
+          description: A page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Suggestion' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  staff: { type: boolean, const: true }
+    post:
+      summary: Post a suggestion (signed in)
+      description: |
+        Anonymous suggestions are not taken: a suggestion is a thread its author
+        follows. Text that is too long is refused (`TOO_LONG`), never cut;
+        `TOO_SHORT` when nothing is left after cleaning. 30 per address per ten
+        minutes.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body]
+              properties:
+                title: { type: string, minLength: 3, maxLength: 120 }
+                body: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '201':
+          description: Posted, in state `open`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestion: { $ref: '#/components/schemas/Suggestion' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A suggestion and its history
+      description: |
+        `history` is every state change, newest first: who (the moderator's
+        username at the time), when, from, to and why. Staff also see hides
+        and unhides. A hidden suggestion is a 404 for everyone but staff and
+        its author.
+      responses:
+        '200':
+          description: The suggestion.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestion, history]
+                properties:
+                  suggestion: { $ref: '#/components/schemas/Suggestion' }
+                  history:
+                    type: array
+                    items:
+                      type: object
+                      required: [action, moderator, at]
+                      properties:
+                        action: { type: string, enum: [state, hide, unhide] }
+                        from: { type: [string, 'null'] }
+                        to: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        moderator: { type: string }
+                        at: { type: string, format: date-time }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}/vote:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Vote for it (signed in; one vote per account, a second is a no-op)
+      responses:
+        '200':
+          description: The count now.
+          content:
+            application/json:
+              schema: { type: object, properties: { votes: { type: integer }, voted: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Take the vote back
+      responses:
+        '200':
+          description: The count now.
+          content:
+            application/json:
+              schema: { type: object, properties: { votes: { type: integer }, voted: { type: boolean } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/suggestions/{id}/state:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, move a suggestion to another state
+      description: |
+        Any state to any other (a rejected one can be opened again). A
+        rejection needs a reason (`REASON_REQUIRED`). Recorded in
+        `moderation_log` with the state before and after, in the same
+        transaction, and shown on the suggestion.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [open, review, planned, progress, done, rejected] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Changed.
+          content:
+            application/json:
+              schema: { type: object, properties: { from: { type: string }, to: { type: string } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`SAME_STATE`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/reviews:
+    get:
+      summary: The site's reviews, their average and distribution
+      description: |
+        `stats.average` weighs an anonymous review at half (`stats.anonymous`
+        says how many there are); `distribution` counts 1 to 5 stars. Hidden
+        reviews count nowhere and are listed for staff only. `mine` is the
+        session account's own review, hidden or not.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        '200':
+          description: A page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stats, items, total, offset, limit, mine]
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      anonymous: { type: integer }
+                      average: { type: [number, 'null'] }
+                      distribution: { type: array, items: { type: integer }, minItems: 5, maxItems: 5 }
+                  items: { type: array, items: { $ref: '#/components/schemas/Review' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  mine: { oneOf: [{ $ref: '#/components/schemas/Review' }, { type: 'null' }] }
+                  staff: { type: boolean, const: true }
+    post:
+      summary: Leave a review, or edit your own
+      description: |
+        Signed in: creates the account's one review (201) or replaces its stars
+        and text (200); an edit keeps a moderator's hide. Anonymous: needs
+        `token` from `GET /community/reviews/form`, at least 3 s and at most
+        6 h old (`FORM_TOO_FAST` otherwise), and at most 2 anonymous reviews per
+        address per UTC day (`REVIEW_LIMIT`, counted by the daily address
+        HMAC). `website` is a honeypot: anything in it is `NOT_ACCEPTED`.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stars, body]
+              properties:
+                stars: { type: integer, minimum: 1, maximum: 5 }
+                body: { type: string, minLength: 1, maxLength: 2000 }
+                token: { type: string }
+                website: { type: string, description: Leave empty. }
+      responses:
+        '200':
+          description: Your review, edited.
+          content:
+            application/json:
+              schema: { type: object, properties: { review: { $ref: '#/components/schemas/Review' } } }
+        '201':
+          description: Posted.
+          content:
+            application/json:
+              schema: { type: object, properties: { review: { $ref: '#/components/schemas/Review' } } }
+        '400':
+          description: '`BAD_STARS`, `TOO_SHORT`, `TOO_LONG`, `FORM_TOO_FAST` or `NOT_ACCEPTED`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429':
+          description: '`REVIEW_LIMIT` or `RATE_LIMITED`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/reviews/form:
+    get:
+      summary: A token for the anonymous review form
+      description: The time it was made and an HMAC of it. Nothing is stored.
+      responses:
+        '200':
+          description: The token.
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, minMs: { type: integer } } }
+
+  /community/reviews/mine:
+    delete:
+      summary: Delete your own review (signed in)
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/{kind}/{id}/report:
+    parameters:
+      - { name: kind, in: path, required: true, description: '`comments` are comments on published timings (W6); one on a timing that is not published is a 404.', schema: { type: string, enum: [suggestions, reviews, comments] } }
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Report a suggestion or a review (anyone)
+      description: |
+        Signed in or not; an anonymous reporter is known by the daily address
+        HMAC. A second open report from the same person on the same item is a
+        no-op. Staff hiding or unhiding the item resolves its open reports.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '204': { description: Reported. }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /community/{kind}/{id}/moderate:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [suggestions, reviews, comments] } }
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Staff only, hide or unhide a suggestion or a review
+      description: Hiding needs a reason. Recorded in `moderation_log` in the same transaction.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [hide, unhide] }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '204': { description: Done and recorded. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NO_CHANGE`: it is hidden already, or not hidden.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /community/moderation:
+    get:
+      summary: Staff only, the open reports and the community's moderation log
+      responses:
+        '200':
+          description: The last 50 of each.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action: { type: string, enum: [state, hide, unhide] }
+                        kind: { type: string, enum: [suggestion, review, comment] }
+                        ref: { type: string }
+                        timing: { type: [string, 'null'], description: 'A comment''s timing (its page is /t/{timing}); only for comments, null once the comment is gone.' }
+                        from: { type: [string, 'null'] }
+                        to: { type: [string, 'null'] }
+                        moderator: { type: string }
+                        reason: { type: [string, 'null'] }
+                        at: { type: string, format: date-time }
+                  reports:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [suggestion, review, comment] }
+                        ref: { type: string }
+                        timing: { type: [string, 'null'], description: As in the log. }
+                        count: { type: integer }
+                        reasons: { type: array, items: { type: string }, maxItems: 5 }
+                        at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Publish a finished analysis (W3.27)
+      description: |
+        Only by whoever may read it; anyone else gets the 404 of a missing id.
+        Opt-in and reversible: nothing is public until this is called. Only a
+        `done` analysis has a timing to share. A private one (W3.8) is
+        refused with `PRIVATE` unless `makePublic: true` lifts its privacy in
+        the same statement. Publishing again keeps the first time.
+        Rate limited (30 per 10 minutes, shared with unpublishing).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                makePublic: { type: boolean, description: Also lift the privacy of a private analysis. }
+      responses:
+        '200':
+          description: Published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, published, publishedAt, private]
+                properties:
+                  id: { type: string }
+                  published: { const: true }
+                  publishedAt: { type: string, format: date-time }
+                  private: { const: false }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NOT_PUBLISHABLE` (not `done`) or `PRIVATE` (private, and `makePublic` was not sent).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Unpublish it
+      description: |
+        Its page and its row in the recent list are gone on the next read.
+        Its privacy stays as publishing left it. Idempotent.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Not published. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /stats:
+    get:
+      summary: The site's public statistics (W12.13)
+      description: |
+        Aggregates only: no id, name or hash. Counts the engine's own runs (a
+        cache hit is in `cached`), never a deleted analysis. Computed at most
+        once a minute per API process and shared; rate limited (60 per 10
+        minutes). The analysis times are from upload to result, queue wait
+        included, over done analyses of the last `days` days, and null while
+        fewer than `minCount` finished in that window.
+      responses:
+        '200':
+          description: The statistics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [generatedAt, totals, bpm, tempo, analysisTime, queue]
+                properties:
+                  generatedAt: { type: string, format: date-time }
+                  totals:
+                    type: object
+                    properties:
+                      done: { type: integer }
+                      refused: { type: integer }
+                      failed: { type: integer }
+                      cached: { type: integer, description: Answers from the cache. }
+                      published: { type: integer }
+                      songs: { type: integer, description: Distinct audio files timed. }
+                  bpm:
+                    type: object
+                    properties:
+                      edges: { type: array, items: { type: number } }
+                      buckets:
+                        type: array
+                        description: The main BPM of done analyses; `from` is included, `to` is not, null is open.
+                        items:
+                          type: object
+                          properties:
+                            from: { type: [number, 'null'] }
+                            to: { type: [number, 'null'] }
+                            count: { type: integer }
+                  tempo:
+                    type: object
+                    properties:
+                      single: { type: integer }
+                      variable: { type: integer, description: Red lines at more than one BPM. }
+                  analysisTime:
+                    type: object
+                    properties:
+                      days: { type: integer }
+                      count: { type: integer }
+                      minCount: { type: integer }
+                      medianS: { type: [number, 'null'] }
+                      p90S: { type: [number, 'null'] }
+                  queue:
+                    type: object
+                    properties:
+                      queued: { type: integer }
+                      running: { type: integer }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings:
+    get:
+      summary: Recent published timings from everyone (W5.1)
+      x-token-scope: read:timings
+      description: |
+        Newest published first. Public and read-only; rate limited (240 per
+        10 minutes, shared with the other /timings reads) and at most 50 a page.
+        A malformed filter is a 400 `BAD_FILTER`, never everything.
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/bpmMin'
+        - $ref: '#/components/parameters/bpmMax'
+        - name: tempo
+          in: query
+          schema: { type: string, enum: [single, variable] }
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/limit'
+        - name: cursor
+          in: query
+          description: The `next` of the previous page, as given; a keyset cursor for `sort=new`, `o<n>` for the others.
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page; each timing with its stars and uses (W6).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingPage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: One published timing, as anyone may see it (W3.27)
+      x-token-scope: read:timings
+      description: Not published, unpublished, deleted or never there are the same 404.
+      responses:
+        '200':
+          description: The timing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicTiming' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/card:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing without its result, for a link preview
+      description: What overtone-web reads to write the Open Graph tags of `/t/{id}` (deploy/web/serve.mjs).
+      responses:
+        '200':
+          description: The list's fields.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingSummary' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/timing.txt:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's `[TimingPoints]` block
+      x-token-scope: read:timings
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/plain: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/timing.csv:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's red lines as CSV
+      x-token-scope: read:timings
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/csv: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/check:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    post:
+      summary: Is the visitor's file this timing's audio?
+      description: |
+        The visitor's browser hashes the file they picked and sends the hash;
+        the answer is only whether it matches. The timing's own hash never
+        leaves the server. A match lets the page play the song against the
+        clicks and build the .osz, as it does for the uploader (ADR-W4: the
+        file never leaves the browser). Rate limited (20 per 10 minutes).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sha1]
+              properties:
+                sha1: { type: string, pattern: '^[0-9a-fA-F]{40}$' }
+      responses:
+        '200':
+          description: Match or not.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [match]
+                properties:
+                  match: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/analyses:
+    get:
+      summary: The signed-in account's own analyses (W3.26)
+      description: |
+        Newest first, every status, published or not; deleted ones are gone.
+        Anonymous analyses are not here: without an account the web keeps its
+        own short list in the browser.
+      x-token-scope: read:analyses
+      security: [{ session: [] }, { token: [] }]
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - name: status
+          in: query
+          schema: { type: string, enum: [queued, running, done, refused, failed] }
+        - $ref: '#/components/parameters/bpmMin'
+        - $ref: '#/components/parameters/bpmMax'
+        - name: from
+          in: query
+          description: First UTC day, included.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Last UTC day, included.
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [analyses, next]
+                properties:
+                  analyses: { type: array, items: { $ref: '#/components/schemas/HistoryEntry' } }
+                  next: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  # ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ──────────────
+  # Everything hangs off a published timing: one that is not published is the
+  # same 404 for every route below, and so is everything on it. Mutations need
+  # the same-origin header and are rate limited per address.
+
+  /timings/{id}/social:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: A published timing's stars and uses
+      responses:
+        '200':
+          description: The numbers, and what the session account did.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rating, uses, uploaderProfile, own, minRatings]
+                properties:
+                  rating:
+                    allOf:
+                      - $ref: '#/components/schemas/RatingSummary'
+                      - type: object
+                        properties:
+                          mine: { type: [integer, 'null'], minimum: 1, maximum: 5 }
+                  uses: { $ref: '#/components/schemas/Uses' }
+                  uploaderProfile: { type: boolean, description: Whether the uploader has a public profile to link to. }
+                  own: { type: boolean, description: The session account uploaded it (and so can neither rate it nor mark it used). }
+                  minRatings: { type: integer }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/rating:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Rate it, 1-5 stars; one rating per account, a second is an edit
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stars]
+              properties:
+                stars: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        '200': { description: 'The new summary: `{ rating }`, as in /social.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: 'No same-origin header, or `OWN_TIMING`: the uploader cannot rate their own.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Take your rating back
+      security: [{ session: [] }]
+      responses:
+        '200': { description: '`{ rating }`.' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/use:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: '"I used this": one per account; marking again changes only the link'
+      description: |
+        `beatmapUrl` is optional: an osu.ppy.sh beatmapset link
+        (`/beatmapsets/<set>`, optionally `#<mode>/<beatmap>`, or the old
+        `/s/<set>`), stored in its one canonical https form; anything else is
+        400 `BAD_BEATMAP_URL`. Its metadata is not fetched (that needs W9.2).
+      security: [{ session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                beatmapUrl: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '200':
+          description: The uses now.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uses: { $ref: '#/components/schemas/Uses' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: 'No same-origin header, or `OWN_TIMING`.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Unmark it
+      security: [{ session: [] }]
+      responses:
+        '200': { description: '`{ uses }`.' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: Its comments, oldest first, 100 a page
+      description: A hidden comment is listed only for staff and its author.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  staff: { type: boolean, const: true }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Comment, signed in
+      description: |
+        1-1000 characters after cleaning; too long is refused (`TOO_LONG`),
+        never cut. `atMs` anchors it to a time in the song (W13.15): whole
+        milliseconds inside the song's length, else 400 `BAD_TIME`. Staff hide
+        one through `/community/comments/{id}/moderate`.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+                atMs: { type: [integer, 'null'], minimum: 0 }
+      responses:
+        '201':
+          description: Posted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /timings/{id}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - { name: commentId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      - $ref: '#/components/parameters/sameOrigin'
+    delete:
+      summary: Delete your own comment
+      description: Someone else's, or one on another timing, is the 404 of one that is not there.
+      security: [{ session: [] }]
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/collections:
+    get:
+      summary: Your collections, newest change first
+      security: [{ session: [] }]
+      parameters:
+        - { name: timing, in: query, description: 'A timing id: each collection then says whether it holds it (`has`).', schema: { type: string } }
+      responses:
+        '200':
+          description: All of them, public and private.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections: { type: array, items: { $ref: '#/components/schemas/Collection' } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /collections:
+    post:
+      summary: Make a collection, private unless `public` is true (at most 50 each)
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                public: { type: boolean, default: false }
+      responses:
+        '201': { description: '`{ collection }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { description: '`LIMIT`: 50 collections already.' }
+
+  /collections/{id}:
+    parameters:
+      - $ref: '#/components/parameters/collectionId'
+    get:
+      summary: A public collection, or your own, and a page of its published timings
+      description: A private collection that is not yours is the 404 of one that does not exist.
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, pattern: '^o\d{1,5}$' } }
+      responses:
+        '200':
+          description: The collection and 50 of its timings, latest added first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection: { $ref: '#/components/schemas/Collection' }
+                  timings: { type: array, items: { $ref: '#/components/schemas/RankedTiming' } }
+                  next: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Rename it or change who sees it; yours only
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                public: { type: boolean }
+      responses:
+        '200': { description: '`{ collection }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete it; yours only
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /collections/{id}/items/{timingId}:
+    parameters:
+      - $ref: '#/components/parameters/collectionId'
+      - { name: timingId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      - $ref: '#/components/parameters/sameOrigin'
+    put:
+      summary: Add a published timing to your collection (at most 500 in one)
+      security: [{ session: [] }]
+      responses:
+        '201': { description: 'Added: `{ added: true }`.' }
+        '200': { description: 'It was there already: `{ added: false }`.' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: '`LIMIT`.' }
+    delete:
+      summary: Take a timing out of your collection
+      security: [{ session: [] }]
+      responses:
+        '204': { description: Removed. }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: A timer's public profile (W5.6, W13.18)
+      description: A private profile is the 404 of a name nobody has, for everyone but its owner.
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}/timings:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: A timer's published timings, with the recent list's filters and orders
+      parameters:
+        - $ref: '#/components/parameters/q'
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/limit'
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimingPage' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/profile:
+    get:
+      summary: Your own profile, private or not, with `private`
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      summary: Make your profile private or public again
+      description: A private profile is a 404 at /users/{username} and is left out of /timers. Your published timings stay published.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [private]
+              properties:
+                private: { type: boolean }
+      responses:
+        '200': { description: '`{ private }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /timers:
+    get:
+      summary: The ranking of timers (W6)
+      description: |
+        By uses of their published timings by other accounts (at least 3 to
+        enter) or by the stars those timings received (at least 5 ratings,
+        ordered by the same Bayesian average as `sort=rated`). Private
+        profiles are left out. At most 50.
+      parameters:
+        - { name: by, in: query, schema: { type: string, enum: [uses, stars], default: uses } }
+      responses:
+        '200':
+          description: The ranking and its minimums.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [by, min, timers]
+                properties:
+                  by: { type: string, enum: [uses, stars] }
+                  min:
+                    type: object
+                    properties:
+                      uses: { type: integer }
+                      ratings: { type: integer }
+                  timers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user: { $ref: '#/components/schemas/Author' }
+                        published: { type: integer }
+                        uses: { type: integer }
+                        rating: { $ref: '#/components/schemas/RatingSummary' }
+
+  # ── Versions of a timing (W12.21) ────────────────────────────────────────
+
+  /analyses/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: The versions of a timing, for its owner
+      x-token-scope: read:analyses
+      description: |
+        The readings (the analyses of the same audio by the same owner, newest
+        first, at most 20; a copy answered from the cache is not one) and the
+        adjustments saved on any of them. Nothing of a result is copied: the
+        page reads each reading as `/analyses/{id}` and applies an adjustment
+        to it. Anyone but the owner gets the 404 of an id that does not exist.
+        Rate limited (240 per 10 minutes).
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [readings, adjustments]
+                properties:
+                  readings: { type: array, items: { $ref: '#/components/schemas/Reading' } }
+                  adjustments: { type: array, items: { $ref: '#/components/schemas/Version' } }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Save the adjustment being tried as a version
+      description: |
+        `factor` (x2, /2 or none) and `nudgeMs` (every red line moved by the
+        same whole number of ms) as the page applies them; one of them must
+        change something. The same adjustment saved again answers with the one
+        already saved (200). At most 20 a reading. Owner only, finished
+        timings only; rate limited (60 per 10 minutes, shared with delete).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [factor, nudgeMs]
+              properties:
+                factor: { type: number, enum: [0.5, 1, 2] }
+                nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+                label: { type: [string, 'null'], maxLength: 60, description: Cleaned of control and bidi characters. }
+      responses:
+        '200':
+          description: Already saved; the version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Version' }
+        '201':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Version' }
+        '400':
+          description: '`BAD_ADJUSTMENT` or `TOO_LONG`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NO_TIMING` (not finished, refused or failed) or `VERSION_LIMIT`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - name: versionId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    delete:
+      summary: Forget a saved version
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ── Personal API tokens (W12.20) ──────────────────────────────────────────
+
+  /me/tokens:
+    get:
+      summary: Your personal API tokens, never their secrets
+      description: From the website only (a session); a token asking gets 403 `TOKEN_NOT_ALLOWED`.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The tokens, the scopes there are and how many one account may have.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens, scopes, max]
+                properties:
+                  tokens: { type: array, items: { $ref: '#/components/schemas/Token' } }
+                  scopes: { type: array, items: { type: string } }
+                  max: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Make a personal API token
+      description: |
+        The answer is the only time the secret is shown: the server keeps its
+        SHA-256 and nothing else of it. At most 5 tokens an account (409
+        `TOKEN_LIMIT`). A name of 1-60 characters, cleaned of control and bidi
+        characters, and at least one scope. Rate limited (60 changes per 10
+        minutes, shared with revoking).
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, maxLength: 60 }
+                scopes:
+                  type: array
+                  minItems: 1
+                  items: { type: string, enum: [read:analyses, upload, read:timings] }
+      responses:
+        '201':
+          description: Made. Copy `token` now.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Token'
+                  - type: object
+                    required: [token]
+                    properties:
+                      token: { type: string, pattern: '^ot_[A-Za-z0-9_-]{43}$' }
+        '400':
+          description: '`BAD_NAME`, `TOO_LONG` or `BAD_SCOPES`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    delete:
+      summary: Revoke a personal API token
+      description: The token stops working at once; another account's token is the 404 of one that does not exist.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Revoked. }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }

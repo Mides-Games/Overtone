@@ -4,6 +4,9 @@ import { Link } from 'react-router'
 
 import Avatar from '../components/Avatar.jsx'
 import BrandLoader from '../components/BrandLoader.jsx'
+import CancelButton from '../components/CancelButton.jsx'
+import usePageMeta from '../hooks/usePageMeta.js'
+import { formatRange } from '../lib/analysis-options.js'
 import { api } from '../lib/api.js'
 
 /**
@@ -11,14 +14,20 @@ import { api } from '../lib/api.js'
  * that finished in the last hour. Polled every few seconds; the rows carry
  * only what their uploaders let be shown (no song or uploader for a private
  * upload), and an id only on the reader's own rows, which open their result.
+ *
+ * Staff (W3.18) also get a remove and a requeue button on the live rows, and
+ * the moderation log under the queue: who did what, and why.
  */
 const POLL_MS = 3000
 const IDLE_POLL_MS = 10_000
 
 export default function Queue() {
   const { t } = useTranslation()
+  usePageMeta(t('queue.title'), t('queue.subtitle'))
   const [data, setData] = useState(null)
   const [offline, setOffline] = useState(false)
+  // Bumped after a moderation, to read the queue and the log again at once.
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
     let timer
@@ -48,7 +57,7 @@ export default function Queue() {
       clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [])
+  }, [tick])
 
   return (
     <div className="space-y-8">
@@ -69,7 +78,7 @@ export default function Queue() {
               <span className="readout text-caption text-dim">{t('queue.count', { count: data.live.length + data.more })}</span>
             </div>
             {data.live.length ? (
-              <Rows rows={data.live} />
+              <Rows rows={data.live} onModerated={() => setTick((n) => n + 1)} />
             ) : (
               <p className="rounded-panel border border-line px-4 py-6 text-center text-label text-dim">
                 {t('queue.empty')} <Link to="/analyze" className="text-accent hover:underline">{t('queue.upload')}</Link>
@@ -85,6 +94,9 @@ export default function Queue() {
             </section>
           )}
 
+          {data.staff && <ModerationLog tick={tick} />}
+
+          <p className="max-w-[72ch] text-caption leading-relaxed text-dim">{t('modes.estimate.queueNote')}</p>
           <p className="max-w-[72ch] text-caption leading-relaxed text-dim">{t('queue.privacy')}</p>
         </>
       )}
@@ -92,18 +104,20 @@ export default function Queue() {
   )
 }
 
-function Rows({ rows }) {
+function Rows({ rows, onModerated }) {
   return (
     <ul className="divide-y divide-line rounded-panel border border-line">
       {rows.map((row, i) => (
-        <Row key={row.id ?? `${row.createdAt}-${i}`} row={row} />
+        <Row key={row.id ?? row.ref ?? `${row.createdAt}-${i}`} row={row} onModerated={onModerated} />
       ))}
     </ul>
   )
 }
 
-function Row({ row }) {
+function Row({ row, onModerated }) {
   const { t } = useTranslation()
+  const [cancelled, setCancelled] = useState(false)
+  if (cancelled) return null
   const body = (
     <div className={`flex items-center gap-3 px-4 py-3 ${row.mine ? 'bg-accent/5' : ''}`}>
       <span className="readout w-8 shrink-0 text-center text-label text-dim">{row.position ? `#${row.position}` : ''}</span>
@@ -123,10 +137,110 @@ function Row({ row }) {
       <div className="shrink-0 space-y-1 text-right">
         <Status row={row} />
         <p className="readout text-caption text-dim">{formatElapsed(row.elapsedS)}</p>
+        {/* W3.16: an estimate, a range, and said to be one; W11.1: in which mode. */}
+        {row.estimate && (
+          <p className="readout text-caption text-dim" title={t('modes.estimate.why')}>
+            {t('modes.estimate.left')} {formatRange(t, row.estimate.lowS, row.estimate.highS)}
+          </p>
+        )}
+        {row.mode && row.mode !== 'normal' && <p className="text-caption text-dim">{t(`modes.names.${row.mode}`)}</p>}
       </div>
     </div>
   )
-  return <li>{row.id ? <Link to={`/analyze/${row.id}`} className="block hover:bg-surface-2">{body}</Link> : body}</li>
+  const link = row.id ? <Link to={`/analyze/${row.id}`} className="block hover:bg-surface-2">{body}</Link> : body
+  // Your own waiting song can be taken back (W3.12); the button sits beside
+  // the link, not inside it.
+  const cancellable = row.mine && row.id && row.status === 'queued'
+  return (
+    <li>
+      {cancellable ? (
+        <div className="flex items-center bg-accent/5">
+          <div className="min-w-0 flex-1">{link}</div>
+          <CancelButton id={row.id} onCancelled={() => setCancelled(true)} className="shrink-0 pr-3" />
+        </div>
+      ) : (
+        link
+      )}
+      {row.ref && <StaffActions row={row} onDone={onModerated} />}
+    </li>
+  )
+}
+
+/** A moderator's two buttons on a live row (W3.18), each asking for an optional reason for the log. */
+function StaffActions({ row, onDone }) {
+  const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function act(action) {
+    const reason = window.prompt(t(`moderation.${action}Prompt`))
+    if (reason === null) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api(`/analyses/${row.ref}/moderate`, { method: 'POST', json: { action, ...(reason.trim() ? { reason } : {}) } })
+      onDone?.()
+    } catch (failure) {
+      setError(t(`moderation.errors.${failure.code}`, { defaultValue: t('moderation.failed') }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-line px-4 py-2">
+      <span className="label text-amber">{t('moderation.staff')}</span>
+      <button type="button" disabled={busy} onClick={() => act('remove')} className="btn-ghost h-7 px-2.5 text-caption">
+        {t('moderation.remove')}
+      </button>
+      {row.status === 'running' && (
+        <button type="button" disabled={busy} onClick={() => act('requeue')} className="btn-ghost h-7 px-2.5 text-caption">
+          {t('moderation.requeue')}
+        </button>
+      )}
+      {error && (
+        <span role="alert" className="text-caption text-red">
+          {error}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** The latest removals and requeues, for staff: who, what, when and why. */
+function ModerationLog({ tick }) {
+  const { t } = useTranslation()
+  const [log, setLog] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    api('/analyses/moderation')
+      .then((data) => alive && setLog(data.log))
+      .catch(() => alive && setLog([]))
+    return () => {
+      alive = false
+    }
+  }, [tick])
+
+  return (
+    <section className="space-y-3">
+      <h2 className="label">{t('moderation.logTitle')}</h2>
+      {!log?.length ? (
+        <p className="text-caption text-dim">{t('moderation.logEmpty')}</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-panel border border-line">
+          {log.map((entry, i) => (
+            <li key={`${entry.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 text-caption">
+              <span className="readout text-dim">{new Date(entry.at).toLocaleString()}</span>
+              <span>{t(`moderation.did.${entry.action}`, { moderator: entry.moderator })}</span>
+              {entry.ref && <span className="readout text-dim">{entry.ref.slice(0, 8)}</span>}
+              {entry.reason && <span className="text-muted">“{entry.reason}”</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
 }
 
 function Uploader({ row }) {

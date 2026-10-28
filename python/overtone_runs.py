@@ -42,11 +42,8 @@ BENCH = ROOT / "bench"
 #: The tools a run may start, and the options each takes.
 TOOLS = ("stages", "single_bpm", "gates", "suite")
 #: The Python gates of CLAUDE.md, in its order, as a server runs them. The
-#: Rust ones need cargo, which the service does not have, and so do the
-#: release build's two (sbom.py checks the Windows build venv against its
-#: lock, notices.py reads the crates through cargo): those run where the
-#: installer is built. ``perf`` measures the stage budgets on whatever
-#: machine runs it: on a server, its own.
+#: Rust ones need cargo, which the service does not have. ``perf`` measures
+#: the stage budgets on whatever machine runs it: on a server, its own.
 GATES = {
     "benchmark": ["bench/benchmark.py"],
     "bpm-snapshot": ["bench/gates.py", "bpm-snapshot"],
@@ -64,12 +61,11 @@ GATES = {
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
-#: The Python suite, one module or both, each test named in the log: a run
-#: cut short shows which test it was in. "all" runs the two modules one after
-#: the other, each its own process: in one, their memory added up past the
-#: server's 3 GB cap, while apart they pass (748 and 314, 2026-10-26).
-SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"],
-          "web": ["-m", "unittest", "-v", "tests.test_overtone_web"]}
+#: The Python suite, each test named in the log: a run cut short shows which
+#: test it was in. "all" runs every module here, each its own process: two
+#: modules in one process once added up past the server's 3 GB cap. Since the
+#: desktop shell and its tests left (2026-10-26) the engine module is the suite.
+SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
 #: Engine changes a run may switch on by name, measured before any is on
@@ -82,6 +78,17 @@ EXPERIMENTS = {
     "local-fold-judge": {"LOCAL_OCTAVE_FOLD": True, "LOCAL_OCTAVE_HALVE": True,
                          "LOCAL_OCTAVE_JUDGE": True},
     "section-octave": {"SECTION_OCTAVE_JUDGE": True},
+    "constant-grid": {"CONSTANT_GRID": True},
+    "song-octave": {"SONG_OCTAVE_BEAT_THIS": True},
+    "both": {"CONSTANT_GRID": True, "SONG_OCTAVE_BEAT_THIS": True},
+    "constant-grid-loose": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
+                            "CONSTANT_GRID_SHARE": 0.8},
+    "piecewise": {"PIECEWISE_GRID": True},
+    "piecewise-strict": {"PIECEWISE_GRID": True, "PIECEWISE_PENALTY": 120.0},
+    "piecewise-cg": {"PIECEWISE_GRID": True, "CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
+                     "CONSTANT_GRID_SHARE": 0.8},
+    "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
+                             "CONSTANT_GRID_SHARE": 0.7},
 }
 #: The most analyses one run holds at once.
 MAX_JOBS = 8
@@ -404,18 +411,33 @@ class RunQueue:
                                        preexec_fn=_first_to_go if os.name != "nt" else None)
             with self._lock:
                 self._process = process
-            code = process.wait()
+            code, peak_mb = _wait(process)
         with self._lock:
             stopped = run_id in self._stopping
         meta = self.store.meta(run_id)
         meta.update(state="stopped" if stopped else "done" if code == 0 else "failed",
-                    exit_code=code, finished_at=_now(),
+                    exit_code=code, finished_at=_now(), peak_mb=peak_mb,
                     seconds=round(time.monotonic() - started, 1))
+        if code == -getattr(signal, "SIGKILL", 9) and not stopped:
+            # Nothing in the run kills itself this way: the kernel did, and
+            # under the service's MemoryMax that is the memory cap.
+            meta["why"] = f"killed (SIGKILL), most likely the memory cap; peak {peak_mb} MB"
         try:
             meta["summary"] = self.store.result(run_id).get("summary")
         except (LookupError, ValueError, OSError):
             pass
         self.store.write(meta)
+
+
+def _wait(process: subprocess.Popen) -> tuple[int, int | None]:
+    """The run's exit code and the peak memory (MB) of it and the processes
+    it waited for, where the platform reports it (``os.wait4``); None
+    elsewhere."""
+    if not hasattr(os, "wait4"):
+        return process.wait(), None
+    _pid, status, usage = os.wait4(process.pid, 0)
+    process.returncode = os.waitstatus_to_exitcode(status)
+    return process.returncode, round(usage.ru_maxrss / 1024)  # Linux reports KB
 
 
 #: How much more likely than the server a run is to be the one killed when
@@ -518,7 +540,7 @@ def _checks(tool: str, names: list[str], result: Path) -> int:
     if tool == "gates":
         commands = [(name, [sys.executable, *GATES[name]]) for name in names]
     else:
-        parts = ["engine", "web"] if names[0] == "all" else names
+        parts = list(SUITES) if names[0] == "all" else names
         commands = [(part, [sys.executable, *SUITES[part]]) for part in parts]
     rows = []
     for name, command in commands:

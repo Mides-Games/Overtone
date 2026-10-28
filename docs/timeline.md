@@ -20,6 +20,25 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · One branch: master
+
+### Changed
+
+- `master` is the only long-lived branch (owner's decision). Everything that was on
+  `experimental` and the language branches is in it; `experimental` and the `parked/`
+  branches are deleted. The parked desktop app stays reachable through the tags
+  `v3-desktop-app` and `v3-desktop-full`.
+- `deploy.yml` deploys on a push to `master`, and `deploy/overtone-update.sh` follows
+  `master` by default. A server checkout still on `experimental`, clean and contained
+  in `master`, moves to `master` once by itself, so the VPS needs no hand-run step.
+- CONTRIBUTING, CLAUDE.md, docs/server.md and docs/deploy.md describe the one-branch flow.
+
+### Measured
+
+- `DeployScriptTests`: 6/6, one new (the move from experimental to master).
+
+---
+
 ## Unreleased — 2026-10-27 · Releases carry executables, built in one line
 
 ### Changed

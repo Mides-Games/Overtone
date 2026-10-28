@@ -2363,5 +2363,14 @@
       "bpm": "BPM",
       "beat": "Un temps"
     }
+  },
+  "daw": {
+    "title": "Logiciels de musique (carte de tempo)",
+    "midi": "Carte de tempo MIDI",
+    "midiNote": "Un fichier MIDI de type 1 à 960 ticks par temps : un tempo et une signature rythmique à chaque red line, chaque changement à moins de {{ms}} ms de son moment.",
+    "leadIn": "La mesure 1 est une mesure d’amorce qui finit sur le premier temps fort de la première red line, pour que les mesures suivantes s’alignent sur la chanson.",
+    "reaperNote": "Reaper : un projet avec le tempo, un marqueur sur chaque red line et la chanson sur une piste. Enregistrez-le dans le dossier qui contient {{file}}.",
+    "reaperNoAudio": "Reaper : un projet avec le tempo et un marqueur sur chaque red line. Placez vous-même la chanson sur une piste.",
+    "ableton": "Ableton Live ne sait pas lire une carte de tempo depuis du texte, il n’y a donc pas de fichier Live ici. Utilisez le fichier MIDI : glissez-le dans l’Arrangement et Live peut reprendre ses changements de tempo et de signature (selon la version, il le demande, ou une option d’import l’active)."
   }
 }

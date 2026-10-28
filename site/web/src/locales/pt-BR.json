@@ -2306,5 +2306,14 @@
       "bpm": "BPM",
       "beat": "Uma batida"
     }
+  },
+  "daw": {
+    "title": "Softwares de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Um arquivo MIDI tipo 1 com 960 ticks por batida: um tempo e uma fórmula de compasso em cada red line, cada mudança a até {{ms}} ms do seu momento.",
+    "leadIn": "O compasso 1 é um compasso de entrada que termina no primeiro tempo forte da primeira red line, para os compassos seguintes baterem com a música.",
+    "reaperNote": "Reaper: um projeto com o tempo, um marcador em cada red line e a música numa faixa. Salve-o na pasta onde está {{file}}.",
+    "reaperNoAudio": "Reaper: um projeto com o tempo e um marcador em cada red line. Coloque você mesmo a música numa faixa.",
+    "ableton": "O Ableton Live não consegue ler um mapa de tempo a partir de texto, então aqui não há arquivo para o Live. Use o arquivo MIDI: arraste-o para o Arrangement e o Live pode pegar as mudanças de tempo e de compasso (dependendo da versão, ele pergunta, ou uma opção de importação ativa isso)."
   }
 }

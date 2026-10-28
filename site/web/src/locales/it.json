@@ -2306,5 +2306,14 @@
       "bpm": "BPM",
       "beat": "Un battito"
     }
+  },
+  "daw": {
+    "title": "Software musicali (mappa del tempo)",
+    "midi": "Mappa del tempo MIDI",
+    "midiNote": "Un file MIDI di tipo 1 a 960 tick per battito: un tempo e un metro a ogni red line, ogni cambio entro {{ms}} ms dal suo momento.",
+    "leadIn": "La battuta 1 è una battuta di attacco che finisce sul primo battito forte della prima red line, così le battute dopo combaciano con la canzone.",
+    "reaperNote": "Reaper: un progetto con il tempo, un marker su ogni red line e la canzone su una traccia. Salvalo nella cartella che contiene {{file}}.",
+    "reaperNoAudio": "Reaper: un progetto con il tempo e un marker su ogni red line. La canzone mettila tu su una traccia.",
+    "ableton": "Ableton Live non sa leggere una mappa del tempo da testo, quindi qui non c’è un file per Live. Usa il file MIDI: trascinalo nell’Arrangement e Live può prenderne i cambi di tempo e di metro (a seconda della versione lo chiede, oppure lo attiva un’opzione di importazione)."
   }
 }

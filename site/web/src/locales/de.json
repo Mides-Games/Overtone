@@ -2306,5 +2306,14 @@
       "bpm": "BPM",
       "beat": "Ein Schlag"
     }
+  },
+  "daw": {
+    "title": "Musiksoftware (Tempo-Map)",
+    "midi": "MIDI-Tempo-Map",
+    "midiNote": "Eine MIDI-Datei vom Typ 1 mit 960 Ticks pro Schlag: ein Tempo und eine Taktart an jeder red line, jeder Wechsel innerhalb von {{ms}} ms an seiner Zeit.",
+    "leadIn": "Takt 1 ist ein Vorlauftakt, der auf der ersten Zählzeit der ersten red line endet, damit die Takte danach zum Song passen.",
+    "reaperNote": "Reaper: ein Projekt mit dem Tempo, einem Marker auf jeder red line und dem Song auf einer Spur. Speicher es im Ordner, in dem {{file}} liegt.",
+    "reaperNoAudio": "Reaper: ein Projekt mit dem Tempo und einem Marker auf jeder red line. Leg den Song selbst auf eine Spur.",
+    "ableton": "Ableton Live kann keine Tempo-Map aus Text lesen, deshalb gibt es hier keine Live-Datei. Nimm die MIDI-Datei: Zieh sie ins Arrangement, und Live kann ihre Tempo- und Taktartwechsel übernehmen (je nach Version fragt es nach, oder eine Import-Option schaltet es ein)."
   }
 }

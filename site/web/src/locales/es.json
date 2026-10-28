@@ -2306,5 +2306,14 @@
       "bpm": "BPM",
       "beat": "Un tiempo"
     }
+  },
+  "daw": {
+    "title": "Software de música (mapa de tempo)",
+    "midi": "Mapa de tempo MIDI",
+    "midiNote": "Un archivo MIDI tipo 1 a 960 ticks por tiempo: un tempo y un compás en cada red line, cada cambio a menos de {{ms}} ms de su momento.",
+    "leadIn": "El compás 1 es un compás de entrada que termina en el primer tiempo fuerte de la primera red line, así los compases siguientes coinciden con la canción.",
+    "reaperNote": "Reaper: un proyecto con el tempo, un marcador en cada red line y la canción en una pista. Guardalo en la carpeta donde está {{file}}.",
+    "reaperNoAudio": "Reaper: un proyecto con el tempo y un marcador en cada red line. La canción la ponés vos en una pista.",
+    "ableton": "Ableton Live no puede leer un mapa de tempo desde texto, así que acá no hay archivo de Live. Usá el MIDI: arrastralo al Arrangement y Live puede tomar sus cambios de tempo y compás (según la versión, te pregunta o lo activa una opción de importación)."
   }
 }

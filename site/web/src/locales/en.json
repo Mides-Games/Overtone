@@ -2306,5 +2306,14 @@
       "bpm": "BPM",
       "beat": "One beat"
     }
+  },
+  "daw": {
+    "title": "Music software (tempo map)",
+    "midi": "MIDI tempo map",
+    "midiNote": "A type 1 MIDI file at 960 ticks a beat: a tempo and a time signature at each red line, every change within {{ms}} ms of its time.",
+    "leadIn": "Bar 1 is a lead-in bar that ends on the first red line’s downbeat, so the bars after it line up with the song.",
+    "reaperNote": "Reaper: a project with the tempo, a marker on each red line and the song on a track. Save it in the folder that holds {{file}}.",
+    "reaperNoAudio": "Reaper: a project with the tempo and a marker on each red line. Put the song on a track yourself.",
+    "ableton": "Ableton Live cannot read a tempo map from text, so there is no Live file here. Use the MIDI file: drag it into the Arrangement and Live can take its tempo and time signature changes (depending on the version, it asks, or an import option turns it on)."
   }
 }

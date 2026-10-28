@@ -2420,5 +2420,14 @@
       "bpm": "BPM",
       "beat": "Jedno uderzenie"
     }
+  },
+  "daw": {
+    "title": "Programy muzyczne (mapa tempa)",
+    "midi": "Mapa tempa MIDI",
+    "midiNote": "Plik MIDI typu 1 z 960 tickami na uderzenie: tempo i metrum przy każdej red line, każda zmiana najwyżej {{ms}} ms od swojego momentu.",
+    "leadIn": "Takt 1 to takt wstępny, który kończy się na pierwszej mocnej części pierwszej red line, żeby kolejne takty pokrywały się z piosenką.",
+    "reaperNote": "Reaper: projekt z tempem, znacznikiem na każdej red line i piosenką na ścieżce. Zapisz go w folderze, w którym jest {{file}}.",
+    "reaperNoAudio": "Reaper: projekt z tempem i znacznikiem na każdej red line. Piosenkę połóż na ścieżce sam.",
+    "ableton": "Ableton Live nie potrafi wczytać mapy tempa z tekstu, więc nie ma tu pliku dla Live. Użyj pliku MIDI: przeciągnij go do Arrangement, a Live może przejąć jego zmiany tempa i metrum (zależnie od wersji pyta o to albo włącza to opcja importu)."
   }
 }

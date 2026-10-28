@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
+import ReturnPage from '../components/ReturnPage.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
@@ -59,23 +59,12 @@ export default function LoginCallback() {
     }
   }, [navigate, refresh])
 
-  if (!failure) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-16">
-        <BrandLoader />
-        <p className="text-label text-muted">{t('callback.working')}</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="panel mx-auto max-w-md space-y-4 p-8 text-center">
-      <p role="alert">
-        {failure.error === 'state' ? t('callback.stateMissing') : t('callback.failed', { message: failure.message })}
-      </p>
-      <Link to="/login" className="btn-primary">
-        {t('callback.back')}
-      </Link>
-    </div>
+    <ReturnPage
+      title={t('nav.signIn')}
+      working={t('callback.working')}
+      failure={failure && (failure.error === 'state' ? t('callback.stateMissing') : t('callback.failed', { message: failure.message }))}
+      back={{ to: '/login', label: t('callback.back') }}
+    />
   )
 }

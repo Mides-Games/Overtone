@@ -20,6 +20,34 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The studio look: community and account pages
+
+### Changed
+
+- The community and account pages follow `docs/design.md` §11: `/community` (suggestions,
+  reviews, changelog, moderation), `/recent`, `/history`, `/timers`, `/u/<name>`,
+  `/c/<id>`, `/profile` with its tabs and linked accounts, `/login` and the two return
+  pages, `/settings`, `/settings/tokens`, `/developers`, `/notifications`, the bell and
+  `/staff`. Sentence-case headlines, a section header per section, lists as hairline rows
+  instead of boxed cards, forms as the one panel, skeletons and empty states in place of
+  the loader and grey boxes, and the icon set in place of `★`, `→`, `↗` and `×`.
+- New shared pieces: `components/ui/PageHeader.jsx`, `components/ui/Tabs.jsx` (arrow keys,
+  Home, End) and `components/ListControls.jsx` (search, BPM range, sort, "show more"); new
+  icons in `Icon.jsx`.
+- Colour meanings kept: a suggestion's state, a hidden item and an API method no longer
+  borrow red, amber or the tempo green (`docs/design.md` §10).
+
+### Fixed
+
+- An avatar's initials carried an `aria-label` on a plain `div`, which ARIA does not
+  allow there; they are now an image with that name, or hidden where the name is written
+  beside them.
+
+### Measured
+
+- Not measured beyond the checks: no engine change. The bundle stays inside its budget
+  (`scripts/budget.mjs`: ok).
+
 ## Unreleased — 2026-10-28 · The studio look: Analyze, the queue and the result pages
 
 ### Changed

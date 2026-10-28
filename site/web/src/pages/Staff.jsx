@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
+import SectionHeader from '../components/ui/SectionHeader.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { formatAt } from '../lib/social.js'
@@ -18,6 +22,9 @@ import NotFound from './NotFound.jsx'
  * seen, and on "Refresh". Acting stays where it was: removing or requeueing
  * a job on `/queue`, hiding on the item's own page; the corrections from
  * votes (W13.14) are accepted or dismissed here, their only place.
+ *
+ * Laid out as docs/design.md asks: the counts that wait are readouts a
+ * hairline apart, each part a section with its header, its lists as rows.
  */
 const REFRESH_MS = 30_000
 const STATES = ['pending', 'accepted', 'dismissed']
@@ -48,50 +55,53 @@ export default function Staff() {
     }
   }, [staff, tick])
 
-  if (account === undefined) return <BrandLoader className="py-16" />
+  if (account === undefined) return <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />
   if (!staff) return <NotFound />
 
   return (
-    <div className="space-y-8">
-      <header className="rise flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-2">
-          <p className="label text-amber">{t('moderation.staff')}</p>
-          <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('staff.title')}</h1>
-          <p className="max-w-[60ch] text-muted">{t('staff.subtitle')}</p>
-        </div>
-        <button type="button" className="btn-ghost" onClick={refresh}>
-          {t('staff.refresh')}
-        </button>
-      </header>
+    <div className="space-y-14">
+      <PageHeader
+        eyebrow={t('moderation.staff')}
+        title={t('staff.title')}
+        lede={t('staff.subtitle')}
+        action={
+          <button type="button" className="btn-ghost" onClick={refresh}>
+            <Icon name="history" size={16} />
+            {t('staff.refresh')}
+          </button>
+        }
+      />
 
-      {failed && <p className="text-caption text-red">{t('staff.failed')}</p>}
-      {!data && !failed && <BrandLoader className="py-10" />}
+      {failed && (
+        <p role="alert" className="text-caption text-red">
+          {t('staff.failed')}
+        </p>
+      )}
+      {!data && !failed && <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />}
       {data && (
         <>
           <Awaiting awaiting={data.awaiting} />
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-x-12 gap-y-14 lg:grid-cols-2">
             <QueueAndWorker queue={data.queue} worker={data.worker} />
             <Failures failures={data.failures} />
           </div>
           <Corrections onChanged={refresh} tick={tick} />
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-x-12 gap-y-14 lg:grid-cols-2">
             <Reports reports={data.reports} />
             <Log log={data.log} />
           </div>
-          <p className="text-caption text-dim">{t('staff.readAt', { time: new Date(data.at).toLocaleTimeString() })}</p>
+          <p className="readout text-caption text-dim">{t('staff.readAt', { time: new Date(data.at).toLocaleTimeString() })}</p>
         </>
       )}
     </div>
   )
 }
 
-function Section({ title, children, action = null }) {
+/** One part of the panel: a section header, then its rows. */
+function Section({ id, title, children, action = null }) {
   return (
-    <section className="panel space-y-3 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="label">{title}</h2>
-        {action}
-      </div>
+    <section id={id} aria-labelledby={`${id}-title`} className="min-w-0 scroll-mt-24 space-y-5">
+      <SectionHeader id={`${id}-title`} title={title} action={action} />
       {children}
     </section>
   )
@@ -105,13 +115,20 @@ function Awaiting({ awaiting }) {
     { key: 'corrections', to: '#staff-corrections', value: awaiting.corrections },
   ]
   return (
-    <section aria-label={t('staff.awaiting.title')} className="grid gap-3 sm:grid-cols-3">
-      {tiles.map((tile) => (
-        <a key={tile.key} href={tile.to} className="panel block space-y-1 p-4 transition hover:border-line-hover">
-          <p className={`readout text-[28px] font-semibold leading-none ${tile.value ? 'text-amber' : 'text-text'}`}>{tile.value}</p>
-          <p className="text-caption text-muted">{t(`staff.awaiting.${tile.key}`)}</p>
-        </a>
-      ))}
+    <section aria-label={t('staff.awaiting.title')}>
+      <ul className="grid border-y border-line sm:grid-cols-3">
+        {tiles.map((tile, i) => (
+          <li key={tile.key} className={i ? 'border-t border-line sm:border-l sm:border-t-0' : ''}>
+            <a href={tile.to} className="group flex items-end justify-between gap-4 px-1 py-5 transition-colors duration-150 ease-out hover:bg-surface-2 sm:px-5">
+              <span className="space-y-1.5">
+                <span className={`readout block text-headline font-semibold leading-none ${tile.value ? 'text-accent' : 'text-text'}`}>{tile.value}</span>
+                <span className="block text-label text-muted">{t(`staff.awaiting.${tile.key}`)}</span>
+              </span>
+              <Icon name="arrow-right" size={18} className="mb-1 text-dim transition-transform duration-150 ease-out group-hover:translate-x-1 group-hover:text-accent" />
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -122,25 +139,25 @@ function QueueAndWorker({ queue, worker }) {
   const { t } = useTranslation()
   return (
     <Section
+      id="staff-queue"
       title={t('staff.queue.title')}
       action={
-        <Link to="/queue" className="text-caption text-accent hover:underline">
+        <Link to="/queue" className="btn-quiet btn-sm -ml-2.5 h-auto min-h-8 whitespace-normal py-1 text-left sm:-mr-2.5 sm:ml-0">
           {t('staff.queue.moderate')}
+          <Icon name="arrow-right" size={15} />
         </Link>
       }
     >
-      <dl className="grid grid-cols-3 gap-2 text-caption">
+      <dl className="grid grid-cols-3 border-y border-line">
         <Stat k={t('staff.queue.running')} v={queue.running} />
-        <Stat k={t('staff.queue.waiting')} v={queue.waiting} />
-        <Stat k={t('staff.queue.oldest')} v={queue.oldestWaitS === null ? '–' : formatAt(queue.oldestWaitS * 1000)} />
+        <Stat k={t('staff.queue.waiting')} v={queue.waiting} divided />
+        <Stat k={t('staff.queue.oldest')} v={queue.oldestWaitS === null ? '–' : formatAt(queue.oldestWaitS * 1000)} divided />
       </dl>
-      <div className="space-y-1 rounded-panel border border-line p-3 text-caption">
-        <p>
-          <span className="text-dim">{t('status.worker')}: </span>
-          <span className={worker.status === 'ok' ? 'text-accent' : worker.status === 'down' ? 'text-red' : 'text-dim'}>
-            {t(`status.states.${worker.status}`)}
-          </span>
-          {worker.seenSecondsAgo !== null && <span className="text-dim"> · {t('status.notes.workerSeen', { seconds: worker.seenSecondsAgo })}</span>}
+      <div className="space-y-1 text-caption">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-dim">{t('status.worker')}:</span>
+          <span className={worker.status === 'ok' ? 'chip-accent' : 'chip-neutral'}>{t(`status.states.${worker.status}`)}</span>
+          {worker.seenSecondsAgo !== null && <span className="text-dim">{t('status.notes.workerSeen', { seconds: worker.seenSecondsAgo })}</span>}
         </p>
         {worker.memory ? (
           <p className="readout text-muted">
@@ -152,16 +169,16 @@ function QueueAndWorker({ queue, worker }) {
         )}
       </div>
       {queue.live.length === 0 ? (
-        <p className="text-caption text-dim">{t('queue.empty')}</p>
+        <EmptyState title={t('queue.empty')} className="border-y border-line py-6" />
       ) : (
-        <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-panel border border-line">
+        <ul className="max-h-72 divide-y divide-line overflow-y-auto border-y border-line">
           {queue.live.map((row) => (
-            <li key={row.ref} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3 py-2 text-caption">
-              <span className="min-w-0 truncate">
+            <li key={row.ref} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2.5 text-label">
+              <span className="min-w-0 truncate text-text">
                 {row.song ?? <span className="text-dim">{t('queue.privateSong')}</span>}
                 {row.uploader && <span className="text-dim"> · @{row.uploader.username}</span>}
               </span>
-              <span className="readout shrink-0 text-dim">
+              <span className="readout shrink-0 text-caption text-dim">
                 {t(`queue.status.${row.status}`)}
                 {row.status === 'running' && ` ${Math.round((row.progress ?? 0) * 100)}%`} · {row.mode} · {formatAt(row.elapsedS * 1000)}
               </span>
@@ -173,11 +190,11 @@ function QueueAndWorker({ queue, worker }) {
   )
 }
 
-function Stat({ k, v }) {
+function Stat({ k, v, divided = false }) {
   return (
-    <div className="rounded-control border border-line px-2.5 py-2">
-      <dt className="text-dim">{k}</dt>
-      <dd className="readout text-label text-text">{v}</dd>
+    <div className={`space-y-1 py-3 ${divided ? 'border-l border-line pl-4' : 'pr-4'}`}>
+      <dt className="label">{k}</dt>
+      <dd className="readout text-title font-semibold text-text">{v}</dd>
     </div>
   )
 }
@@ -185,21 +202,21 @@ function Stat({ k, v }) {
 function Failures({ failures }) {
   const { t, i18n } = useTranslation()
   return (
-    <Section title={t('staff.failures.title')}>
+    <Section id="staff-failures" title={t('staff.failures.title')}>
       {failures.length === 0 ? (
-        <p className="text-caption text-dim">{t('staff.failures.none')}</p>
+        <EmptyState title={t('staff.failures.none')} className="border-y border-line py-6" />
       ) : (
-        <ul className="max-h-96 divide-y divide-line overflow-y-auto rounded-panel border border-line">
+        <ul className="max-h-96 divide-y divide-line overflow-y-auto border-y border-line">
           {failures.map((f) => (
-            <li key={f.ref} className="space-y-0.5 px-3 py-2 text-caption">
+            <li key={f.ref} className="space-y-1 py-2.5 text-caption">
               <p className="flex flex-wrap items-center gap-2">
-                <span className={f.code === 'failed' ? 'chip' : 'chip-amber'}>{f.code}</span>
+                <span className="chip-neutral">{f.code}</span>
                 <span className="readout text-dim">{f.ref.slice(0, 8)}</span>
                 <span className="text-dim">
                   {f.mode}
                   {f.audioSeconds ? ` · ${formatAt(f.audioSeconds * 1000)}` : ''}
                 </span>
-                <time dateTime={f.at} className="ml-auto text-dim">
+                <time dateTime={f.at} className="readout ml-auto text-dim">
                   {new Date(f.at).toLocaleString(i18n.language, { dateStyle: 'short', timeStyle: 'short' })}
                 </time>
               </p>
@@ -242,41 +259,42 @@ function Corrections({ onChanged, tick }) {
   }
 
   return (
-    <section id="staff-corrections" className="panel scroll-mt-24 space-y-3 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="label">{t('staff.corrections.title')}</h2>
-        <div role="group" aria-label={t('staff.corrections.title')} className="flex flex-wrap gap-1">
+    <Section
+      id="staff-corrections"
+      title={t('staff.corrections.title')}
+      action={
+        <div role="group" aria-label={t('staff.corrections.title')} className="flex flex-wrap gap-1.5">
           {STATES.map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={state === key}
-              onClick={() => setState(key)}
-              className={state === key ? 'chip-accent' : 'chip hover:text-text'}
-            >
+            <button key={key} type="button" aria-pressed={state === key} onClick={() => setState(key)} className="tool-btn px-3 font-sans">
               {t(`votes.review.${key}`)}
             </button>
           ))}
         </div>
-      </div>
-      <p className="text-caption text-dim">{t('staff.corrections.hint')}</p>
-      {error && <p role="alert" className="text-caption text-red">{error}</p>}
-      {page && page.items.length === 0 && <p className="text-caption text-dim">{t('staff.corrections.none')}</p>}
+      }
+    >
+      <p className="max-w-[72ch] text-label text-muted">{t('staff.corrections.hint')}</p>
+      {error && (
+        <p role="alert" className="text-caption text-red">
+          {error}
+        </p>
+      )}
+      {!page && !error && <SkeletonRows rows={2} label={t('common.loading')} className="border-y border-line" />}
+      {page && page.items.length === 0 && <EmptyState title={t('staff.corrections.none')} className="border-y border-line py-6" />}
       {page && page.items.length > 0 && (
-        <ul className="divide-y divide-line rounded-panel border border-line">
+        <ul className="divide-y divide-line border-y border-line">
           {page.items.map((c) => (
-            <li key={c.id} className="space-y-1.5 px-3 py-2.5 text-caption">
+            <li key={c.id} className="space-y-2 py-3.5 text-label">
               <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <Link to={`/t/${c.timing.id}`} className="font-semibold text-accent hover:underline">
+                <Link to={`/t/${c.timing.id}`} className="font-semibold text-text hover:text-accent hover:underline">
                   {c.timing.title ?? t('timings.untitled')}
                 </Link>
                 {c.timing.artist && <span className="text-muted">{c.timing.artist}</span>}
                 <span className="text-dim">· {c.voter ? `@${c.voter.username}` : t('social.uses.goneAccount')}</span>
-                <time dateTime={c.at} className="ml-auto text-dim">
+                <time dateTime={c.at} className="readout ml-auto text-caption text-dim">
                   {new Date(c.at).toLocaleString(i18n.language, { dateStyle: 'short', timeStyle: 'short' })}
                 </time>
               </p>
-              <p className="readout text-muted">
+              <p className="readout text-caption text-muted">
                 {t('staff.corrections.change', {
                   bpm: c.timing.bpm ?? '–',
                   offset: c.timing.offsetMs ?? '–',
@@ -285,19 +303,19 @@ function Corrections({ onChanged, tick }) {
                 })}
               </p>
               <p className="flex flex-wrap items-center gap-2">
-                {c.trainingOk ? (
-                  <span className="chip-accent">{t('staff.corrections.trainingOk')}</span>
-                ) : (
-                  <span className="chip">{t('staff.corrections.trainingNo')}</span>
-                )}
-                {c.reviewedBy && <span className="text-dim">{t('staff.corrections.by', { moderator: c.reviewedBy })}</span>}
+                <span className={c.trainingOk ? 'chip-accent' : 'chip-neutral'}>
+                  {c.trainingOk ? t('staff.corrections.trainingOk') : t('staff.corrections.trainingNo')}
+                </span>
+                {c.reviewedBy && <span className="text-caption text-dim">{t('staff.corrections.by', { moderator: c.reviewedBy })}</span>}
                 {c.state !== 'accepted' && (
-                  <button type="button" className="btn-ghost h-7 px-2.5 text-caption" onClick={() => act(c, 'accept')}>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => act(c, 'accept')}>
+                    <Icon name="check" size={14} />
                     {t('staff.corrections.accept')}
                   </button>
                 )}
                 {c.state !== 'dismissed' && (
-                  <button type="button" className="btn-ghost h-7 px-2.5 text-caption" onClick={() => act(c, 'dismiss')}>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => act(c, 'dismiss')}>
+                    <Icon name="close" size={14} />
                     {t('staff.corrections.dismiss')}
                   </button>
                 )}
@@ -306,40 +324,40 @@ function Corrections({ onChanged, tick }) {
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   )
 }
 
 function Reports({ reports }) {
   const { t } = useTranslation()
   return (
-    <section id="staff-reports" className="panel scroll-mt-24 space-y-3 p-4">
-      <h2 className="label">{t('community.moderation.openReports')}</h2>
+    <Section id="staff-reports" title={t('community.moderation.openReports')}>
       {reports.length === 0 ? (
-        <p className="text-caption text-dim">{t('community.moderation.noReports')}</p>
+        <EmptyState title={t('community.moderation.noReports')} className="border-y border-line py-6" />
       ) : (
-        <ul className="divide-y divide-line rounded-panel border border-line">
+        <ul className="divide-y divide-line border-y border-line">
           {reports.map((r) => (
-            <li key={`${r.kind}-${r.ref}`} className="space-y-1 px-3 py-2 text-caption">
-              <p>
-                <span className="font-semibold">{t(`community.moderation.kind.${r.kind}`)}</span>{' '}
-                <span className="readout text-dim">{r.ref.slice(0, 8)}</span> · {t('community.moderation.reports', { count: r.count })} ·{' '}
+            <li key={`${r.kind}-${r.ref}`} className="space-y-1 py-2.5 text-label">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-text">{t(`community.moderation.kind.${r.kind}`)}</span>
+                <span className="readout text-caption text-dim">{r.ref.slice(0, 8)}</span>
+                <span className="chip-neutral">{t('community.moderation.reports', { count: r.count })}</span>
                 {r.timing ? (
-                  <Link to={`/t/${r.timing}#comment-${r.ref}`} className="text-accent hover:underline">
+                  <Link to={`/t/${r.timing}#comment-${r.ref}`} className="link text-caption">
                     {t('social.comments.openTiming')}
                   </Link>
                 ) : (
-                  <Link to={r.kind === 'review' ? '/community?tab=reviews' : `/community#suggestion-${r.ref}`} className="text-accent hover:underline">
+                  <Link to={r.kind === 'review' ? '/community?tab=reviews' : `/community#suggestion-${r.ref}`} className="link text-caption">
                     {t('staff.open')}
                   </Link>
                 )}
               </p>
-              <p className="break-words text-muted">{r.reasons.map((reason) => `“${reason}”`).join(' ')}</p>
+              <p className="break-words text-caption text-muted">{r.reasons.map((reason) => `“${reason}”`).join(' ')}</p>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   )
 }
 
@@ -358,19 +376,19 @@ function Log({ log }) {
     return t(`community.moderation.did.${e.action}`, { moderator: e.moderator, kind: t(`community.moderation.kind.${e.kind}`) })
   }
   return (
-    <Section title={t('community.moderation.logTitle')}>
+    <Section id="staff-log" title={t('community.moderation.logTitle')}>
       {log.length === 0 ? (
-        <p className="text-caption text-dim">{t('community.moderation.logEmpty')}</p>
+        <EmptyState title={t('community.moderation.logEmpty')} className="border-y border-line py-6" />
       ) : (
-        <ul className="max-h-96 divide-y divide-line overflow-y-auto rounded-panel border border-line">
+        <ul className="max-h-96 divide-y divide-line overflow-y-auto border-y border-line">
           {log.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 text-caption">
-              <time dateTime={e.at} className="readout text-dim">
+            <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-label">
+              <time dateTime={e.at} className="readout text-caption text-dim">
                 {new Date(e.at).toLocaleString(i18n.language, { dateStyle: 'short', timeStyle: 'short' })}
               </time>
-              <span>{line(e)}</span>
-              {e.ref && <span className="readout text-dim">{e.ref.slice(0, 8)}</span>}
-              {e.reason && <span className="break-words text-muted">“{e.reason}”</span>}
+              <span className="text-text">{line(e)}</span>
+              {e.ref && <span className="readout text-caption text-dim">{e.ref.slice(0, 8)}</span>}
+              {e.reason && <span className="w-full break-words text-muted">“{e.reason}”</span>}
             </li>
           ))}
         </ul>

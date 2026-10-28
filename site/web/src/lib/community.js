@@ -8,14 +8,20 @@ import { api } from './api.js'
 /** A suggestion's states in the order a suggestion lives them; `rejected` can come from any. */
 export const STATES = ['open', 'review', 'planned', 'progress', 'done', 'rejected']
 
-/** What each state looks like: the same chips the queue uses. */
+/**
+ * What each state looks like. The reserved colours keep their meanings
+ * (docs/design.md, section 12): red is a red line, amber "check by ear", the
+ * green the tempo curve, so none of them marks a suggestion. Accent is the
+ * signal: the suggestion is going somewhere (planned, in progress, done);
+ * the rest are neutral and their word says which.
+ */
 export const STATE_TONE = {
-  open: 'chip border-line-strong text-muted',
-  review: 'chip-amber',
-  planned: 'chip border-tempo/40 bg-tempo/10 text-tempo',
+  open: 'chip-neutral',
+  review: 'chip-neutral',
+  planned: 'chip-accent',
   progress: 'chip-accent',
   done: 'chip-accent',
-  rejected: 'chip border-red/40 bg-red/10 text-red',
+  rejected: 'chip-neutral',
 }
 
 /** The caps the API holds text to (site/api/src/routes/community.routes.js). */

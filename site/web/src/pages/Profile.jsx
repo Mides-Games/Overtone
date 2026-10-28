@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useSearchParams } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
 import Connections from '../components/Connections.jsx'
-import { Badges, ProfileCard, PublishedTimings } from '../components/social/ProfileParts.jsx'
+import { Badges, ProfileCard, ProfileSkeleton, PublishedTimings } from '../components/social/ProfileParts.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
+import Tabs from '../components/ui/Tabs.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import {
@@ -75,29 +78,30 @@ export default function Profile() {
     }
   }, [account])
 
-  if (account === undefined) return <BrandLoader className="py-16" />
+  if (account === undefined) return <ProfileSkeleton />
   if (account === null) return <Navigate to="/login" replace state={{ from: '/profile' }} />
 
   const since = new Date(account.createdAt).toLocaleDateString(i18n.language, { dateStyle: 'long' })
 
   return (
-    <div className="rise space-y-6">
+    <div className="space-y-12">
       <ProfileCard user={account} totals={profile?.totals ?? null}>
-        <div className="flex flex-wrap gap-2">
-          {profile && !profile.private && (
-            <Link to={userPath(account.username)} className="btn-ghost h-9">
-              {t('social.profile.publicPage')}
-            </Link>
-          )}
-          <a
-            href={`https://midesprojects.com/profile/${encodeURIComponent(account.username)}`}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="btn-ghost h-9"
-          >
-            {t('profile.onMides')} ↗
-          </a>
-        </div>
+        {profile && !profile.private && (
+          <Link to={userPath(account.username)} className="btn-ghost btn-sm">
+            <Icon name="user" size={15} />
+            {t('social.profile.publicPage')}
+          </Link>
+        )}
+        <a
+          href={`https://midesprojects.com/profile/${encodeURIComponent(account.username)}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="btn-ghost btn-sm"
+        >
+          {t('profile.onMides')}
+          <Icon name="external" size={15} className="text-dim" />
+          <span className="sr-only">{t('common.newTab')}</span>
+        </a>
       </ProfileCard>
 
       {profile && (
@@ -109,55 +113,52 @@ export default function Profile() {
           }}
         />
       )}
-      {failed && <p className="text-caption text-red">{t('social.failed')}</p>}
+      {failed && (
+        <p role="alert" className="text-caption text-red">
+          {t('social.failed')}
+        </p>
+      )}
 
-      <div role="tablist" aria-label={t('nav.profile')} className="flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`profile-tab-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`profile-panel-${key}`}
-            onClick={() => setParams(key === 'timings' ? {} : { tab: key }, { replace: true })}
-            className={`relative shrink-0 px-3 pb-2.5 pt-1 font-display text-label font-semibold uppercase tracking-[0.08em] transition ${
-              tab === key
-                ? 'text-text after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent'
-                : 'text-dim hover:text-text'
-            }`}
-          >
-            {t(`social.profile.tabs.${key}`)}
-          </button>
-        ))}
+      <div className="space-y-10">
+        <Tabs
+          id="profile"
+          label={t('nav.profile')}
+          tabs={TABS.map((key) => ({ key, label: t(`social.profile.tabs.${key}`) }))}
+          value={tab}
+          onChange={(key) => setParams(key === 'timings' ? {} : { tab: key }, { replace: true })}
+        />
+
+        <section role="tabpanel" id={`profile-panel-${tab}`} aria-labelledby={`profile-tab-${tab}`} className="space-y-14">
+          {tab === 'timings' && (
+            <>
+              <PublishedTimings
+                username={account.username}
+                empty={
+                  <>
+                    {t('social.profile.noOwnTimings')}{' '}
+                    <Link to="/history" className="link">
+                      {t('timings.history.all')}
+                    </Link>
+                  </>
+                }
+              />
+              {profile && <Badges badges={profile.badges} />}
+            </>
+          )}
+          {tab === 'collections' && <ManageCollections />}
+        </section>
       </div>
-
-      <section role="tabpanel" id={`profile-panel-${tab}`} aria-labelledby={`profile-tab-${tab}`} className="space-y-8">
-        {tab === 'timings' && (
-          <>
-            {profile && <Badges badges={profile.badges} />}
-            <PublishedTimings
-              username={account.username}
-              empty={
-                <>
-                  {t('social.profile.noOwnTimings')}{' '}
-                  <Link to="/history" className="text-accent hover:underline">
-                    {t('timings.history.all')}
-                  </Link>
-                </>
-              }
-            />
-          </>
-        )}
-        {tab === 'collections' && <ManageCollections />}
-      </section>
 
       <Connections />
 
-      <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>
-      <Link to="/settings/tokens" className="inline-block text-caption text-accent hover:underline">
-        {t('platform.tokens.fromProfile')} →
-      </Link>
+      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line pt-5">
+        <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>
+        <Link to="/settings/tokens" className="btn-quiet btn-sm -mr-2.5">
+          <Icon name="key" size={15} />
+          {t('platform.tokens.fromProfile')}
+          <Icon name="arrow-right" size={15} />
+        </Link>
+      </footer>
     </div>
   )
 }
@@ -182,16 +183,24 @@ function PrivateSwitch({ on, onChange }) {
   }
 
   return (
-    <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-1">
-        <p className="text-label font-semibold">{on ? t('social.profile.isPrivate') : t('social.profile.isPublic')}</p>
-        <p className="max-w-[70ch] text-caption text-dim">{t('social.profile.privateHint')}</p>
+    <div className="-mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <Icon name={on ? 'lock' : 'globe'} size={20} className={`mt-0.5 ${on ? 'text-dim' : 'text-accent'}`} />
+        <div className="space-y-1">
+          <p className="text-body font-semibold text-text">{on ? t('social.profile.isPrivate') : t('social.profile.isPublic')}</p>
+          <p className="max-w-[70ch] text-caption text-muted">{t('social.profile.privateHint')}</p>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button type="button" role="switch" aria-checked={on} onClick={flip} disabled={busy} className="btn-ghost shrink-0">
+      <div className="flex items-center gap-2 pl-8 sm:pl-0">
+        <button type="button" role="switch" aria-checked={on} onClick={flip} disabled={busy} className="btn-ghost btn-sm shrink-0">
+          <Icon name={on ? 'globe' : 'lock'} size={15} />
           {on ? t('social.profile.makePublic') : t('social.profile.makePrivate')}
         </button>
-        {error && <span role="alert" className="text-caption text-red">{t('social.failed')}</span>}
+        {error && (
+          <span role="alert" className="text-caption text-red">
+            {t('social.failed')}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -234,28 +243,38 @@ function ManageCollections() {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="max-w-[70ch] text-label text-muted">{t('social.collections.intro')}</p>
-      <form onSubmit={create} className="flex gap-2">
-        <input
-          className="field min-w-0 flex-1"
-          value={name}
-          maxLength={LIMITS.collectionName}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t('social.collections.newPlaceholder')}
-          aria-label={t('social.collections.newName')}
-        />
+    <div className="space-y-6">
+      <p className="max-w-[70ch] text-body text-muted">{t('social.collections.intro')}</p>
+      <form onSubmit={create} className="panel flex max-w-2xl flex-col gap-3 p-4 sm:flex-row sm:items-end">
+        <label className="min-w-0 flex-1 space-y-1.5">
+          <span className="label block">{t('social.collections.newName')}</span>
+          <input
+            type="text"
+            className="field"
+            value={name}
+            maxLength={LIMITS.collectionName}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('social.collections.newPlaceholder')}
+            autoComplete="off"
+            enterKeyHint="done"
+          />
+        </label>
         <button type="submit" className="btn-primary shrink-0" disabled={!name.trim()}>
+          <Icon name="plus" size={16} />
           {t('social.collections.create')}
         </button>
       </form>
-      {error && <p role="alert" className="text-caption text-red">{error}</p>}
+      {error && (
+        <p role="alert" className="text-caption text-red">
+          {error}
+        </p>
+      )}
       {list === null ? (
-        !error && <BrandLoader className="py-10" />
+        !error && <SkeletonRows rows={3} label={t('common.loading')} className="border-y border-line" />
       ) : list.length === 0 ? (
-        <p className="rounded-panel border border-line px-4 py-8 text-center text-label text-dim">{t('social.collections.noneYet')}</p>
+        <EmptyState title={t('social.collections.noneYet')} className="border-y border-line" />
       ) : (
-        <ul className="divide-y divide-line rounded-panel border border-line">
+        <ul className="divide-y divide-line border-y border-line">
           {list.map((c) => (
             <CollectionRow key={c.id} collection={c} act={act} />
           ))}
@@ -272,7 +291,7 @@ function CollectionRow({ collection: c, act }) {
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
       {editing ? (
         <form
           className="flex min-w-0 flex-1 gap-2"
@@ -282,40 +301,56 @@ function CollectionRow({ collection: c, act }) {
             setEditing(false)
           }}
         >
-          <input className="field min-w-0 flex-1 py-2" value={name} maxLength={LIMITS.collectionName} onChange={(e) => setName(e.target.value)} aria-label={t('social.collections.rename')} />
-          <button type="submit" className="btn-primary h-[42px] shrink-0" disabled={!name.trim()}>
+          <input
+            type="text"
+            className="field min-w-0 flex-1"
+            value={name}
+            maxLength={LIMITS.collectionName}
+            onChange={(e) => setName(e.target.value)}
+            aria-label={t('social.collections.rename')}
+            autoComplete="off"
+            // Opened to type the new name.
+            autoFocus
+          />
+          <button type="submit" className="btn-primary shrink-0" disabled={!name.trim()}>
             {t('social.collections.save')}
           </button>
         </form>
       ) : (
-        <div className="min-w-0">
-          <Link to={collectionPath(c.id)} className="block truncate text-label font-semibold text-text hover:text-accent">
-            {c.name}
-          </Link>
-          <p className="text-caption text-dim">
-            {c.public ? t('social.collections.public') : t('social.collections.private')} · {t('social.collections.count', { count: c.count })}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <Icon name={c.public ? 'globe' : 'lock'} size={18} className={c.public ? 'text-accent' : 'text-dim'} />
+          <div className="min-w-0">
+            <Link to={collectionPath(c.id)} className="block truncate text-body font-semibold text-text hover:text-accent">
+              {c.name}
+            </Link>
+            <p className="readout text-caption text-dim">
+              {c.public ? t('social.collections.public') : t('social.collections.private')} · {t('social.collections.count', { count: c.count })}
+            </p>
+          </div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-ghost h-8 px-3" onClick={() => act(() => updateCollection(c.id, { public: !c.public }))}>
+        <button type="button" className="btn-ghost btn-sm" onClick={() => act(() => updateCollection(c.id, { public: !c.public }))}>
           {c.public ? t('social.collections.makePrivate') : t('social.collections.makePublic')}
         </button>
-        <button type="button" className="btn-ghost h-8 px-3" onClick={() => setEditing((v) => !v)}>
+        <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing((v) => !v)}>
+          {!editing && <Icon name="pencil" size={14} />}
           {editing ? t('social.cancel') : t('social.collections.rename')}
         </button>
         {confirming ? (
-          <span className="inline-flex items-center gap-2 text-caption">
-            <button type="button" className="text-red hover:underline" onClick={() => act(() => deleteCollection(c.id))}>
+          <span className="inline-flex items-center gap-2">
+            <button type="button" className="btn-ghost btn-sm border-red/50 text-red" onClick={() => act(() => deleteCollection(c.id))}>
+              <Icon name="trash" size={14} />
               {t('social.collections.deleteYes')}
             </button>
-            <button type="button" className="text-dim hover:text-text" onClick={() => setConfirming(false)}>
+            <button type="button" className="btn-quiet btn-sm" onClick={() => setConfirming(false)}>
               {t('social.cancel')}
             </button>
           </span>
         ) : (
-          <button type="button" className="btn-ghost h-8 px-3" onClick={() => setConfirming(true)}>
-            {t('social.collections.delete')}
+          <button type="button" className="btn-ghost btn-sm" onClick={() => setConfirming(true)}>
+            <Icon name="trash" size={14} />
+            <span className="max-sm:sr-only">{t('social.collections.delete')}</span>
           </button>
         )}
       </div>

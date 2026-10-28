@@ -156,6 +156,10 @@ Geist and Geist Mono).
   `callout` / `callout-amber` (a note set off by a rule on its left, for the draft,
   the translation note and "check by ear"). Used by the legal pages, the credits, how
   it works, the FAQ and the glossary.
+- **Page header:** `components/ui/PageHeader.jsx`: the page's one `h1` in
+  `heading-headline`, an optional way back or eyebrow, a lede and an action.
+- **Tabs:** `components/ui/Tabs.jsx`: sentence case, the accent underline, the
+  arrow keys, Home and End (the ARIA tabs pattern); the page keeps which is open.
 - **Headings:** `heading-display`, `heading-headline`, `heading-section`, `heading-title`.
 - **Text:** `lede`, `label`, `readout` and `unit` (a unit after a readout), `link`
   (a link in prose, underlined).
@@ -269,6 +273,24 @@ Compare) added these, each for the reason given:
   does not turn with the outer one.
 - **The tempo map and the red lines table are the panels** of their zones; check here,
   compare with a map, how it was analysed and sharing sit between hairlines.
+
+The community and account pages (`design/social-pages`) departed from what they had:
+
+- **A suggestion's state is accent or neutral, not amber, green or red:** "under
+  review" was amber, "planned" the tempo green and "rejected" red, and each of those
+  colours means something else here (section 12). Planned, in progress and done are
+  the accent (it is going somewhere); open, under review and rejected are neutral, and
+  their word says which. The same for a hidden item (neutral, with the eye icon) and
+  the API reference's methods (a read in the accent, a write in plain text).
+- **Stars are the icon set's `star` and `star-filled`, in amber:** a rating stays
+  amber as it was (the one non-signal use, kept because five amber stars are what a
+  rating looks like everywhere); the `★` character is gone.
+- **A profile is not a card:** the banner is a band (the site's waveform, seeded by
+  the name, when there is no banner), the name the page's heading, the totals a row
+  of readouts a hairline apart.
+- **Settings, two columns from 1024 px:** each group's name and note on the left, its
+  controls on the right, a hairline between groups; not a panel per group, since the
+  page is one form.
 
 ## 11. Guide for restyling a page
 

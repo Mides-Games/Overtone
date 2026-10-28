@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
-import { Badges, CollectionLinks, ProfileCard, PublishedTimings } from '../components/social/ProfileParts.jsx'
+import { Badges, CollectionLinks, ProfileCard, ProfileSkeleton, PublishedTimings } from '../components/social/ProfileParts.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { userProfile } from '../lib/social.js'
 
@@ -33,30 +35,50 @@ export default function UserProfile() {
 
   if (error === 'notFound') {
     return (
-      <div className="panel space-y-3 p-6">
-        <h1 className="font-display text-title font-bold uppercase">{t('social.profile.notFoundTitle')}</h1>
-        <p className="text-label text-muted">{t('social.profile.notFound')}</p>
-        <Link to="/timers" className="btn-ghost">
-          {t('social.timers.link')}
-        </Link>
+      <div className="space-y-8">
+        <PageHeader title={t('social.profile.notFoundTitle')} lede={t('social.profile.notFound')} />
+        <EmptyState
+          title={`@${username}`}
+          className="border-y border-line"
+          action={
+            <Link to="/timers" className="btn-ghost">
+              <Icon name="trophy" size={16} />
+              {t('social.timers.link')}
+            </Link>
+          }
+        />
       </div>
     )
   }
-  if (!profile) return error ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <BrandLoader className="py-16" />
+  if (!profile) {
+    return error ? (
+      <p role="status" className="text-label text-dim">
+        {t('result.reconnecting')}
+      </p>
+    ) : (
+      <ProfileSkeleton />
+    )
+  }
 
   return (
-    <div className="rise space-y-8">
+    <div className="space-y-14">
       <ProfileCard user={profile.user} totals={profile.totals}>
         {profile.mine && (
-          <Link to="/profile" className="btn-ghost h-9">
+          <Link to="/profile" className="btn-ghost btn-sm">
+            <Icon name="pencil" size={15} />
             {t('social.profile.edit')}
           </Link>
         )}
       </ProfileCard>
-      {profile.mine && profile.private && <p className="chip-amber">{t('social.profile.privateNote')}</p>}
-      <Badges badges={profile.badges} />
+      {profile.mine && profile.private && (
+        <p className="-mt-8 flex items-center gap-2 text-label text-muted">
+          <Icon name="lock" size={16} className="text-dim" />
+          {t('social.profile.privateNote')}
+        </p>
+      )}
       <PublishedTimings username={profile.user.username} empty={t('social.profile.noTimings')} />
       <CollectionLinks collections={profile.collections} title={t('social.collections.publicTitle')} />
+      <Badges badges={profile.badges} />
     </div>
   )
 }

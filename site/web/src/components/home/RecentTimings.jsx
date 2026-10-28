@@ -41,7 +41,7 @@ export default function RecentTimings({ className = '' }) {
         </Link>
       </SectionHead>
       {timings === null ? (
-        <SkeletonRows rows={3} label={t('home.recent.loading')} className="rounded-panel border border-line px-4" />
+        <SkeletonRows rows={3} label={t('home.recent.loading')} className="border-y border-line" />
       ) : (
         <TimingList timings={timings} />
       )}

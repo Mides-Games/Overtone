@@ -229,6 +229,34 @@ def fake_child(conn, threads, memory_mb, vote, self_test):
             conn.send(("result", {"ok": name, "threads": threads, "memory_mb": memory_mb}))
 
 
+class MemoryReportTests(unittest.TestCase):
+    """W13.19: the claim carries the analysis process's memory for the staff
+    panel, and nothing when there is nothing true to say."""
+
+    def test_a_runner_with_no_process_and_no_job_reports_nothing(self):
+        import isolate
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=1800), self_test=False)
+        self.assertIsNone(runner.memory_report())
+
+    def test_the_last_peak_is_reported_with_the_limit_when_it_applies(self):
+        import isolate
+        runner = isolate.Runner(None, isolate.Limits(memory_mb=1800), self_test=False)
+        runner.job_peak_mb, runner.limited = 1234, True
+        self.assertEqual(runner.memory_report(), {"rss_mb": None, "peak_mb": 1234, "limit_mb": 1800})
+        runner.limited = False
+        self.assertEqual(runner.memory_report()["limit_mb"], None)
+
+    def test_the_claim_sends_the_report_only_when_there_is_one(self):
+        import main
+        sent = []
+        api = main.Api.__new__(main.Api)
+        api.call = lambda method, path, body=None: sent.append(body)
+        api.claim("0123456789abcdef", None, None)
+        api.claim("0123456789abcdef", None, {"rss_mb": 5, "peak_mb": None, "limit_mb": None})
+        self.assertNotIn("memory", sent[0])
+        self.assertEqual(sent[1]["memory"], {"rss_mb": 5, "peak_mb": None, "limit_mb": None})
+
+
 class IsolationTests(unittest.TestCase):
     """worker/isolate.py: a job that runs out of time or memory fails alone,
     and the next job is served by a fresh child."""

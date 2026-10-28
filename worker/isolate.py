@@ -263,6 +263,17 @@ class Runner:
     def alive(self) -> bool:
         return self._process is not None and self._process.is_alive()
 
+    def memory_report(self) -> dict | None:
+        """What the API's staff panel shows of this worker's memory (W13.19):
+        the analysis process's resident MB now, the last job's peak and the
+        limit, in whole MB. None where /proc cannot be read (Windows), so the
+        panel says nothing rather than a guess."""
+        rss = resident_mb(self._process.pid) if self.alive() else None
+        if rss is None and self.job_peak_mb is None:
+            return None
+        limit = self.limits.memory_mb if self.limited and self.limits.memory_mb > 0 else None
+        return {"rss_mb": rss, "peak_mb": self.job_peak_mb, "limit_mb": limit}
+
     def start(self) -> None:
         """A ready child, starting one if there is none. Raises WorkerBroken."""
         if self.alive():

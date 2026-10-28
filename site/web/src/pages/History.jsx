@@ -6,6 +6,7 @@ import BrandLoader from '../components/BrandLoader.jsx'
 import { shortDate } from '../components/TimingList.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { comparePath } from '../lib/compare.js'
 import { usePagedList } from '../hooks/usePagedList.js'
 import { forgetAnalysis, recentAnalyses } from '../lib/recent.js'
 import { bpmLabel, deleteAnalysis, myAnalyses, NO_FILTERS, publishAnalysis, songLine, timingPath, unpublishAnalysis } from '../lib/timings.js'
@@ -56,6 +57,9 @@ function BrowserHistory() {
                 {item.filename}
               </Link>
               <span className="readout shrink-0 text-caption text-dim">{shortDate(new Date(item.at).toISOString(), i18n.language)}</span>
+              <Link to={comparePath({ id: item.id })} className="btn-ghost h-7 shrink-0 px-2.5 text-caption">
+                {t('compare.action')}
+              </Link>
               <button
                 type="button"
                 className="btn-ghost h-7 shrink-0 px-2.5 text-caption"
@@ -232,6 +236,11 @@ function HistoryRow({ item, onChange }) {
               {t('timings.publish.publish')}
             </button>
           ))}
+        {item.status === 'done' && (
+          <Link to={comparePath({ id: item.id })} className={small}>
+            {t('compare.action')}
+          </Link>
+        )}
         {finished &&
           (state.kind === 'confirmDelete' ? (
             <>

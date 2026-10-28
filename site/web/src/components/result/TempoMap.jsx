@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { pageKeyIgnored } from '../../lib/keys.js'
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, paintMap, paintOverview, readPalette } from './draw.js'
 import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
@@ -364,6 +365,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         line: line ? line.bpm : null,
         confidence: line ? data.sections[line.index]?.confidence : null,
         before: data.lines.length > 0 && s < data.lines[0].timeMs / 1000,
+        other: data.other?.length ? data.other[governing(data.other, s)].bpm : null,
       })
     } else setTip(null)
     paintOverlay()
@@ -401,13 +403,11 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
 
   // Keys, anywhere on the page but in a field: Space plays, arrows step a beat (Shift: a bar),
   // + and - zoom, 0 fits, [ and ] walk the red lines, L loops, C mutes the clicks, F follows.
+  // The shortcut help (components/CommandPalette.jsx) lists the same keys: change both together.
   useEffect(() => {
     const onKey = (event) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (pageKeyIgnored(event)) return
       const target = event.target
-      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
-        if (!(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio', 'button'].includes(target.type))) return
-      }
       const grid = data.grid
       const step = (dir, bar) => {
         const pos = player.position()
@@ -500,6 +500,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
             <Row k={t('tempo.tipTime')} v={formatClock(tip.s * 1000)} />
             {tip.local !== null && <Row k={t('tempo.tipLocal')} v={tip.local.toFixed(2)} />}
             <Row k={t('tempo.tipLine')} v={formatBpm(tip.line)} />
+            {tip.other !== null && <Row k={data.otherLabel ?? t('compare.other')} v={formatBpm(tip.other)} />}
             {tip.confidence !== null && tip.confidence !== undefined && <Row k={t('strip.confidence')} v={`${Math.round(tip.confidence * 100)}%`} />}
             {tip.before && <p className="mt-1 max-w-48 text-dim">{t('tempo.tipBefore')}</p>}
           </div>
@@ -516,7 +517,7 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       />
 
       {children}
-      <Legend hints={data.hints} swing={data.swing} />
+      <Legend hints={data.hints} swing={data.swing} subdivision={data.subdivision ?? 1} other={data.other?.length ? data.otherLabel ?? t('compare.other') : null} />
     </section>
   )
 }
@@ -532,14 +533,16 @@ function Row({ k, v }) {
 
 const span = (from, to) => (to === null || from === to ? null : { a: Math.min(from, to), b: Math.max(from, to) })
 
-function Legend({ hints, swing }) {
+function Legend({ hints, swing, subdivision, other = null }) {
   const { t } = useTranslation()
   const items = [
     ['var(--red)', t('tempo.legend.lines')],
     ['var(--lavender)', t('tempo.legend.tempo')],
     ['var(--accent)', t('tempo.legend.onsets')],
     ['var(--line-strong)', t('tempo.legend.grid')],
+    ...(subdivision > 1 ? [['var(--line)', t('listening.legendSubs', { n: subdivision })]] : []),
     ['var(--amber)', t('tempo.legend.drift')],
+    ...(other ? [['var(--compare)', other]] : []),
   ]
   return (
     <div className="space-y-1 border-t border-line px-3 py-2">

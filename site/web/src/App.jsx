@@ -17,13 +17,19 @@ import NotFound from './pages/NotFound.jsx'
 const AnalysisResult = lazy(() => import('./pages/AnalysisResult.jsx'))
 const Analyze = lazy(() => import('./pages/Analyze.jsx'))
 const Community = lazy(() => import('./pages/Community.jsx'))
+const Compare = lazy(() => import('./pages/Compare.jsx'))
 const Credits = lazy(() => import('./pages/Credits.jsx'))
+const Faq = lazy(() => import('./pages/Faq.jsx'))
+const Glossary = lazy(() => import('./pages/Glossary.jsx'))
 const History = lazy(() => import('./pages/History.jsx'))
+const HowItWorks = lazy(() => import('./pages/HowItWorks.jsx'))
 const Login = lazy(() => import('./pages/Login.jsx'))
 const LoginCallback = lazy(() => import('./pages/LoginCallback.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 const Queue = lazy(() => import('./pages/Queue.jsx'))
 const Recent = lazy(() => import('./pages/Recent.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
+const Stats = lazy(() => import('./pages/Stats.jsx'))
 const Status = lazy(() => import('./pages/Status.jsx'))
 const TimingPage = lazy(() => import('./pages/TimingPage.jsx'))
 const legal = () => import('./pages/Legal.jsx')
@@ -49,6 +55,8 @@ export default function App() {
         <Route path="community" element={page(Community)} />
         <Route path="recent" element={page(Recent)} />
         <Route path="history" element={page(History)} />
+        {/* Two timings side by side (W12.11): private-ish, its ids in the query; not in the sitemap. */}
+        <Route path="compare" element={page(Compare)} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
         <Route path="t/:id" element={page(TimingPage)} />
         <Route path="login" element={page(Login)} />
@@ -56,6 +64,11 @@ export default function App() {
         <Route path="login/callback" element={page(LoginCallback)} />
         <Route path="profile" element={page(Profile)} />
         <Route path="status" element={page(Status)} />
+        <Route path="settings" element={page(Settings)} />
+        <Route path="stats" element={page(Stats)} />
+        <Route path="how-it-works" element={page(HowItWorks)} />
+        <Route path="faq" element={page(Faq)} />
+        <Route path="glossary" element={page(Glossary)} />
         <Route path="terms" element={page(Terms)} />
         <Route path="privacy" element={page(Privacy)} />
         <Route path="disclaimer" element={page(Disclaimer)} />

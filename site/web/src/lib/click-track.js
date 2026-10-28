@@ -6,7 +6,8 @@
  * every click, so the file holds what the reader heard.
  */
 import { DEFAULT_VOLUME, scheduleClick } from './player.js'
-import { lowerBound } from './timing.js'
+import { DEFAULT_SUB_VOLUME } from './listening.js'
+import { lowerBound, SUB } from './timing.js'
 import { encodeWav } from './wav.js'
 
 /**
@@ -35,9 +36,12 @@ export function clickTrackPlan(grid, durationS, cap = MAX_TRACK_SECONDS) {
  * Renders the track and returns the WAV's bytes. `buffer` is the decoded song
  * (an AudioBuffer) to mix under the clicks, or null for the clicks alone;
  * `songVolume` and `clickVolume` are the player's, so the mix sounds as the
- * page does. `onProgress` gets 0..1 every ten rendered seconds.
+ * page does; `subVolume` is the subdivisions' share of the clicks', when the
+ * grid holds any (W12.6). The latency the player may move its clicks by is
+ * never applied here: a file is played elsewhere, on other hardware.
+ * `onProgress` gets 0..1 every ten rendered seconds.
  */
-export async function renderClickTrack({ grid, durationS, buffer = null, songVolume = DEFAULT_VOLUME, clickVolume = DEFAULT_VOLUME, onProgress }) {
+export async function renderClickTrack({ grid, durationS, buffer = null, songVolume = DEFAULT_VOLUME, clickVolume = DEFAULT_VOLUME, subVolume = DEFAULT_SUB_VOLUME, onProgress }) {
   const plan = clickTrackPlan(grid, buffer ? Math.min(durationS || buffer.duration, buffer.duration) : durationS)
   const rate = buffer ? buffer.sampleRate : CLICK_RATE
   const channels = buffer ? Math.min(2, buffer.numberOfChannels) : 1
@@ -48,7 +52,10 @@ export async function renderClickTrack({ grid, durationS, buffer = null, songVol
   const clicks = ctx.createGain()
   clicks.gain.value = buffer ? clickVolume : 1
   clicks.connect(ctx.destination)
-  for (let i = 0; i < plan.t.length; i++) scheduleClick(ctx, clicks, plan.t[i], plan.level[i])
+  const subs = ctx.createGain()
+  subs.gain.value = subVolume
+  subs.connect(clicks)
+  for (let i = 0; i < plan.t.length; i++) scheduleClick(ctx, plan.level[i] === SUB ? subs : clicks, plan.t[i], plan.level[i])
   if (buffer) {
     const song = ctx.createGain()
     song.gain.value = songVolume

@@ -100,6 +100,22 @@ CREATE INDEX IF NOT EXISTS analyses_song_idx ON analyses (song_id);
 CREATE INDEX IF NOT EXISTS analyses_live_idx ON analyses (status, created_at) WHERE status IN ('queued', 'running');
 CREATE INDEX IF NOT EXISTS analyses_finished_idx ON analyses (finished_at DESC) WHERE finished_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_cache_idx ON analyses (song_id, engine_hash) WHERE result IS NOT NULL;
+-- W11.1, W3.21, W12.19 and W3.24: how the analysis was asked for. `mode` is
+-- how long the person chose to wait (fast, normal, strict); `options` the
+-- hints they gave (tempo, BPM, meter, a stretch), NULL for none, and
+-- `options_key` the same hints as one canonical string ('' for none). Both
+-- are part of the cache key: the same audio asked for another way is another
+-- result. `audio_seconds` is the length the browser read, used only for the
+-- queue's estimate (W3.16). `reanalysis_of` links a re-analysis in another
+-- mode to the result it was made from.
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS mode          text NOT NULL DEFAULT 'normal'
+  CHECK (mode IN ('fast', 'normal', 'strict'));
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS options       jsonb;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS options_key   text NOT NULL DEFAULT '' CHECK (char_length(options_key) <= 512);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS audio_seconds real CHECK (audio_seconds > 0 AND audio_seconds <= 14400);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS reanalysis_of bigint REFERENCES analyses (id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS analyses_cache_mode_idx ON analyses (song_id, engine_hash, mode, options_key) WHERE result IS NOT NULL;
+CREATE INDEX IF NOT EXISTS analyses_reanalysis_idx ON analyses (reanalysis_of) WHERE reanalysis_of IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_account_idx ON analyses (account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS analyses_ip_day_idx ON analyses (ip_hash, created_at) WHERE account_id IS NULL;
 

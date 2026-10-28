@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "Перейти к содержимому",
     "loading": "Загрузка…",
-    "byMides": "Инструмент Mides Projects"
+    "byMides": "Инструмент Mides Projects",
+    "newTab": "(откроется в новой вкладке)"
   },
   "nav": {
     "home": "Главная",

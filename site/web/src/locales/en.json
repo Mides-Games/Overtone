@@ -2,7 +2,8 @@
   "common": {
     "skipToContent": "Skip to content",
     "loading": "Loading…",
-    "byMides": "A Mides Projects tool"
+    "byMides": "A Mides Projects tool",
+    "newTab": "(opens in a new tab)"
   },
   "nav": {
     "home": "Home",

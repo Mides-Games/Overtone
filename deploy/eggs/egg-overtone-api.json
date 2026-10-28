@@ -1,0 +1,332 @@
+{
+    "_comment": "Written by deploy/eggs/egg.py. Do not edit: edit deploy/eggs/ and run it again.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-26T00:00:00+00:00",
+    "name": "Overtone api",
+    "author": "dev@midesprojects.com",
+    "description": "The Overtone API (Express 5): runs site/api's migrations, then site/api's server, on the server's allocation. Not published on its own: overtone-web forwards /api to it. Its port is reachable on the node all the same, so it answers only requests carrying PROXY_SECRET (from overtone-web) or WORKER_TOKEN (the worker's /api/internal).",
+    "features": null,
+    "docker_images": {
+        "Node.js 24": "ghcr.io/parkervcp/yolks:nodejs_24"
+    },
+    "file_denylist": [],
+    "startup": "bash deploy/eggs/start.sh api",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": [\"overtone-api: listening on\", \"listening on port\"]}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Install script of the overtone-web, overtone-api, overtone-worker and overtone-bot eggs.\n#\n# Runs once, as root, in the panel's throwaway installer container, with the\n# server's disk at /mnt/server. It only puts the repository there: the\n# dependencies (pnpm, pip) are installed by deploy/eggs/start.sh on the first\n# start, inside the runtime image whose Node or Python they are built for.\n#\n# egg.py replaces api with web, api, worker or bot when it writes the egg.\n#\n# Variables the eggs declare:\n#   GIT_ADDRESS   the repository, https\n#   BRANCH        master (production) or experimental (staging)\n#   GIT_TOKEN     read-only token while the repository is private; empty when public\n#   USER_UPLOAD   1 = do not clone: the files are uploaded by hand\n#\n# A reinstall over an existing clone switches it to BRANCH and keeps any file\n# git does not track; it refuses, and says so, when a tracked file was edited\n# on the server.\nset -euo pipefail\n\nROLE=api\nsay() { echo \"[overtone-$ROLE] $*\"; }\n\n# git-lfs is not taken from apt: the installer image's Debian 11 index pointed\n# at a build the security mirror no longer serves (404 on 2026-10-27), which\n# failed every install. Only the worker needs it, and it gets the static\n# binary from git-lfs's own release, pinned and checked against its SHA-256.\nPKGS=(git ca-certificates)\n[ \"$ROLE\" = worker ] && PKGS+=(curl)\napt-get update -y >/dev/null\napt-get install -y --no-install-recommends \"${PKGS[@]}\" >/dev/null\n\nGIT_LFS_VERSION=3.6.1\nGIT_LFS_SHA256=2138d2e405a12f1a088272e06790b76699b79cb90d0317b77aafaf35de908d76\nif [ \"$ROLE\" = worker ]; then\n    tarball=/tmp/git-lfs.tar.gz\n    curl -fsSL -o \"$tarball\" \\\n        \"https://github.com/git-lfs/git-lfs/releases/download/v$GIT_LFS_VERSION/git-lfs-linux-amd64-v$GIT_LFS_VERSION.tar.gz\"\n    echo \"$GIT_LFS_SHA256  $tarball\" | sha256sum -c --quiet - || { say \"ERROR: git-lfs download does not match its SHA-256.\"; exit 1; }\n    tar -xzf \"$tarball\" -C /tmp\n    install -m 0755 \"/tmp/git-lfs-$GIT_LFS_VERSION/git-lfs\" /usr/local/bin/git-lfs\nfi\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ \"${USER_UPLOAD:-0}\" = 1 ]; then\n    say \"USER_UPLOAD=1: nothing cloned. Upload the repository to the server's root.\"\n    exit 0\nfi\n\ncase \"${BRANCH:-}\" in\n    master | experimental) ;;\n    *) say \"ERROR: BRANCH is '${BRANCH:-}', not master or experimental.\"; exit 1 ;;\nesac\nif [ -z \"${GIT_ADDRESS:-}\" ]; then\n    say \"ERROR: GIT_ADDRESS is empty.\"\n    exit 1\nfi\n\n# The token travels in a header for each command and is never written to\n# .git/config: anyone who opens the server's file manager would read it there.\n# The address is printed; the token never is.\nAUTH=()\nif [ -n \"${GIT_TOKEN:-}\" ]; then\n    AUTH=(-c \"http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' \"$GIT_TOKEN\" | base64 -w0)\")\nfi\n# The files belong to the panel's user, and this script runs as root.\ngit config --global --add safe.directory /mnt/server\n# The model is fetched below, by name, and only for the worker.\nexport GIT_LFS_SKIP_SMUDGE=1\n\nif [ -d .git ]; then\n    say \"reinstall: switching the existing clone to $BRANCH\"\n    git remote set-url origin \"$GIT_ADDRESS\"\n    git \"${AUTH[@]}\" fetch --quiet origin \"$BRANCH\"\n    if ! git diff --quiet HEAD --; then\n        say \"ERROR: tracked files were edited on the server:\"\n        git diff --stat HEAD -- | tail -n 20\n        say \"Delete them in the file manager, or set USER_UPLOAD=1 to keep them, then reinstall.\"\n        exit 1\n    fi\n    git checkout --quiet -B \"$BRANCH\" \"origin/$BRANCH\"\nelif [ -n \"$(ls -A)\" ]; then\n    say \"ERROR: /home/container has files but no clone. Empty it, or set USER_UPLOAD=1.\"\n    exit 1\nelse\n    say \"cloning $GIT_ADDRESS ($BRANCH)\"\n    git \"${AUTH[@]}\" clone --quiet --branch \"$BRANCH\" \"$GIT_ADDRESS\" .\nfi\ngit branch --quiet --set-upstream-to \"origin/$BRANCH\" \"$BRANCH\"\n# A mode change (chmod +x in the file manager) is not a change worth keeping,\n# and counting it as one blocks every fast-forward that touches that file.\ngit config core.fileMode false\n\nif [ \"$ROLE\" = worker ]; then\n    # The Beat This! model is a Git LFS file: without this, a 130-byte pointer.\n    # git-lfs is one static binary; start.sh finds it in ~/.local/bin when an\n    # update brings a new model, since the runtime image has no git-lfs.\n    mkdir -p .local/bin\n    cp \"$(command -v git-lfs)\" .local/bin/git-lfs\n    git lfs install --local >/dev/null\n    git \"${AUTH[@]}\" lfs pull\n    for m in assets/models/*.onnx; do\n        if head -c 40 \"$m\" | grep -q '^version https://git-lfs'; then\n            say \"ERROR: $m is still an LFS pointer after git lfs pull.\"\n            exit 1\n        fi\n    done\nfi\n\nsay \"installed $(git rev-parse --short HEAD) on $BRANCH; the first start installs the dependencies\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Repository",
+            "description": "The repository cloned at install and fast-forwarded at start, over https.",
+            "env_variable": "GIT_ADDRESS",
+            "default_value": "https://github.com/Mides-Projects/Overtone.git",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:https://",
+            "field_type": "text"
+        },
+        {
+            "name": "Branch",
+            "description": "master for production, experimental for staging. Changing it takes a reinstall, which switches the clone; a start never changes branch on its own.",
+            "env_variable": "BRANCH",
+            "default_value": "master",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|in:master,experimental",
+            "field_type": "text"
+        },
+        {
+            "name": "Auto update",
+            "description": "1 = fast-forward to origin/BRANCH on every start, so a restart is the release. Never a merge or a reset: a checkout that cannot fast-forward starts as it is, and says so.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "User upload",
+            "description": "1 = the install does not clone and a start does not update: the files are uploaded by hand.",
+            "env_variable": "USER_UPLOAD",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Deploy token",
+            "description": "Read-only token while the repository is private (a fine-grained token with Contents: read). Sent as a header, never written to .git/config or printed. Empty once it is public.",
+            "env_variable": "GIT_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Rollback commit",
+            "description": "A commit this server had on BRANCH (see .overtone/deployed.log). When set, the server starts there and does not update; clear it to return to BRANCH.",
+            "env_variable": "ROLLBACK_COMMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|regex:/^[0-9a-f]{7,40}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Database URL",
+            "description": "postgres://user:password@host:port/database",
+            "env_variable": "DATABASE_URL",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Session secret",
+            "description": "Signs session cookies.",
+            "env_variable": "SESSION_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides client secret",
+            "description": "This server's secret for the Mides code exchange; the same value as SSO_SECRET_OVERTONE in Mides.",
+            "env_variable": "MIDES_CLIENT_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides auth URL",
+            "description": "The Mides SSO.",
+            "env_variable": "MIDES_AUTH_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides web URL",
+            "description": "Mides-Dev-Web, for profiles and the wall.",
+            "env_variable": "MIDES_WEB_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides image origins",
+            "description": "Other origins Mides serves profile pictures from (comma-separated, e.g. its CDN). A picture anywhere but here and MIDES_WEB_URL is not kept. The same value as overtone-web's.",
+            "env_variable": "MIDES_IMAGE_ORIGINS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides app",
+            "description": "This app's name in the Mides SSO.",
+            "env_variable": "MIDES_APP",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Site URL",
+            "description": "The public origin of this environment, https, no trailing slash.",
+            "env_variable": "SITE_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Trust proxy",
+            "description": "Proxies in front of the API: 2 = the TLS proxy and overtone-web. Decides the client address the rate limit counts; too low puts every visitor in one bucket. overtone-web's TRUSTED_PROXY_HOPS + 1.",
+            "env_variable": "TRUST_PROXY",
+            "default_value": "2",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:0,10",
+            "field_type": "text"
+        },
+        {
+            "name": "Proxy secret",
+            "description": "32+ characters, the same value as this environment's overtone-web PROXY_SECRET. Every request without it in X-Overtone-Proxy gets a 404, except the worker's /api/internal routes, which demand WORKER_TOKEN instead.",
+            "env_variable": "PROXY_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
+        },
+        {
+            "name": "Worker token",
+            "description": "32+ characters, the same value as this environment's overtone-worker WORKER_TOKEN: the bearer of /api/internal.",
+            "env_variable": "WORKER_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
+        },
+        {
+            "name": "Anonymous daily limit",
+            "description": "Analyses per day without an account (default 5).",
+            "env_variable": "ANON_DAILY_LIMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "User daily limit",
+            "description": "Analyses per day with a Mides account (default 50).",
+            "env_variable": "USER_DAILY_LIMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Max audio seconds",
+            "description": "Longest audio accepted (default 600).",
+            "env_variable": "MAX_AUDIO_SECONDS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Max upload MB",
+            "description": "Largest upload, checked before the body is read (default 40).",
+            "env_variable": "MAX_UPLOAD_MB",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Job timeout",
+            "description": "Seconds a job may run before it goes back to the queue; two attempts in all (default 900).",
+            "env_variable": "JOB_TIMEOUT_S",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Spool folder",
+            "description": "Where uploads wait for the worker; deleted when the result arrives (ADR-W4). Inside the server's disk, so a restart does not lose the queue's audio.",
+            "env_variable": "SPOOL_DIR",
+            "default_value": "/home/container/.overtone/spool",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:/home/container/",
+            "field_type": "text"
+        },
+        {
+            "name": "Spool budget MB",
+            "description": "The most the spool holds, waiting audio and uploads still arriving together; past it an upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk (default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it.",
+            "env_variable": "SPOOL_MAX_MB",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Queue max",
+            "description": "Songs waiting or running at once, everyone's together (default 30).",
+            "env_variable": "QUEUE_MAX",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Bot token",
+            "description": "32+ characters, the same value as this environment's overtone-bot BOT_TOKEN, and not WORKER_TOKEN: the bearer of /api/internal/bot. Empty = the bot's routes answer 503 BOT_OFF.",
+            "env_variable": "BOT_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides Discord link path",
+            "description": "The Mides page that links Discord to a Mides account and returns to the profile (docs/bot.md). Default /connections/discord/link.",
+            "env_variable": "MIDES_DISCORD_LINK_PATH",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "osu! client id",
+            "description": "The osu! OAuth app's id (docs/bot.md). With the secret and the redirect URI, or none: empty = linking osu! is off.",
+            "env_variable": "OSU_CLIENT_ID",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|regex:/^[0-9]{1,12}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "osu! client secret",
+            "description": "The osu! OAuth app's secret.",
+            "env_variable": "OSU_CLIENT_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "osu! redirect URI",
+            "description": "SITE_URL + /link/osu, exactly as registered with the osu! app.",
+            "env_variable": "OSU_REDIRECT_URI",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|starts_with:https://",
+            "field_type": "text"
+        }
+    ]
+}

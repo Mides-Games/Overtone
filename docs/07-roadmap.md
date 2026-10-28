@@ -1,0 +1,1285 @@
+# Roadmap
+
+Ten phases, plus the precision plan (Phase 10) and the comfort phases (12–18). Each
+feature carries: **Diff** (difficulty) · **Imp** (impact) · **Deps** · **ML** · **GPU** ·
+**Pri** (priority: P0 blocking, P1 core, P2 valuable, P3 optional) · **Status**.
+Anything not worth building is in [Rejected ideas](#rejected-ideas), with the reason.
+
+Phases are ordered by dependency, not by appetite. The only hard rule: **the Rust engine
+must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
+0.0000 BPM / 0.16 ms. Everything else is negotiable; that is not.
+
+---
+
+## Where we are — 2026-10-16
+
+**Stage: Overtone is web-only since 2026-10-26: the website (`site/`) is its interface,
+and the engine (Python v3 and Rust v4) runs on its own from the command line. The desktop
+app -- the web window, the classic Tk window and the MSI -- was parked that day on
+`parked/desktop-app` (tag `v3-desktop-app`); its editing tools come back on the web in W7
+([`16-web-platform.md`](16-web-platform.md)). Earlier on 2026-10-26 (W1) hitsounds, Compile,
+Train and the Songs browser were parked on `parked/desktop-extras`: the core is timing.**
+
+> The rows below that describe the app, its playback and its installer record what the
+> desktop app had when it was parked, not what master ships.
+
+| Area | State |
+|---|---|
+| Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
+| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`) and Ramps (`ramps`) |
+| App (web shell) | **parked** 2026-10-26 on `parked/desktop-app` (tag `v3-desktop-app`); it was usable in ten sidebar sections: Library, Timing, Structure, Map check, Mapset, Audio, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, EN/ES, dark and light |
+| osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable |
+| Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
+| Hitsound engine | **parked** (W1, 2026-10-26) on `parked/desktop-extras` and the tag `v3-desktop-full`: the copier, the Hitsounds section, the consistency check, the Rust decision engine and the Samples card. Its evaluation never cleared its own bar (clap F1 0.59, finish F1 0.42) |
+| Playback | **parked with the app** (2026-10-26) — it had play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone |
+| UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
+| Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
+| Installer (MSI) | **parked with the app** (2026-10-26; `parked/desktop-app`) — v0.1.0-alpha was published: per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
+
+Tests: **543** Python (505 engine + 38 worker) · **231** Rust.
+
+### Current priorities — 2026-10-16
+
+The audit backlog is closed: every finding was fixed, recorded as already fixed, or decided
+([`13-audit-backlog.md`](13-audit-backlog.md)). The remaining 0.3.0 required row is:
+
+1. **R6 — owner precision verdicts.** The 25-item listening sheet is ready at
+   `bench/health_sample.local.md` (local only: it names a private library's maps;
+   `bench/health_sample.py` writes it). The pre-set rule keeps
+   “actionable” and “weak” only with at least 15 true flags; listen at each linked red
+   line and mark true, false or skip.
+T1, T3, T4 and T5 are done; T2 signing was dropped by owner decision. T6 is closed
+for 0.3.0 by measured disposition: no section labels ship, and the Kiai card keeps
+refusing to guess. T7's H6/H7 review is also closed by measurement: keep instrument
+lanes, the mismatch rule and sample recommendations gated, with H7 remaining a proposal
+without an accuracy claim.
+
+### Longer-term, outside 0.3.0
+
+- **Real-audio accuracy (Phase 10):** Corpus B is built; proceed one measured sub-phase
+  at a time toward 1.0.0. No accuracy claim moves without the committed corpus and gates.
+- **Other languages (Phase 24):** TypeScript needs Node.js, which is not installed;
+  .NET SDK 10.0.401 is present. Leave the TypeScript gate deferred until requested.
+- **Compilation builder (Phase 25):** 25.1–25.19 are complete. The tempo-matched
+  junction (25.20) remains unlikely because the measured phase-vocoder attack shift is
+  23–24 ms; the crossfade and `.osb` background are rejected in the phase record.
+- **Section labels (Phase 19):** closed for 0.3.0 without shipping. A future attempt
+  must test a new signal on an untouched confirmation split.
+- **Installer (Phase 10.13):** published artefacts remain unsigned because certificate
+  purchase was declined. Supported associations, setup choices and the portable data
+  folder are complete; bare `.osu` and URI associations remain documented unsupported.
+
+The remaining proposals are not implementation tasks until decided: the Rhythm guide
+(`04-ui-ux.md` §9 still rules out inventing objects from audio) and streaming-link import
+(blocked by the offline rule). Exported red lines follow ranked maps' lead (28 ms, a setting,
+on by default) since 2026-10-23 (10.0a).
+
+### Bugs fixed on 2026-09-23
+
+All four were reproduced with a probe before the fix and have a test that fails on the old code.
+
+| Bug | Fix | Measured |
+|---|---|---|
+| Inject reset sampleset, volume and kiai and wrote the section out of order | new red lines carry the state they land in; greens added where SV/sounds would change; sorted section; BOM and line endings kept | ranked map, 1341 objects: **229 → 0** changed what they play |
+| Python engine returned a BPM for white noise (127.68) and pads (60.09) | the fallback first checks the onset envelope is more periodic than itself shuffled | noise ≤ +0.022, 27 real songs ≥ +0.090, threshold 0.05; results on real songs unchanged |
+| Classic window: CSV clipped to 21 px at the default size | ghost buttons size to their labels; minimum width 1070 | nothing clipped in English or Spanish |
+| Classic window: ×2 / ÷2 and Analyze silently dropped hand edits | they ask first while edits are unexported | 3 tests on the real window |
+
+### Audit leads verified on 2026-09-23
+
+The five leads the audit's verifiers did not finish. Each was re-probed; all five were real.
+
+| Lead | Result | Measured | PR |
+|---|---|---|---|
+| First red line half a beat late | **real, critical** — section 0 applied a beat class counted in another seed's frame | plain renders on the off-beat: 5/8 → 0/8; `fast-300` was on the snare, now on the kick | #22 |
+| Meter path hides a tempo change | **real, high** — one bar applied to the whole track | 128 → 150 and 120 → 160 keep both red lines; `signatures` 6/6 | #23 |
+| Rust chroma wrong below ~362 Hz | **real** — bins wider than a semitone | bass notes on the wrong class: 24/36 → 0/36; hitsound F1 0.910 unchanged (the retired in-sample test) | #24 |
+| Licence claims in the plans | **real** — six rows wrong | checked against each project's licence file; Demucs weights are research-only | #25 |
+| Stale counts in CLAUDE.md | **real** | 76/75 → 209/181, layout complete | #26 |
+
+### High audit findings fixed on 2026-09-23
+
+All six from the backlog. Each was reproduced with a probe first and has a test that
+fails on the old code; Python and Rust were fixed together where both apply.
+
+| Finding | Measured | PR |
+|---|---|---|
+| ÷2 / ÷4 deleted real tempo changes | tiny-change 1/2 → 2/2, secs-4 2/4 → 4/4 red lines kept at ÷4 | #29 |
+| Export snapping moved hand-placed red lines up to a quarter beat | snaps only ≤ 1 ms of rounding; hand-placed lines never move; ranked real map within 10 ms 8.1 % → 14.4 % | #30 |
+| A change's red line one beat late (boundary beat µs before the start) | fixed at the function level; did not reproduce end to end (0/177 probes) | #31 |
+| A stray click before the music threw the grid away | fallback 295.3 BPM → precision 150.000, red line within 0.1 ms | #32 |
+| Sparse random attacks got a grid | random attack times 18–22/40 → 0/40; random-click files 63/240 → 12/240 answered, none by the precision engine | #33 |
+| Rust hitsound flux compared spectra of different sizes | steady tone 0.9996 → ~0; 450 test hits 35 → 29 wrong, macro F1 0.913 → 0.931 (the retired in-sample test) | #34 |
+
+Since then: `.bak` atomicity (#36), dropped packets in the Rust decoder (#37), the
+engine's memory — one 5-minute song peaked at 3.7 GB, 0.55 GB now (#38) — the weak
+downbeat (#40), long mixes (#41), the fallback's pulse factor (#42), scattered clicks
+in the fallback (#43), the config crash (#45), Ctrl+C in fields (#46), CSV errors (#47),
+`.osz` audio names (#48), x2 on the fallback (#50), noise before the first red line (#51),
+Rust tie-breaking (#52), the Rust hour cap and load tests (#53), bench honesty (#54), the
+DSP contract's stale passages (#55), one-window signature regions (#57), the peak tie
+rule (#58), and the golden gate's blind spots — the envelope, every weight, each red
+line's bar, and fixtures with a proven bar (#59–#61); the hitsound engine's
+evaluation, windows and metrical role (#63–#66); elastic parity with its prototype (#69);
+the whole-track spectrograms, the structure windows, the percussive ratio and a chorus on
+the verse's chords (#71–#75); the resampler's speed and AIFF (#76, #77).
+
+The forty low findings were closed on 2026-09-24; nothing is open in
+[`13-audit-backlog.md`](13-audit-backlog.md).
+
+---
+
+## Release 0.2.0-alpha — what it takes
+
+`v0.1.0-alpha` (2026-10-03) was about being *allowed* to publish: a licence, the bundled
+notices, an SBOM, checksums, an installer that installs and uninstalls. It added nothing a
+user could see. **0.2.0-alpha is the first release with a reason to download it**, and the
+process for cutting it is the checklist in
+[`11-msi-distribution.md`](11-msi-distribution.md#publishing-a-release-10137).
+
+Scoped on 2026-10-03, against no user reports at all — nobody has filed one, so nothing
+here is driven by a complaint. It is driven by what the published build cannot do and by
+what this repository already half-holds.
+
+### Required — the version is not 0.2.0-alpha without these
+
+| # | What | Why it has to be in | Where | State |
+|---|---|---|---|---|
+| R1 | **The rate trainer, through its Train section**: rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 | The one thing a user of 0.1.0 would download a new version for. Steps 1-4 of Phase 26's build order; the rows left out of this list are the ones that make it nicer, not the ones that make it work | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-06 — every row landed; the browser-harness pass over the section is still owed |
+| R2 | **`bench/gates.py train`** (26.22) | No feature of this size has ever landed here without a gate, and this one's whole claim is that the copy is still snapped and still in time. 1.0x byte-identical, 1.37x on the beat, the AR/OD round trips, the written lines graded against the written audio, 60 fuzzed sources | [26.22](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-06 — every row green |
+| R3 | **Phase 25's last row settled**: build 25.12 (per-segment backgrounds through an `.osb`) or move it to [Rejected ideas](#rejected-ideas) with the reason | A phase that sits at nineteen of twenty rows forever is a phase nobody can read the state of. It is cosmetic and nothing here can verify an `.osb` in osu! itself, which is an argument for the second option, not for silence | [25.12](#phase-25--compilation-builder-marathon-maps) | **done** 2026-10-06 — rejected with the reason; Phase 25 reads whole now |
+| R4 | **The portable ZIP's own `data\` folder** (the half of 10.13.5 that was never built) | Today the ZIP keeps its settings and cache where the installed copy keeps them, so running both means they share a profile and silently overwrite each other's recents. `11-msi-distribution.md` already promises otherwise. It is a bug in a published artefact | [10.13](#phase-10--human-level-timing-accuracy) | **done** 2026-10-04 in `fix/portable-data-folder`: `python/overtone_paths.py` decides the folder; the ZIP alone carries `portable.txt`; the smoke test fails a portable run that writes Overtone's own state to the profile. Measured on the unpacked ZIP: writes stayed in `data\`, none in the profile |
+| R5 | **A diagnostics copy-out**: one button, in Settings, that copies the product version, the build's commit and time, the platform, the portable state and where the data is, the Rust engine found and the library index, as plain text. The window shows the text it copied; nothing is sent | 0.1.0 is the first build strangers can install, and the only way anyone can tell us what broke is by hand. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | P20 options, new row | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, a Settings card, two tests. The version it reports is the release's: the window said v3.0 until this |
+| R6 | **The library health check's precision sample** (pending item 2) | The health check has shipped since 2026-09-30 and flags maps as actionable or weak with no hand-checked number behind the words. Either the sample supports them or the labels change | [P19](#phase-19--app-sections) | **moved to 0.3.0 required** — sample and sheet drawn 2026-10-06, verdicts never given, prerelease ordered anyway (see above); the bar stands |
+| R7 | **The release checklist run end to end, with the install test** | It exists because of 0.1.0 and has been run once. A checklist nobody reruns is a document, not a process | [`11`](11-msi-distribution.md#publishing-a-release-10137) | **done** 2026-10-06 — every gate green on the bumped commit, `build.py --clean` ok (MSI 112.2 MB, ZIP 138.2 MB), installed over 0.1.0 / uninstalled / reinstalled with user data untouched. Not published: no tag until R6 resolves |
+
+### Should be in it, and will be if the required rows land early
+
+| # | What | Where |
+|---|---|---|
+| S1 | Rate ladders (26.16) — practising is a ladder, and this is the row that makes the trainer better than the tool it is answering | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) |
+| S2 | What the copy will feel like (26.9) and mod emulation (26.10) | P26 |
+| S3 | Picking the map without reading osu!'s memory (26.18), including the measurement of which live signals exist | P26 |
+| S4 | Undo and clean up for practice copies (26.15), straight from the write log | P26 |
+| S5 | File associations and the custom setup screen — the rest of 10.13.2 | [`11`](11-msi-distribution.md) |
+| S6 | Section labels from repetition (pending item 3) | [P19](#phase-19--app-sections) |
+| S7 | One hotkey through `RegisterHotKey` (26.19) and presets (26.20) | P26 |
+
+### Deliberately not in 0.2.0-alpha
+
+| What | Why not |
+|---|---|
+| **Code signing** (10.13.6) | A certificate is a purchase and the decision is the owner's, not the code's. Until it is bought, every release says it is unsigned and gives the hash to check. It is the single biggest thing standing between this and a build a stranger will trust, and no amount of work here moves it |
+| **Real-audio accuracy** (Phase 10) | The default osu! export lands within 5 ms on 16.8 % of Python and 5.2 % of Rust Corpus B lines (2026-10-24). This remains research measured one sub-phase at a time, not a release claim |
+| **Dropping objects** (26.12) | Blocked on the `04-ui-ux.md` §9 decision, which is the owner's. If it is settled before the release it joins S-level, and if it is not, the trainer ships without it and says so |
+| **The pitch-kept stretch** (26.6) | The only row in Phase 26 that can fail its own check — Phase 4 measured a phase vocoder moving attacks a median 23-24 ms. It ships when it passes the grade, in whichever version that is |
+| **Other languages** (Phase 24) | TypeScript needs Node.js, which is not installed and which nobody has asked to install |
+| **The compilation on a timeline** | Wanted, unscoped, and not what a second alpha is for |
+
+### How we will know it is ready
+
+1. Every **required** row done, each with the gate named in its own roadmap row green.
+2. The version bumped in `Cargo.toml` in a commit of its own, as 0.1.0-alpha's was: one
+   line moves the artefacts' names, the MSI's numeric version and both executables'
+   version resources, and the sixteen inter-crate pins move with it.
+3. `timeline.md`'s **Unreleased** entries re-headed `v0.2.0-alpha`, which is what that
+   heading is for.
+4. The eight steps of the release checklist, including an install and uninstall on a real
+   profile — the one check a build cannot do for itself.
+5. The notes saying, again and in the same words, that it is unsigned, how to check the
+   download, and what it does not do.
+
+### What it will say about itself
+
+A second alpha is still an alpha. The notes carry the same three honest lines 0.1.0
+carried — unsigned, 16.8 % on real ranked maps with Python's default osu! export, no
+auto-update — plus the one new one: a
+practice copy is a copy, and the tool that makes it proves the sounds are still under the
+red lines, which is the whole reason to prefer it to a faster tool that does not.
+
+R6 override, recorded: the 25 verdicts were never given and the owner ordered the
+prerelease anyway. The sample and the sheet persist in `bench/health_sample.*`, the bar
+stands, R6 moves to 0.3.0 required instead of silently dropping, and the release notes
+name the gap in their first lines.
+
+---
+
+## Release 0.3.0 — the first one with almost no apologies
+
+0.2.0-alpha proved the trainer works; 0.3.0 is the version a stranger can use:
+complete, and with every shipped word backed by a number. One apology survives
+by owner decision — unsigned builds, hash to check — and the notes say so. No
+suffix, but still `0.`, which says honestly that the engine keeps evolving
+underneath.
+
+### Required — the version is not 0.3.0 without these
+
+| # | What | Why it has to be in | Where | State |
+|---|---|---|---|---|
+| R6 | **The library health check's precision sample, verdicts in** — carried from 0.2.0-alpha, where it shipped open by owner decision | The words *actionable* and *weak* are already installed; 0.3.0 either backs them with the 15/25 bar or renames them | [P19](#phase-19--app-sections) | todo — sample and sheet drawn 2026-10-06, verdicts owed |
+| T1 | **The Train section's browser-harness pass, EN and ES** — carried from 0.2.0-alpha | Every other section earned it; the static pass (ids, keys, calls, events) is not a layout check | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-07 — owner ran it ("si funciona") |
+| T2 | **Signed artefacts** (10.13.6): the certificate bought, the MSI signed in `build.py`, SmartScreen path documented | The single biggest thing between this and a build a stranger trusts; no amount of work here moves it until the purchase does | [`11`](11-msi-distribution.md) | **dropped 2026-10-07** — the owner will not purchase a certificate. Every release ships unsigned with the hash to check, as the alphas do; the row returns if that changes |
+| T3 | **The trainer's nicer rows**: ladders (26.16), feel in full with mod emulation (26.9, 26.10), undo and clean up (26.15) | This is what makes the trainer better than the tool it answers, not just more correct | P26 | **done** 2026-10-14 — 26.9, 26.10, 26.15 landed in #97 and 26.16 in #96; the owner's T1 harness pass (#107) covers the ladder, copies, presets, mods, detect and hotkey rows per 26.21; `bench/gates.py train` green including the ladder |
+| T4 | **The trainer's open questions settled**: pitch-kept ships or refuses documented (26.6), dropping objects allowed and executed (26.12, decided yes 2026-10-07), the map picked without memory reading with the live-signal measurement (26.18), one hotkey and presets (26.19, 26.20) | Open questions older than one release become fog; each has its decision procedure written already | P26 | **done** 2026-10-07 |
+| T5 | **File associations and the custom setup screen** (the rest of 10.13.2) | A downloaded release should open what it writes; the MSI currently does not associate | [`11`](11-msi-distribution.md) | **done** 2026-10-07 — stock feature tree (Typical `.osz`; audio five, desktop icon and right-click menu at level 1000). Bare `.osu` and URI stay documented-open: no song, no linker |
+| T6 | **Section labels from repetition** (pending item 3) | The last proposed row inside shipped sections | [P19](#phase-19--app-sections) | **closed for 0.3.0 by measured disposition 2026-10-16** — no labels ship; keep the Kiai card refusing. Four approaches/splits failed the +15-point requirement: baseline 2.0 +7.5/+11.9, 1.5 +9.7/+14.2, MFCC regroup +19.8 tune/+13.8 held-out, fresh disjoint seed-61 baseline +11.5/+14.3 (16/10 maps scored). The latest exploratory intervals cross the bar; this is a scope decision, not a general accuracy claim. Reopen only with a new signal and untouched confirmation split |
+| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | **closed by measured disposition 2026-10-16** — H7 surface shipped 2026-10-07, but clap F1 0.29 vs the 0.59 rule on six songs; H6 recommendation remains withheld after one-shot misclassification. Fresh Rust classifier read median `P(snare)+P(clap)` 0.194 over 2,859 matched claps in 9 readable songs (3 access-denied skips). No accuracy claim; lanes, mismatch rule and sample→role stay gated |
+
+### Deliberately not in 0.3.0
+
+| What | Why not |
+|---|---|
+| **Real-audio accuracy** (Phase 10) | That program is 1.0.0's, measured one sub-phase at a time on Corpus B. 0.3.0 must not claim a number it did not move — same rule as 0.2.0 |
+| **Other languages** (Phase 24) | TypeScript needs Node.js, which nobody has asked to install |
+| **The compilation on a timeline** | Wanted, unscoped, and not what a third release is for |
+
+### How we will know it is ready
+
+1. Every required row resolved; shipped claims have a green gate or measurement, while dropped or withheld work has its owner or measured disposition recorded.
+2. The version bumped to `0.3.0` in a commit of its own, same shape as the alpha bumps.
+3. The checklist in [`11`](11-msi-distribution.md#publishing-a-release-10137) run end to end again, install test included.
+4. `gh release create v0.3.0` **without** `--prerelease`, with notes that no longer apologise except for accuracy — which names its Corpus B number plainly.
+
+---
+
+## Release 1.0.0 — when the timing agrees with the mappers
+
+The core promise, kept: Overtone's red lines sit where ranked mappers put theirs, and the
+number is on Corpus B for anyone to re-run. This is a research destination, not an
+engineering schedule — sub-phases land one at a time or are dropped, and the version
+waits for the measurement rather than the reverse.
+
+### Exit criteria — the version is not 1.0.0 without these
+
+1. **Corpus B headline ≥ 40 % within 5 ms**, median |error| ≤ 5 ms over all scored lines,
+   every refusal explained the way 10.0c explains today's (by design or by genuine
+   hardness, never by silence). For scale: 0.2.0-alpha reads 2.1 %; the −21 ms
+   convention alone accounts for roughly a tenth.
+2. **The 10.0a convention decided and shipped**: whether exported red lines follow
+   ranked maps' −21 ms convention or the sound itself — the numbers above only mean
+   what the mappers mean once this is settled.
+3. **0.3.0's rows all shipped**; no P0/P1 `todo` left in Phases 6, 10 (measurement
+   harness, not the program), 19, 21, 24 (whoever it needs), 25 or 26.
+4. **No shipped word without a number**: the R6 pattern generalised — every
+   actionable/weak-style label in the app backed by a hand-checked sample or reworded.
+5. **The auto-update question answered**: built, or documented why never (the offline
+   rule) with the manual path a stranger can follow.
+6. The 0.3.0 checklist process repeated: bump, full gates, build, install test, signed
+   release notes.
+
+### Deliberately not promised
+
+A date. Phase 10 sub-phases are hypotheses with measurements; the honest schedule is
+"one sub-phase at a time", and any quarter attached to 1.0.0 would be fiction.
+
+---
+
+## Phase 0 — Architecture and gates
+
+Nothing here produces a feature. It produces the ability to know whether later phases
+broke something, which is why it is first.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Toolchain | MSVC Build Tools + rustup MSVC target | — | — | — | no | no | **P0** | **done** |
+| Workspace skeleton | crates + dependency rules | low | high | toolchain | no | no | **P0** | **done** — 7 crates; `check-deps` rule not automated |
+| `python/` (v3 home) | v3 engine + GUI + bridge in their own folder, still runnable | low | high | — | no | no | **P0** | **done** — a copy in `reference/` stays deferred (2026-09-24): it would keep changing while v3 is the app's default engine and its only `.osu` reader/writer |
+| `requirements.lock` | exact versions behind the measured baseline — **F-05** | trivial | med | — | no | no | **P0** | **done** |
+| Golden-vector dump | per-stage attacks, seeds, octave, sections, points | med | **high** | — | no | no | **P0** | **done** |
+| Golden-vector check | stage-by-stage diff, so a divergence names its stage | med | **high** | dump | no | no | **P0** | **done** |
+| Corpus port | the 24 fixtures run through the Rust engine | med | **high** | skeleton | no | no | **P0** | **done** — `overtone-bench golden` |
+| **Octave-agreement gate** | pins absolute BPM per fixture — closes **F-07** | low | **high** | — | no | no | **P0** | **done** |
+| **Density-change gate** | measures the coverage signal — closes **F-11** | low | high | — | no | no | **P0** | **done** |
+| Pulse-hint regression test | documents the one-directional hint gap | trivial | low | — | no | no | P1 | **done** |
+| Perf gate | per-stage budget vs measured baseline | low | med | corpus | no | no | P1 | **done** (2026-09-27) — `bench/gates.py perf`: each announced stage held to the CPU and wall seconds pinned in `bench/perf_snapshot.json`, on three cases covering the grid engine, the long track and the fallback. Single-threaded in a child process (free pools swung the same stage 1.72-3.11 CPU s); fails past 2x and +0.3 s of CPU or 3x and +1 s of wall, so an unchanged stage's 1.11x passes while an injected 1.5 s wait and 2 s of arithmetic were both caught by name |
+| `.gitignore` scoping | stop ignoring `*.osu` repo-wide — **F-09** | trivial | low | — | no | no | P1 | **done** |
+
+**What the gates cover:**
+
+```bash
+python bench/gates.py bpm-snapshot     # 24/24 readings unchanged
+python bench/gates.py coverage         # signal present in 3/3 density fixtures
+python bench/golden.py check           # 27/27 cases match stage for stage
+```
+
+The first pins the octave, which the accuracy benchmark normalizes away. The second
+measures the coverage drop that `_grow_sections` discards. The third is the harness the
+Rust engine is pointed at: 362 KB of committed per-stage vectors across the 24 fixtures.
+
+**Exit: met.** The harness runs, produces v3's numbers from v3, and fails when the Rust
+engine disagrees.
+
+---
+
+## Phase 1 — Core engine port
+
+The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from Part B.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| `overtone-core` types | unit newtypes, serde, errors, diagnostics | low | med | P0 | no | no | **P0** | **done** |
+| Symphonia decode | MP3/AAC/ALAC/FLAC/Vorbis/WAV/MP4 — **removes FFmpeg** (F-06) | med | **high** | — | no | no | **P0** | **done** |
+| Mel-flux envelope | the exact librosa contract (DSP §A.2) | **high** | **high** | decode | no | no | **P0** | **done** |
+| Peak picking | scipy `find_peaks` prominence semantics + parabolic interp | med | high | envelope | no | no | **P0** | **done** |
+| Attack re-timing | sample-resolution 20 % rise walk (DSP §A.4) | med | **high** | decode | no | no | **P0** | **done** |
+| Coherence sweep | `R(f)`, correct phase sign, ×1–4 widening | med | **high** | attacks | no | no | **P0** | **done** |
+| IRLS fit | tolerance ladder, mode re-centring at pass 2, expanding windows | med | **high** | coherence | no | no | **P0** | **done** |
+| Octave decision | accent depth + tempogram hints | high | high | fit | no | no | **P0** | **done** |
+| Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **done** |
+| Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
+| Analysis assembly | beats, local curve, global BPM, stability, residual | med | high | points | no | no | **P0** | **done** |
+| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | **done** (2026-09-27) — measured instead of guessed: `bench/parity.json` places all 155 engine stages the v3 tests touch, and `bench/parity.py` derives from it that **381 of 524** v3 engine tests touch a stage Rust holds, naming the `#[test]` functions that hold each one and failing when a rename leaves the claim behind. The other 143 are outside the Rust engine's surface and say so: 61 shell, 31 python-only, 29 bench, 16 the v2 fallback tracker Rust never grew. It measures the surface, not one Rust test per Python test |
+| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | **done** (2026-09-27) — `crates/overtone-tempo/tests/properties.rs`: the three claims over generated tracks (240 cases each, 60 where growth runs), plus snapping idempotent and bounded and whole-ms output in order. A seeded SplitMix64 generator rather than a property crate, since the build is offline and a printed seed is what a failure actually needs. Three of six failed first: two were the half-a-slot arithmetic a seed error obeys (over the track, and over the 8 s seed window), the third is the row below |
+| ×2/÷2 offset slack | the displayed factor must not tip which bar the first line lands on | low | med | points | no | no | P2 | todo — measured 2026-09-27: the slack in `_points_from_sections` is a quarter of the *displayed* beat, so ×2 moves the first red line 0.455 s on very-noisy-132 (1 of 76 line-and-factor pairs over the 27 golden vectors; the other 6 are ÷2 landing on a beat it declares, which is correct). Reading the slack from the section's own grid leaves factor 1 bit-identical on all 27 and removes it — both engines, so it wants the gate run |
+| Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | **done** (Rust) |
+| **App uses the Rust engine** | Python binding (PyO3) or JSON subprocess, so the shell gets the speed-up | med | **high** | all | no | no | **P1** | **done** — JSON subprocess (`overtone-cli --full`), opt-in in Settings |
+
+Agreement with v3 on all 24 fixtures:
+
+| stage | agreement with v3 |
+|---|---|
+| attacks | exact — worst 0.0001 ms against a 0.05 ms tolerance |
+| coherence candidates | the list contains the grid v3 seeded, every fixture |
+| anchor seed | period within 1e-11 to 2.6e-7 s |
+| octave | **exact on all 24** |
+| sections, meter, red lines, global BPM | all 34 red lines match |
+
+Speed, measured:
+
+| | Python v3 | Rust | |
+|---|---|---|---|
+| 24-track corpus, whole pipeline | 18.5 s | **4.2 s** (decode 0.45 + attacks 2.26 + tempo 1.49) | ~4.4x |
+| 6-minute fixture | 4.6 s | **1.12 s** + decode (attacks + tempo) | ~4x |
+
+Measured on 2026-09-23, like for like. The first version of this table (2.53 s, 8.5x;
+0.51 s, 9.8x) timed only decoding and attack detection on the Rust side against Python's
+whole `analyze_audio`; the bench now times the tempo pipeline too. The 05-dsp-pipeline
+target of "under 3 s" for the corpus is not met.
+
+Two things got there and neither was the language: a **sparse** mel filterbank and an STFT
+**fused** into the mel projection, so the linear spectrogram is never materialised.
+
+**Exit: met for the engine** (golden 24/24 attack for attack and red line for red line).
+Still open: the rest of the v3 unit tests by name. The engine is in the app, opt-in.
+
+---
+
+## Phase 2 — Audio analysis beyond parity
+
+Part B of the DSP doc, in the order its gates can be met.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Parallel + cache | rayon stages, content-keyed cache | med | **high** | P1 | no | no | **P1** | **done** (2026-09-28) — the result cache in the shell (re-analysis 2.04 s → 0.02 s), and the stages: the STFT, HPSS, the structure matrix and the coherence sweep were already parallel, and the onset envelope's decibel and flux passes now are too (0.254 → 0.069 s and 0.185 → 0.031 s on a six-minute track, bit for bit the same envelope). The larger win was not threads: growth was refitting a whole section on every step, and a 128-beat trailing window takes that stage from 1.001 to 0.121 s. The analysis of a six-minute track runs 1.98 → 0.69 s, the 27-case corpus 7.96 → 5.61 s, and 27/27 still match v3 stage for stage |
+| **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** | **ported** — matches the prototype 4/4, 0 FP |
+| 2-D coherence map | `R(t,f)` full-track: better seeds + confidence map | med | high | P1 | no | no | P1 | **ported** |
+| **Elastic grid** | tempo model for ramps; a **selector** beside the piecewise fit | **high** | **high** | IRLS | no | no | **P1** | **ported** as polynomial-in-k — 0.16 BPM on realistic ramps; extreme ramp needs the spline |
+| No-grid verdict | refuse honestly instead of a white-noise BPM | low | med | elastic | no | no | P1 | **done** — Rust, and Python's fallback since 2026-09-23 |
+| SuperFlux ODF | vibrato-suppressed flux | low | med | envelope | no | no | P2 | **rejected** — measured: no win on pads |
+| Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map | no | no | P2 | **rejected** — measured: 5 octave flips |
+| Multi-band flux | 7-band onset functions; also feeds hitsounds | low | med | STFT | no | no | **P1** | **done** |
+| HPSS | harmonic/percussive separation | med | high | STFT | no | no | **P1** | **done** 2-way; residual open |
+| Band-limited re-timing | re-time each attack in its own band | med | low-med | multi-band | no | no | P3 | partial — measured no general win; wiring deferred |
+| Structure analysis | novelty curve → phrases, energy map | med | high | chroma + energy (MFCC built, unused) | no | no | **P1** | **done** |
+| Section classification | intro/verse/chorus/bridge labels | med | med | structure | opt | no | P2 | **done** |
+
+The two starred items were prototyped and measured in [`../proto/`](../proto/) before any
+Rust was written: density detection **4/4 found, 0 false positives out of 23**; elastic
+grid **0.144–0.163 BPM** on realistic ramps. Details in [`../proto/README.md`](../proto/README.md).
+
+What reaches the app goes through `overtone-cli`: structure and section labels (the
+Structure view), the elastic grid (the Ramps card in Timing) and the band features behind
+the hitsound evidence and decision. The per-section octave and the 2-D coherence map are
+measured by the bench and not used by the CLI yet. The percussion-only audition uses
+librosa's HPSS on the Python side.
+
+---
+
+## Phase 3 — Modern UI
+
+**Decision (2026-09-22):** the UI is a **web shell** — HTML/CSS in a native WebView2 window
+(`app/` + `overtone_web.py`, pywebview). It gives real rounded corners, shadows and a
+canvas timeline today on the Python engine, and the same frontend moves to Tauri when the
+Rust engine replaces the backend. The Tk window stays as the classic fallback.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Shell + tokens | window, theme, typography, bridge | med | **high** | P1 | no | no | **P1** | **done** — pywebview now, Tauri later |
+| Binary transport | fast channel for peaks/envelope/attacks | med | **high** | shell | no | no | **P1** | not needed so far — the song travels once as base64 chunks and the page builds its own peaks; attacks and clicks ride the JSON payload |
+| Peak pyramid | LOD min/max waveform, computed once, cached | low | **high** | audio | no | no | **P1** | **done** — min/max per 256 samples, built once from the decoded song in the page |
+| **Timeline** | waveform · onsets · grid · attacks · sections · red lines | **high** | **high** | transport | no | opt | **P1** | **done** — tempo curve, waveform lane, drift lane, beat grid when zoomed, sections, red lines, map ghosts |
+| Zoom / scroll / select | cursor-anchored zoom, range selection, keyboard nav | med | **high** | timeline | no | no | **P1** | **done** for zoom and select — cursor-anchored wheel zoom, ↑/↓; no range selection yet |
+| Tempo curve layer | local BPM over time | med | high | timeline | no | no | **P1** | **done** |
+| Hover readout | time, tempo, governing red line | low | high | timeline | no | no | **P1** | **done** |
+| Stat cards | BPM, points, beats, stability, engine, residual | low | med | shell | no | no | P1 | **done** |
+| Progress panel | per-stage ticks and timings, cancellable | low | med | shell | no | no | P1 | **done** (web shell) — each stage named, the finished ones ticked with their times, a running clock and Stop; the song panel keeps the times |
+| Dashboard | drop target, recents, folder entry points | low | med | shell | no | no | P1 | **done** |
+| Honesty banners | fallback engine, late first line, validation findings | low | **high** | shell | no | no | P1 | **done** |
+| Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | **done** — a strip along the tempo plot's foot, each section in its list bar's colour (90 % and up, 75 % and up, below), in the legend, and the hover names the line's confidence |
+| Spectrogram layer | optional spectral energy | med | low-med | STFT | no | yes | P3 | todo |
+| Light theme | full token counterpart | low | low | tokens | no | no | P3 | **done** — one light token block, canvas ink included; Settings → Theme (System, Dark, Light) |
+| Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | **done** — beat grid, bars brighter; attacks show in the drift lane |
+| Drag red lines | click to select, drag to move (snapped to attacks), double-click to add | med | **high** | zoom | no | no | **P1** | **done** but adding — snaps within 6 px, Alt frees it, one undo; double-click plays instead, and the editor adds |
+| Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | **done** — nearest 1/1-1/4 tick of the governing line, ±30 ms, green ≤5, amber ≤15 |
+| Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | **done** — from the reference card, else the compare card |
+| Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | **done** (2026-09-28) — one line under the stats: the engine that answered, the fit, the steadiness, the line count, and whether to doubt them. Calibrated on Corpus B: of the 9 readings a mapper would reject, falling back and stability under 0.9 flag 5 between them; the other 4 are octave errors that fit beautifully (residual 11-17 ms, stability 0.90-0.98), and the octave margin does not separate them either, so the quiet state says nothing looks wrong and names the octave as what it cannot check. The loose-fit banner, which fired on all 15 ranked tracks at 5 ms, moves to 30 |
+| Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | **done** without an indicator, by fixing the cause — snapping never moves a hand-placed line, and every edit now starts from the line as it is shown, so a nudge moves the shown and written line by exactly its step |
+| Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | **done** — hatched across every lane, and the hover says the first line's grid runs back there; the banner stays for a late first line |
+| Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | **done** (2026-09-27) — `density_hints` in the engine (the prototype moved in, identical to it and to the Rust detector on all 27 fixtures: 4/4 real changes, 0 false positives of 23), a bridge call, and a band on the tempo map with a card saying what to do — ÷2/×2 on that section or a red line there — and the coverage and parity behind it. Corpus B: 5 hints on 19 tracks, none where the map already changes octave because the engine had split those sections itself. Nothing is moved automatically, by decision (DSP §B.2) |
+| Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | **done** — the bar lines stay when the beats are too close to draw (bars 8 px apart or more), and a red line where the bar changes length names the signature on its chip ("150 · 3/4") |
+| Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
+| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** — the engine is asked at each stage it announces, inside the stages too (next row), and once more before a result replaces the one on screen, which stays |
+| Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | **done** — checkpoints in every stage's long loops, asked on the analysing thread only (the STFT, decode and octave tempogram split so each piece is the call it replaces, bit for bit), and the Rust engine's process ended. Pressed 25/50/75 % into each stage of four songs, a stop landed in a median 0.03 s, 0.5 s at most (before: 0.87 s, up to 36 s); no measurable cost on an analysis that is not stopped |
+| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | done — Ctrl+K lists every section, the global actions and every enabled button the open section shows, built when opened; words match in any order, accents ignored (2026-10-25) |
+
+---
+
+## Phase 4 — Playback and timing editor
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Transport | play/pause/seek inside the app | med | **high** | audio | no | no | **P1** | **done** — WebAudio, Space to play/pause, position bar |
+| Live click track | click synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** | **done** — ``click_schedule``, the WAV export's own; scheduled 150 ms ahead, so an edit is heard on the next beat |
+| Playhead sync | position on the timeline at 60 Hz | low | high | transport | no | no | **P1** | **done** — its own layer over the tempo map |
+| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | **done** — seek bar, loop section (sample-exact, the click folded into it), a loop drawn on the map (Shift-drag, ends on the beats; Alt anywhere), and the scrub heard: stopped, the seek bar, the arrow keys and the red-line jumps play a 120 ms grain where they land (2026-09-26) |
+| Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | **done** — from the selected red line, or double-click the map |
+| Grid editor | edit offset/BPM, ±1 ms nudge, ×2/÷2 | med | **high** | P1 | no | no | **P1** | **done** (web shell) |
+| Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | **done** (web shell) — split at the playhead on the section's beat, merge with the next; the sections involved refitted to their attacks, or kept with the reason |
+| **Lock timing point** | protect a verified point from re-analysis | low | high | editor | no | no | P1 | **done** |
+| Undo/redo | one stack per song | med | high | editor | no | no | P1 | **done** (web shell) |
+| Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |
+| In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | **done** |
+| Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | **done**, pitch not kept, by measurement — the section loop at 100/75/50 %, resampled: every attack exactly at t / rate. A pitch-kept stretch (librosa's phase vocoder) put attacks a median 23-24 ms late |
+| Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | **done** — T or the Tap button: taps placed at the sample then sounding (getOutputTimestamp; mapping within -1.1..+0.4 ms, measured), tempo of the run, offset from the click |
+| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | **done** — transport toggle, librosa stem cached per analysis over the chunk transport |
+| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms). For tapping: **done** — the person's own latency, measured against the click and remembered |
+
+---
+
+## Phase 5 — osu! integration
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Full `.osu` reader | all sections, hitobjects, sliders, SV, samples; unknown keys kept | **high** | **high** | — | no | no | **P1** | **done** (Python) |
+| Span-preserving writer | untouched fields come out byte-identical | high | **high** | reader | no | no | **P1** | **done** (Python) |
+| Atomic write + backup | temp+rename, `.bak` never overwritten | low | **high** | writer | no | no | **P1** | **done** |
+| Timing injection | red-line replacement, greens preserved, what plays unchanged | med | **high** | writer | no | no | **P1** | **done** — keeps sampleset/volume/kiai/SV since 2026-09-23 |
+| Parser fuzzing | fuzz the reader | low | high | reader | no | no | P1 | **done** — `bench/fuzz_reader.py`: mutant .osu files (lines, fields, bytes, BOMs, stray line breaks) through the reader, the byte-for-byte writer and 13 consumers of a parsed map; it found four bugs, each fixed with a test; 15,000 mutants on five seeds pass |
+| Beatmap folder import | audio + all difficulties from one folder | low | med | reader | no | no | P1 | **done** |
+| **Map vs detected compare** | per-section BPM/offset diff table | med | **high** | reader, P1 | no | no | **P1** | **done** |
+| Audio/object alignment | do the map's objects land on real attacks? | med | **high** | reader, attacks | no | no | **P1** | **done** |
+| lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 | **done** — decimal offsets in Settings → Offset precision (0-3); measured on the 270 local v128 maps (osu!lazer's export): all read and written back byte for byte, an inject dry run ok on all; 3 carry decimal timing offsets, none a decimal object time (2026-09-26) |
+| **Per-section meter** | each red line carries the bar its own section proved | med | high | meter | no | no | **P1** | **done** |
+| **Downbeat anchoring** | every red line lands on a downbeat | med | high | meter | no | no | **P1** | **done** |
+| Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | **done** for a constant bar |
+| Bar-length change | 4/4 → 3/4 keeping the *beat* | high | med | meter | no | no | P2 | partial — by hand: the point editor's "Beats per bar" sets a red line's bar length (1–16), its BPM and shown offset kept, the meter known from then on; finding a bar-length change at the same BPM by itself stays open (the measures gate's downbeat-4-then-3) |
+| `.osz` export | audio + a minimal `.osu` in a zip | med | high | writer | no | no | P2 | **done** |
+
+The measure-based rows come from comparing against [Tempora](https://github.com/teamkongehund/Tempora),
+which times a song by pairing audio points to a timeline of measures. Overtone automates
+the pairing (`t(k) = offset + k·period`, fitted over hundreds of attacks); the measures
+were what was missing.
+
+---
+
+## Phase 6 — Hitsound engine
+
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). The hitsound engine (P-1 to P-6, H1 to H7) left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
+
+All of [`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md). **In the app since 2026-09-24/25:**
+the copier, the Hitsounds section, the consistency check in the mod report and the
+decision engine's proposals, with detection and decision in Rust behind `overtone-cli`.
+The order of work, and what has to land first, is
+[`15-hitsound-plan.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
+the copier, the section, the check, the decision engine, the editor.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| P-1 Sound events from the map | every object as the sounds it makes (edges, body, spinner end), resolved against the timing points | med | **high** | P5 reader | no | no | **P1** | **done** — `sound_events`; 0 errors on 3,000 local maps, slider lengths held (0.04 % overlap, all in gimmick maps) |
+| P-2 Hitsound field writer | only `hitSound`/`edgeSounds`/`edgeSets`/`hitSample` change; zero-change write byte-identical | med | **high** | P5 writer | no | no | **P1** | **done** — `set_object_hitsounds`, `write_object_hitsounds`: edits over the file's own text; flip and restore on 2,998 local maps sound identical, only object lines move |
+| P-3 Sample playback | samples found as osu! finds them, Overtone's own synthesised defaults, on the playback clock | med | **high** | P4 playback | no | no | **P1** | **done** — `assets/samples.py`, `hitsound_playback`, the transport's "Hitsounds from"; slider bodies loop their slide and whistle slide (2026-09-26); the skin, never read before, asked between the map's samples and Overtone's once one is chosen on the Samples card (H6, 2026-09-26) |
+| P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | **done** — `overtone-cli hitsound-evidence`: 13 probs + every term's contribution + role per attack, baked fit in 0.036 ms (was 3.5 s a call) |
+| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | **done** — `match_sound_events`: binary search, dt and weight inside 50 ms, else unmatched |
+| P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | **done** — `bench/eval_hitsounds.py`: clap-on-2-and-4 F1 0.59, finish-on-downbeat F1 0.42 (medians, 1,000 local maps); the bars H4 must beat |
+| P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | **done** — objects and additions in rows, while a difficulty's hitsounds are picked |
+| H2 Hitsounds section | one difficulty, read only: where each addition falls in the bar, every sound heard one by one | med | **high** | P-1, P-3, P-7 | no | no | **P1** | **done** — `hitsound_report`; on 800 local maps claps sit on 2 and 4 57 % of the time (median) |
+| H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | **done** — `copy_hitsounds` + Mapset view card; 1,494 copies on 300 local mapsets, 0 errors, 95.3 % of sounds matched (median) |
+| Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
+| Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
+| Instrument templates | 13 scored classes, explainable | high | **high** | features | no | no | **P1** | **done** — held-out F1 0.723 on synthetic arrangements it never saw (the old 0.91 judged a re-draw of its training track); Clap 0.15, closed hats 0.40 weakest |
+| Synthetic label corpus | renderer emits audio + per-hit labels | med | **high** | bench | no | no | **P1** | **done** |
+| Template calibration | logistic fit of term weights | med | high | corpus | **light** | no | P1 | **done** — held-out macro F1 0.231 hand-set → 0.723 calibrated (fit on seeds 11–14, judged on 21–24); `calibrated_templates()` ships the fit |
+| Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** (audio side) |
+| Object context | type, pattern, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | **done** (2026-09-28) — every sound event, not every object start: a slider's head, each repeat and its tail, and a spinner's end, each with the sound that edge itself plays. On five ranked maps that is 1,653 of 6,207 events (27 %) which had no context at all, and 1,179 of those (71 %) were being reported with their head's sound. Type, spacing, pattern, combo and the existing hitsound are all per event; positions stay the owning object's, since a repeat's needs the slider path |
+| **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
+| Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | **done** — a row's inspector in the Hitsounds section: the proposal and its two runner-ups with their chances, what was heard under it (three likeliest instruments, place in the bar) and every term signed; the features behind each instrument stay in `overtone-cli hitsound-evidence` |
+| Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | partial — Balanced baked in; Drum-focused ships as `profiles/drum_focused.json`; and eight **genre profiles** (metal, metalcore, punk, rock, jrock, pop, funk, electronic) whose metrical criterion is measured from 748 mapsets of the user's library by `bench/genre_corpus.py`, not written by hand: the share of each addition's placements per sixteenth of the bar. Held out on a third of the maps the table never saw, it beats the old rule in 25 of 27 genre-and-addition cells, median +0.29 bits a placement. Jazz lost and ships no table. Minimal measured. The card preselects the profile the map's own tags claim (`hitsound_genre`, the classifier the tables were measured with), marked as a suggestion and never a choice |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — object lane (P-7) shipped; instrument lanes remain gated because current real-audio class evidence is weak (Phase 6 summary) |
+| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | **done** — the Decide card ticks proposals by row or by bars, swaps one for an alternative, sets volume and sample index by hand, and plays it all over the song as the write would make it (equal to the written copy on 799 of 800 local maps, the last refused alike by both), then previews, writes the file or a copy and undoes once |
+| Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | **done** — `sample_bank` reads a skin or beatmap folder as playback reads it: the 12 hits and 6 slides per set, custom indices, empty and never-played files, what a missing one falls back to (60 local skins and 200 beatmap folders; a beatmap folder read for the first time in a median 2.0 ms). The Samples card in the Hitsounds section shows the song's folder, the playback skin or any folder, plays each sample alone or over the song in place of the sound selected in the table, and chooses the skin playback asks between the map's samples and Overtone's (a setting) |
+| Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | **withheld** — the baked templates misclassify isolated one-shots; current real-song classifier remains weak (2026-10-16 measurement, Phase 6 summary); revisit when class evidence supports it |
+| Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | **done** — the Decide card writes the file or a copy; the Export section writes a hitsound difficulty for the whole mapset, which copied back with H1 leaves its source as it was |
+| Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
+| Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | **done** 2026-10-07 — evidence toggle on the Propose card (map+audio/audio-only): the song's strong attacks matched to the picked map's nearest sound event inside 50 ms, attacks with no object counted not placed, the same inspector/audition/write path fed by ears instead of context |
+
+The F1 numbers are measured on synthetic arrangements the fit never saw, from the same
+corpus generator; they say the classes separate, not how they do on real songs.
+
+---
+
+## Phase 7 — Validation and mapping analysis
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Validation rules | duplicates, very short sections, impossible changes, suspicious offsets, octave mistakes | med | **high** | P5 | no | no | **P1** | **done** — shown as banners |
+| Hitsound validation | missing samples, silent assignments, inconsistent patterns | med | high | P6 | no | no | P1 | partial — in the mod report since H3: claps that break the map's own pattern, finishes and claps with no attack under them; missing sample files are counted by the playback and, measured, not reported: osu! plays the skin's there, and 78 % of 800 local maps ask for one, mostly an index-1 hitnormal left to the skin on purpose |
+| Alignment report | objects not on attacks; attacks with no object | med | high | P5 | no | no | P1 | **done** |
+| Never auto-fix | every finding is a proposal with a consent step | low | **high** | rules | no | no | **P1** | **done** |
+| Density analysis | objects/s over time | low | med | P5 | no | no | P2 | **done** |
+| Rhythm pattern recognition | recurring rhythmic figures | high | med | P2, P5 | opt | no | P3 | todo |
+
+---
+
+## Phase 8 — Automation
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| CLI rewrite | `analyze · timing · hitsound · validate · inject · export · bench` | med | **high** | P1, P5 | no | no | **P1** | partial — Python CLI covers analyse, CSV, click, .osz, inject, folders, and a map checked (`--check`, the mod report, exit 3 on findings); no hitsound or bench commands |
+| Machine-readable output | `--json` | low | high | CLI | no | no | P1 | **done** for analyse |
+| Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
+| Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | **done** (2026-09-27) — `overtone-cli hitsound` takes a mapset and reads the audio once, a map it cannot read costing the others nothing; "Every difficulty" in the Hitsounds view runs it and each difficulty then shows its cached proposal when picked. 8 difficulties in 19.1 s against 148.0 s one by one (7.8x), 7 in 40.1 against 296.4 (7.4x), the same sounds map for map; a switch afterwards 0.55-0.75 s |
+| Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | **done** for the timing work — each song's red lines and locks saved after every edit to `<output folder>/Projects/<song> [<sha>].oto` (JSON, atomic), offered back after its analysis, undo returning to the analysis; not kept: the undo history, the view, notes, earlier versions (14.1's full list) |
+| Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | done — `--watch` re-runs the command line, every other option kept, once the saved file holds still (2026-10-25) |
+
+---
+
+## Phase 9 — Experimental
+
+Nothing here is promised. Each item is a hypothesis with a way to test it.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Drum classifier (CNN) | small mel-patch model vs calibrated templates | high | med-high | P6 corpus | **yes** | opt | P2 | todo, and the case for it is measured. On 7,772 held-out attacks of real songs the shipped classifier ranks a clapped attack above a bare one 52.6 % of the time, where the percussive ratio **alone** reads 0.687 and flux 0.680 — it scores worse than features it already carries, because the response curves were placed on synthetic drums and clip them to zero (the percussive ratio counts from 0.45; real attacks sit at 0.08-0.44). The same features with their curves on real ranges reach **0.743**. So the hand-built features have not plateaued — they were never placed on real audio, and that is cheaper to fix than a model (`bench/templates_on_real_audio.py --fit`). With two labels — claps for snares, finishes for crashes — the engine tells a crash from a snare at **0.491** on real music, a coin toss on the distinction every hitsound proposal rests on, and the same features fitted together with their curves on real ranges reach **0.810** (`--classes`) |
+| Vocal onset model | the weakest classifier; the best ML candidate | high | med | P6 | **yes** | opt | P2 | todo |
+| Learned structure | section labels from a small embedding | high | low-med | P2 | **yes** | opt | P3 | todo |
+| Full drum transcription | complete kit transcription | high | med | classifier | yes | opt | P3 | todo |
+| Timing suggestions | list red lines a map is missing | med | med | P7 | no | no | P2 | **done** — shown in the compare card |
+| Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | **done** — Add beside each suggestion in Map check: that red line alone, carrying the sounds in force, a green where slider velocity needs one; the confirmation names the objects and slider ends it moves and warns at ×2/×4 the map's tempo; backed up, logged |
+| Octave-marked suggestions | mark in the list itself a suggestion at ×2 or ×4 the map's own tempo there, not only in the consent: on Corpus B 5 of 23 were, and they alone moved slider ends past 25 ms | low | med | suggestions | no | no | P2 | **done** — a pill beside the suggestion's BPM (×2, ×4, ÷2, ÷4) with the map's tempo in its tooltip; one rule, the octave finding's band, for the list and the consent. Corpus B: 6 of 23 marked, all 5 slider shifts past 25 ms among them |
+| Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | done — Timing keeps notes at the playhead, flagged over the waveform, listed to seek, edit or delete; saved per audio beside the project, apart from its timing (2026-10-25) |
+| Plugin API | third-party analysis stages | high | low | P0 rules | no | no | P3 | todo |
+| WASM engine | the core in a browser | med | low | P1 | no | no | P3 | todo |
+
+---
+
+## Phase 10 — Human-level timing accuracy
+
+Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **The osu! map lead has
+shipped; engine research continues.** On Corpus B's 1,152 red lines, the default exported
+timing lands within 5 ms on 16.8 % for Python and 5.2 % for Rust; raw engine grids score
+2.0 % and 1.1 % respectively (2026-10-24). The goal is to improve the grid beyond this
+output convention, offline. The larger misses remain tempo/octave errors and drift across
+the live-band maps. The historical raw-grid baseline was 1.7 % for v3 on 2026-09-26.
+
+**Measurement first.** Nothing ships without a measured gain on Corpus B — 20 hand-timed
+ranked tracks across every category — while Corpus A (the 24 synthetic fixtures) stays
+green. The truth has a spread of its own: two ranked maps of the same audio agree on 82 %
+of their red lines within 5 ms, and on 74 % where they differ at all (319 pairs, measured
+2026-09-26), so 90 % of one mapper's lines asks more than a second mapper gives.
+
+**Single-BPM acceptance target:** “almost perfectly timed” means at least **95 % of all
+one-red-line maps in the locked, held-out slice** pass all three together: exact BPM octave,
+absolute BPM error ≤0.05, and red-line offset error ≤5 ms. The primary score counts refusals
+and errors as misses; answered-only accuracy and coverage are also reported, never used to
+hide them. Maps sharing audio are scored individually but clustered by song for confidence
+intervals. A reference may leave the primary set only after the 10.0b audit demonstrates it
+is invalid; every exclusion stays listed and counts against coverage. This is a target, not a
+current result. The current full-slice baseline is 1.9 % within 5 ms, 70.3 % within 0.05 BPM,
+and 72.6 % exact octave on answers. No engine change or release claim is accepted as progress
+toward this target unless it keeps Corpus A green and improves the joint held-out score.
+
+### Stage plan — the Songs folder one genre at a time (owner decision 2026-10-22)
+
+The sub-phases below are worked **stage by stage** rather than over the whole folder at
+once: each stage is a slice of `C:\osu!\Songs` chosen from the library index, gets its own
+baseline, its own fixes and its own confirmation before the next one starts. A fix that
+helps one stage is re-run on every earlier stage; if it costs one of them, it does not land.
+
+**Truth without listening.** The owner's ranked and loved maps are taken as correctly
+timed — mappable by construction — so the mapper's red lines are the reference and no
+listening sheet is owed (this replaces 10.0b's human audit). Songs split by a hash of their
+folder name into **dev** (70 %, where changes are tuned) and **held out** (30 %, only read
+to confirm). A change counts only if the held-out part improves too and Corpus A stays green.
+
+Tool: `bench/stages.py <stage>` with the slices in `bench/stages.json`; `--save-baseline`
+pins a stage's starting point and `--compare` prints every change against it. Per map it
+reports *tempo ok* (every red line at the map's octave and ≤0.05 BPM), *joint 5 ms* (the
+target), and *conv. 5 / 10 ms* — the same after the mappers' convention lead, fitted on dev
+and applied to held out (a diagnostic of the export convention, never an engine change).
+
+| Stage | Slice | Size (2026-10-22) | What it should force | State |
+|---|---|---|---|---|
+| **S1 — Anime, one tempo** | `anime-single`: one red line, anime/opening/ending/TV Size in tags or title | 832 songs, 4,611 maps (582 dev / 250 held out) | octave choice (10.0g) and the grid's phase (10.0e/f) on produced, quantised music — the cleanest place to get both right | **2026-10-25, finished lines at the whole BPM**, held out: beats within 10 ms 72.5 %, octave 89.5 %, tempo ok 75.9 % (68.7 before). Next: the octave (10.0g), then the phase |
+| **S2 — Anime, tempo changes** | `anime-variable`: the same filter, more than one red line | 491 songs, 2,599 maps | section boundaries and which tempo governs each (points, sections) on music that changes on purpose | **2026-10-25**, held out: beats within 10 ms 42.7 → 67.3 %, 20 ms 56.4 → 84.6 % |
+| **S3 — Live bands, drift and changes** | `bands-variable`: My Chemical Romance, The Fall of Troy, Pierce The Veil, PUP, DragonForce, Linkin Park, BMTH, Sum 41, Rise Against … (list in the manifest) | 339 songs, 1,540 maps | a tempo that drifts under a human drummer: many close red lines, elastic grid (10.7), rippling (10.5) | **2026-10-25**, held out: beats within 10 ms 25.9 → 45.9 %, 20 ms 35.6 → 63.4 %, octave 62.0 → 73.7 % |
+| S4 — the rest | everything not in S1–S3, by category as the stages before it show where the gaps are | — | confirmation that nothing tuned on S1–S3 overfits | later |
+
+Each stage closes when its held-out *tempo ok* and *conv. 10 ms* stop improving under the
+sub-phases that apply to it, with every attempt recorded in `docs/timeline.md` (kept or
+dropped, with numbers). 10.0h's 95 % bar is then read per stage.
+
+The gain column below is an **estimate, not a measurement**; each sub-phase replaces its
+estimate with a number or is dropped.
+
+| # | Sub-phase | What it adds | Estimated gain | Status |
+|---|---|---|---:|:--:|
+| 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | **done** — `bench/corpus_b.json` + `bench/corpus_b.py`: v3 1.6 % of 1,152 red lines within 5 ms (0.9 % per track, 46.9 % within 50 ms), Rust 1.4 % (5 of 20 refused); signed error a median +24.0 ms per track |
+| 10.0a | The late reading | explain the +24 ms Overtone reads after the mappers' lines on every category of Corpus B, steady songs included (so not drift); correct it only once the cause is found and shown, with Corpus A green | diagnostic: a constant subtracted takes v3 from 1.6 % to 14.4 % | **explained, not corrected** (2026-09-26, `corpus_b.py --onsets`) — ranked maps put their lines a median 21.4 ms before the sound's first edge (100 held-out maps, IQR 18.1-23.9, all 100 before it; LAME MP3, other MP3 and OGG alike; the decode is exact), and Overtone's grids sit a median 7.9 ms after it (Corpus B); about half of that is the re-timing following the full band's rise, which can come well after the first edge, and the rest is not traced yet. The convention is not in the audio; re-timing on the first difference moved attacks onto the edge (Corpus A 0.16 → 0.08 ms) but made the tempo worse on 6 of 20 songs (better on 4), so dropped. Next: decide whether the export writes osu!'s convention (about -21 ms, at export, never in the engine); then a phase fitted on edge-timed attacks (estimated -3.5 ms) |
+| 10.0b | Human agreement and reference audit | mapper-against-mapper mode plus a read-only `osu!.db` reader; audit a stratified sample to establish the reference convention and identify invalid rows; lock all remaining one-red-line maps as the primary denominator and publish every exclusion | — | **measurement harness built; human audit replaced** (owner decision 2026-10-22: the folder's mapper timings are the truth, see the stage plan above) — `bench/mapper_agreement.py` reads local Stable `osu!.db` v20260924 and the library index read-only, then verifies candidate map identities and byte-identical audio. On 2026-10-15 it found 73 audio groups / 117 pairs across 174 one-red-line maps; 80 pairs have identical timing. All 234 directional scores match BPM≤0.05 and octave, but the independent subset is only 37 pairs / 74 directions: 38/74 (51.4 %) within 5 ms and joint, median signed offset 0 ms (IQR −5..+5). The 84.6 % aggregate within 5 ms is inflated by the 80 copied-identical timing pairs. Seeded stratified review sheet: `bench/.cache/mapper_agreement.md`, 25 pairs; do not mark 10.0b done until human verdicts, the exclusion ledger and the locked denominator are recorded. Local index audit also found 25 stale entries, 7 missing audio files and 20 audio-hash reads blocked by Windows permissions; these are named/skipped, not treated as invalid references. |
+| 10.0c | Refusals on Corpus B | v3 refuses The Raven (pulse gap 0.024, under the 0.07 floor); Rust refuses 5 of 20 and reads FREEDOM DiVE as one 333.33 BPM line in 12/4 where v3 reads 222.22: each explained, and fixed only where the engine is wrong | — | explained 2026-09-30: the 4 Rust-only refusals are by design (no fallback; v3-precision refuses them too), The Raven is refused by both (genuinely hard), and the FREEDOM DiVE divergence is localized to the points stage (razor-margin best-1 among weak meter segments); an earliest-survivor fix measured net-negative and was reverted |
+| 10.0d | Single-BPM bulk truth | the engine against every one-red-line map in the user's Songs folder (17,128 of 25,171, TV Size 2,338): one analysis per song, every difficulty scored, mapper agreement as the repeatable-truth subset | the minimum the engine must do | **measured full-slice** 2026-10-14 — `bench/single_bpm.py` (index-found, disk-checked, cached per audio+engine, TV/sample/cap/jobs flags): 12-song pilot 57/58 BPM≤0.05, signed +24.7 ms (the 10.0a convention, not drift); TV-100 485/608 BPM≤0.05, same-octave 513/608, signed +30.4 ms, ≤50 ms 91.9 %; full slice 3,425 songs / 17,099 maps: BPM≤0.05 11,914/16,906 (70.5 %), same octave 71.8 %, offsets +24.6 ms raw, agreeing subset no better (71.1 %) — the gap is octaves, not mapper noise. **Rust measured 2026-10-15 on the current revalidated slice**, then Python re-scored from cache on the same 3,229 songs / 16,069 maps: Rust 1.3 % within 5 ms, 76.8 % within 50 ms, BPM≤0.05 11,083/14,083 (78.7 % of answers; 69.0 % of all maps), exact octave 10,023/14,083 (71.2 %); Python 1.9 %, 83.5 %, 11,290/15,878 (71.1 % of answers; 70.3 % of all maps), exact octave 11,530/15,878 (72.6 %). Rust: 452 refusals, 23 errors; Python: 21 refusals, 24 errors. The scan skipped 1,059 maps on this run versus 29 in the 2026-10-14 run, leaving 1,030 fewer scored maps in this comparison. Rust does not improve the ≤5 ms result; this remains a measurement, not a gate or a release claim. |
+| 10.0e | Offset convention and error decomposition | on the fixed reference set, separate mapper red-line convention from audible attack onset and engine retiming; report signed bias, per-song spread, codec/genre strata, and the joint score. A global correction is diagnostic only until held-out songs validate it | unknown | todo — current +25 ms bias; subtracting it only reaches 37.1 % within 5 ms, so a constant alone is not the solution |
+| 10.0f | Sub-beat phase estimation | estimate grid phase from multiple independent attack/onset views (first edge, broadband rise, low-band/percussive onset); choose a robust song-level phase and measure each candidate on held-out audio. Keep BPM/octave fixed during this experiment so offset gains cannot mask tempo regressions | unknown | todo — no phase method has yet passed both Corpus A and the held-out real-audio gate |
+| 10.0g | Single-BPM tempo and octave resolution | rank tempo candidates with independent periodicity, low-band/downbeat and subdivision evidence; quantify half/double and non-octave errors by style. Add refusal only for genuinely ambiguous cases, and count those refusals in target coverage | unknown | todo — current answered-map exact-octave rate 72.6 %; no model or prior ships without song-held-out gains |
+| 10.0h | Near-perfect single-BPM release gate | run the locked, song-held-out benchmark and require a song-clustered lower 95 % confidence bound ≥95 % joint pass (exact octave + ≤0.05 BPM + ≤5 ms) across all audited-valid one-red-line maps; refusals/errors remain misses, every invalid-reference exclusion is listed, Corpus A stays unchanged, and per-stratum results are published; keep work open until it passes | measured gate | todo — target, not a claim |
+| 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped. Scored on Corpus B only with each track's own mapset held out, or it finds its own answer | large when matched | todo |
+| 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
+| 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts (estimate) | **shipped 2026-10-24** through onnxruntime: held out, beats within 10 ms S1 +1.1, S2 +0.9, S3 +3.0 points (20 ms: +1.7, +1.5, +5.5); ~5 s per minute of song |
+| 10.4 | Multi-signal evidence | multi-band onsets, HPSS, chroma novelty (partly built in Phase 2) | +5 pts | partial (Rust pieces exist) |
+| 10.4a | Downbeat from the low band | read the 1 from kick and bass onsets, not the broadband envelope: on 88 ranked maps its accents put a claimed bar on the map's 1 only 5 times in 21, mostly one beat early on the snare (9/21 after #40's half-bar rule) | not estimated | todo |
+| 10.5 | Rippling model | tempo from neighbouring downbeats, lineup fix on export — our own implementation of the idea | +12 pts | todo |
+| 10.6 | Bayesian ensemble | combine every voter with mapper priors | +5 pts | todo |
+| 10.7 | Rubato modelling | smooth tempo curve (elastic grid is the start) | +2 pts | partial (elastic grid) |
+| 10.8 | Alignment feedback | virtual metronome vs attacks, micro-adjust | +2 pts | todo |
+| 10.9 | Fine-tune on ranked maps | domain-specific model | +2 pts | todo |
+| 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
+| 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
+| 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, a stop that lands inside the running stage; no cached intermediates |
+| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | **published and complete to current scope** — v0.1.0-alpha shipped 2026-10-03 with SBOM, notices and checksums, then installed/uninstalled on a real profile; supported associations and setup options landed 2026-10-07, portable `data\` isolation 2026-10-04. Code signing was declined by the owner; bare `.osu` and URI associations remain documented unsupported |
+   folder, which [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R4) and shipped
+   2026-10-04. 0.2.0-alpha built and install-tested 2026-10-06 (timeline; MSI 112.2 MB, ZIP
+   138.2 MB) but not published — R6's verdicts are still owed |
+
+**Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):
+Beat This! is MIT down to its weights; BeatNet is CC-BY-4.0; madmom's models are
+non-commercial (CC BY-NC-SA); Demucs's weights are "only for scientific purposes", so
+they do not ship; WiX is MS-RL with a maintenance-fee EULA; Tempora is CC BY-NC-ND, so its
+code is never copied — only its ideas are reimplemented.
+
+**Escape valve.** Some tracks will stay unresolvable (real rubato, aesthetic timing
+choices). For those, an assisted mode — the user marks two downbeats — rebuilds the rest. Built on 2026-09-24 as Assisted timing (Phase 19): the marks are typed in ms, or tapped from a downbeat.
+
+---
+
+## Phases 12–18 — Comfort features
+
+Documented in [`12-comfort-features.md`](12-comfort-features.md). They touch the
+presentation and I/O layers, not the engine, so they run in parallel with the rest.
+
+| Phase | Adds | Status |
+|---:|---|---|
+| 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
+| 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click, loop and scrub heard while stopped; no MIDI tap |
+| 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo, result cache and the output folder (Phase 20), and a project file per song saved after every edit; no journal, no batch |
+| 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import, Songs browser; no lazer |
+| 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |
+| 17 | Plugins + reports | todo |
+| 18 | Advanced input — multi-monitor, loopback capture, video preview, MIDI | todo |
+
+**Output-file policy** (14.4b): the app's exports go under
+`%USERPROFILE%\Documents\Overtone\` unless told otherwise, never next to the installed app
+(Phase 20's output folder).
+
+---
+
+## Phase 19 — App sections
+
+One sidebar entry per job, each shippable on its own, all sharing the one
+loaded song. **Ten are in**: Library, Timing, Structure, Map check, Mapset, Audio
+(2026-09-27), Report, Export, History, Settings. Hitsounds, Compile and Train, and the
+Library's Songs browser and health page, are parked on `parked/desktop-extras` (W1,
+2026-10-26). Inside the sections that exist, the one proposed row still open is
+section labels from repetition.
+
+| Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Session model | one loaded song shared by every section through events | med | **high** | shell | no | no | **P1** | **done** — one song shared by every section |
+| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | **done**, browser **parked** — recents and folder import stay; the Songs browser (search as you type on the SQLite + FTS5 index, Phase 24) left master in W1 (2026-10-26) and is kept on `parked/desktop-extras`; the index itself stays for the measurement server |
+| Library focus | **parked with the Songs browser** (W1, 2026-10-26; `parked/desktop-extras`). Leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | partial — measured on the local Songs folder (4,802 folders, 25,174 maps) and fixed on 2026-09-26: the first scan (263 s) waits on first opens, now 4 at a time (1,211 fresh maps 29.0 → 7.1 s); progress counts folders in the index from 0, 0.25 s apart at most, and says what it removes; unreadable folders and files keep their rows and are named; a damaged index is rebuilt; one-letter search p50 58 → 15 ms; the page says each state (to see in the browser); the health check has its page since 2026-09-30 (counts by verdict, a resumable run with progress, flags with per-line evidence marked actionable or weak) |
+| Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
+| Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
+| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes wait until the templates hold on real audio |
+| Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | **done** (2026-09-27) — the section holds all five. `band_flux` ports the Rust front end constant for constant (identical frame counts and loudest frames on all 27 fixtures, worst band total 6.07e-06 apart), the bridge max-pools each lane to 1,600 columns scaled by one peak, and the view draws them low band at the foot. The picture is the analysis path's own mel, pooled by maximum so a transient survives a column, sent a byte a cell. The balance runs Fitzgerald's median separation on that same mel grid, its two kernels chosen by what they do to signals whose truth is known (pads 0.011, white noise 0.486, the drum corpus 0.26-0.27). The loudness curve is RMS against the song's own peak with the Structure view's sections behind it, and stands without them where the sidecar is not built. The tempo heatmap is `R(t, f)` over the whole track — a 12 s window every 2 s on a shared frequency grid, ridge tracked with octave continuity — with the reported red lines drawn over it, since coherence peaks at a multiple of the pulse as readily as at the pulse |
+| Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
+| Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |
+
+
+### New sidebar modes — proposed 2026-09-24
+
+The sidebar held one entry, and clicking it did nothing. Each mode below builds on engine
+pieces that already exist but that the app cannot reach yet, such as the full beatmap
+reader, the folder scan, `_grid_quality`, structure and classify, the elastic grid, band
+flux and the instrument templates. None needs the network. Every finding carries its
+number and confidence. Every write goes through the atomic writer and keeps a backup.
+
+| Mode | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Mapset check | every difficulty of a folder side by side: red lines, AudioFilename, PreviewTime, lead-in, metadata, kiai spans, density; differences listed, never auto-fixed | low | **high** | P5 reader, folder import | no | no | **P1** | **done** — `mapset_report`, own section |
+| Snap audit | objects off the map's own grid (divisor, ms off), objects before the first red line or past the audio, and how many would go unsnapped if the detected timing were injected | low | **high** | P5 reader | no | no | **P1** | **done** — `snap_audit`, a Map check card |
+| Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
+| Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Marks can be tapped: a run of taps from a downbeat fills them |
+| Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | **done** — `overtone-cli structure`, `structure_view`; section edges where the song starts or stops repeating itself (Structure edge recall, below), each on a proven bar within 1.5 s, the nearest or the one either side where the level changes more (Phrase level rule, below) |
+| Phrase starts on the phrase's bar | snap to the bar the phrase starts on, not the nearest; measured against ranked maps' kiai starts as truth | med | med | Structure view | no | no | P2 | **done** 2026-09-26 — the Phrase level rule, below (timeline). Where a kiai start has an edge within 2 bars, the nearest bar was the kiai's own 35-46 % of the time (20 % by chance), and the level rule 56 % and 49 % on the two samples it was not chosen on. Most kiai starts had no edge within 2 bars then: Structure edge recall |
+| Phrase level rule, confirmed | freeze the rule that just missed (the nearest bar or a neighbour where the level changes most, one bar either side, 0.5 dB) and confirm it on the 673 eligible songs neither sample used; it ships only if it clears +10 points and p < 0.01 there | low | med | Structure view | no | no | P2 | **done** 2026-09-26 — shipped in `structure_view`. On the 673 unused songs, read once: the kiai's own bar 35.5 % -> 48.8 % (+46 fixed, -19 broken, sign test p 0.0011), kiai ends 49.7 -> 51.8 %, clearing the bar set before |
+| Structure edge recall | 88 % of ranked kiai starts have no structure edge within 2 bars: find the edges the novelty curve misses (per-song thresholds, repetition in the self-similarity matrix, energy steps), measured against kiai starts on the same samples, with the edges it adds checked for false ones | high | high | Structure view | no | no | P1 | **done** 2026-09-26 — `structure::phrases` for `overtone-cli structure` (timeline): edges where the song starts or stops repeating (structure features); the novelty curve sat no closer to kiai starts than chance, whatever its threshold. On the held-out sample, read once against a bar set before: kiai starts with an edge within 2 bars 11.6 -> 58.0 %, edges near a kiai start or end 14.6 -> 39.8 % (16.5-17.2 % by chance), 6 edges a song against 3. The hitsound engine keeps the novelty edges. The Kiai card lights fewer songs (99 -> 87 of 500): Section labels from repetition |
+| Section labels from repetition | a chorus needs two repeated families, and the classifier groups sections by mean chroma, which a full mix makes alike: one family holds every section of the median song. The recurrence matrix behind the edges already says which parts return; label from it, measured on the Kiai card against ranked maps' kiai (chorus time under kiai, songs lit) | med | high | Structure edge recall | no | no | P2 | **closed for 0.3.0 by measured disposition** — the classifier stays out of the app; a future signal needs a fresh untouched confirmation split |
+| Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
+| Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | **done** — JSONL log beside the cache, History section with per-write red diff and confirmed restore |
+| Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | **done** — `analysis_evidence` + Timing card: candidates with coherence, seeded/half/double marks, octave margin, residual/coverage; Use writes the BPM into the governing red line through edit_apply |
+| Ramp and live timing | the elastic tempo curve turned into the fewest red lines that keep every attack within a chosen drift (ms) or one line per N bars, with the count-versus-drift trade-off shown | high | high | P22, elastic grid | no | no | P2 | **done** on synthetic ramps — `overtone-cli ramps` + Timing card: longest grids back to back on strong attacks, tradeoff table, max-lines cap; Use loads hand-placed lines, only where the engine recommends ramps. On two real songs it cut the jitter into two-attack grids at the atomic pulse (184 lines, 173-794 BPM on a steady 172), which the selector turned down |
+| Audio swap | the shift between a mapset's old and new audio from full-waveform correlation (onsets biased sub-frame shifts by a frame in the probe), refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | **done** — correlation at 11 kHz (±0.005 ms on real music), tempo twins and different cuts refused, Mapset card with preview and confirmed apply |
+| Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
+| Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
+| Compile | **parked** (W1, 2026-10-26; `parked/desktop-extras`). Many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | **done** 2026-10-03 — [Phase 25](#phase-25--compilation-builder-marathon-maps) rows 25.1-25.11, 25.13-25.17 |
+| Train | **parked** (W1, 2026-10-26; `parked/desktop-extras`). A practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | **done** 2026-10-06 — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 |
+
+Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
+**Structure** · **Map check** (Snap audit and Reference inside) · **Mapset** ·
+**Hitsounds** · **Audio** (Offset lab inside) · **Compile** · **Train** · **Export** ·
+**Report** · **History** · **Settings**.
+
+Build order:
+
+1. Mapset check.
+2. Snap audit, the safety check before an inject.
+3. Reference timing, which makes the app useful on hand-timed live songs, where detection
+   is weakest.
+4. Assisted timing, so a refusal becomes a guided step instead of a dead end.
+5. Mod report.
+
+Structure runs on the Rust engine (in since 2026-09-24); Ramps and Evidence follow it. Audio
+swap needs two analyses, which run one after the other: the one-heavy-job-at-a-time
+limit applies.
+
+### Song import from a streaming link (proposed 2026-09-25, blocked)
+
+Paste a track link, confirm it is the right song from its metadata, get the audio into
+the app, and analyse its timing. Wanted as a Library entry: link → metadata
+confirmation → audio file → the existing analysis.
+
+It is recorded here but not built, because as specified it cannot ship under the
+repo's own rules and has no lawful audio source:
+
+- **Offline is a product property** (engineering rule 6; "Cloud anything: Never" in
+  [Rejected ideas](#rejected-ideas)). Fetching metadata or audio from Spotify is a
+  network call with an external API, so this needs the rule lifted first, deliberately,
+  not slipped in.
+- **Spotify's Web API gives metadata, not audio.** It returns track, artist, album and
+  ISRC, never the full track file; full audio lives behind DRM or outside the terms of
+  use. There is no "download the audio of this link" endpoint to call.
+- It would need an API credential (client id/secret) stored and a consent step for the
+  audio's origin, like every other `.osu` write in this roadmap.
+
+What fits the rules today and already covers half the job: drop the audio file (or a
+beatmap folder) into Library, and fingerprint reuse (Phase 10.1) answers "is this song
+already mapped" from the user's own Songs folder. If the rule ever changes, the shape
+above — metadata confirmation before anything downloads — is the starting point.
+
+---
+
+## Phase 20 — Options and settings
+
+| Option | What it controls | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Output folder | where exports go; `Documents\Overtone\<Artist - Title>\` by default | low | high | 14.4b | no | no | P1 | **done** — asked (the dialog opens there) or not (a free name, never over an earlier export) |
+| Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | **done** — 0-3 decimals for copy, .osz and inject |
+| Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
+| Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | **done** — beside the minimum confidence in the Detection drawer: the grid analysis's sections read again, the lines it would add dashed on the map and the ones it would drop faded; applied as one undoable edit. Corpus B: candidates below 75 % on 13 of 15 grid tracks; Corpus A: none |
+| Live threshold on a fallback result | the same trial for the beat tracker's result, read again from its stored beats; a rebuild at its own pulse reproduces it since 2026-09-26 (32 of 32 fallback analyses, 11 did not) | low | low-med | fallback rebuild | no | no | P3 | **done** — the slider reads a fallback result's beats again; 7 of 7 fallback results identical at their own 75 %, and the threshold moves red lines on all 7 |
+| Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
+| Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
+| Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |
+| Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | **done** — 1-4 clicks per beat, bar accent on/off, levels in the transport; one sound |
+| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme; since 2026-09-27 the theme also switches from the rail in one press, showing the theme it would move to, with Settings' three-way following it |
+| Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | done — the keyboard sheet moves every single-key action (play, tap, loop, click, red lines, the sheet); a key another action holds, a digit, Enter, Esc or an arrow is refused; chords stay fixed (2026-10-25) |
+| Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
+| The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
+| Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
+| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | done — Settings → Settings file saves the page's values atomically and opens them back, each checked; a folder missing on this PC is skipped and named (2026-10-25) |
+| Diagnostics copy-out | one button, in Settings, that copies the product version, the build's commit and time, the platform, the Python, whether the copy is portable and where its data is, the Rust engine found and the library index, as plain text. The window shows the text it copied, so the user sees exactly what leaves; nothing is sent. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | low | **high** | self-check, settings | no | no | **P1** | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, Settings card, 2 tests [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
+
+---
+
+## Phase 21 — Map tools
+
+Everything here writes to a `.osu` only as a proposal with a preview and a
+consent step, through the same backup-and-keep-what-plays writer as inject.
+
+| Tool | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | **done** — `inject_diff` pairs by order with exact end-of-span drift; both inject previews carry it, the single confirm lists changed lines, inject-all rows show worst drift |
+| Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | **done** — `inject_mapset` runs every .osu through the same inject (one bad map never stops the rest); Export row with per-file preview and one confirmation, each file backed up |
+| Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | **done** — engine half carries the audible state so sound never changes, second run a no-op; Structure card with preview counts and confirmed write with backup. Since 2026-09-26 every point inside a chorus is lit and touching choruses stay lit (it lit 4 % of the first chorus on a real map before) |
+| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
+| Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |
+| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
+| Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | **done** — sections where the map sets its own volumes kept; a section at one volume set all the way through (its start, greens, a green at each red line inside, the next section's own volume given back); the scale from the loudest section's longest-held volume, 5 % floor. On 800 local maps: 20 % of sections set, 77 % left to the mapper, none of those changed |
+| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | **done** where it cannot move a slider — first red's BPM is the reference; every green under a BPM change scaled by reference over its BPM, a green at each red line, spans already constant kept, a second run refused through History's scroll profile; a map with a slider in a span it would scale refused, by decision (a slider lasts by its SV, and resizing it would change its shape: see Rejected ideas). Of local maps with a BPM change: mania 100 of 117 written, taiko 103 of 132, standard 22 of 249 |
+| Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | **done** — snapped-before stays snapped via the diff's drift, off-grid listed never touched; Map check card with preview, one confirmation and backup |
+| Snap-divisor map | where the song needs 1/3, 1/4 or 1/6, per section | med | high | attacks | no | no | P1 | **done** — coarsest grid per attack within 15 ms, verdict by attack weight; read-only Timing card, one line per section |
+| Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | **done** (2026-09-27) — `swing_lane` reads each 8 beats from their own beat: straight, swing or triplets, with the eighth's place, the pair's ratio and the editor snap. A lane on the tempo map (only while something swings, so a straight song's chart is unchanged) and a Swing card naming each stretch. On 34 local maps at the map's own pulse it agreed with the mapper's own late snapping on 134 of 185 swung windows (72 %), 6 % of straight windows holding late objects; the two synthetic fixtures read their known swing to 0.005 of the beat |
+| New mapset from audio | encode MP3/OGG at a target bitrate, trim lead silence and re-offset | med | high | `.osz` | no | no | P2 | partial — `.osz` without encoding |
+| Metadata from tags | artist/title/source from the audio's tags, romanised and Unicode kept apart | low | med | `.osz` | no | no | P2 | **done** — a map beside the audio first (its [Metadata] as written), else the tags (Unicode as written, romanised only when ASCII); on 249 local audio files half carry a title tag, and those match the mapper's title 78 of 125 times |
+| Audio file check | bitrate, sample rate, length, clipping and lead-in against ranking rules | low | med | decode | no | no | P2 | **done** — header facts plus raw-decode measurements, findings on the tool's own bars (no ranking number encoded, none verifiable offline); Mapset card beside Audio swap |
+| Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
+| Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | **done** (2026-09-27) — both as text to copy, from Export. `verify_export` reads each back and compares its grid with Overtone's, which is the only check possible offline and is what the page reports; no game has opened one, and nothing claims otherwise. All 33 pinned readings round-trip: worst beat error 0.478 ms for Quaver (its whole-millisecond offsets) and 0.0005 ms for StepMania |
+| Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | **done** (2026-09-27) — `read_timing_file` reads a `.qua`, `.sm` or `.ssc` into the same shape an `.osu` grades in, so Map check takes one where it took a beatmap and names the game it came from. A real `.qua`'s SliderVelocities are not read as timing and a `.ssc`'s per-chart tags are not read as the song's; a rate that cannot be played is refused for StepMania, whose times accumulate, and skipped for Quaver, whose do not |
+| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare, library index | no | no | P2 | partial — engine half (2026-09-26): every map graded by the reference grading where it plays, kept in the index, resumable, reruns grade only what changed; 5.1 s per audio file with the Rust sidecar, about 7 h for 5,236 local audio files (estimate). Its flags do not yet separate maps that move from steady ones (23 of 60 caught, 26 of 44 steady flagged). Decided 2026-09-30: the page lists flags with evidence, marking solid fits actionable (12 or more attacks, share 0.60 or more) and the rest weak leads -- presentation only, no engine change; 41 flags read 32 actionable and 9 weak on 20 real files. A hand-checked precision sample is still open |
+| Sample kit analysis | classify a skin's samples and suggest a mapping | med | low | P6 | no | no | P3 | partial — the measuring half (2026-09-27): `bench/genre_samples.py` reads the sample files the genre corpus mapsets ship and reduces each to decay, attack, centroid, rolloff, noisiness and seven band ratios, and `bench/fit_kits.py` fits Overtone's own synthesiser to those medians, per genre and role, into `assets/kits.json`. Applying a kit to a map — copying it in under a custom index and writing the objects' sample set — is the half still to come |
+
+---
+
+## Phase 22 — Engine robustness and speed
+
+| Item | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | **done** — opt-in; v3 takes over with a note where Rust has no answer |
+| Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | **done** (2026-09-26) — measured first: the tracker's beats sit on the onset envelope's peaks, a median 7.4-8.9 ms after the hits on Corpus A forced (13-17 ms under noise) and 21-24 ms after the sound on the four Corpus B songs that fall back. Each song's lag is read on the waveform (the median of its beats re-timed as the precision engine re-times attacks) and taken off every beat and red line: Corpus A -0.2..+0.2 ms, those four songs 4-10 ms after the sound, as the precision engine's grids; the tempo reading is untouched. Each beat on its own re-timed attack was tried and dropped: it scattered the real songs' beats |
+| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | **explained** (2026-09-26, 10.0a) — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27); on Corpus B v3's red lines sit a median +24.0 ms after the maps'. Read from the audio itself, the sound starts a median 21.4 ms after ranked maps' lines (100 held-out maps, every decoder) and 7.9 ms before Overtone's (Corpus B): a convention of the maps plus a few ms of the engine, not the MP3 decoder. Not corrected: the correction waits on a decision (10.0a) |
+| Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | **done** — spectrogram and tempogram in blocks since audit #38 (3.7 → 0.55 GB peak on a 5-minute song, the same red lines); a failed envelope now reaches the caller instead of being swapped for the flux one (2026-09-26) |
+| Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | **done** — the window runs both engines once on 20 s of clicks in the background (not when opened with a song to analyse): a first grid analysis 2.65 → 1.09 s, a first fallback one 5.74 → 2.66 s (medians of 3 fresh processes) |
+| Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | **done** (2026-09-27) — the grid carried through growth is refit on the last 128 beats, not on the whole span, which the final fit does anyway. Every synthetic reading identical (golden 27/27 stage for stage); the sections stage 2.72 s -> 0.19 s on long-6min and **unchanged on real music**, where that stage is seeding and boundary settling. Kept for the quadratic, not for a corpus speed-up. Corpus B: 18 of 19 identical, camisa-negra 3 lines -> 1, losing a section at 4x the map's tempo |
+| Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
+| Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | **done** — missing, empty and junk files named |
+| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | done — both shells share `load_config`: a wrong-typed key is dropped to its default, and a BOM file (Notepad) is read, 2026-10-25 |
+| CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | **done** — redirected, the CLI writes UTF-8; a console is left as it is |
+| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | done — the classic window and the web shell both report the error, tested |
+| Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | **done** since audit #36 — every write keeps what it replaces (`.bak` first and for good, then `.bak2`, `.bak3`…, never overwritten, skipped only when the newest already holds those bytes) and returns the backup's real path; tested (`test_backup_keeps_the_pristine_original` and the tests after it) |
+
+---
+
+## Phase 23 — Quality gates
+
+| Gate | What it catches | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Golden fails on a missing stage | a skipped stage counts as a failure, not a pass | low | high | golden | no | no | P1 | **done** |
+| Real-audio smoke set | a handful of local songs that must keep analysing, never refused | low | **high** | — | no | no | P1 | **done** — `bench/gates.py real-audio`: six Corpus B tracks, one or two per engine path, pinned in `bench/real_audio_snapshot.json`; tracks not held here are skipped and named (2026-09-26) |
+| Robustness gate | the audit's probes (short audio, odd rates, junk `.osu`, read-only files) as one command | low | high | — | no | no | P1 | **done** — `gates.py robustness`; the CLI tests run the same probes on v4 |
+| One fixture manifest | Python and Rust read the same list; no Rust gate passes on missing audio | med | med | bench | no | no | P2 | **done** (2026-09-27) — `bench/fixtures.json`, derived by `bench/fixtures.py` from the Python definitions and the committed vectors, read by the Rust bench for its cases and its render hints; `facts.py` and a test hold the file to the code. It closed a real gap: the three coverage fixtures had no golden vector, so the Rust gates could not see them and the density gate carried a copy of their names — a fourth reached no gate at all. Missing audio already failed all five Rust gates, checked with an empty bench/audio/ |
+| Facts check | documented test counts and crate lists checked against the repo | low | med | — | no | no | P2 | **done** — `bench/facts.py` |
+| Bench times the tempo stage | the Rust-vs-Python speed claim compares like with like | low | low | bench | no | no | P3 | **done** — #54 |
+| `.gitattributes` | `.osu` fixtures keep their CRLF | trivial | low | — | no | no | P3 | **done** |
+| Layout-fit check | no control clipped at the minimum window size | low | med | GUI | no | no | P2 | **done** — classic toolbar |
+| Reference gate | a hand-timed map graded as timed: the true map clean, a late map one shift, a moved line flagged alone, a BPM 0.1 % off drifting | low | high | reference timing | no | no | P1 | **done** — `gates.py reference` 24/24 |
+| Assisted gate | every corpus section marked like a person would, one and four bars apart: the grid within the benchmark's bar, covering the section, stopping where the next grid parts; noise, pads and silence refused | low | high | assisted timing | no | no | P1 | **done** — `gates.py assisted` 70/70 |
+
+Sources: the 2026-09-22 review passes (128 proposals, each checked against the
+code by a skeptical judge; the ones already built or only relevant to the old
+Tk layout are left out) plus the map tools, options and exports above.
+
+---
+
+## Phase 24 — Other languages
+
+Features better served by another language than Python, Rust or JavaScript, evaluated one
+at a time in [`14-other-languages.md`](14-other-languages.md): value, viability on this
+project's rules (offline, one-line local gates), and how each stays in step with the rest.
+
+| Language | Feature | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | **done** — `overtone_library.py` + `library.sql` (schema 2): search p50 10 ms (one letter 15 ms), same-audio 6-12 ms once hashed, the library health table |
+| **TypeScript** | the web shell type-checked against the bridge (`@ts-check` + JSDoc, `tsc --noEmit`), payload types generated from Python | med | high | Node.js (dev only, not installed) | no | no | P1 | todo — after Node |
+| **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET SDK (dev only; 10.0.401 installed per user on 2026-09-26, for the MSI) | no | no | P2 | todo |
+| **WGSL** (WebGPU) | spectrogram layer computed on the GPU | med | low-med | WebView2 WebGPU | no | **yes** | P3 | todo |
+| **Lua** | user rules for the mod report, sandboxed | med | low-med | `lupa` or `mlua` | no | no | P3 | todo |
+| WiX (XML) | the MSI (Phase 10.13) | med | med | WiX toolset | no | no | — | **built** — `installer\Overtone.wxs`, WiX 5.0.2 (MS-RL; 6 and 7 ask for the OSMF EULA, not accepted) |
+
+Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the document.
+
+---
+
+## Phase 25 — Compilation builder (marathon maps)
+
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). Compile left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
+
+One map out of many: pick difficulties from several songs, put them in an order, and get a
+single `.osu` and a single audio file in which every borrowed object falls on the same beat
+of the same sound it fell on in its own map. Asked for on 2026-10-03, with
+[`frankhjwx/osu-map-combiner`](https://github.com/frankhjwx/osu-map-combiner) named as the
+reference: one script, FFmpeg required, a config file of about thirteen fields (`osuPath`,
+artist and title with their Unicode twins, difficulty name, mapper, AR/CS/OD/HP, `dstPath`,
+`generateAudio`). Its source was read on 2026-10-03, not run here. What it leaves out is
+most of the specification:
+
+| The reference | What breaks | This phase |
+|---|---|---|
+| Timing points found with `"Timing" in line` | Matches a path or a comment that happens to contain the word, and misses nothing else because every line in the section is one | The committed reader (`read_osu_beatmap`): every section kept in file order, reds parsed, greens raw, unknown keys surviving a round trip |
+| Hardcoded format `v14` | Refuses or mangles v5–v13 and lazer's own files | Every version the reader takes, the version written chosen and reported |
+| The sixth field treated as a slider end time | In the format the sixth field is a slider's curve, a spinner's end time and a mania hold's `end:sample`; one rule cannot serve the three | One rule per object kind, and `unparsed` objects carried through untouched with a count |
+| Breaks, combo colours, events, editor settings dropped | Hit the compilation as HP drain with no break, a black background and lost bookmarks | Breaks rebuilt at the junctions, bookmarks and preview point merged, backgrounds per segment through an `.osb`, every dropped event counted and named |
+| `SliderMultiplier` adjusted only for negative BPM | Every slider of every segment but one scrolls and ticks at the wrong speed | Per-segment velocity compensation on green lines, with a refusal when a slider cannot be represented |
+| Filenames encoded GB18030 | Mangles any non-Chinese Unicode title | Unicode metadata kept as it is, filenames made ASCII-safe through the existing `_safe_component` |
+| FFmpeg required | A second install, and a network to get it | libsndfile, already pinned: it writes MPEG Layer III and Ogg Vorbis offline (verified 2026-10-03, libsndfile 1.2.2 through soundfile) — the same reason FFmpeg left the engine (**F-06**) |
+| Zero crossfade, a blind 5 s cut, 3 s fades | A click at every junction, and a cut that can land inside a hit | Cuts at a sample the builder names, fades and crossfades per junction, and the junction proven against the source audio afterwards |
+| No validation | A missing audio file, an empty folder or a broken object ends in a traceback | A repair pass that reports, and a dry run that shows the whole plan before anything is written |
+
+Nothing here is new engine work. The pieces exist: the reader and the byte-identical writer
+with its atomic write, backup and write log (Phase 5), the sample bank and sample-index
+machinery (Phase 6), `shift_samples`/`audio_shift` for proving a cut landed where it says,
+`mp3_gapless_info` for an MP3's own encoder delay, the structure view for picking a chorus,
+the library index for finding the maps, snap audit and reference timing for checking the
+result, and `export_osz` for the output. The phase is assembly, bookkeeping and refusals.
+
+### The decision this needed
+
+[`04-ui-ux.md`](04-ui-ux.md) §9 ruled out "beatmap *editing* beyond hitsounds and timing".
+A compilation copies objects, so the rule had to be settled before the phase could be
+written. Decided by the owner on 2026-10-03, and the rule now draws the line where the
+reason for it was: **Overtone never draws, moves or reshapes an object on its own.** It may
+copy whole maps' objects unchanged and move them in time together with their audio, which
+is bookkeeping, not mapping. Inventing objects from the audio stays out, so the Rhythm
+guide's decision is untouched.
+
+Credit is part of the feature, not a footnote: every source mapper, difficulty and song is
+named in the output — in `Tags`, in a `credits.txt` beside the `.osu`, and in the build
+report — and the builder says in the UI that posting someone's map inside a compilation is
+the mapper's call, not the tool's.
+
+### The compilation document
+
+The plan is data before it is a file: an ordered list of segments plus the settings that
+apply to all of them, saved as JSON beside the cache so a build is reproducible, a long
+build can be resumed, and a report can be re-read without the sources.
+
+```
+{ "segments": [ { "osu": <path>, "audio": <path>, "range": {...}, "trim": {...},
+                  "gain_db": 0.0, "transition": {...}, "repairs": [...] } ],
+  "settings": { "audio": {...}, "difficulty": {...}, "hitsounds": {...},
+                "events": {...}, "metadata": {...}, "output": {...} },
+  "report": { "refusals": [...], "warnings": [...], "measured": {...} } }
+```
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| 25.1 Compilation document | the plan as JSON: ordered segments, per-segment settings, global settings, repairs and refusals; reproducible, resumable, diffable | low | **high** | P5 reader | no | no | **P1** | **done** 2026-10-03 — `plan_compilation`: the order given is the order built, each segment placed by a **whole-millisecond** shift with the junction absorbing the remainder, so a source's own snapping is never re-rounded. Refuses two modes, two mania key counts, a segment with no song, the length and object ceilings, and under `strict` any repair at all |
+| 25.2 Segment read and repair | each source through `read_osu_beatmap`, then the repair pass below: every fix logged with the line it touched, nothing guessed silently | med | **high** | 25.1 | no | no | **P1** | **done** 2026-10-03 — `read_segment` in `python/overtone_combine.py`: 20 repair codes, each saying whether anything was actually done, and five refusals. A file that will not read comes back refused, not raised, so a plan can show all five songs including the broken one |
+| 25.3 Time shift, every field | one rule per timestamp the format has (list below), applied as whole milliseconds so a stable client reads what lazer reads | med | **high** | 25.2 | no | no | **P1** | **done** 2026-10-03 — `combine_beatmap`: object starts, spinner and hold ends, every timing offset, breaks, bookmarks and the preview point, each by its own rule; a slider's curve untouched. Each segment is pinned at its start with the grid and sound its own map had there, the governing red line placed by **whole beats** so the phase is the mapper's (measured: worst 2.84e-04 ms off its own beat, which is the three decimals the file writes). The report's `pending` list names what rows 25.8, 25.9, 25.10 and 25.13 still owe |
+| 25.4 Audio cut and join | decode each range, cut at a named sample, join, write one file | med | **high** | 25.1 | no | no | **P1** | **done** 2026-10-03 — `build_audio`: each segment written at `round(at_ms * rate / 1000)` frames, so the audio lands on the same rounding the objects did; a block at a time, so the peak working set is one block and not one compilation. **MP3 by default, and Ogg is not offered**: writing more than about ten seconds of 44.1 kHz stereo Vorbis kills the process in this libsndfile build (exit 127, nothing to catch), and Opus refuses 44.1 kHz. WAV is there for a lossless check. Output rate is the highest any segment brings, stereo if any is stereo, resampled per segment with `resample_poly` |
+| 25.5 Decoder-delay accounting | the output encoder's round-trip delay measured rather than assumed, and the sources' own delay with it | med | **high** | 25.4 | no | no | **P1** | **done** 2026-10-03 — measured, and **there is nothing to compensate**: libsndfile 1.2.2 encodes MP3 through LAME 3.100, writes the gapless tag (delay 576, padding 972) and strips it again on read, so a click written at *t* comes back at *t* — 0.0 ms on four probes through a 45 s file, frame count identical, correlation peak 1.000. `verify_audio` keeps it honest per build by correlating each segment against its own song (`shift_samples`), and the gate runs it on every format. What osu!'s own decoder does with the same file is the Offset lab's question, not this row's |
+| 25.6 Loudness match | per-segment gain so one song does not arrive twice as loud: integrated loudness per segment, one target, the applied dB shown per segment and capped against clipping | med | high | 25.4 | no | no | **P1** | **done** 2026-10-03 — `segment_loudness` is ITU-R BS.1770 integrated loudness: K-weighted, 400 ms blocks every 100 ms, both gates. The two filters are **derived** from the standard's analog parameters rather than copied at 48 kHz, so a 44.1 kHz song is measured without resampling; a test checks the derivation reproduces the published 48 kHz coefficients to 12 places, and another that a 1 kHz sine at -20 dBFS RMS reads -20.0 LUFS, which is the standard's own calibration. `loudness_plan` matches the median (or the first, the quietest, or a number), caps at 12 dB and at the **sample**-peak headroom — true peak needs oversampling and this is a headroom rule, not a compliance claim — and says which cap bit. In the app: Match volumes, on the build's own lock, each song's level beside its gain |
+| 25.7 Junction placement | where one segment ends and the next begins: a gap in milliseconds or in bars, the next segment starting on a downbeat, fade in/out lengths — each junction its own settings | med | **high** | 25.4, P5 reds | no | no | **P1** | **done** 2026-10-03, minus the crossfade — the gap in **bars of the outgoing song** (it is its groove the gap finishes), measured off the grid in force where that segment's range ends; `start_on_downbeat`, which pulls each range back to its own bar line and never forward, so the padding grows and no object is lost; and fade in/out per plan or per segment, the 5 ms declick guard surviving underneath whatever is asked for. The **crossfade is not built, by decision**: see Rejected |
+| 25.8 Hitsound merge | sample indices remapped so no two segments collide, custom sample files copied and renamed, identical files deduplicated by content hash, per-object `filename` overrides followed, and a segment's bank kept whole: what a segment sounded like is what it sounds like | med | **high** | P6 sample bank | no | no | **P1** | **done** 2026-10-03 — `sample_plan` gives every segment its own indices and `build_samples` copies the files under their new names, never touching a source folder. Index 0 is never remapped (on a point it means the skin's, on an object the point's: instructions, not files) and index 1 is, since the bare `soft-hitclap.wav` is a name two segments can both want. The timing lines, the pinned lines and every object that names an index or a file are rewritten — a slider's sample is its eleventh field, a mania hold's shares the sixth with its end time. A file an object names keeps its name where it can; two with one name and different bytes rename the second, two with the same bytes share one copy (SHA-1). An index whose file is missing stays missing, so osu! falls back to the skin exactly as the source did |
+| 25.9 Slider velocity compensation | each segment keeps its own slider velocity under the one `SliderMultiplier` the map can hold, or the build refuses by name | med | **high** | 25.3 | no | no | **P1** | **done** 2026-10-03 — the ratio of a segment's own multiplier to the one written goes into **every** green line it brings and a new one after **every** red line it brings, because a red resets velocity to 1.0 and 1.0 under another multiplier is the wrong speed. A segment needing a velocity outside the 0.1x-10x a green line can carry refuses the build, naming the segment and the multipliers that would hold it. `SliderTickRate` has no such escape — nothing in a green touches it — so a segment whose tick rate differs is reported and ticks at the compilation's rate |
+| 25.10 Difficulty reconciliation | AR, OD, HP, CS and stack leniency cannot vary inside one map: pick a segment's values, a hand-set value or the median, and show every segment's deviation from what was picked, in its own units | low | high | 25.1 | no | no | **P1** | **done** 2026-10-03 — `difficulty_plan`: the first segment's (the map the compilation opens with), the median, or a dict of values, any field it leaves out falling back to the first's and then to osu!'s own default. Every deviation is reported per segment in its field's own units, because this is the one promise a compilation cannot keep: AR 9 and AR 7 cannot both be true, and the honest thing is to say which maps are played at numbers their mapper did not choose |
+| 25.11 Breaks, kiai, bookmarks, preview | a break written into every junction gap long enough for one, each segment's kiai spans kept, every source bookmark shifted plus one per segment so the result is navigable, and the preview point taken from a chosen segment | low | high | 25.3 | no | no | **P1** | **done** 2026-10-03 — the junction break opens after the previous segment's last **sound** (a spinner is still playing after it starts) and closes before the next one's first object, with 200 ms of air either side; breaks that meet are merged into one, and a break with no object on both sides of it is dropped with a count, since osu! draws a break between objects and not off the end of a map. Kiai travels in the timing lines and in the pinned line, so a range starting mid-kiai plays lit and the span cannot leak into the next song. A bookmark marks where each segment starts. `preview_from` takes ``"first"`` or a segment number; breaks and bookmarks can each be turned off |
+| 25.12 Events and backgrounds | one background, or each segment's own through an `.osb` with timed fades; video and storyboard dropped with a count and a reason rather than silently | med | med | 25.3 | no | no | P2 | **rejected** 2026-10-06 — decided, not deferred (see [Rejected ideas](#rejected-ideas)): the build carries the first segment's background and counts what it drops |
+| 25.13 Metadata and credits | a title and artist from a template or by hand, Unicode kept, every source mapper and song in `Tags`, a `credits.txt`, and the per-segment credit in the report | low | high | 25.1 | no | no | **P1** | **done** 2026-10-03 — `metadata_plan`: the artist and title the songs agree on, else "Various Artists" and "Compilation (N songs)", with a Unicode twin only while the romanised field is still the songs' own. `Creator` is a **placeholder** the report flags, because osu! wants the uploader's name there and no source mapper made this. Tags carry every mapper and artist as deduplicated tokens, and `credits_text` writes the `credits.txt` that travels with the mapset: every song in playing order with its difficulty, mapper and source file, and the one thing the tool cannot decide — whether those mappers are willing |
+| 25.14 The Compile section | its own sidebar section: pick maps, reorder them, a card per segment (source, range, gain, gap, repairs), the dry-run report, then Build with its own progress | high | **high** | 25.1-25.13, P3 shell | no | no | **P1** | **done** 2026-10-03 — the twelfth section, four cards: the songs in playing order (the app's first reorderable list), the joining settings, the names with the live `credits.txt`, and what it would build. Eleven bridge calls, every one of them returning the whole state: a change re-plans in Python, so the list and the numbers under it cannot drift apart. The build runs on **its own lock**, not the analysis's — the two refuse each other, because this machine runs one heavy job at a time — and pushes `onCompileProgress` / `onCompileDone` like the library health check. Checked in the browser harness in both languages: two mapsets added, reordered, a typed range, a wider gap, names by hand, built to MP3 with the three checks passing, no console error, no layout overflow. The timeline of the whole compilation is not drawn (the waveform is the analysed song's) |
+| 25.15 Build report and proof | after a build: each junction's audio correlated against its source so the cut is proven, not assumed; snap audit over the result; each segment's red lines graded against the built audio by reference timing; and the whole thing read back through the writer to prove it is byte-stable | med | **high** | 25.4, snap audit, reference timing | no | no | **P1** | **done** 2026-10-03 — `verify_build`: each segment's audio correlated against its own song, the snap audit on the written map, the text back through the reader and writer, and — with `grade=True`, since it is the one heavy job here — **every red line the compilation wrote graded against the attacks of the audio it built**. That last one is the end of the phase's own argument: a borrowed red line is only right if the sound it was timed to is still under it after the cut, the resample and the encode. On the gate's three-song MP3: **6 of 6 lines ok, none flagged, worst 0.47 ms, common shift -0.05 ms**. The gate runs in 8.5 s with it |
+| 25.16 Output | a folder in the Songs directory, an `.osz`, or a dry run that writes nothing; sources opened read-only and never written, even to fix them | low | **high** | `export_osz` | no | no | **P1** | **done** 2026-10-03 — `build_compilation` settles every plan and builds the beatmap text **before** it writes a byte, so a build that cannot be made refuses with nothing on disk; `dry_run` stops there and returns the file list. Then audio, samples, the `.osu` (through the engine's atomic writer and the write history, so History names it), `credits.txt` and the background. Refuses a folder that already holds a beatmap unless told to add to it, and refuses a source's own folder always. `osz=True` zips the folder flat, built in a temp file and renamed into place |
+| 25.17 Gates | `bench/gates.py combine`: object times preserved relative to their segment to the millisecond, red-line BPM preserved exactly, sample indices unique and resolvable, audio length the sum of the ranges within tolerance, every junction's first attack where the `.osu` says within a pinned budget, 0 new unsnapped objects, and a byte-stable round trip — plus the malformed corpus through `fuzz_reader.py`'s mutants | med | **high** | 25.15 | no | no | **P1** | **half** 2026-10-03 — the rows that cover 25.1-25.3 are in and green in 2.0 s: three songs compiled (edm-174, odd-222.22 from the middle of its song so its grid must be pinned, secs-4 with four red lines), every object's offset inside its segment unchanged to 0.00e+00 ms, every beat length digit for digit, 0 of 116 objects off the grid or before it, the writer giving the text back, and 60 `fuzz_reader` mutants read or refused with nothing crashing. The audio and hitsound rows wait for 25.4 and 25.8 |
+| 25.18 Pick by section | take a segment straight from the structure view: this song's chorus, from phrase edge to phrase edge, instead of a hand-typed range | med | high | P2 structure, 25.1 | no | no | P2 | **done** 2026-10-03 — `compile_sections` runs `overtone-cli structure` on one segment's song and returns its phrases with their kind, times and level, kept by path, size and modification time so the same song costs one read. In the app: **Phrases…** on each song's row, the phrases as chips, and clicking one makes it the range through the same call a typed one uses — so `start_on_downbeat` is what puts its edges on a bar line, and the repairs say if it leaves objects outside. Without the Rust engine built it says so rather than reporting no phrases |
+| 25.19 Order suggestion | an order proposed with its reason: smallest tempo jump at each junction, or energy rising across the set, never applied on its own | med | med | 25.1 | no | no | P2 | **done** 2026-10-03 — `order_plan`: by tempo, every segment tried as the opener and each one then taking the nearest tempo left, the cheapest walk winning (exact enough for the handful of songs a marathon holds, and explainable in a sentence, which matters more for something shown and not applied); or by loudness, quietest first, which needs 25.6's measurement and says so when it is missing. It reports the jumps before and after, says when the order is already the one it would ask for, and leaves a song with no tempo of its own at the end rather than dropping it. In the app: Suggest an order, with Use it beside the proposal |
+| 25.20 Tempo-matched junction | stretch the tail of one segment into the head of the next so the beat never breaks | high | low | 25.7 | no | no | P3 | **unlikely** — the phase vocoder moved attacks a median 23-24 ms when Phase 4 measured it for the slow loop, which is exactly the error this phase exists to avoid. It ships only if a measurement on the corpus says otherwise |
+
+### Every timestamp the shift has to touch
+
+The list is the specification; missing one is the bug that makes a compilation unplayable
+halfway through. Each is shifted by its segment's offset, rounded to whole milliseconds,
+and checked afterwards to be in order:
+
+- **Hit objects** — `time` for every kind; a spinner's end time (sixth field); a mania
+  hold's end time (`end:sample`, sixth field); nothing inside a slider's curve, which is
+  geometry, not time.
+- **Timing points** — reds and greens alike, by their offset only; a red's beat length,
+  meter, sample set, index, volume and effects are copied untouched.
+- **`[Events]`** — break periods (`2,start,end`), background and video start times,
+  storyboard command times if a storyboard is kept at all.
+- **`[General]`** — `PreviewTime`, and `AudioLeadIn` recomputed for the result rather than
+  copied from a segment.
+- **`[Editor]`** — `Bookmarks`, every one of them.
+- **Not shifted, and worth saying so** — combo colours, which osu! cannot change mid-map;
+  `StackLeniency`, AR, OD, HP and CS, which are one value per map (25.10); and the
+  `.osb`'s own sprite names.
+
+### When the input is half-wrong
+
+The reason the reference tool breaks is that it assumes the files are right. This is the
+repair pass, and every one of these is reported with the segment, the line and what was
+done — a build never repairs quietly, and a strict mode refuses instead of repairing:
+
+- A format version the reader takes but the writer must choose for (v5 to lazer's own).
+- A BOM, CRLF, LF or mixed line endings; the writer already round-trips all three.
+- `AudioFilename` with the wrong case, a wrong extension or a path separator, and the
+  audio sitting in the folder under a slightly different name.
+- Audio missing, empty, zero-length, a tag-only file, or not audio at all — the loader's
+  own messages, per segment, with the rest of the plan still shown.
+- Objects before the first timing point, after the audio ends, or out of time order.
+- No timing points at all, duplicate reds at one offset, a red with a non-finite or
+  negative beat length, greens before the first red.
+- Broken or truncated objects, which stay `unparsed` and are carried through or dropped by
+  the chosen policy, with a count either way.
+- Custom sample files missing, empty, or named outside the `set-hitsoundN` convention;
+  per-object `filename` overrides pointing at a file that is not there.
+- A `Mode` that differs between segments, and a mania key count that differs — refused,
+  not repaired (below).
+- Unicode titles, non-Latin filenames, and names too long for the filesystem.
+- A segment whose own timing is wrong: the result's reference grade says so per segment,
+  so a bad source map is named instead of quietly making the compilation feel off.
+- Hit object times with decimals (lazer): kept or rounded by the chosen output version,
+  and the rounding reported.
+
+### What it will refuse
+
+A refusal with a reason beats a file that loads and plays wrong:
+
+- Segments in different game modes, or mania segments with different key counts.
+- A segment whose audio cannot be decoded, when it is not dropped from the plan.
+- A slider whose velocity cannot be represented at the chosen `SliderMultiplier` (25.9),
+  naming the sliders and what multiplier would hold them.
+- An output longer than a pinned ceiling, or more objects than a pinned ceiling.
+- Writing into a folder that already holds a map, unless the user says to add to it.
+- Overwriting a source file, ever.
+
+### Build order
+
+1. 25.1, 25.2, 25.3 and the gate rows of 25.17 that cover them: the plan, the read and the
+   shift, measured on the committed fixtures, before any audio is touched.
+2. 25.4, 25.5 and 25.16 dry run: one audio file out, the cut proven by correlation
+   (25.15's junction check) before anything else is built on it.
+3. 25.8, 25.9, 25.10, 25.11: the parts that decide whether a segment *plays* like its
+   source. Hitsounds first — they are the reference tool's one real trick and the easiest
+   to get subtly wrong.
+4. 25.13, 25.16 whole output, 25.15 report.
+5. 25.14, the section, once the pieces behind it refuse correctly; the browser harness
+   over it in both themes and languages, as Phase 19 did.
+6. 25.6, 25.7's crossfades, 25.12, then 25.18 and 25.19.
+
+The one-heavy-job-at-a-time rule applies throughout: a five-song compilation is five
+decodes, and they run one after the other with the progress panel naming which.
+
+### Open questions
+
+- ~~**The audio format to write.**~~ **Answered 2026-10-03, by measurement.** MP3, through
+  libsndfile's LAME: a click written at *t* comes back at *t* (0.0 ms on four probes, frame
+  count identical, correlation peak 1.000), and it is what mapsets ship. Ogg Vorbis is out
+  for a reason nobody would have guessed: writing more than about ten seconds of 44.1 kHz
+  stereo kills the process in this build — exit 127, no exception, nothing written — and
+  Opus takes only 8, 12, 16, 24 and 48 kHz. WAV stays available for a lossless check, and
+  is what the gate compares sample for sample.
+- **Whether a segment may be a map's own section** rather than the whole map, which is
+  25.18's premise but also a question about what a compilation is for.
+- **Where the compilation document lives** — beside the cache, or in the output folder so
+  it travels with the mapset.
+
+---
+
+## Phase 26 — Rate and difficulty trainer (practice copies)
+
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). Train and its global hotkey left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
+
+One map into another at a different speed: pick a difficulty, choose a rate or a target
+BPM, move HP, CS, AR and OD where you want them, and get a playable copy whose every
+object sits on the same beat of the same sound it sat on in the original. Asked for on
+2026-10-03 with [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer) named
+as the reference: 447 stars, 72 forks, C# WinForms, no licence file, last pushed
+2024-07-29, 42 open issues. Its source, its thirteen releases and those issues were read
+on 2026-10-03; it was not run here.
+
+It is a well-liked tool and the features are the right features. What it leaves out is
+everything that keeps the copy *correct*, and its own issue tracker says so better than
+any review could:
+
+| The reference | What breaks | This phase |
+|---|---|---|
+| Every timestamp divided by the rate and rounded on its own | A map's snapping decays: an object on a 1/4 beat lands a millisecond off the new grid, and the editor shows it unsnapped. Nothing warns | The rate is applied to the **grid**: red lines' `beatLength` scaled exactly, then every object's time recomputed from the beat position it already had and rounded once. The snap audit (P7) proves it, and the worst error is reported in beats |
+| The rate taken from one BPM | On a multi-BPM map, "set 200 BPM" sets it for one section and misses the rest — their issues [#19](https://github.com/funorange/osu-trainer/issues/19) ("results in only 2/3 of the intended bpm") and [#24](https://github.com/funorange/osu-trainer/issues/24) ("not using accurate rate for some maps") | A rate is a rate and scales every timing point. A *target BPM* is only offered when the map has one BPM; otherwise it names the BPMs it has, shows the rate each would take, and offers the dominant one with that number on screen |
+| `soundstretch.exe` + LAME as child processes, temp files deleted after | A second toolchain to ship, and an audio pipeline nobody can measure. Their issue [#4](https://github.com/funorange/osu-trainer/issues/4): "MP3 offset wrong after re-encode", 8-10 ms | soxr (already pinned, librosa brings it) for the resample and libsndfile for the write, in process. The MP3 encoder delay is the problem Phase 25 already measured to **0.0 ms** with `mp3_gapless_info` |
+| Pitch-preserved stretch by default, with a "change pitch" toggle | Pitch-preserving a song **moves its attacks**, which is exactly what the red lines claim not to have moved. Overtone measured this in Phase 4 and dropped a feature over it: the phase vocoder shifted attacks a median 23-24 ms | Resampling is the default, because it is what the game's own DT does and it cannot move an attack relative to the grid. The pitch-kept stretch is a separate row and is **gated on the attack grade**: if the stretch moved the sounds out from under the lines, it says so instead of shipping it |
+| Star rating from `oppai.exe` | oppai-ng implements the pre-2021 difficulty calculation; osu! has not used it for years. Their issue [#47](https://github.com/funorange/osu-trainer/issues/47) is exactly this | No invented star rating. The numbers shown are the ones that can be computed exactly and that the player actually feels: BPM, the AR window in milliseconds, the OD hit windows in milliseconds, object density, and the longest stream — each labelled with what it is |
+| osu!'s process memory, scanned for signatures (`ProcessMemoryDataFinder`, GPL-3.0) | **Five of thirteen releases are "fix song detection after the newest osu! update"**, and three issues ([#11](https://github.com/funorange/osu-trainer/issues/11), [#37](https://github.com/funorange/osu-trainer/issues/37), [#41](https://github.com/funorange/osu-trainer/issues/41)) are "no maps show up". The licence would also force GPL-3 on anything linking it | Nothing reads another process's memory. The map comes from Overtone's own library index, which is built and searched already; any live signal is read from what osu! writes **outside** itself, measured before it is relied on, and every one of them degrades to the library search |
+| A `WH_KEYBOARD_LL` hook for global hotkeys | A low-level hook puts the hooking app in the path of every keystroke. Their issues [#46](https://github.com/funorange/osu-trainer/issues/46) (tablet cursor lag), [#52](https://github.com/funorange/osu-trainer/issues/52) and [#56](https://github.com/funorange/osu-trainer/issues/56) (the PC lags while it runs) | `RegisterHotKey` for the one hotkey that is worth having: the OS delivers a message for that combination and nothing else passes through Overtone. No per-keystroke callback, no polling of another process |
+| `.osz` written and handed to the shell to import | Their issues [#44](https://github.com/funorange/osu-trainer/issues/44) (imports only into lazer) and the 1.6.3 note "show message when .osz file association is missing" | The folder is written straight into `Songs`, which needs no file association and no import step. The `.osz` stays available for anyone who wants to move it |
+| "Generating Map failed" | Three issues are that sentence ([#6](https://github.com/funorange/osu-trainer/issues/6), [#45](https://github.com/funorange/osu-trainer/issues/45), [#49](https://github.com/funorange/osu-trainer/issues/49)) with no way to tell why | The repair pass of 25.2, reused: every fix named with the line it touched, every refusal with its reason, and a dry run that prints the whole plan before a byte is written |
+| A `ZeroDivisionError` on a rate of 0.0 ([#53](https://github.com/funorange/osu-trainer/issues/53)) | — | The rate is validated where it is read, with the bound stated |
+| An updater that calls home | Overtone is offline by product rule | No update check, ever |
+
+Little of this is new engine work. The field knowledge is in `overtone_combine.py` (every
+timestamp a copy has to touch, one rule per object kind, `unparsed` carried through), the
+reader and byte-identical writer with its atomic write, backup and write log are Phase 5,
+the snap audit and reference timing are Phase 7, the decoder-delay and build-report
+machinery is Phase 25, the library index is Phase 19, and the one thing Phase 25 proved —
+**that a borrowed red line can be graded against the audio that was actually written** —
+is what makes a rate change checkable instead of hopeful. A compilation shifts; a practice
+copy scales. The same bookkeeping, a different multiplier.
+
+### The decision this needs
+
+Phase 25 settled [`04-ui-ux.md`](04-ui-ux.md) §9 as: **Overtone never draws, moves or
+reshapes an object on its own**; copying whole maps' objects unchanged and moving them in
+time with their audio is bookkeeping. A rate change is exactly that, so the rate side needs
+no new decision.
+
+**Removing spinners does.** The reference has a "no spinners" checkbox, and the reason is
+real: at 1.5x a short spinner can become unspinnable. Deleting an object invents nothing,
+but it is not bookkeeping either, and §9 does not cover subtraction. The proposal, for the
+owner to accept or refuse before 26.12 is built: *dropping* objects the user explicitly
+asks to drop is allowed on a copy, provided the count and the kind are named in the report
+and in the difficulty name, and provided nothing is dropped by default. Overtone would
+also say the thing the checkbox cannot: how many spinners there are and how long each
+becomes at this rate, so the choice is informed. **Until that is decided, 26.12 is not
+built**, and the rows that depend on it say so.
+
+### What a practice copy is
+
+A document before it is a file, as in Phase 25: the source map, the rate (or the target
+BPM and which BPM it was computed from), each of HP/CS/AR/OD as *keep*, *lock to a value*
+or *scale with the rate*, the audio method, the naming template and the output folder —
+JSON beside the cache, so a build is reproducible, a report can be re-read without the
+source, and a ladder (26.16) is one document with several rungs.
+
+### Every number a rate moves, and every one it must not
+
+The reference's own formulas are right and are kept; what it does not do is say which way
+each number moves and why. Written out so the implementation cannot drift:
+
+| Quantity | Under a rate `r` | Why |
+|---|---|---|
+| Every time in milliseconds: object times, slider end times, spinner ends, mania hold ends, break start/end, bookmarks, preview point, `AudioLeadIn`, event and storyboard times | divided by `r`, once, from the beat position the object already had | The grid is the thing being scaled; the milliseconds are a rendering of it |
+| A red line's `beatLength` | divided by `r` exactly, as a float | BPM is `60000/beatLength`, so this *is* the rate change |
+| A green line's `-100/beatLength` SV | **unchanged** | SV is a multiplier on a beat-relative speed. Both the beat and the speed scale, so scroll speed rises with the rate on its own — which is what DT feels like |
+| `SliderMultiplier`, `SliderTickRate` | **unchanged** | Both are beat-relative. A compilation has to reconcile them (25.9) because it mixes maps; a rate change has one map |
+| AR, as preempt milliseconds | `ms / r`, then back to an AR | `1800 - 120·AR` for AR ≤ 5, `1200 - 150·(AR-5)` above: AR 0 = 1800 ms, AR 5 = 1200 ms, AR 10 = 450 ms |
+| OD, as the 300 window | `ms / r`, then back to an OD | `79.5 - 6·OD` milliseconds for the 300 window in standard |
+| HP, CS | **unchanged by the rate** | Neither is a time. They move only when the user moves them |
+| The AR and OD actually *felt* | shown in milliseconds beside the number | An "AR 10.3" means nothing until it says 400 ms. This is the number a player is choosing, and the reference hides it behind a slider |
+
+Above AR 10 and OD 10 the stat cannot be written into a `.osu`, which is why the reference
+has an "emulate DT" trick: write a slower map and let the mod bring it back. That is kept
+(26.10), with the compensation arithmetic shown rather than implied, and with a refusal when
+no combination reaches what was asked for.
+
+### When the input is half-wrong
+
+The same five-song principle as Phase 25: a source that will not read comes back *refused*,
+not raised, so the plan can still be shown. Specifically — a map with zero hit objects, an
+audio filename whose case does not match the folder (fixed once already in Phase 25), an
+`.osu` with no timing point at all, a map whose first object precedes its first red line, a
+`AudioFilename` pointing outside the folder, a mania map whose key count the stats do not
+apply to, a format version older than the reader's floor, and a rate that would push the
+map past the format's integer-millisecond range.
+
+### What it will refuse
+
+- A rate outside a pinned window, naming the window. Never a division by zero.
+- A target BPM on a map with more than one BPM, until the user picks which BPM it means.
+- A stat that cannot be represented and cannot be reached by compensation, naming both.
+- Writing into a folder that already holds a map, unless told to add to it.
+- Overwriting a source file, or an existing `.bak`. Ever.
+- A pitch-kept stretch whose own grade says it moved the attacks out from under the lines
+  by more than a pinned bound (26.6), unless the user accepts the number.
+- Submitting, uploading or renaming anything online. The copy carries no `BeatmapID` and
+  no `BeatmapSetID`, so it can never be mistaken for the ranked map it came from.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| 26.1 Practice document | the plan as JSON: source, rate or target BPM, each stat's keep/lock/scale, audio method, naming, output; reproducible, diffable, and the unit a ladder repeats | low | **high** | P5 reader, 25.1 | no | no | **P1** | **done** 2026-10-06 — `plan_practice` in `python/overtone_train.py`: JSON throughout, a refused source coming back refused rather than raised |
+| 26.2 Source read and repair | the source through `read_osu_beatmap` and then 25.2's repair pass: every fix named with the line it touched, every refusal with a reason, nothing guessed. Replaces "Generating Map failed" | low | **high** | 25.2 | no | no | **P1** | **done** 2026-10-06 — `tc.read_segment`, its repairs and refusals carried into the plan |
+| 26.3 The rate on the grid | scale each red line's `beatLength` exactly, recompute every object's time from the beat position it already held, round once at the end; report the worst snap error in beats and in milliseconds | med | **high** | 26.1, 26.2 | no | no | **P1** | **done** 2026-10-06 — at 1.37x worst 6.75e-07 beats, 0.0002 ms; the gate pins 0.01 beats and 1.0 ms, which is the rounding bound |
+| 26.4 Every field the rate touches | one rule per object kind and per section, from `overtone_combine.py`'s field map: slider ends, spinner ends, mania `end:sample`, breaks, bookmarks, preview point, `AudioLeadIn`, events and storyboard times — and the three that must **not** move (green SV, `SliderMultiplier`, `SliderTickRate`), with a test for each | med | **high** | 26.3 | no | no | **P1** | **done** 2026-10-06 — storyboard and video lines carried as written and counted (scaling them would be a guess); a 1.0x copy is the source byte for byte bar the version line |
+| 26.5 Audio by resample | the default, because it is what the game's DT does and it cannot move an attack relative to the grid: soxr at the rate ratio, libsndfile to write, in process, no child executable | low | **high** | 25.4 audio writer | no | no | **P1** | **done** 2026-10-06 — `build_audio` in `overtone_train.py`: the whole song in one piece, nothing normalised or faded; measured onset-exact (soxr, polyphase and Fourier agree to the frame; the earlier suspect was filter ringing on abrupt peaks, not a shift) |
+| 26.6 Audio with the pitch kept | WSOLA in `overtone-dsp` for players who want the song to stay in key, **gated on the attack grade**: Phase 4 measured a phase vocoder moving attacks a median 23-24 ms, so this one must prove it did not, or report by how much and let the user decide | high | med | 26.5, 26.17 | no | no | P2 | **answered without shipping** 2026-10-07 — a WSOLA probe (20 ms windows, 5 ms search) grades ok on clean clicks (worst 1.75 ms) but displaces real attacks a median 8-9 ms, p90 23-26 ms, max ~45 ms on three Songs: the grade it would have to pass is the one it fails, so resample stays the only method and the refusal is the row's answer |
+| 26.7 No offset drift from the re-encode | the encoder delay handled as 25.5 already does it (`mp3_gapless_info`, measured to 0.0 ms), and the written audio's own first attack compared with the source's | low | **high** | 25.5 | no | no | **P1** | **done** 2026-10-06 — `verify_audio`: length to two frames, start correlated at 0.0 ms peak 1.0, the LAME tag read and stripped on read (13.061 ms written, 0.0 read back) |
+| 26.8 HP, CS, AR, OD | each stat keep / lock to a value / scale with the rate, with the exact formulas of the table above and **the milliseconds printed beside every AR and OD** — the number the player is actually choosing | low | **high** | 26.1 | no | no | **P1** | **done** 2026-10-06 — keep is the default for all four (scaling a typical AR 9 past 10 is unrepresentable without 26.10, and a default must never refuse a typical map); an unreachable scale refuses with both numbers and the escape |
+| 26.9 What the copy will feel like | beside the stats: BPM (and the BPM range if there is more than one), the AR preempt and the OD windows in milliseconds, object density, the longest stream and its speed in notes per second. Computed exactly, each labelled. No star rating | med | med | 26.8, P7 density | no | no | P2 | **done** 2026-10-07 — `feel_of`: density, longest stream (maximal run within one beat), exact windows on standard (other modes say whose tables they read); on the Train cards beside the stats |
+| 26.10 Mod emulation | HR, DT, NC, HT and EZ as presets that compose with the sliders, including the reference's trick of writing a compensated map so a mod lands on the value asked for — with the arithmetic shown, and a refusal when no combination reaches it | med | med | 26.8 | no | no | P2 | **done** 2026-10-07 — a lock names the feel, the file carries the compensation (AR 9 under DT writes 7); contradictory pairs and capped combinations refuse with the arithmetic |
+| 26.11 Target BPM, honestly | a target BPM only when the map has one; otherwise name every BPM it has, show the rate each would take, and offer the dominant one with that rate on screen. The reference's two oldest open bugs are this | low | **high** | 26.3 | no | no | **P1** | **done** 2026-10-06 — `ambiguous_target` names every tempo with its rate until `from_bpm` picks one |
+| 26.12 Dropping objects the user asks to drop | spinners (and, for the same reason, very short notes), **only on an explicit ask**, with the count and kind in the report and in the difficulty name, and with how long each spinner becomes at this rate shown before the choice. **Decided yes by the owner 2026-10-07** | low | low | the §9 decision | no | no | P3 | **done** 2026-10-07 — spinners only (a short slider or hold stays playable; spinning has a physical minimum), never by default, count and kind in the report, the version and the tags |
+| 26.13 Naming, credit and identity | a naming template (`1.37x · 238 BPM · AR10.3`, the fields chosen by the user), the original mapper and difficulty credited in `Tags` and in the report, `Creator` left as the original's with the rate stated, and `BeatmapID`/`BeatmapSetID` blanked so a copy can never pass as the ranked map | low | **high** | 26.1 | no | no | **P1** | **done** 2026-10-06 — default `Version (ratex)`, `Creator` kept, IDs blanked; unknown keys kept by the section patcher |
+| 26.14 Output | the folder written straight into `Songs` — no `.osz` association, no import step, which is the reference's [#44](https://github.com/funorange/osu-trainer/issues/44) — atomically, never overwriting a map or a `.bak`, recorded in the write log, with `.osz` still available on request | low | **high** | P5 writer, 25.16 | no | no | **P1** | **done** 2026-10-06 — `build_practice`: dry run, the song/samples/background then the beatmap through the atomic writer and the write log, existing folders and the source's own refused, `.osz` flat; videos stay behind with the reason (they would desync) |
+| 26.15 Undo and clean up | every practice copy is in the write log already, so "remove the ones I made" is a list with dates, sizes and the original each came from — not a scan for stray mp3s. Shows what it will free before it frees it | low | med | 26.14, P5 write log | no | no | P2 | **done** 2026-10-07 — `list_copies`/`remove_copies` with a dry run first; a folder holding a stranger's map keeps the stranger |
+| 26.16 Rate ladders | one run, one mapset, several rates as separate difficulties (`1.0x`, `1.1x`, `1.2x`…) with one audio file per distinct rate and one progress bar over the lot. The reference makes one at a time; practising is a ladder | med | med | 26.3, 26.5, 26.14 | no | no | P2 | **done** 2026-10-07 — `plan_ladder`/`build_ladder` plus the ladder card on the Train lock (`train_build_ladder`, one bar over the lot). Not checked: the browser harness |
+| 26.17 The self-check after the build | 25.15's fourth check, reused: detect the attacks of the audio just written and grade the red lines written beside them. A rate change is only right if the sounds are still under the lines after the resample and the encode | low | **high** | 25.15 | no | no | **P1** | **done** 2026-10-06 — `grade_copy`: on the gate's 1.37x MP3, 1 of 1 lines ok, worst 0.34 ms, common shift 0.34 ms |
+| 26.18 Picking the map | from the library index first, which needs nothing from osu! and already works. Then **measure** which live signals exist outside osu!'s own memory — the window title, `osu!.db`, the newest file in `Songs`, the newest replay — write down which actually track the selected map, and use the best one that passed, degrading to the search. No memory scanning, no signature hunting, nothing that a game update can break | med | med | P19 library | no | no | P2 | **done** 2026-10-07 — `detect_map`: window, replay, newest `.osu` in order, everything tried reported; measured here: replay filenames parse and resolve, `osu!.db` reads (v20260924, 4325 folders) but never picks. Not checked: the harness |
+| 26.19 One hotkey, no keyboard hook | `RegisterHotKey` for "build the copy I have set up": the OS delivers that one combination and no other keystroke passes through Overtone. The reference's input-lag issues are a `WH_KEYBOARD_LL` hook, and profiles behind four more hotkeys | med | low | 26.1 | no | no | P3 | **done** 2026-10-07 — Ctrl+Alt+B on its own thread with a message-only window, remembered in the config, firing the same build as the button; taken combinations and non-Windows refuse saying so |
+| 26.20 Presets | the reference's four profiles, saved as practice documents with names, so a preset is the same object as a build and can be diffed, shared as a file and re-read | low | low | 26.1 | no | no | P3 | **done** 2026-10-07 — named setups beside the cache, applied onto the Train view; no source map travels with one |
+| 26.21 The Train section | the app's own section: the map, the rate, the stats with their milliseconds, what it will feel like, the ladder, the dry run and the build report. Bilingual, checked in the browser harness in both languages as every section is | med | med | 26.1-26.17, P19 | no | no | P2 | **done** — eleven bridge calls returning the whole state, four cards plus ladder, copies, presets, mods, detect and hotkey rows; owner ran the harness pass 2026-10-07 ("si funciona") |
+| 26.22 The gate | `bench/gates.py train`: a fixture at 1.0x comes back byte-identical bar the version line; at 1.37x every object is on the beat it was on, to a pinned bound; the AR/OD round trips hold; the written audio's attacks grade against the written lines; a variable-BPM map refuses a target BPM; and 60 fuzzed sources either read or refuse without a traceback | med | **high** | 26.3, 26.17 | no | no | **P1** | **done** 2026-10-06 — all rows green, including the 1.37x MP3 folder with `.osz` and the grade |
+
+**0.2.0-alpha requires** rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21
+and 26.22 — steps 1 to 4 of the build order below, and the gate. Everything else in this
+table makes the trainer nicer, not working:
+[Release 0.2.0-alpha](#release-020-alpha--what-it-takes).
+
+### Build order
+
+1. 26.1, 26.2, 26.3, 26.4 and the parts of 26.22 that cover them: the document, the read,
+   the grid and the field rules, measured on committed fixtures, before any audio is
+   resampled. The 1.0x round trip is the first test worth having — a rate of one must
+   change nothing at all.
+2. 26.5, 26.7, 26.17: one audio file out, the encoder delay handled, and the lines graded
+   against the file that was written. Nothing else is built until that grade is green.
+3. 26.8, 26.11, 26.13, 26.14: the copy becomes something a player can open.
+4. 26.21, the section, once the pieces behind it refuse correctly.
+5. 26.9, 26.10, 26.15, 26.16, then 26.18, 26.19, 26.20. 26.6 last, because it is the only
+   row that can fail its own check, and 26.12 only if the §9 decision allows it.
+
+One heavy job at a time throughout: a ladder of eight rungs is eight resamples and eight
+encodes, run one after another with the progress panel naming which rung.
+
+### Open questions
+
+1. **Which live signal actually tracks the selected map** (26.18), if any. The answer is a
+   measurement, and the honest default until then is the library search.
+2. **Whether dropping objects is allowed at all** (the §9 decision), which is the owner's.
+3. **Whether a pitch-kept stretch can pass its own grade** (26.6). Phase 4's measurement
+   says a phase vocoder cannot; WSOLA on percussive material may. If it cannot, the row
+   becomes a documented refusal, which is still an answer.
+4. **Whether to compute a real star rating** at all. The current algorithm lives in
+   lazer's C#; reimplementing it is a phase of its own and goes stale with every balance
+   patch. 26.9's position is that exact, labelled numbers beat an approximate famous one.
+5. **Whether a copy should be deleted when its original changes.** The write log knows the
+   original's hash, so the copy can at least be marked stale.
+
+## Rejected ideas
+
+| Idea | Verdict |
+|---|---|
+| **Difficulty / strain graphs** | **Drop.** osu!'s own star rating already does it with the official algorithm. Object density — which feeds hitsound decisions — is kept |
+| **"Suspicious map detection"** | **Reframe, don't build.** The useful part is the concrete validation rules in Phase 7 |
+| **Project sharing** | **Drop for now.** Exporting a `.osu` and a CSV covers real needs |
+| **Automatic BPM detection** as a separate feature | **Already the product** |
+| **Automatic timing** with no review | **Won't build.** Suggestions with confidence, yes; "trust me", no |
+| **Full automatic hitsounding with no review** | **Same.** The editor and the explanations are the feature |
+| **Chorus / verse detection** as a headline | **Keep, demote.** Useful for per-section hitsound profiles, not its own phase |
+| **PySide6 desktop UI** (old Phase 12 plan) | **Superseded** by the web shell, which survives the move to Tauri |
+| **SuperFlux**, **tempogram from the coherence map** | **Rejected on measurement** (Phase 2) |
+| **Resizing sliders to hold scroll constant** | **Won't build** (decided 2026-09-26). A slider lasts by the SV it starts under, so constant scroll under one means a new length, and so a new shape on screen: that is the mapper's call, made in the editor. Constant scroll refuses such a map and says how many sliders and where (221 of 249 local standard maps with a BPM change) |
+| **A pitch-kept slow loop** | **Rejected on measurement** (Phase 4): it exists to judge attacks, and the phase vocoder moved them a median 23-24 ms; the loop is resampled instead, pitch and all |
+| **Cloud anything** | **Never.** Offline is a product property |
+| **A star rating in the rate trainer** (Phase 26, row 26.9) | **Won't build** (decided 2026-10-03). osu! has not used the pre-2021 algorithm `oppai-ng` implements for years, which is the reference tool's own open issue [#47](https://github.com/funorange/osu-trainer/issues/47); the current one lives in lazer's C# and moves with every balance patch. A famous approximate number would be the one thing on the screen that is not exact. BPM, the AR preempt and OD windows in milliseconds, density and the longest stream are computed exactly and are what the player is choosing |
+| **Reading osu!'s process memory** (Phase 26, row 26.18) | **Never** (decided 2026-10-03). It is how the reference tool detects the map, and five of its thirteen releases are "fix song detection after the newest osu! update" with three open issues still saying no maps appear. It also means a GPL-3.0 dependency in an MIT project. The library index needs nothing from osu! and cannot be broken by a game update |
+| **A global low-level keyboard hook** (Phase 26, row 26.19) | **Won't build** (decided 2026-10-03). A `WH_KEYBOARD_LL` hook puts the app in the path of every keystroke on the machine; the reference tool has three open issues about exactly that, including a laggy tablet cursor. `RegisterHotKey` gets one combination delivered as a message and lets everything else alone |
+| **A pitch-preserving stretch as the default rate audio** (Phase 26, rows 26.5-26.6) | **Won't build as the default** (decided 2026-10-03). Resampling is what the game's own DT does and it cannot move an attack relative to the grid; Phase 4 already measured a phase vocoder moving attacks a median 23-24 ms, which is the one thing a practice copy must not do. The pitch-kept version stays as an opt-in that has to pass the attack grade |
+| **A crossfade between two songs of a compilation** (Phase 25, row 25.7) | **Won't build** (decided 2026-10-03). The junction is silence by design: a break covers it, the health bar stops draining, and each song keeps its own grid. An overlap puts two tempos over each other for a second, which is a mix decision about music this tool does not otherwise make, and it would cost the streaming writer its one-block memory. Fades in and out do the audible part of the job |
+| **A per-segment background through an `.osb`** (Phase 25, row 25.12) | **Won't build** (decided 2026-10-06). Each song showing its own art mid-marathon is cosmetic, and nothing here can verify an `.osb` in osu! itself — a storyboard whose fades mistime is worse than one background that is right. The build carries the first segment's background through `[Events]` and counts every dropped event, video and storyboard line by name instead of silently. If a user asks for per-song art, the row comes back with a game to check it in |
+
+---
+
+## Sequencing
+
+```
+P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─► P6 hitsounds (in the app, editor half) ─► P7 validation (half)
+                           ├─► P3 UI (web shell ✓, timeline half)
+                           ├─► P4 playback ✓ / editor ✓
+                           └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
+                                                         P21 map tools (the P1 rows ✓)
+                                                         P25 compilation builder ✓
+                                                          P26 rate trainer ✓ (engine, gate, section; harness pass owed)
+
+Next: harness passes ─► hitsounds, the rest ─► Library focus ─► Phase 10 ─► installer
+```
+
+P3, P4 and P5 are independent of each other. P6 was the largest body of work and waited on
+playback and the timeline, because a hitsound editor you cannot hear is not usable; both
+are in, and so is most of P6.

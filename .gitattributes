@@ -1,0 +1,10 @@
+# .osu is CRLF by format, and the tests read beatmaps byte for byte: a field
+# the user did not change must come out identical, CRLF included. Never let
+# git rewrite their line endings, on any platform or autocrlf setting.
+*.osu -text
+*.osu.txt -text
+assets/models/*.onnx filter=lfs diff=lfs merge=lfs -text
+
+# The server's updater and its systemd units run on Linux: LF, whatever
+# the checkout's platform.
+deploy/* text eol=lf

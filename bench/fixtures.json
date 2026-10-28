@@ -1,0 +1,234 @@
+{
+ "_comment": "The one list of bench fixtures; bench/fixtures.py --update writes it, bench/facts.py holds it to the Python definitions",
+ "format": 1,
+ "fixtures": {
+  "_ambient": {
+   "render": "python bench/benchmark.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "_noise": {
+   "render": "python bench/benchmark.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "_ramp": {
+   "render": "python bench/benchmark.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "_silence": {
+   "render": "python bench/benchmark.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "breakdown-175": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "change-128-142": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "change-175-87.5": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "decimal-128.37": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "doubletime-110-220": {
+   "render": "python bench/gates.py coverage",
+   "golden": false,
+   "density": true,
+   "signature": false
+  },
+  "downbeat-3-4": {
+   "render": "python bench/gates.py measures",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "downbeat-4-4": {
+   "render": "python bench/gates.py measures",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "downbeat-4-then-3": {
+   "render": "python bench/gates.py measures",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "edm-174": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "fast-300": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "halftime-150-75": {
+   "render": "python bench/gates.py coverage",
+   "golden": false,
+   "density": true,
+   "signature": false
+  },
+  "halftime-175-87.5": {
+   "render": "python bench/gates.py coverage",
+   "golden": false,
+   "density": true,
+   "signature": false
+  },
+  "heavy-jitter-168": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "jitter-150": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "lead-silence": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "long-6min": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "noisy-140": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "odd-222.22": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "ramp-120-160": {
+   "render": "python proto/elastic.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "ramp-180-140": {
+   "render": "python proto/elastic.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "ramp-90-200": {
+   "render": "python proto/elastic.py",
+   "golden": false,
+   "density": false,
+   "signature": false
+  },
+  "secs-2": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "secs-3": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "secs-4": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "shuffle-96": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "signature-changes": {
+   "render": "python bench/gates.py signatures",
+   "golden": true,
+   "density": false,
+   "signature": true
+  },
+  "slow-92": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "sparse-160": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "stream-225": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "swing-120": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "three-sections": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "tiny-change": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "very-noisy-132": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  },
+  "with-drop-180": {
+   "render": "python bench/benchmark.py",
+   "golden": true,
+   "density": true,
+   "signature": false
+  }
+ }
+}

@@ -1,0 +1,354 @@
+{
+  "snapshot_date": "2026-10-16",
+  "source_policy": "Curated from roadmap/timeline; dated required-row state wins when rollups are stale.",
+  "nodes": [
+    {
+      "id": "project",
+      "label": "OVERTONE · PROJECT STATUS · 2026-10-16",
+      "kind": "project",
+      "status": "active",
+      "source": "README.md",
+      "line": 1,
+      "summary": "Offline osu! timing workbench: analysis, map tools and distribution. Hitsounds, trainer, Songs browser and compilation are parked on parked/desktop-extras (W1)."
+    },
+    {
+      "id": "shipped",
+      "label": "DELIVERED FEATURES",
+      "kind": "group",
+      "status": "shipped",
+      "source": "docs/07-roadmap.md",
+      "line": 23,
+      "summary": "Major app capabilities currently present."
+    },
+    {
+      "id": "timing",
+      "label": "[DONE] Timing · Python v3 + Rust v4",
+      "kind": "feature",
+      "status": "shipped",
+      "source": "docs/07-roadmap.md",
+      "line": 21,
+      "summary": "Beat grids, sections, edits, ramps, assisted timing and synthetic-corpus gates. Real-audio accuracy remains research."
+    },
+    {
+      "id": "maptools",
+      "label": "[DONE] Map check · structure · export",
+      "kind": "feature",
+      "status": "shipped",
+      "source": "docs/07-roadmap.md",
+      "line": 23,
+      "summary": "Validation, alignment, reference timing, snap audit, assisted timing, structure and exports."
+    },
+    {
+      "id": "hitsounds",
+      "label": "[PARKED] Hitsounds H1–H5",
+      "kind": "feature",
+      "status": "parked",
+      "source": "docs/07-roadmap.md",
+      "line": 217,
+      "summary": "H1–H5 shipped. H7 audio-only proposal shipped without an accuracy claim; H6 sample recommendation, instrument lanes and mismatch rule remain gated after measured review. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
+    },
+    {
+      "id": "library",
+      "label": "[PARKED] Songs browser + health page",
+      "kind": "feature",
+      "status": "parked",
+      "source": "docs/07-roadmap.md",
+      "line": 784,
+      "summary": "SQLite/FTS5 index, scan/search and health check. Precision labels still need R6 verdicts. The index stays for the measurement server; its app page is parked on parked/desktop-extras (W1, 2026-10-26)."
+    },
+    {
+      "id": "trainer",
+      "label": "[PARKED] Train section and trainer gate",
+      "kind": "feature",
+      "status": "parked",
+      "source": "docs/07-roadmap.md",
+      "line": 213,
+      "summary": "Practice copies, rate ladders, mod feel, undo/cleanup; gate green. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
+    },
+    {
+      "id": "compile",
+      "label": "[PARKED] Compile section + map builder",
+      "kind": "feature",
+      "status": "parked",
+      "source": "docs/07-roadmap.md",
+      "line": 928,
+      "summary": "Usable in app; Phase 25 rows 25.1–25.19 are implemented, including loudness match, junction placement, phrase selection, order suggestion and reference grading. Tempo-matched junction 25.20 remains unlikely; crossfade and .osb background were rejected. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
+    },
+    {
+      "id": "installer",
+      "label": "[SHIPPED] MSI + portable ZIP",
+      "kind": "feature",
+      "status": "shipped",
+      "source": "docs/07-roadmap.md",
+      "line": 30,
+      "summary": "v0.1.0-alpha published with SBOM, checksums and notices; associations/setup delivered. Unsigned by owner decision."
+    },
+    {
+      "id": "release",
+      "label": "0.3.0 REQUIRED ROWS",
+      "kind": "group",
+      "status": "active",
+      "source": "docs/07-roadmap.md",
+      "line": 206,
+      "summary": "Required rows must be resolved and release checklist rerun."
+    },
+    {
+      "id": "r6",
+      "label": "[OPEN · BLOCKER] R6 library precision sample",
+      "kind": "task",
+      "status": "open",
+      "source": "docs/07-roadmap.md",
+      "line": 210,
+      "summary": "Sample/sheet drawn 2026-10-06; verdicts owed. Meet 15/25 bar or rename actionable/weak labels."
+    },
+    {
+      "id": "t6",
+      "label": "[CLOSED BY MEASUREMENT] T6 section labels from repetition",
+      "kind": "task",
+      "status": "closed measured",
+      "source": "docs/07-roadmap.md",
+      "line": 216,
+      "summary": "Closed for 0.3.0 without shipping labels. Four approaches/splits failed the +15-point requirement; fresh seed-61 baseline scored +11.5 tune (16 maps) and +14.3 held-out (10). Keep the Kiai card refusing; any future signal needs a fresh untouched confirmation split."
+    },
+    {
+      "id": "t7",
+      "label": "[CLOSED BY MEASUREMENT] T7 H6/H7 disposition",
+      "kind": "task",
+      "status": "closed measured",
+      "source": "docs/07-roadmap.md",
+      "line": 217,
+      "summary": "H7 app surface shipped 2026-10-07 but measured clap F1 0.29 vs 0.59 baseline on 6 songs. H6 sample-role recommendation remains withheld after one-shot misclassification. Fresh Rust evidence: median P(snare)+P(clap) 0.194 over 2,859 matched claps from 9 accessible songs; 3 access-denied skips. Keep lanes, mismatch rule and sample recommendations gated; no accuracy claim."
+    },
+    {
+      "id": "t1",
+      "label": "[DONE] T1 Train browser harness EN/ES",
+      "kind": "task",
+      "status": "done",
+      "source": "docs/07-roadmap.md",
+      "line": 211,
+      "summary": "Owner ran bilingual browser harness 2026-10-07."
+    },
+    {
+      "id": "t2",
+      "label": "[DROPPED] T2 signing",
+      "kind": "task",
+      "status": "dropped",
+      "source": "docs/07-roadmap.md",
+      "line": 212,
+      "summary": "Certificate purchase declined; releases remain unsigned with hash checks."
+    },
+    {
+      "id": "t3",
+      "label": "[DONE] T3 trainer nicer rows",
+      "kind": "task",
+      "status": "done",
+      "source": "docs/07-roadmap.md",
+      "line": 213,
+      "summary": "Ladders/mod feel/undo landed; trainer gate green 2026-10-14."
+    },
+    {
+      "id": "t4",
+      "label": "[DONE] T4 trainer open questions",
+      "kind": "task",
+      "status": "done",
+      "source": "docs/07-roadmap.md",
+      "line": 214,
+      "summary": "Pitch-kept, object dropping, selection, hotkeys and presets settled."
+    },
+    {
+      "id": "t5",
+      "label": "[DONE] T5 installer associations/setup",
+      "kind": "task",
+      "status": "done",
+      "source": "docs/07-roadmap.md",
+      "line": 215,
+      "summary": "MSI feature tree and supported associations delivered. Bare .osu and URI remain documented open."
+    },
+    {
+      "id": "backlog",
+      "label": "LONGER-TERM · OUTSIDE 0.3.0",
+      "kind": "group",
+      "status": "planned",
+      "source": "docs/07-roadmap.md",
+      "line": 49,
+      "summary": "Roadmap work beyond current release blockers."
+    },
+    {
+      "id": "accuracy",
+      "label": "[RESEARCH] Phase 10 real-audio accuracy → 1.0.0",
+      "kind": "task",
+      "status": "partial research",
+      "source": "docs/07-roadmap.md",
+      "line": 51,
+      "summary": "Corpus B research, not 0.3.0. Fingerprint/reuse, neural beats, ensemble and alignment research remain; figures vary by dated source and are not freshly measured here."
+    },
+    {
+      "id": "languages",
+      "label": "[DEFERRED] Phase 24 other-language gates",
+      "kind": "task",
+      "status": "deferred",
+      "source": "docs/07-roadmap.md",
+      "line": 53,
+      "summary": "TypeScript needs Node.js, not installed/requested; .NET SDK present."
+    },
+    {
+      "id": "compileextras",
+      "label": "[DEFERRED] Phase 25 tempo-matched junction",
+      "kind": "task",
+      "status": "deferred",
+      "source": "docs/07-roadmap.md",
+      "line": 928,
+      "summary": "Rows 25.1–25.19 are complete. 25.20 remains unlikely after a measured 23–24 ms attack shift from phase-vocoder stretching; crossfade and .osb background are rejected."
+    },
+    {
+      "id": "offline",
+      "label": "[POLICY] No networked services",
+      "kind": "constraint",
+      "status": "offline only",
+      "source": "AGENTS.md",
+      "line": 143,
+      "summary": "No network calls, telemetry, external APIs or update checks."
+    },
+    {
+      "id": "convention",
+      "label": "[UNDECIDED] Export convention vs sound onset",
+      "kind": "decision",
+      "status": "open decision",
+      "source": "docs/07-roadmap.md",
+      "line": 590,
+      "summary": "Choose whether export follows ranked-map timing (about -21 ms) or sound onset; state convention in claims."
+    }
+  ],
+  "links": [
+    [
+      "project",
+      "shipped",
+      "contains"
+    ],
+    [
+      "project",
+      "release",
+      "tracks"
+    ],
+    [
+      "project",
+      "backlog",
+      "tracks"
+    ],
+    [
+      "project",
+      "offline",
+      "constrained by"
+    ],
+    [
+      "shipped",
+      "timing",
+      "contains"
+    ],
+    [
+      "shipped",
+      "maptools",
+      "contains"
+    ],
+    [
+      "shipped",
+      "hitsounds",
+      "contains"
+    ],
+    [
+      "shipped",
+      "library",
+      "contains"
+    ],
+    [
+      "shipped",
+      "trainer",
+      "contains"
+    ],
+    [
+      "shipped",
+      "compile",
+      "contains"
+    ],
+    [
+      "shipped",
+      "installer",
+      "contains"
+    ],
+    [
+      "release",
+      "r6",
+      "requires"
+    ],
+    [
+      "release",
+      "t6",
+      "requires"
+    ],
+    [
+      "release",
+      "t7",
+      "requires"
+    ],
+    [
+      "release",
+      "t1",
+      "resolved by"
+    ],
+    [
+      "release",
+      "t2",
+      "owner decision"
+    ],
+    [
+      "release",
+      "t3",
+      "resolved by"
+    ],
+    [
+      "release",
+      "t4",
+      "resolved by"
+    ],
+    [
+      "release",
+      "t5",
+      "resolved by"
+    ],
+    [
+      "library",
+      "r6",
+      "needs evidence"
+    ],
+    [
+      "maptools",
+      "t6",
+      "researches labels"
+    ],
+    [
+      "hitsounds",
+      "t7",
+      "extended by"
+    ],
+    [
+      "backlog",
+      "accuracy",
+      "contains"
+    ],
+    [
+      "backlog",
+      "languages",
+      "contains"
+    ],
+    [
+      "backlog",
+      "compileextras",
+      "contains"
+    ],
+    [
+      "accuracy",
+      "convention",
+      "depends on decision"
+    ]
+  ]
+}

@@ -1,0 +1,6 @@
+# The website's packages, and the Discord bot that talks to its API. The
+# engine (python/, crates/) is not a Node package and is not part of this
+# workspace.
+packages:
+  - site/*
+  - bot

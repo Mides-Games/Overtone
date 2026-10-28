@@ -1,0 +1,172 @@
+{
+    "_comment": "Written by deploy/eggs/egg.py. Do not edit: edit deploy/eggs/ and run it again.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-26T00:00:00+00:00",
+    "name": "Overtone web",
+    "author": "dev@midesprojects.com",
+    "description": "The Overtone website: builds site/web with pnpm and serves site/web/dist with deploy/web/serve.mjs, which forwards /api to overtone-api so the browser sees one origin. The only Overtone server the TLS proxy publishes.",
+    "features": null,
+    "docker_images": {
+        "Node.js 24": "ghcr.io/parkervcp/yolks:nodejs_24"
+    },
+    "file_denylist": [],
+    "startup": "bash deploy/eggs/start.sh web",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": \"overtone-web: listening on\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Install script of the overtone-web, overtone-api, overtone-worker and overtone-bot eggs.\n#\n# Runs once, as root, in the panel's throwaway installer container, with the\n# server's disk at /mnt/server. It only puts the repository there: the\n# dependencies (pnpm, pip) are installed by deploy/eggs/start.sh on the first\n# start, inside the runtime image whose Node or Python they are built for.\n#\n# egg.py replaces web with web, api, worker or bot when it writes the egg.\n#\n# Variables the eggs declare:\n#   GIT_ADDRESS   the repository, https\n#   BRANCH        master (production) or experimental (staging)\n#   GIT_TOKEN     read-only token while the repository is private; empty when public\n#   USER_UPLOAD   1 = do not clone: the files are uploaded by hand\n#\n# A reinstall over an existing clone switches it to BRANCH and keeps any file\n# git does not track; it refuses, and says so, when a tracked file was edited\n# on the server.\nset -euo pipefail\n\nROLE=web\nsay() { echo \"[overtone-$ROLE] $*\"; }\n\n# git-lfs is not taken from apt: the installer image's Debian 11 index pointed\n# at a build the security mirror no longer serves (404 on 2026-10-27), which\n# failed every install. Only the worker needs it, and it gets the static\n# binary from git-lfs's own release, pinned and checked against its SHA-256.\nPKGS=(git ca-certificates)\n[ \"$ROLE\" = worker ] && PKGS+=(curl)\napt-get update -y >/dev/null\napt-get install -y --no-install-recommends \"${PKGS[@]}\" >/dev/null\n\nGIT_LFS_VERSION=3.6.1\nGIT_LFS_SHA256=2138d2e405a12f1a088272e06790b76699b79cb90d0317b77aafaf35de908d76\nif [ \"$ROLE\" = worker ]; then\n    tarball=/tmp/git-lfs.tar.gz\n    curl -fsSL -o \"$tarball\" \\\n        \"https://github.com/git-lfs/git-lfs/releases/download/v$GIT_LFS_VERSION/git-lfs-linux-amd64-v$GIT_LFS_VERSION.tar.gz\"\n    echo \"$GIT_LFS_SHA256  $tarball\" | sha256sum -c --quiet - || { say \"ERROR: git-lfs download does not match its SHA-256.\"; exit 1; }\n    tar -xzf \"$tarball\" -C /tmp\n    install -m 0755 \"/tmp/git-lfs-$GIT_LFS_VERSION/git-lfs\" /usr/local/bin/git-lfs\nfi\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ \"${USER_UPLOAD:-0}\" = 1 ]; then\n    say \"USER_UPLOAD=1: nothing cloned. Upload the repository to the server's root.\"\n    exit 0\nfi\n\ncase \"${BRANCH:-}\" in\n    master | experimental) ;;\n    *) say \"ERROR: BRANCH is '${BRANCH:-}', not master or experimental.\"; exit 1 ;;\nesac\nif [ -z \"${GIT_ADDRESS:-}\" ]; then\n    say \"ERROR: GIT_ADDRESS is empty.\"\n    exit 1\nfi\n\n# The token travels in a header for each command and is never written to\n# .git/config: anyone who opens the server's file manager would read it there.\n# The address is printed; the token never is.\nAUTH=()\nif [ -n \"${GIT_TOKEN:-}\" ]; then\n    AUTH=(-c \"http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' \"$GIT_TOKEN\" | base64 -w0)\")\nfi\n# The files belong to the panel's user, and this script runs as root.\ngit config --global --add safe.directory /mnt/server\n# The model is fetched below, by name, and only for the worker.\nexport GIT_LFS_SKIP_SMUDGE=1\n\nif [ -d .git ]; then\n    say \"reinstall: switching the existing clone to $BRANCH\"\n    git remote set-url origin \"$GIT_ADDRESS\"\n    git \"${AUTH[@]}\" fetch --quiet origin \"$BRANCH\"\n    if ! git diff --quiet HEAD --; then\n        say \"ERROR: tracked files were edited on the server:\"\n        git diff --stat HEAD -- | tail -n 20\n        say \"Delete them in the file manager, or set USER_UPLOAD=1 to keep them, then reinstall.\"\n        exit 1\n    fi\n    git checkout --quiet -B \"$BRANCH\" \"origin/$BRANCH\"\nelif [ -n \"$(ls -A)\" ]; then\n    say \"ERROR: /home/container has files but no clone. Empty it, or set USER_UPLOAD=1.\"\n    exit 1\nelse\n    say \"cloning $GIT_ADDRESS ($BRANCH)\"\n    git \"${AUTH[@]}\" clone --quiet --branch \"$BRANCH\" \"$GIT_ADDRESS\" .\nfi\ngit branch --quiet --set-upstream-to \"origin/$BRANCH\" \"$BRANCH\"\n# A mode change (chmod +x in the file manager) is not a change worth keeping,\n# and counting it as one blocks every fast-forward that touches that file.\ngit config core.fileMode false\n\nif [ \"$ROLE\" = worker ]; then\n    # The Beat This! model is a Git LFS file: without this, a 130-byte pointer.\n    # git-lfs is one static binary; start.sh finds it in ~/.local/bin when an\n    # update brings a new model, since the runtime image has no git-lfs.\n    mkdir -p .local/bin\n    cp \"$(command -v git-lfs)\" .local/bin/git-lfs\n    git lfs install --local >/dev/null\n    git \"${AUTH[@]}\" lfs pull\n    for m in assets/models/*.onnx; do\n        if head -c 40 \"$m\" | grep -q '^version https://git-lfs'; then\n            say \"ERROR: $m is still an LFS pointer after git lfs pull.\"\n            exit 1\n        fi\n    done\nfi\n\nsay \"installed $(git rev-parse --short HEAD) on $BRANCH; the first start installs the dependencies\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Repository",
+            "description": "The repository cloned at install and fast-forwarded at start, over https.",
+            "env_variable": "GIT_ADDRESS",
+            "default_value": "https://github.com/Mides-Projects/Overtone.git",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:https://",
+            "field_type": "text"
+        },
+        {
+            "name": "Branch",
+            "description": "master for production, experimental for staging. Changing it takes a reinstall, which switches the clone; a start never changes branch on its own.",
+            "env_variable": "BRANCH",
+            "default_value": "master",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|in:master,experimental",
+            "field_type": "text"
+        },
+        {
+            "name": "Auto update",
+            "description": "1 = fast-forward to origin/BRANCH on every start, so a restart is the release. Never a merge or a reset: a checkout that cannot fast-forward starts as it is, and says so.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "User upload",
+            "description": "1 = the install does not clone and a start does not update: the files are uploaded by hand.",
+            "env_variable": "USER_UPLOAD",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Deploy token",
+            "description": "Read-only token while the repository is private (a fine-grained token with Contents: read). Sent as a header, never written to .git/config or printed. Empty once it is public.",
+            "env_variable": "GIT_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Rollback commit",
+            "description": "A commit this server had on BRANCH (see .overtone/deployed.log). When set, the server starts there and does not update; clear it to return to BRANCH.",
+            "env_variable": "ROLLBACK_COMMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|regex:/^[0-9a-f]{7,40}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "API upstream",
+            "description": "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
+            "env_variable": "API_UPSTREAM",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:http://",
+            "field_type": "text"
+        },
+        {
+            "name": "Trusted proxy addresses",
+            "description": "Comma-separated addresses or CIDR ranges of the TLS proxy in front (behind Cloudflare: its published IPv4 and IPv6 ranges, docs/deploy.md §9). Only a connection from inside them has its X-Forwarded-For read; anyone else is counted by their own address. Empty = trust no one.",
+            "env_variable": "TRUSTED_PROXY_ADDRS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Trusted proxy hops",
+            "description": "Proxies in front of this server: 1 for the TLS proxy. From a trusted address, serve.mjs keeps that many X-Forwarded-For entries plus the connection's address and drops what a client wrote before them. The API's TRUST_PROXY is this + 1.",
+            "env_variable": "TRUSTED_PROXY_HOPS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:0,10",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides web URL",
+            "description": "The same value as this environment's overtone-api MIDES_WEB_URL: profile pictures may load from its origin (img-src).",
+            "env_variable": "MIDES_WEB_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|starts_with:http",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides image origins",
+            "description": "The same value as overtone-api's: other origins profile pictures may load from. Nothing else but this site and data: is allowed.",
+            "env_variable": "MIDES_IMAGE_ORIGINS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "API timeout",
+            "description": "Seconds a forwarded request's connection to the API may sit idle before it is cut (504). Idle, not total: an upload that keeps moving is not cut.",
+            "env_variable": "API_TIMEOUT_S",
+            "default_value": "60",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:1,3600",
+            "field_type": "text"
+        },
+        {
+            "name": "HSTS",
+            "description": "1 = every page carries Strict-Transport-Security (one year). The site is served over https only; 0 is for a server reached over plain http.",
+            "env_variable": "HSTS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Proxy secret",
+            "description": "The same value as this environment's overtone-api PROXY_SECRET, 32+ characters. Sent with every request forwarded to the API, which answers 404 without it: the API's own port is public on the node.",
+            "env_variable": "PROXY_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
+        }
+    ]
+}

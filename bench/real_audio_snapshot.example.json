@@ -1,0 +1,20 @@
+{
+ "_example": "Shape only: the real file is bench/real_audio_snapshot.local.json, gitignored, measured from a private osu! library (bench/local_data.py).",
+ "_comment": "Real songs (bench/corpus_b.local.json tracks) that must keep analysing, never refused. Regenerate with: python bench/gates.py real-audio --update",
+ "bpm_eps": 0.01,
+ "tracks": {
+  "take-you-down": {
+   "global_bpm": 174.0,
+   "section_bpms": [
+    173.0,
+    174.0
+   ],
+   "point_bpms": [
+    174.0
+   ],
+   "meter": "4/4",
+   "meter_beats": 4,
+   "engine": "precision"
+  }
+ }
+}

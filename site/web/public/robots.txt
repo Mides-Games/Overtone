@@ -1,0 +1,20 @@
+# Overtone (W10.3). The public pages may be indexed; a result page is
+# readable only by whoever uploaded it, and sign-in and the API are not pages.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /analyze/
+Disallow: /login
+Disallow: /profile
+Disallow: /history
+Disallow: /link/
+Disallow: /compare
+# This browser's own settings (W12.15): nothing on it is worth a search result.
+Disallow: /settings
+Disallow: /embed/
+Disallow: /share-target
+# An account's notifications and the staff panel (W13.17, W13.19).
+Disallow: /notifications
+Disallow: /staff
+
+Sitemap: https://overtone.midesprojects.com/sitemap.xml

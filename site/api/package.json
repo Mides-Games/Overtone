@@ -1,0 +1,23 @@
+{
+  "name": "overtone-api",
+  "private": true,
+  "version": "0.2.0-alpha",
+  "description": "The Overtone website's API: Mides sign-in, sessions and (later) the analysis queue.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --watch --env-file-if-exists=.env src/dev.js",
+    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.js",
+    "check": "node --env-file-if-exists=.env src/db/check.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.0"
+  }
+}

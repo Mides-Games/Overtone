@@ -1,0 +1,294 @@
+"""The v4 Rust engine as a sidecar: run ``overtone-cli``, get v3's ``Analysis``.
+
+Roadmap Phase 22, "Rust engine in the app": opt-in, with v3 as the fallback.
+The CLI's ``--full`` report carries everything v3's precision engine stores on
+an :class:`overtone.Analysis` (envelope, attacks, sections, beat grid, local
+BPM curve, bar, red lines before export snapping), so the object built here
+is the one every exporter, editor and card already reads. Nothing downstream
+needs to know which engine ran.
+
+What the Rust engine does not do, this module does not pretend it did:
+
+- it has no beat-tracker fallback: where v3 would fall back, the sidecar
+  refuses (:class:`SidecarRefused`, with the engine's reasons), and the caller
+  decides whether to run v3 instead;
+- it runs at the pulse the grid proves (``subdivision`` 1). A user who asked
+  for another subdivision or for the legacy engine goes to v3.
+
+Measured against v3 on edm-174, three-sections, swing-120, secs-4 and
+long-6min: beat grid and local BPM curve identical to 1e-7 ms and 1e-5 BPM,
+envelope frame counts equal, red lines within 0.019 ms (the settled section
+boundaries' float noise). Exported, the whole-millisecond offsets are the same
+and beat lengths agree to 1e-9 ms. The golden gate pins the rest stage by
+stage.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+from typing import Iterable
+
+import numpy as np
+
+import overtone as ta
+
+#: Point this at a binary to use it instead of the one the search finds.
+CLI_ENV = "OVERTONE_CLI"
+#: A six-minute song takes about 0.2 s; an hour, tens of seconds. Past this,
+#: something is wrong and v3 should take over.
+TIMEOUT_S = 300
+#: How often a running CLI is asked about, between reads of what it wrote:
+#: the longest a stop waits for the process to be ended.
+POLL_S = 0.05
+
+_HERE = Path(__file__).resolve().parent
+_ROOT = _HERE.parent
+_EXE = "overtone-cli.exe" if os.name == "nt" else "overtone-cli"
+
+
+class SidecarUnavailable(RuntimeError):
+    """No ``overtone-cli`` binary was found; build it or set OVERTONE_CLI."""
+
+
+#: v3's own refusal messages, so the app says the same thing whichever engine
+#: ran. Keys are the CLI's diagnostic kinds.
+REFUSALS = {
+    "too_few_attacks": "Not enough beats detected. Try a file with clearer percussion.",
+    "no_coherent_pulse": "No rhythmic pulse found: this audio sounds like noise or has no "
+                         "beat, so there is no BPM to report.",
+    "large_grid_residual": "The music does not sit on a fixed grid.",
+}
+
+
+class SidecarRefused(ValueError):
+    """The engine found no grid; ``diagnostics`` says why."""
+
+    def __init__(self, message: str, diagnostics: list[dict]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+
+def candidates() -> list[Path]:
+    """Where a binary may live: the override, next to this file (a bundled
+    app), then the workspace's release and debug builds."""
+    found = [Path(os.environ[CLI_ENV])] if os.environ.get(CLI_ENV) else []
+    return found + [_HERE / _EXE,
+                    _ROOT / "target" / "release" / _EXE,
+                    _ROOT / "target" / "debug" / _EXE]
+
+
+def find_cli(search: Iterable[Path] | None = None) -> Path | None:
+    for path in (candidates() if search is None else search):
+        if path.is_file():
+            return path
+    return None
+
+
+def _run(args: list[str], timeout: float) -> subprocess.CompletedProcess:
+    """Run the CLI to its end and return what it wrote.
+
+    It is ended, never left behind, when it overruns ``timeout``
+    (``RuntimeError``) or when the analysis on this thread is stopped:
+    between reads of its output, every POLL_S, ``overtone.checkpoint``
+    asks, and raises AnalysisStopped once a stop was asked for. Either way
+    the process is killed and reaped before the exception leaves. Raises
+    :class:`SidecarUnavailable` when it cannot start.
+    """
+    try:
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                # Retrying loses nothing: communicate keeps what it has read.
+                stdout, stderr = process.communicate(timeout=POLL_S)
+                break
+            except subprocess.TimeoutExpired as exc:
+                ta.checkpoint()
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except BaseException:
+        process.kill()
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
+def analysis_from_report(report: dict) -> ta.Analysis:
+    """Build v3's :class:`Analysis` from an ``overtone-cli --full`` report."""
+    evidence = report["evidence"]
+    sr = int(evidence["sample_rate"])
+    hop = int(evidence["hop"])
+    beats = np.asarray(evidence["beats"], dtype=float)
+    sections = [ta.GridSection(float(s["start_s"]), float(s["end_s"]), float(s["period_s"]),
+                               float(s["phase_s"]), int(s["inliers"]),
+                               float(s["residual_ms"]), float(s["coverage"]))
+                for s in report["sections"]]
+    # v3's precision points carry their section's index as beat_index.
+    points = [ta.TimingPoint(float(p["offset_ms"]), float(p["bpm"]), float(p["confidence"]),
+                             int(p["section"]), int(p["meter"]), bool(p["meter_known"]))
+              for p in evidence["points"]]
+    return ta.Analysis(
+        str(report["source"]), float(report["duration"]), beats,
+        np.asarray(evidence["local_bpms"], dtype=float), points, hop, sr, 1.0,
+        float(report["global_bpm"]), float(report["stability"]), str(report["meter"]),
+        np.asarray(evidence["onset"], dtype=np.float32),
+        beats * sr / hop if beats.size else np.zeros(0),
+        np.asarray(evidence["attack_times"], dtype=float),
+        np.asarray(evidence["attack_weights"], dtype=float),
+        sections, int(evidence["meter_beats"]), int(evidence["downbeat_class"]),
+        float(report["residual_ms"]), "precision")
+
+
+def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence: int = 12,
+            min_confidence: float = 0.75, prefer_map_bpm: bool = True,
+            cli: Path | None = None, timeout: float = TIMEOUT_S) -> ta.Analysis:
+    """Analyse ``path`` with the Rust engine.
+
+    Raises :class:`SidecarUnavailable` without a binary, :class:`SidecarRefused`
+    when the audio has no grid, and ``RuntimeError`` with the loader's own
+    message when the file cannot be read, as v3's loader does.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    args = [str(binary), "analyze", os.fspath(path), "--full",
+            "--min-delta", repr(float(min_delta)), "--persistence", str(int(persistence)),
+            "--min-confidence", repr(float(min_confidence))]
+    if not prefer_map_bpm:
+        args.append("--no-map-bpm")
+    done = _run(args, timeout)
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 3 and report is not None:
+        diagnostics = report.get("diagnostics", [])
+        kind = diagnostics[0].get("kind") if diagnostics else None
+        raise SidecarRefused(REFUSALS.get(kind, REFUSALS["no_coherent_pulse"]), diagnostics)
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(path)).name}: {report['error']}")
+    if done.returncode != 0 or report is None:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    analysis = analysis_from_report(report)
+    if not prefer_map_bpm:
+        return analysis
+    # The same osu! conventions v3 applies after its own analysis: the mapped
+    # octave, the whole BPM where the attacks agree, and red lines where it
+    # drifts (DRIFT_FOLLOW).
+    analysis = ta._fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    analysis = ta._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
+    if ta.DRIFT_FOLLOW:
+        analysis = ta._follow_drift(analysis)
+    before, before_beats = float(analysis.global_bpm), analysis.beats
+    if ta._beat_this_session() is not None:
+        # Beat This! reads the audio itself; the Rust report carries none of it.
+        y, sr = ta._load_audio(os.fspath(path), lambda _message: None)
+        analysis = ta._beat_this_vote(analysis, y, sr)
+    audio: list = []
+
+    def heard():
+        # Read once for every judge that asks, so Beat This! runs once.
+        if not audio:
+            audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
+        return ta._beat_this_judge_beats(*audio[0])
+
+    def tempo():
+        heard()
+        return ta._beat_this_tempo(*audio[0])
+
+    analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
+    analysis = ta._song_octave_by_beat_this(analysis, heard)
+    return ta._snap_whole_points(ta._fold_lines_to_song_octave(analysis, heard))
+
+
+def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,
+            timeout: float = TIMEOUT_S) -> tuple[np.ndarray, np.ndarray, float]:
+    """The audio's attacks (times in s, weights) and its length in seconds,
+    as ``grade_reference_timing`` takes them: what the library health check
+    grades a map's own red lines against.
+
+    From ``analyze --full``, whether or not the engine found a grid: attacks
+    are detected before any grid is fitted, so a song refused one (exit 3)
+    still has them. Raises :class:`SidecarUnavailable` without a binary and
+    ``RuntimeError`` with the loader's message when the file cannot be read.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    done = _run([str(binary), "analyze", os.fspath(path), "--full"], timeout)
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(path)).name}: {report['error']}")
+    if done.returncode not in (0, 3) or report is None or "evidence" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    evidence = report["evidence"]
+    return (np.asarray(evidence["attack_times"], dtype=float),
+            np.asarray(evidence["attack_weights"], dtype=float), float(report["duration"]))
+
+
+def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
+              timeout: float = TIMEOUT_S) -> dict:
+    """``overtone-cli structure``: phrase boundaries, labels with their
+    evidence, and the energy lane, as the CLI's JSON (Phase 19, Structure).
+
+    Raises :class:`SidecarUnavailable` without a binary, and ``RuntimeError``
+    with the loader's message when the file cannot be read.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    done = _run([str(binary), "structure", os.fspath(path)], timeout)
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(path)).name}: {report['error']}")
+    if done.returncode != 0 or report is None or "sections" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    return report
+
+
+def ramps(audio: str | os.PathLike[str], drift_ms: float = 5.0,
+          max_lines: int | None = None, decimals: int = 0,
+          *, cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
+    """``overtone-cli ramps``: the elastic curve as the fewest red lines.
+
+    Raises :class:`SidecarUnavailable` without a binary, ``RuntimeError``
+    with the loader's message when the file cannot be read, and
+    :class:`SidecarRefused` when too few attacks fit anything.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    args = [str(binary), "ramps", os.fspath(audio), "--drift", repr(float(drift_ms)),
+            "--decimals", str(int(decimals))]
+    if max_lines is not None:
+        args += ["--max-lines", str(int(max_lines))]
+    done = _run(args, timeout)
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 3 and report is not None:
+        raise SidecarRefused("Too few attacks to fit a curve on.", [])
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(audio)).name}: {report['error']}")
+    if done.returncode != 0 or report is None or "lines" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    return report

@@ -1,0 +1,50 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+bench/audio/
+# Corpus B's cached analyses and summaries (bench/corpus_b.py)
+bench/.cache/
+
+# Scoped so that .osu and .csv test fixtures can be committed (audit F-09):
+# only ignore exports dropped at the repo root or in exports/.
+/*.osu
+/*.csv
+/exports/
+*.bak
+*.part
+
+# Rust (v4)
+/target/
+# Graphify (docs/project-map.md): everything it writes is local and regenerated,
+# and its skill and ignore file belong to the tool, not the repository.
+/graphify-out/
+/.graphifyignore
+/.agents/
+# Build outputs of the removed installer (parked 2026-10-26), still on some
+# disks: the frozen tree, the MSI and the ZIP. Never committed.
+/dist/
+/build/
+# Tauri frontend
+/app/node_modules/
+/app/dist/
+# Measurements of a private osu! library (bench/local_data.py): Songs folders,
+# beatmap ids, mappers and SHA-1s. bench/<name>.example.json shows each shape.
+/bench/*.local.json
+/bench/*.local.md
+# ONNX Runtime's shape-inference temporaries (a model export's scratch files).
+/sym_shape_infer_temp.onnx
+/*.data
+# Website (site/): dependencies, builds and local secrets. `.env.example` is
+# committed; a real `.env` never is.
+/node_modules/
+/site/*/node_modules/
+/site/*/dist/
+/site/*/.env
+# The Discord bot (bot/): the same rule, its token included.
+/bot/node_modules/
+/bot/.env
+# The end-to-end run's traces and reports (site/e2e).
+/site/e2e/test-results/
+/site/e2e/playwright-report/

@@ -1,0 +1,11 @@
+[Unit]
+Description=Bring Overtone up to its stable branch on GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Never root: see the head of overtone-update.sh.
+User=overtone
+ExecStart=/bin/sh /opt/overtone/deploy/overtone-update.sh
+Nice=15

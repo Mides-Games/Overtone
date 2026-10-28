@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import reference from 'virtual:openapi'
 
+import Icon from '../components/ui/Icon.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
+import SectionHeader from '../components/ui/SectionHeader.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { curlExample } from '../lib/api-tokens.js'
 import { groupOperations, prose } from '../lib/openapi-view.js'
@@ -16,12 +19,17 @@ import { groupOperations, prose } from '../lib/openapi-view.js'
  * Every string from the document is rendered as text (code spans as <code>),
  * never as HTML.
  */
+/**
+ * The method's colour. Red, amber and the tempo green mean red lines, "check
+ * by ear" and the tempo curve everywhere on the site (docs/design.md, section
+ * 12), so they mark no method: a read is the accent, a write is plain text.
+ */
 const METHOD_TONE = {
   GET: 'text-accent',
-  POST: 'text-tempo',
-  DELETE: 'text-red',
-  PUT: 'text-amber',
-  PATCH: 'text-amber',
+  POST: 'text-text',
+  DELETE: 'text-text',
+  PUT: 'text-text',
+  PATCH: 'text-text',
 }
 
 /** The community clients (W13.22): clients/js and clients/python in the repository. Code, so not translated. */
@@ -58,83 +66,108 @@ export default function Developers() {
   const origin = typeof window === 'undefined' ? 'https://overtone.midesprojects.com' : window.location.origin
 
   return (
-    <div className="rise space-y-10">
-      <header className="space-y-3">
-        <p className="label text-accent">{t('platform.developers.eyebrow')}</p>
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('platform.developers.title')}</h1>
-        <p className="max-w-[68ch] text-muted">{t('platform.developers.intro')}</p>
-      </header>
+    <div className="space-y-16">
+      <PageHeader eyebrow={t('platform.developers.eyebrow')} title={t('platform.developers.title')} lede={t('platform.developers.intro')} />
 
-      <section className="panel space-y-4 p-5 sm:p-6">
-        <h2 className="label">{t('platform.developers.startTitle')}</h2>
-        <ol className="list-decimal space-y-2 pl-5 text-label text-text marker:text-dim">
-          <li>
-            {t('platform.developers.step1')}{' '}
-            {/* Underlined: it sits inside the step's sentence (WCAG 1.4.1, index.css). */}
-            <Link to="/settings/tokens" className="text-accent underline underline-offset-2">
-              {t('platform.developers.tokensLink')} →
-            </Link>
-          </li>
-          <li>{t('platform.developers.step2')}</li>
-          <li>{t('platform.developers.step3')}</li>
-        </ol>
-        <code className="readout block overflow-x-auto whitespace-pre rounded-control bg-surface-3 px-3 py-2 text-caption">{curlExample(origin)}</code>
-        <ul className="space-y-1.5 text-caption leading-relaxed text-dim">
-          <li>{t('platform.developers.ruleScopes')}</li>
-          <li>{t('platform.developers.ruleLimit')}</li>
-          <li>{t('platform.developers.ruleBrowser')}</li>
-          <li>{t('platform.developers.ruleAudio')}</li>
-        </ul>
+      <section aria-labelledby="dev-start" className="grid gap-x-12 gap-y-8 lg:grid-cols-12">
+        <div className="space-y-6 lg:col-span-5">
+          <SectionHeader id="dev-start" title={t('platform.developers.startTitle')} />
+          <ol className="space-y-4">
+            {['step1', 'step2', 'step3'].map((key, i) => (
+              <li key={key} className="flex gap-4 border-t border-line pt-4">
+                <span className="readout w-6 shrink-0 text-title font-semibold text-accent">{i + 1}</span>
+                <p className="text-body text-text">
+                  {t(`platform.developers.${key}`)}
+                  {key === 'step1' && (
+                    <>
+                      {' '}
+                      {/* Underlined: it sits inside the step's sentence (WCAG 1.4.1, index.css). */}
+                      <Link to="/settings/tokens" className="link inline-flex items-center gap-1">
+                        {t('platform.developers.tokensLink')}
+                        <Icon name="arrow-right" size={14} />
+                      </Link>
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div className="min-w-0 space-y-6 lg:col-span-7">
+          <div className="panel overflow-hidden">
+            <p className="label border-b border-line px-4 py-2.5">curl</p>
+            {/* In the tab order: a block that scrolls sideways must be reachable by keyboard (WCAG 2.1.1). */}
+            <code tabIndex={0} className="readout block overflow-x-auto whitespace-pre px-4 py-3 text-label text-text">{curlExample(origin)}</code>
+          </div>
+          <ul className="space-y-3 text-label text-muted">
+            {['ruleScopes', 'ruleLimit', 'ruleBrowser', 'ruleAudio'].map((key) => (
+              <li key={key} className="flex gap-3">
+                <Icon name="check" size={16} className="mt-0.5 text-accent" strokeWidth={2} />
+                <span>{t(`platform.developers.${key}`)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
       {/* W13.22: the clients kept in the repository, so a script need not start from curl. */}
-      <section className="panel space-y-4 p-5 sm:p-6">
-        <div className="space-y-1">
-          <h2 className="label">{t('platform.developers.clientsTitle')}</h2>
-          <p className="max-w-[68ch] text-label text-muted">{t('platform.developers.clientsIntro')}</p>
-        </div>
+      <section aria-labelledby="dev-clients" className="space-y-6 border-t border-line pt-12">
+        <SectionHeader
+          id="dev-clients"
+          title={t('platform.developers.clientsTitle')}
+          lede={t('platform.developers.clientsIntro')}
+          action={
+            <a href={CLIENTS_URL} target="_blank" rel="noopener" className="btn-quiet -mr-2.5">
+              {t('platform.developers.clientsLink')}
+              <Icon name="external" size={16} />
+              <span className="sr-only">{t('common.newTab')}</span>
+            </a>
+          }
+        />
         <div className="grid gap-4 md:grid-cols-2">
           {CLIENTS.map((client) => (
-            <div key={client.key} className="min-w-0 space-y-2">
-              <p className="text-label text-text">{t(`platform.developers.${client.key}`)}</p>
-              <code className="readout block overflow-x-auto whitespace-pre rounded-control bg-surface-3 px-3 py-2 text-caption">{client.snippet}</code>
+            <div key={client.key} className="panel min-w-0 overflow-hidden">
+              <p className="label border-b border-line px-4 py-2.5">{t(`platform.developers.${client.key}`)}</p>
+              <code tabIndex={0} className="readout block overflow-x-auto whitespace-pre px-4 py-3 text-caption text-text">{client.snippet}</code>
             </div>
           ))}
         </div>
-        <p className="text-caption text-dim">{t('platform.developers.clientsBot')}</p>
-        <a href={CLIENTS_URL} target="_blank" rel="noopener" className="inline-block text-label text-accent underline underline-offset-2">
-          {t('platform.developers.clientsLink')} ↗
-        </a>
+        <p className="max-w-[72ch] text-label text-muted">{t('platform.developers.clientsBot')}</p>
       </section>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="space-y-1">
-            <h2 className="font-display text-title font-bold">
-              {reference.title} <span className="readout text-label text-dim">{reference.version}</span>
-            </h2>
-            <p className="text-caption text-dim">
-              {t('platform.developers.base')} <code className="readout">{reference.server}</code> · {t('platform.developers.englishNote')}
-            </p>
-          </div>
-          <div className="flex gap-1.5" role="group" aria-label={t('platform.developers.filter')}>
-            {['all', 'token'].map((key) => (
-              <button key={key} type="button" className="tool-btn px-2.5" aria-pressed={filter === key} onClick={() => setFilter(key)}>
-                {t(`platform.developers.show.${key}`)}
-              </button>
-            ))}
-          </div>
-        </div>
+      <section aria-labelledby="dev-reference" className="space-y-8 border-t border-line pt-12">
+        <SectionHeader
+          id="dev-reference"
+          eyebrow={reference.version}
+          title={reference.title}
+          lede={
+            <>
+              {t('platform.developers.base')} <code className="readout text-text">{reference.server}</code> · {t('platform.developers.englishNote')}
+            </>
+          }
+          action={
+            <div className="flex gap-1.5" role="group" aria-label={t('platform.developers.filter')}>
+              {['all', 'token'].map((key) => (
+                <button key={key} type="button" className="tool-btn px-3 font-sans" aria-pressed={filter === key} onClick={() => setFilter(key)}>
+                  {t(`platform.developers.show.${key}`)}
+                </button>
+              ))}
+            </div>
+          }
+        />
 
-        <details className="panel p-4">
-          <summary className="cursor-pointer text-label font-semibold">{t('platform.developers.overview')}</summary>
-          <Prose text={reference.description} className="mt-3" />
+        <details className="group border-y border-line">
+          <summary className="flex cursor-pointer list-none items-center gap-2 py-3.5 text-body font-semibold text-text [&::-webkit-details-marker]:hidden">
+            <Icon name="chevron-right" size={16} className="text-dim transition-transform duration-150 ease-out group-open:rotate-90" />
+            {t('platform.developers.overview')}
+          </summary>
+          <Prose text={reference.description} className="max-w-[80ch] pb-5 pl-6" />
         </details>
 
         {groups.map((group) => (
-          <section key={group.name} className="space-y-2">
-            <h3 className="label">{group.name}</h3>
-            <ul className="space-y-2">
+          <section key={group.name} className="space-y-3">
+            <h3 className="heading-title">{group.name}</h3>
+            <ul className="divide-y divide-line border-y border-line">
               {group.operations.map((op) => (
                 <Operation key={op.id} op={op} />
               ))}
@@ -143,17 +176,20 @@ export default function Developers() {
         ))}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="font-display text-title font-bold">{t('platform.developers.schemas')}</h2>
-        <ul className="space-y-2">
+      <section aria-labelledby="dev-schemas" className="space-y-6 border-t border-line pt-12">
+        <SectionHeader id="dev-schemas" title={t('platform.developers.schemas')} />
+        <ul className="divide-y divide-line border-y border-line">
           {reference.schemas.map((schema) => (
             <li key={schema.name} id={`schema-${schema.name}`}>
-              <details className="panel p-4">
-                <summary className="cursor-pointer">
-                  <span className="readout text-label font-semibold">{schema.name}</span>
-                  {schema.description && <span className="ml-2 text-caption text-dim">{schema.description}</span>}
+              <details className="group">
+                <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1 py-3 [&::-webkit-details-marker]:hidden">
+                  <Icon name="chevron-right" size={14} className="self-center text-dim transition-transform duration-150 ease-out group-open:rotate-90" />
+                  <span className="readout text-label font-semibold text-text">{schema.name}</span>
+                  {schema.description && <span className="min-w-0 flex-1 text-caption text-muted">{schema.description}</span>}
                 </summary>
-                {schema.fields?.length ? <Fields fields={schema.fields} /> : <p className="readout mt-2 text-caption text-dim">{schema.type}</p>}
+                <div className="pb-4 pl-6">
+                  {schema.fields?.length ? <Fields fields={schema.fields} /> : <p className="readout text-caption text-dim">{schema.type}</p>}
+                </div>
               </details>
             </li>
           ))}
@@ -167,20 +203,21 @@ function Operation({ op }) {
   const { t } = useTranslation()
   return (
     <li id={op.id}>
-      <details className="rounded-panel border border-line bg-surface">
-        <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+      <details className="group">
+        <summary className="-mx-3 flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-control px-3 py-3 transition-colors duration-150 ease-out hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
           <span className={`readout w-14 shrink-0 text-label font-bold ${METHOD_TONE[op.method] ?? ''}`}>{op.method}</span>
           <code className="readout min-w-0 break-all text-label text-text">{op.path}</code>
-          <span className="min-w-0 flex-1 text-caption text-muted">
+          <span className="min-w-0 flex-1 basis-48 text-caption text-muted">
             <Inline text={op.summary} />
           </span>
           {op.tokenScope && (
-            <span className="chip-accent readout" title={t('platform.developers.tokenHint')}>
+            <span className="chip-accent normal-case" title={t('platform.developers.tokenHint')}>
               {op.tokenScope === 'any' ? t('platform.developers.anyToken') : op.tokenScope}
             </span>
           )}
+          <Icon name="chevron-down" size={16} className="text-dim transition-transform duration-150 ease-out group-open:rotate-180" />
         </summary>
-        <div className="space-y-4 border-t border-line px-4 py-3">
+        <div className="panel-well mb-3 space-y-4 px-4 py-4">
           {op.description && <Prose text={op.description} />}
           {!op.tokenScope && <p className="text-caption text-dim">{t('platform.developers.browserOnly')}</p>}
           {op.params.length > 0 && (
@@ -273,7 +310,7 @@ function Inline({ text }) {
     .split(/(`[^`]+`)/g)
     .map((part, i) =>
       part.startsWith('`') && part.endsWith('`') && part.length > 1 ? (
-        <code key={i} className="readout rounded bg-surface-3 px-1 text-text">
+        <code key={i} className="readout rounded border border-line px-1 text-text">
           {part.slice(1, -1)}
         </code>
       ) : (

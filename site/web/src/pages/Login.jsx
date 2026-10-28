@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation } from 'react-router'
 
 import Mark from '../components/Mark.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
@@ -20,6 +22,11 @@ const PROVIDERS = [
   },
 ]
 
+/**
+ * Sign in (ADR-W3): the Mides account, by Discord or Google, and nothing
+ * else. One panel, since it is the one thing on the page to operate; the
+ * heading and the promise about what is kept sit on the ground around it.
+ */
 export default function Login() {
   const { t } = useTranslation()
   usePageMeta(t('login.title'), t('login.subtitle'))
@@ -51,26 +58,38 @@ export default function Login() {
   const available = config?.providers ?? []
 
   return (
-    <div className="rise mx-auto max-w-sm space-y-6 py-4">
-      <div className="space-y-3 text-center">
-        <Mark size={36} className="mx-auto" />
-        <h1 className="font-display text-[28px] font-bold uppercase">{t('login.title')}</h1>
-        <p className="text-label text-muted">{t('login.subtitle')}</p>
+    <div className="rise mx-auto max-w-md space-y-8 py-4 sm:py-10">
+      <div className="space-y-4">
+        <Mark size={40} />
+        <h1 className="heading-headline">{t('login.title')}</h1>
+        <p className="lede">{t('login.subtitle')}</p>
       </div>
 
-      <div className="panel space-y-3 p-5">
+      <div className="panel space-y-3 p-5 sm:p-6" aria-busy={config === null}>
         {config?.devLogin && (
-          <div className="space-y-1.5 rounded-control border border-amber/40 bg-amber/10 p-3">
+          <div className="space-y-2 rounded-control border border-amber/40 bg-amber/10 p-3">
             <span className="chip-amber">{t('login.devTitle')}</span>
             <p className="text-caption text-text">{t('login.devNote')}</p>
           </div>
         )}
 
-        {config && available.length === 0 && <p className="text-label text-red">{t('login.notConfigured')}</p>}
+        {config && available.length === 0 && (
+          <p role="alert" className="text-label text-red">
+            {t('login.notConfigured')}
+          </p>
+        )}
+
+        {/* The two buttons' places while the server says which it offers. */}
+        {config === null && (
+          <div aria-hidden="true" className="space-y-3">
+            <Skeleton className="h-12 rounded-control" />
+            <Skeleton className="h-12 rounded-control" />
+          </div>
+        )}
 
         {PROVIDERS.filter((p) => available.includes(p.id)).map((p) => (
-          <button key={p.id} type="button" disabled={busy !== null} onClick={() => go(p.id)} className="btn-ghost h-11 w-full">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill={p.color} aria-hidden="true">
+          <button key={p.id} type="button" disabled={busy !== null} onClick={() => go(p.id)} className="btn-ghost btn-lg w-full">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill={p.color} aria-hidden="true" focusable="false">
               <path d={p.icon} />
             </svg>
             {busy === p.id ? t('common.loading') : t(`login.${p.id}`)}
@@ -84,7 +103,10 @@ export default function Login() {
         )}
       </div>
 
-      <p className="text-center text-caption text-dim">{t('login.privacy')}</p>
+      <div className="flex items-start gap-3 border-t border-line pt-5">
+        <Icon name="lock" size={16} className="mt-0.5 text-dim" />
+        <p className="text-caption text-muted">{t('login.privacy')}</p>
+      </div>
     </div>
   )
 }

@@ -2,11 +2,13 @@ import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { StaffPanel } from '../components/community/Moderation.jsx'
 import Reviews from '../components/community/Reviews.jsx'
 import Suggestions from '../components/community/Suggestions.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
+import Tabs from '../components/ui/Tabs.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 /**
@@ -31,42 +33,28 @@ export default function Community() {
   const staff = account?.role === 'moderator'
 
   return (
-    <div className="space-y-8">
-      <header className="rise space-y-2">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('community.title')}</h1>
-        <p className="max-w-[60ch] text-muted">{t('community.subtitle')}</p>
-      </header>
+    <div className="space-y-10">
+      <PageHeader title={t('community.title')} lede={t('community.subtitle')} />
 
-      <div role="tablist" aria-label={t('community.title')} className="flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`community-tab-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`community-panel-${key}`}
-            onClick={() => setParams(key === 'suggestions' ? {} : { tab: key }, { replace: true })}
-            className={`relative shrink-0 px-3 pb-2.5 pt-1 font-display text-label font-semibold uppercase tracking-[0.08em] transition ${
-              tab === key
-                ? 'text-text after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent'
-                : 'text-dim hover:text-text'
-            }`}
-          >
-            {t(`community.tabs.${key}`)}
-          </button>
-        ))}
+      <div className="space-y-8">
+        <Tabs
+          id="community"
+          label={t('community.title')}
+          tabs={TABS.map((key) => ({ key, label: t(`community.tabs.${key}`) }))}
+          value={tab}
+          onChange={(key) => setParams(key === 'suggestions' ? {} : { tab: key }, { replace: true })}
+        />
+
+        <section role="tabpanel" id={`community-panel-${tab}`} aria-labelledby={`community-tab-${tab}`}>
+          {tab === 'suggestions' && <Suggestions onModerated={moderated} />}
+          {tab === 'reviews' && <Reviews onModerated={moderated} />}
+          {tab === 'changelog' && (
+            <Suspense fallback={<SkeletonRows rows={4} label={t('community.loading')} />}>
+              <Changelog />
+            </Suspense>
+          )}
+        </section>
       </div>
-
-      <section role="tabpanel" id={`community-panel-${tab}`} aria-labelledby={`community-tab-${tab}`}>
-        {tab === 'suggestions' && <Suggestions onModerated={moderated} />}
-        {tab === 'reviews' && <Reviews onModerated={moderated} />}
-        {tab === 'changelog' && (
-          <Suspense fallback={<BrandLoader className="py-12" />}>
-            <Changelog />
-          </Suspense>
-        )}
-      </section>
 
       {staff && tab !== 'changelog' && <StaffPanel tick={tick} />}
     </div>

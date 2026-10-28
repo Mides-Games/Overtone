@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { moderate, moderationLog, report } from '../../lib/community.js'
+import Icon from '../ui/Icon.jsx'
+import SectionHeader from '../ui/SectionHeader.jsx'
 
 /**
  * The moderation suggestions and reviews share (W5.4, minimal): anyone can
@@ -29,10 +31,23 @@ export function ReportButton({ kind, id }) {
     }
   }
 
-  if (state === 'done') return <span className="text-caption text-dim">{t('community.moderation.reported')}</span>
+  if (state === 'done') {
+    return (
+      <span role="status" className="inline-flex items-center gap-1 text-caption text-dim">
+        <Icon name="check" size={14} />
+        {t('community.moderation.reported')}
+      </span>
+    )
+  }
   return (
     <span className="inline-flex items-center gap-2">
-      <button type="button" onClick={send} disabled={state === 'busy'} className="text-caption text-dim underline-offset-2 hover:text-text hover:underline">
+      <button
+        type="button"
+        onClick={send}
+        disabled={state === 'busy'}
+        className="inline-flex items-center gap-1 rounded-control text-caption text-dim underline-offset-2 transition-colors duration-150 ease-out hover:text-text hover:underline"
+      >
+        <Icon name="flag" size={14} />
         {t('community.moderation.report')}
       </button>
       {state === 'error' && (
@@ -70,7 +85,8 @@ export function HideButton({ kind, item, onDone }) {
 
   return (
     <span className="inline-flex items-center gap-2">
-      <button type="button" disabled={busy} onClick={act} className="btn-ghost h-7 px-2.5 text-caption">
+      <button type="button" disabled={busy} onClick={act} className="btn-ghost btn-sm">
+        <Icon name={action === 'hide' ? 'eye-off' : 'eye'} size={15} />
         {t(`community.moderation.${action}`)}
       </button>
       {error && (
@@ -95,9 +111,12 @@ export function StaffNote({ item }) {
   )
 }
 
-/** Staff: the open reports, then the latest actions, newest first. */
+/**
+ * Staff: the open reports, then the latest actions, newest first. A section
+ * of its own under the tab, a hairline above it, its two lists as rows.
+ */
 export function StaffPanel({ tick }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [data, setData] = useState(null)
 
   useEffect(() => {
@@ -112,61 +131,63 @@ export function StaffPanel({ tick }) {
 
   if (!data) return null
   return (
-    <section className="space-y-4 rounded-panel border border-dashed border-amber/40 p-4">
-      <h2 className="label text-amber">{t('community.moderation.staffTitle')}</h2>
-      <div className="space-y-2">
-        <h3 className="label">{t('community.moderation.openReports')}</h3>
-        {!data.reports.length ? (
-          <p className="text-caption text-dim">{t('community.moderation.noReports')}</p>
-        ) : (
-          <ul className="divide-y divide-line rounded-panel border border-line">
-            {data.reports.map((r) => (
-              <li key={`${r.kind}-${r.ref}`} className="space-y-1 px-3 py-2 text-caption">
-                <p>
-                  <span className="font-semibold">{t(`community.moderation.kind.${r.kind}`)}</span>{' '}
-                  <span className="readout text-dim">{r.ref.slice(0, 8)}</span> ·{' '}
-                  {t('community.moderation.reports', { count: r.count })}
-                  {/* A comment (W6) is hidden from its timing's page, where it sits. */}
-                  {r.timing && (
-                    <>
-                      {' '}
-                      ·{' '}
-                      <Link to={`/t/${r.timing}#comment-${r.ref}`} className="text-accent hover:underline">
+    <section aria-labelledby="staff-title" className="space-y-8 pt-6">
+      <SectionHeader id="staff-title" eyebrow={t('moderation.staff')} title={t('community.moderation.staffTitle')} />
+      <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className="min-w-0 space-y-3">
+          <h3 className="heading-title">
+            {t('community.moderation.openReports')} <span className="readout text-label font-medium text-dim">{data.reports.length}</span>
+          </h3>
+          {!data.reports.length ? (
+            <p className="border-y border-line py-4 text-label text-dim">{t('community.moderation.noReports')}</p>
+          ) : (
+            <ul className="divide-y divide-line border-y border-line">
+              {data.reports.map((r) => (
+                <li key={`${r.kind}-${r.ref}`} className="space-y-1 py-3 text-label">
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-text">{t(`community.moderation.kind.${r.kind}`)}</span>
+                    <span className="readout text-caption text-dim">{r.ref.slice(0, 8)}</span>
+                    <span className="chip-neutral">{t('community.moderation.reports', { count: r.count })}</span>
+                    {/* A comment (W6) is hidden from its timing's page, where it sits. */}
+                    {r.timing && (
+                      <Link to={`/t/${r.timing}#comment-${r.ref}`} className="link text-caption">
                         {t('social.comments.openTiming')}
                       </Link>
-                    </>
-                  )}
-                </p>
-                <p className="break-words text-muted">{r.reasons.map((reason) => `“${reason}”`).join(' ')}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="space-y-2">
-        <h3 className="label">{t('community.moderation.logTitle')}</h3>
-        {!data.log.length ? (
-          <p className="text-caption text-dim">{t('community.moderation.logEmpty')}</p>
-        ) : (
-          <ul className="divide-y divide-line rounded-panel border border-line">
-            {data.log.map((e, i) => (
-              <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 text-caption">
-                <span className="readout text-dim">{new Date(e.at).toLocaleString()}</span>
-                <span>
-                  {e.action === 'state'
-                    ? t('community.moderation.did.state', {
-                        moderator: e.moderator,
-                        from: t(`community.states.${e.from}`),
-                        to: t(`community.states.${e.to}`),
-                      })
-                    : t(`community.moderation.did.${e.action}`, { moderator: e.moderator, kind: t(`community.moderation.kind.${e.kind}`) })}
-                </span>
-                <span className="readout text-dim">{e.ref.slice(0, 8)}</span>
-                {e.reason && <span className="break-words text-muted">“{e.reason}”</span>}
-              </li>
-            ))}
-          </ul>
-        )}
+                    )}
+                  </p>
+                  <p className="break-words text-muted">{r.reasons.map((reason) => `“${reason}”`).join(' ')}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="min-w-0 space-y-3">
+          <h3 className="heading-title">{t('community.moderation.logTitle')}</h3>
+          {!data.log.length ? (
+            <p className="border-y border-line py-4 text-label text-dim">{t('community.moderation.logEmpty')}</p>
+          ) : (
+            <ul className="divide-y divide-line border-y border-line">
+              {data.log.map((e, i) => (
+                <li key={`${e.at}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-label">
+                  <time dateTime={e.at} className="readout text-caption text-dim">
+                    {new Date(e.at).toLocaleString(i18n.language)}
+                  </time>
+                  <span className="text-text">
+                    {e.action === 'state'
+                      ? t('community.moderation.did.state', {
+                          moderator: e.moderator,
+                          from: t(`community.states.${e.from}`),
+                          to: t(`community.states.${e.to}`),
+                        })
+                      : t(`community.moderation.did.${e.action}`, { moderator: e.moderator, kind: t(`community.moderation.kind.${e.kind}`) })}
+                  </span>
+                  <span className="readout text-caption text-dim">{e.ref.slice(0, 8)}</span>
+                  {e.reason && <span className="w-full break-words text-muted">“{e.reason}”</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
   )

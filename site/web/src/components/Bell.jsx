@@ -12,6 +12,8 @@ import {
   unreadCount,
   unreadStore,
 } from '../lib/notifications.js'
+import Icon from './ui/Icon.jsx'
+import Skeleton from './ui/Skeleton.jsx'
 
 /**
  * The notification bell (W13.17), in the navbar for a signed-in account:
@@ -133,31 +135,37 @@ export default function Bell() {
         aria-label={t('notifications.bell', { count: unread })}
         aria-expanded={open}
         aria-haspopup="true"
-        className="relative flex h-8 min-w-8 items-center justify-center rounded-control px-1.5 text-muted transition hover:bg-surface-3 hover:text-text"
+        className="icon-btn relative"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
+        <Icon name="bell" size={18} />
         {unread > 0 && (
-          <span className="readout absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-accent-ink">
+          <span className="readout absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-accent-ink">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
       {open && (
-        <div className="rise fixed inset-x-2 top-16 z-50 rounded-panel border border-line-strong bg-surface p-1.5 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.6)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
+        <div
+          className="menu pop-in fixed inset-x-2 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80"
+          style={{ '--origin': 'top right' }}
+        >
           <div className="flex items-center justify-between gap-2 border-b border-line px-2.5 pb-2 pt-1">
             <p className="label">{t('notifications.title')}</p>
             {unread > 0 && (
-              <button type="button" onClick={allRead} className="text-caption text-accent hover:underline">
+              <button type="button" onClick={allRead} className="btn-quiet btn-sm -mr-1">
+                <Icon name="check" size={14} />
                 {t('notifications.allRead')}
               </button>
             )}
           </div>
           {failed && <p className="px-2.5 py-3 text-caption text-red">{t('notifications.failed')}</p>}
-          {!failed && items === null && <p className="px-2.5 py-3 text-caption text-dim">{t('common.loading')}</p>}
-          {items?.length === 0 && <p className="px-2.5 py-3 text-caption text-dim">{t('notifications.empty')}</p>}
+          {!failed && items === null && (
+            <div className="space-y-2 px-2.5 py-3" role="status" aria-label={t('common.loading')}>
+              <Skeleton className="h-3 w-4/5" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
+          )}
+          {items?.length === 0 && <p className="px-2.5 py-4 text-center text-caption text-dim">{t('notifications.empty')}</p>}
           {items?.length > 0 && (
             <ul className="max-h-[60vh] overflow-y-auto py-1">
               {items.map((n) => (
@@ -167,8 +175,13 @@ export default function Bell() {
               ))}
             </ul>
           )}
-          <Link to="/notifications" onClick={() => setOpen(false)} className="block border-t border-line px-2.5 pb-1 pt-2 text-center text-caption text-accent hover:underline">
+          <Link
+            to="/notifications"
+            onClick={() => setOpen(false)}
+            className="mt-1 flex items-center justify-center gap-1.5 border-t border-line px-2.5 pb-1 pt-2 text-label font-semibold text-accent hover:underline"
+          >
             {t('notifications.seeAll')}
+            <Icon name="arrow-right" size={14} />
           </Link>
         </div>
       )}
@@ -185,7 +198,7 @@ export function NotificationRow({ notification: n, onOpen }) {
     <button
       type="button"
       onClick={onOpen}
-      className={`flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition hover:bg-surface-3 ${n.read ? 'text-muted' : 'text-text'}`}
+      className={`flex w-full items-start gap-3 rounded-control px-2.5 py-2.5 text-left transition-colors duration-150 ease-out hover:bg-surface-2 ${n.read ? 'text-muted' : 'text-text'}`}
     >
       <span
         aria-hidden="true"

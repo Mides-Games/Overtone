@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '../lib/api.js'
+import Icon from './ui/Icon.jsx'
+import SectionHeader from './ui/SectionHeader.jsx'
+import Skeleton from './ui/Skeleton.jsx'
 
 /**
  * The profile's linked accounts (W9.1, W9.2, W9.4): Discord and osu!.
@@ -48,7 +51,7 @@ export default function Connections() {
     }
   }
 
-  if (links === undefined) return null
+  if (links === undefined) return <Skeleton className="h-48 rounded-panel" />
   if (links === null) {
     return (
       <p role="alert" className="text-label text-red">
@@ -88,30 +91,32 @@ export default function Connections() {
     })
 
   return (
-    <section className="space-y-3" aria-labelledby="links-title">
-      <h2 id="links-title" className="label">
-        {t('links.title')}
-      </h2>
+    <section className="space-y-5" aria-labelledby="links-title">
+      <SectionHeader id="links-title" title={t('links.title')} />
       <div className="panel divide-y divide-line">
-        <div className="space-y-3 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-display text-[16px] font-bold">Discord</p>
-              <p className="text-caption text-dim">{discord.linked ? t('links.discord.linked') : t('links.discord.notLinked')}</p>
+        <div className="space-y-4 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <ServiceMark linked={discord.linked} />
+              <div className="min-w-0 space-y-1">
+                <h3 className="heading-title">Discord</h3>
+                <p className="max-w-[60ch] text-caption text-muted">{discord.linked ? t('links.discord.linked') : t('links.discord.notLinked')}</p>
+              </div>
             </div>
             {discord.linked ? (
-              <button type="button" className="btn-ghost h-9" onClick={unlinkDiscord} disabled={busy !== null}>
+              <button type="button" className="btn-ghost btn-sm" onClick={unlinkDiscord} disabled={busy !== null}>
                 {t('links.unlink')}
               </button>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {available.midesDiscord && (
-                  <button type="button" className="btn-primary h-9" onClick={linkOnMides} disabled={busy !== null}>
-                    {t('links.discord.onMides')} ↗
+                  <button type="button" className="btn-primary btn-sm" onClick={linkOnMides} disabled={busy !== null}>
+                    {t('links.discord.onMides')}
+                    <Icon name="external" size={15} />
                   </button>
                 )}
                 {available.bot && (
-                  <button type="button" className="btn-ghost h-9" onClick={makeCode} disabled={busy !== null}>
+                  <button type="button" className="btn-ghost btn-sm" onClick={makeCode} disabled={busy !== null}>
                     {t('links.discord.code')}
                   </button>
                 )}
@@ -120,28 +125,28 @@ export default function Connections() {
           </div>
 
           {!discord.linked && !available.midesDiscord && !available.bot && (
-            <p className="text-caption text-dim">{t('links.discord.unavailable')}</p>
+            <p className="pl-9 text-caption text-dim">{t('links.discord.unavailable')}</p>
           )}
 
           {!discord.linked && code && (
-            <div className="rounded-panel border border-line bg-surface-2 px-4 py-3">
-              <p className="text-label">{t('links.discord.codeHint', { minutes: code.minutes })}</p>
-              <p className="readout mt-1 select-all text-title">/link {code.code}</p>
+            <div className="panel-well fade-in space-y-1.5 px-4 py-3 sm:ml-9">
+              <p className="text-label text-muted">{t('links.discord.codeHint', { minutes: code.minutes })}</p>
+              <p className="readout select-all text-title text-text">/link {code.code}</p>
             </div>
           )}
 
           {discord.linked && (
-            <label className="flex items-start gap-2">
+            <label className="flex cursor-pointer items-start gap-3 sm:pl-9">
               <input
                 type="checkbox"
                 checked={discord.notify}
                 onChange={(e) => setNotify(e.target.checked)}
                 disabled={busy !== null}
-                className="mt-0.5 accent-[var(--accent)]"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
               />
               <span className="space-y-0.5">
-                <span className="block text-label">{t('links.discord.notify')}</span>
-                <span className="block text-caption text-dim">
+                <span className="block text-label font-medium text-text">{t('links.discord.notify')}</span>
+                <span className="block text-caption text-muted">
                   {available.bot ? t('links.discord.notifyHint') : t('links.discord.botOff')}
                 </span>
               </span>
@@ -149,39 +154,45 @@ export default function Connections() {
           )}
         </div>
 
-        <div className="space-y-3 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-display text-[16px] font-bold">osu!</p>
-              {osu ? (
-                <p className="text-caption text-dim">
-                  <a
-                    href={`https://osu.ppy.sh/users/${encodeURIComponent(osu.id)}`}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-[var(--accent)] hover:underline"
-                  >
-                    {osu.username} ↗
-                  </a>
-                  {osu.rankedCount !== null && <> · {t('links.osu.ranked', { count: osu.rankedCount })}</>}
-                </p>
-              ) : (
-                <p className="text-caption text-dim">{available.osu ? t('links.osu.notLinked') : t('links.osu.unavailable')}</p>
-              )}
+        <div className="space-y-4 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <ServiceMark linked={Boolean(osu)} />
+              <div className="min-w-0 space-y-1">
+                <h3 className="heading-title">osu!</h3>
+                {osu ? (
+                  <p className="flex flex-wrap items-center gap-x-2 text-caption text-muted">
+                    <a
+                      href={`https://osu.ppy.sh/users/${encodeURIComponent(osu.id)}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="link inline-flex items-center gap-1"
+                    >
+                      {osu.username}
+                      <Icon name="external" size={13} />
+                      <span className="sr-only">{t('common.newTab')}</span>
+                    </a>
+                    {osu.rankedCount !== null && <span className="readout">· {t('links.osu.ranked', { count: osu.rankedCount })}</span>}
+                  </p>
+                ) : (
+                  <p className="text-caption text-muted">{available.osu ? t('links.osu.notLinked') : t('links.osu.unavailable')}</p>
+                )}
+              </div>
             </div>
             {osu ? (
-              <button type="button" className="btn-ghost h-9" onClick={unlinkOsu} disabled={busy !== null}>
+              <button type="button" className="btn-ghost btn-sm" onClick={unlinkOsu} disabled={busy !== null}>
                 {t('links.unlink')}
               </button>
             ) : (
               available.osu && (
-                <button type="button" className="btn-primary h-9" onClick={linkOsu} disabled={busy !== null}>
-                  {t('links.osu.link')} ↗
+                <button type="button" className="btn-primary btn-sm" onClick={linkOsu} disabled={busy !== null}>
+                  {t('links.osu.link')}
+                  <Icon name="external" size={15} />
                 </button>
               )
             )}
           </div>
-          <p className="text-caption text-dim">{t('links.osu.scope')}</p>
+          <p className="max-w-[72ch] text-caption text-dim sm:pl-9">{t('links.osu.scope')}</p>
         </div>
       </div>
       {error && (
@@ -190,5 +201,17 @@ export default function Connections() {
         </p>
       )}
     </section>
+  )
+}
+
+/** Linked or not, at a glance: the link icon in the accent, or dim. */
+function ServiceMark({ linked }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${linked ? 'border-accent/50 text-accent' : 'border-line-strong text-dim'}`}
+    >
+      <Icon name={linked ? 'check' : 'link'} size={13} strokeWidth={linked ? 2 : 1.5} />
+    </span>
   )
 }

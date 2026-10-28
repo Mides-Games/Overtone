@@ -2029,6 +2029,51 @@ Not checked: a screen reader over the folds; Safari, Firefox and a real phone; a
 signed-in result page with saved versions and related readings; the staff rows of the
 queue.
 
+### The studio rework: community and account pages (2026-10-28)
+
+The pages people sign in for, restyled by `docs/design.md` §11 with the same routes,
+data, strings and behaviour: `/community` (its three tabs and the staff section),
+`/recent`, `/history`, `/timers`, `/u/<name>`, `/c/<id>`, `/profile` (tabs, the private
+switch, collections, linked accounts), `/login`, `/login/callback`, `/link/osu`,
+`/settings`, `/settings/tokens`, `/developers`, `/notifications`, the bell and `/staff`.
+
+- **Shared pieces:** `components/ui/PageHeader.jsx` (the page's `h1` in
+  `heading-headline`, a way back, a lede, an action), `components/ui/Tabs.jsx` (the ARIA
+  tabs pattern: arrows, Home, End, one tab in the tab order; the page keeps the tab in its
+  address as before), `components/ListControls.jsx` (search, BPM range, sort, "show
+  more", shared by the timing lists), `components/ReturnPage.jsx` (the two pages a
+  sign-in or a link comes back to; each now has an `h1`). Icons added to `Icon.jsx`:
+  chevron-up, star-filled, flag, eye, eye-off, lock, key, trash,
+  pencil, bell, history, trophy (the others it uses were already there).
+- **Lists are rows:** suggestions, reviews, the changelog, timings, timers, history,
+  collections, tokens, notifications and the staff lists sit on the page's ground a
+  hairline apart; only what is operated is a panel (the forms, the filters, the linked
+  accounts, code to copy). Loading is a skeleton the shape of the list, nothing to show
+  is `EmptyState`.
+- **A profile** is a band (the banner, or the waveform seeded by the name), the avatar
+  over its edge, the name as the page's heading and the totals as readouts.
+- **Settings** runs in two columns from 1024 px: the group's name on the left, its
+  controls on the right; the reset button wraps (in German it was wider than a phone).
+- **Colour meanings kept:** suggestion states, a hidden item and the API's methods no
+  longer use red, amber or the tempo green; stars stay amber, as icons (`docs/design.md` §10).
+- **Avatar:** the initials are an image named after the person (an `aria-label` on a
+  plain `div` was not announced), or hidden (`decorative`) where the name is beside them.
+- **Developers:** the code blocks that scroll sideways are in the tab order (axe's
+  `scrollable-region-focusable`, which the new layout's narrower column exposed).
+
+Checked: `site/web` 326/326, `site/api` 191/191, the build and `scripts/budget.mjs` (ok).
+axe (`site/e2e/tests/a11y.spec.js`) 56/56 (after rebasing on the other pages' rework), and the same rules over the signed-in pages it
+does not visit (`/community` as staff, its reviews, `/notifications`, `/staff`,
+`/settings/tokens`, `/u/<name>`, `/profile?tab=collections`, `/timers`, both not-found
+pages) in dark and light: clean. The e2e suite: 74 of 76; the two that fail are the EN/ES
+toggle tests noted above, unchanged. Screenshots through Playwright on the dev API (web
+5252, API 3082, the e2e fake worker): every page above at 375, 1024 and 1440 px, dark and
+light, in en, de, ja and ru, signed in as the staff dev user; the public ones signed out
+in en and ru; no page scrolls sideways and none logs an error.
+
+Not checked: a screen reader; Safari, Firefox and a real phone; a profile with a real
+banner or avatar image (the dev users have none); a page of more than a few rows.
+
 ### Bands, spectrogram, practice, the microphone and the cover's accent (W13.6, W13.7, W13.8, W13.12, W13.24, 2026-10-28)
 
 Five additions to listening, none of them the engine: everything below is computed in the

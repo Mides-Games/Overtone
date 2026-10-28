@@ -128,6 +128,55 @@ const PATHS = {
     </>
   ),
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />,
+  // The community and account pages.
+  'chevron-up': <path d="m6 15 6-6 6 6" />,
+  // Filled, for a rating's earned stars: the outline (star) is the unearned one.
+  'star-filled': <path fill="currentColor" d="m12 4 2.45 5 5.55.8-4 3.9.95 5.5L12 16.6l-4.95 2.6L8 13.7 4 9.8l5.55-.8z" />,
+  flag: <path d="M5 21V4.5M5 4.5h11l-2 4 2 4H5" />,
+  'eye-off': (
+    <>
+      <path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 6c5 0 8.5 4.5 9 6-.25.75-1.2 2.3-2.8 3.7M6.5 7.6C4.6 8.9 3.4 10.8 3 12c.5 1.5 4 6 9 6 1.5 0 2.9-.4 4.1-1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M3 12c.5-1.5 4-6 9-6s8.5 4.5 9 6c-.5 1.5-4 6-9 6s-8.5-4.5-9-6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15" r="3.75" />
+      <path d="m10.7 12.3 8.8-8.8M16.5 6.5l2.5 2.5M14 9l2 2" />
+    </>
+  ),
+  trash: <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.5h9.2L17.5 7M10 11v5M14 11v5" />,
+  pencil: <path d="M4.5 19.5l1-4.5L15.8 4.7a1.8 1.8 0 0 1 2.5 0l1 1a1.8 1.8 0 0 1 0 2.5L9 18.5zM13.5 7l3.5 3.5" />,
+  bell: (
+    <>
+      <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 5.5 2.5 7.5 2.5 7.5H4s2.5-2 2.5-7.5" />
+      <path d="M10.3 20a1.9 1.9 0 0 0 3.4 0" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5" />
+      <path d="M4 4.5v4h4M12 8v4l2.5 1.5" />
+    </>
+  ),
+  trophy: (
+    <>
+      <path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5a3 3 0 0 0 3 3.5M16 6.5h3a3 3 0 0 1-3 3.5" />
+      <path d="M12 13.5V17M8.5 19.5h7" />
+    </>
+  ),
 }
 
 export const ICONS = Object.keys(PATHS)

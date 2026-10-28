@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
+import ReturnPage from '../components/ReturnPage.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
 
@@ -56,27 +56,19 @@ export default function OsuLink() {
     }
   }, [navigate])
 
-  if (!failure) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-16">
-        <BrandLoader />
-        <p className="text-label text-muted">{t('links.osu.working')}</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="panel mx-auto max-w-md space-y-4 p-8 text-center">
-      <p role="alert">
-        {failure.error === 'denied'
+    <ReturnPage
+      title={t('links.osu.title')}
+      working={t('links.osu.working')}
+      failure={
+        failure &&
+        (failure.error === 'denied'
           ? t('links.osu.denied')
           : failure.error === 'state'
             ? t('links.osu.stateMissing')
-            : t('links.osu.failed', { message: failure.message })}
-      </p>
-      <Link to="/profile" className="btn-primary">
-        {t('links.back')}
-      </Link>
-    </div>
+            : t('links.osu.failed', { message: failure.message }))
+      }
+      back={{ to: '/profile', label: t('links.back') }}
+    />
   )
 }

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import Flag from '../components/Flag.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
 import { useSettings } from '../context/SettingsContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
@@ -33,14 +35,22 @@ import {
  * `overtone.player.latencyMs` (lib/settings.js says which is which).
  */
 
-function Section({ title, note, children }) {
+/**
+ * One group of settings: its name and note on the left on a wide screen, the
+ * controls on the right, a hairline above (docs/design.md, section 4). Not a
+ * panel each: the page is one form, and boxes around every group would only
+ * add edges.
+ */
+function Section({ id, title, note, children }) {
   return (
-    <section className="panel space-y-5 p-5 sm:p-6">
-      <div className="space-y-1">
-        <h2 className="font-display text-title font-semibold">{title}</h2>
-        {note && <p className="text-label text-muted">{note}</p>}
+    <section aria-labelledby={id} className="grid gap-x-12 gap-y-6 border-t border-line pt-8 lg:grid-cols-12">
+      <div className="space-y-2 lg:col-span-4">
+        <h2 id={id} className="heading-section text-heading">
+          {title}
+        </h2>
+        {note && <p className="max-w-[44ch] text-label text-muted">{note}</p>}
       </div>
-      {children}
+      <div className="min-w-0 space-y-7 lg:col-span-8">{children}</div>
     </section>
   )
 }
@@ -54,7 +64,7 @@ function Choice({ legend, name, value, options, onChange, hint }) {
         {options.map((option) => (
           <label
             key={option.value}
-            className="relative inline-flex h-9 cursor-pointer items-center rounded-control border border-line-strong px-3 text-label text-text transition hover:border-line-hover has-checked:border-accent has-checked:bg-accent/15 has-checked:text-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent"
+            className="relative inline-flex h-9 cursor-pointer select-none items-center gap-1.5 rounded-control border border-line-strong px-3 text-label font-medium text-text transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-line-hover active:scale-[0.97] has-checked:border-accent has-checked:bg-accent/15 has-checked:text-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent pointer-coarse:h-11"
           >
             <input
               type="radio"
@@ -77,12 +87,24 @@ function Toggle({ label, hint, checked, onChange }) {
   const id = useId()
   return (
     <div className="flex items-start gap-3">
-      <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
+      <input
+        id={id}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[var(--accent)]"
+      />
       <div className="space-y-0.5">
-        <label htmlFor={id} className="text-label font-semibold text-text">
+        <label htmlFor={id} className="cursor-pointer text-body font-medium text-text">
           {label}
         </label>
-        {hint && <p className="text-caption text-dim">{hint}</p>}
+        {hint && (
+          <p id={`${id}-hint`} className="max-w-[64ch] text-caption text-muted">
+            {hint}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -130,7 +152,7 @@ function Appearance() {
   const percent = Math.round(settings.fontScale * 100)
 
   return (
-    <Section title={t('settings.appearance.title')} note={t('settings.appearance.note')}>
+    <Section id="settings-appearance" title={t('settings.appearance.title')} note={t('settings.appearance.note')}>
       <Choice
         legend={t('settings.theme.label')}
         name="theme"
@@ -194,7 +216,8 @@ function Appearance() {
         hint={t(systemReduce ? 'settings.motion.systemReduce' : 'settings.motion.systemAllow')}
       />
 
-      <button type="button" className="btn-ghost" onClick={reset}>
+      {/* Wraps: in German the label is wider than a phone. */}
+      <button type="button" className="btn-ghost h-auto min-h-10 max-w-full whitespace-normal py-2 text-left" onClick={reset}>
         {t('settings.reset')}
       </button>
     </Section>
@@ -204,7 +227,7 @@ function Appearance() {
 function Language() {
   const { t, i18n } = useTranslation()
   return (
-    <Section title={t('settings.language.title')}>
+    <Section id="settings-language" title={t('settings.language.title')}>
       <Choice
         legend={t('settings.language.label')}
         name="language"
@@ -278,7 +301,7 @@ function Audio() {
   }
 
   return (
-    <Section title={t('settings.audio.title')} note={t('settings.audio.note')}>
+    <Section id="settings-audio" title={t('settings.audio.title')} note={t('settings.audio.note')}>
       <div className="grid gap-5 sm:grid-cols-2">
         <Slider
           label={t('settings.audio.song')}
@@ -310,7 +333,7 @@ function Audio() {
         </div>
         <p className="text-caption text-dim">
           {t('settings.latency.hint')}{' '}
-          <Link to={latest ? `/analyze/${latest.id}` : '/recent'} className="text-accent underline-offset-2 hover:underline">
+          <Link to={latest ? `/analyze/${latest.id}` : '/recent'} className="link">
             {t(latest ? 'settings.latency.calibrateLatest' : 'settings.latency.calibrateRecent')}
           </Link>
         </p>
@@ -356,11 +379,8 @@ export default function Settings() {
   usePageMeta(t('settings.title'), t('settings.description'))
 
   return (
-    <div className="rise mx-auto max-w-3xl space-y-6">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('settings.title')}</h1>
-        <p className="max-w-[60ch] leading-relaxed text-muted">{t('settings.subtitle')}</p>
-      </header>
+    <div className="space-y-12">
+      <PageHeader title={t('settings.title')} lede={t('settings.subtitle')} />
       <Appearance />
       <Language />
       <Audio />
@@ -377,12 +397,15 @@ export default function Settings() {
 function ApiTokens() {
   const { t } = useTranslation()
   return (
-    <Section title={t('platform.tokens.title')} note={t('platform.tokens.settingsNote')}>
+    <Section id="settings-tokens" title={t('platform.tokens.title')} note={t('platform.tokens.settingsNote')}>
       <div className="flex flex-wrap gap-3">
         <Link to="/settings/tokens" className="btn-ghost">
-          {t('platform.tokens.manage')} →
+          <Icon name="key" size={16} />
+          {t('platform.tokens.manage')}
+          <Icon name="arrow-right" size={16} />
         </Link>
-        <Link to="/developers" className="btn-ghost">
+        <Link to="/developers" className="btn-quiet">
+          <Icon name="code" size={16} />
           {t('platform.tokens.docs')}
         </Link>
       </div>

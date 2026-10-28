@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
 import { NotificationRow, useUnread } from '../components/Bell.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import PageHeader from '../components/ui/PageHeader.jsx'
+import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { listNotifications, markRead, notificationLink, unreadStore } from '../lib/notifications.js'
@@ -41,15 +44,21 @@ export default function Notifications() {
     if (account) load()
   }, [account, load])
 
-  if (account === undefined) return <BrandLoader className="py-16" />
+  if (account === undefined) return <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />
   if (account === null) {
     return (
-      <div className="panel space-y-3 p-6">
-        <h1 className="font-display text-title font-bold uppercase">{t('notifications.title')}</h1>
-        <p className="text-label text-muted">{t('notifications.signIn')}</p>
-        <Link to="/login" className="btn-primary">
-          {t('nav.signIn')}
-        </Link>
+      <div className="space-y-8">
+        <PageHeader title={t('notifications.title')} lede={t('notifications.subtitle')} />
+        <EmptyState
+          title={t('notifications.signIn')}
+          className="border-y border-line"
+          action={
+            <Link to="/login" state={{ from: '/notifications' }} className="btn-primary">
+              <Icon name="user" size={16} />
+              {t('nav.signIn')}
+            </Link>
+          }
+        />
       </div>
     )
   }
@@ -75,51 +84,49 @@ export default function Notifications() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="rise space-y-2">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('notifications.title')}</h1>
-        <p className="max-w-[60ch] text-muted">{t('notifications.subtitle')}</p>
-      </header>
+    <div className="space-y-10">
+      <PageHeader title={t('notifications.title')} lede={t('notifications.subtitle')} />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="group" aria-label={t('notifications.filter')} className="flex gap-1">
-          {[false, true].map((only) => (
-            <button
-              key={String(only)}
-              type="button"
-              aria-pressed={onlyUnread === only}
-              onClick={() => setOnlyUnread(only)}
-              className={onlyUnread === only ? 'chip-accent' : 'chip hover:text-text'}
-            >
-              {only ? t('notifications.unreadOnly', { count: unread }) : t('notifications.all')}
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div role="group" aria-label={t('notifications.filter')} className="flex gap-1.5">
+            {[false, true].map((only) => (
+              <button key={String(only)} type="button" aria-pressed={onlyUnread === only} onClick={() => setOnlyUnread(only)} className="tool-btn px-3 font-sans">
+                {only ? t('notifications.unreadOnly', { count: unread }) : t('notifications.all')}
+              </button>
+            ))}
+          </div>
+          {unread > 0 && (
+            <button type="button" className="btn-ghost btn-sm" onClick={allRead}>
+              <Icon name="check" size={15} />
+              {t('notifications.allRead')}
             </button>
-          ))}
+          )}
         </div>
-        {unread > 0 && (
-          <button type="button" className="btn-ghost h-8 px-3" onClick={allRead}>
-            {t('notifications.allRead')}
+
+        {failed && (
+          <p role="alert" className="text-caption text-red">
+            {t('notifications.failed')}
+          </p>
+        )}
+        {!page && !failed && <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />}
+        {page && page.items.length === 0 && <EmptyState title={t('notifications.empty')} className="border-y border-line" />}
+        {page && page.items.length > 0 && (
+          <ul className="divide-y divide-line border-y border-line">
+            {page.items.map((n) => (
+              <li key={n.id} className="py-1">
+                <NotificationRow notification={n} onOpen={() => open(n)} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {page && page.items.length < page.total && (
+          <button type="button" className="btn-ghost mx-auto flex" onClick={() => load(page.items.length)}>
+            {t('social.more')}
           </button>
         )}
+        <p className="text-caption text-dim">{t('notifications.kept')}</p>
       </div>
-
-      {failed && <p className="text-caption text-red">{t('notifications.failed')}</p>}
-      {!page && !failed && <BrandLoader className="py-10" />}
-      {page && page.items.length === 0 && <p className="text-caption text-dim">{t('notifications.empty')}</p>}
-      {page && page.items.length > 0 && (
-        <ul className="panel divide-y divide-line p-1">
-          {page.items.map((n) => (
-            <li key={n.id}>
-              <NotificationRow notification={n} onOpen={() => open(n)} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {page && page.items.length < page.total && (
-        <button type="button" className="btn-ghost mx-auto flex" onClick={() => load(page.items.length)}>
-          {t('social.more')}
-        </button>
-      )}
-      <p className="text-caption text-dim">{t('notifications.kept')}</p>
     </div>
   )
 }

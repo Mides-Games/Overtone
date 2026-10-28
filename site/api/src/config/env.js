@@ -126,8 +126,9 @@ export const env = {
   anonMaxPending: integer('ANON_MAX_PENDING', 3, { min: 1, max: 1000 }),
   userMaxPending: integer('USER_MAX_PENDING', 10, { min: 1, max: 1000 }),
   // The whole queue's ceiling, so no one can fill it whatever their quotas.
-  // Every queued song holds up to MAX_UPLOAD_MB in the spool, so the default
-  // keeps QUEUE_MAX x MAX_UPLOAD_MB (30 x 40 = 1200 MB) inside SPOOL_MAX_MB.
+  // A queued song holds its own size in the spool, not MAX_UPLOAD_MB: most are
+  // a few MB, so 30 fit SPOOL_MAX_MB, and a queue of only the largest files is
+  // refused with SPOOL_FULL before it is full.
   queueMax: integer('QUEUE_MAX', 30, { min: 1, max: 100_000 }),
   // Stored results one person may open a day without analysing (W3.11): a
   // lookup or upload of audio analysed before costs no quota, so it has a cap
@@ -135,8 +136,10 @@ export const env = {
   cacheDailyLimit: integer('CACHE_DAILY_LIMIT', 100, { min: 1, max: 100_000 }),
   maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 600, { min: 10, max: 3600 }),
   // The largest upload: checked against Content-Length before a byte is read,
-  // and again while the body streams to disk.
-  maxUploadMb: integer('MAX_UPLOAD_MB', 40, { min: 1, max: 1024 }),
+  // and again while the body streams to disk. 95 (was 40, 2026-10-28: FLAC and
+  // high-bitrate files were refused) stays under the 100 MB a request may carry
+  // through Cloudflare's proxy, which the site sits behind.
+  maxUploadMb: integer('MAX_UPLOAD_MB', 95, { min: 1, max: 1024 }),
   // Where uploads wait for the worker. Files in it are named by analysis id
   // only: the uploaded file's own name never reaches the filesystem.
   spoolDir: resolve(text('SPOOL_DIR', join(tmpdir(), 'overtone-spool'))),
@@ -212,10 +215,12 @@ if (env.proxySecret && env.proxySecret.length < 32) problems.push('PROXY_SECRET 
 if (isProduction && !env.proxySecret) problems.push('PROXY_SECRET is required in production: every allocation port is public.');
 
 if (env.spoolMaxMb < env.maxUploadMb) problems.push('SPOOL_MAX_MB must be at least MAX_UPLOAD_MB, or no upload fits.');
-if (env.queueMax * env.maxUploadMb > env.spoolMaxMb) {
+// Each upload reserves its own size, so the spool need not hold QUEUE_MAX of the
+// largest; it should hold a few of them at once.
+if (env.spoolMaxMb < 4 * env.maxUploadMb) {
   console.warn(
-    `[env] QUEUE_MAX x MAX_UPLOAD_MB (${env.queueMax * env.maxUploadMb} MB) is more than SPOOL_MAX_MB (${env.spoolMaxMb}): ` +
-      'a queue of large files is refused with SPOOL_FULL before it is full.',
+    `[env] SPOOL_MAX_MB (${env.spoolMaxMb}) holds fewer than four uploads of MAX_UPLOAD_MB (${env.maxUploadMb}): ` +
+      'large files are refused with SPOOL_FULL while a few others wait.',
   );
 }
 

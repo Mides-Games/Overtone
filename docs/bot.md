@@ -34,6 +34,9 @@ The profile's "Link on Mides" (`GET /links/discord/start`) sends the browser to
 Coming back, `/profile?linked=discord` signs in again (Overtone keeps no Mides
 token to ask with; Mides has a session, so the trip is a bounce), and the new
 sign-in brings the profile with its `discord_id`. At most once a minute per tab.
+The button shows only when `MIDES_DISCORD_LINK_PATH` is set (unset by default
+since 2026-10-28: Mides' routes have no such page yet, and the button led to its
+404). Set it once Mides serves item 2 below.
 
 Unlinking (`DELETE /links/discord`) clears the id and turns the DMs off. A Mides
 that sends `discord_id` links it again at the next sign-in: to stop that, unlink
@@ -46,8 +49,9 @@ to work, Mides needs:
 
 1. **`discord_id` in the SSO exchange's user for the `overtone` app**
    (`POST /api/auth/sso/exchange`): the linked Discord user's id as a string, and
-   absent or `null` when the account has no Discord. Nothing else of the Discord
-   connection (no token, no username) is needed.
+   absent or `null` when the account has no Discord. Optionally
+   `discord_username` beside it: the profile's linked-accounts card then shows
+   "Linked as <name>" to the account itself (text only). No token is needed.
 2. **A web page at `/connections/discord/link`** (or wherever
    `MIDES_DISCORD_LINK_PATH` points) taking `app` and `return_to`. It:
    - asks the visitor to sign in to Mides if they are not;
@@ -86,10 +90,15 @@ checks a `code_challenge` whenever one is sent. It is on by default; `OSU_PKCE=0
 leaves it out should the first real link fail on it. The state check stays.
 
 One osu! user links to one account: linking proves who holds it now, so an older
-link elsewhere is cleared. The profile shows the username (linked to the osu!
-profile) and the ranked count. The avatar is stored but not shown: images load
-only from this site and Mides (`img-src`), and a page only its owner sees is not
-worth a request to `ppy.sh`. `DELETE /links/osu` unlinks.
+link elsewhere is cleared. The profile shows an osu! card (2026-10-28): username
+(linked to the osu! profile), country, global and country rank, pp, accuracy, play
+count and ranked maps, all from that one `/me`. "Refresh" on the owner's own
+profile reads `/users/{id}/osu` again with the app's **client-credentials** token
+(scope `public`, no user behind it; kept in memory until a minute before it
+expires), at most once per five minutes per account; nobody's page view calls osu!.
+The avatar is stored but not shown: images load only from this site and Mides
+(`img-src`), and allowing `a.ppy.sh` would make every visitor of a public profile
+tell osu!'s host whose page they read. `DELETE /links/osu` unlinks.
 
 ### What the owner registers on osu!
 
@@ -100,6 +109,9 @@ worth a request to `ppy.sh`. `DELETE /links/osu` unlinks.
 - In the API's panel variables: `OSU_CLIENT_ID` (the number osu! shows),
   `OSU_CLIENT_SECRET`, `OSU_REDIRECT_URI` (exactly the callback). The API refuses
   to start with one or two of them set, or with a redirect URI not on `SITE_URL`.
+  The same id and secret serve the card's "Refresh" (client credentials); nothing
+  more to register for it. Without the three, the profile's osu! row says
+  "Linking osu! is not available on this server yet" instead of a button that fails.
 
 ### The osu! API's terms, as this respects them
 
@@ -111,8 +123,9 @@ there for that); ask before serious long-term use. `identify` reads the user's
 public profile through `/me`.
 
 What Overtone does: one `/me` per link, made by the person pressing "Link osu!",
-and nothing else. No polling, no beatmap or score data, no stored token, so no
-call can be made later. The app is named as Mides Projects' and never presented as
+and one `/users/{id}/osu` per "Refresh" the person presses (five minutes apart at
+least), and nothing else. No polling, no beatmap or score data, no stored user
+token. The app is named as Mides Projects' and never presented as
 osu!'s. **W9.6 stays a rule:** no `.osz` or audio is downloaded from osu!; the
 person uploads their own file.
 

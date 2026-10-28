@@ -6,7 +6,7 @@ import { env, ssoConfigured } from '../config/env.js';
 import { authRateLimit } from '../middlewares/rate-limit.js';
 import { requireSameOrigin } from '../middlewares/session.js';
 import { sessionAccount, signOut, upsertFromMides } from '../services/account.service.js';
-import { authorizeUrl, exchangeCode, PROVIDERS } from '../services/mides.service.js';
+import { authorizeUrl, exchangeCode, PROVIDERS, ssoStatus } from '../services/mides.service.js';
 import {
   clearedCookieHeader,
   clearedSsoCookieHeader,
@@ -44,14 +44,29 @@ router.use('/auth', (_req, res, next) => {
   next();
 });
 
-router.get('/auth/config', (_req, res) => {
+/**
+ * `sso` is the pre-flight's answer (mides.service.js `ssoStatus`): `ready`,
+ * `app_unknown` (Mides would refuse this app and strand the person on its
+ * own error page), `unreachable`, `unknown` (no reason to block), or `off`
+ * when this server has no Mides configured. The login page says so instead
+ * of sending anyone away.
+ */
+router.get('/auth/config', async (_req, res) => {
+  const configured = env.devLogin || ssoConfigured();
   res.json({
     devLogin: env.devLogin,
-    providers: env.devLogin || ssoConfigured() ? [...PROVIDERS] : [],
+    providers: configured ? [...PROVIDERS] : [],
+    sso: env.devLogin ? 'ready' : ssoConfigured() ? await ssoStatus() : 'off',
   });
 });
 
-router.get('/auth/sso/start', (req, res) => {
+/** The pre-flight's refusals, as the start route says them. */
+const SSO_BLOCKED = {
+  app_unknown: () => new HttpError(503, 'Sign-in through Mides is not available right now: Mides does not accept this site yet.', 'MIDES_APP_UNKNOWN'),
+  unreachable: () => new HttpError(503, 'Sign-in through Mides is not available right now: Mides did not answer.', 'MIDES_UNAVAILABLE'),
+};
+
+router.get('/auth/sso/start', async (req, res) => {
   const provider = PROVIDERS.has(req.query.provider) ? req.query.provider : null;
 
   let url;
@@ -60,6 +75,10 @@ router.get('/auth/sso/start', (req, res) => {
     url = `${env.siteUrl}/login/callback#code=${code}`;
   } else {
     if (!ssoConfigured()) throw new HttpError(503, 'Sign-in is not configured on this server.', 'SSO_NOT_CONFIGURED');
+    // A page loaded before Mides went away still asks here first: the same
+    // answer as the login page's, so nobody is sent to a dead end.
+    const blocked = SSO_BLOCKED[await ssoStatus()];
+    if (blocked) throw blocked();
     url = authorizeUrl(provider);
   }
 

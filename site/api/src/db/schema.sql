@@ -555,3 +555,30 @@ ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
 -- the next boot a narrower ADD above a wider one would refuse the staff rows.
 ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check
   CHECK (kind IN ('suggestion', 'comment', 'use', 'vote', 'analysis', 'staff'));
+
+-- ── The profile, edited on Overtone (2026-10-28) ────────────────────────────
+
+-- What a person writes on their own profile (utils/profile.js reads and caps
+-- each before it is stored). The photo, the banner and the username stay
+-- Mides': refreshed at every sign-in, never edited here. `profile_name`
+-- stands in for Mides' name when set. `profile_links` holds only canonical
+-- links of the four kinds; `profile_accent` a palette name, never a colour;
+-- `profile_showcase` up to six public ids of the account's own timings, in
+-- the order shown (one that is unpublished later is skipped when read).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_about    text CHECK (char_length(profile_about) <= 600);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_name     text CHECK (char_length(profile_name) <= 40);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_links    jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_accent   text CHECK (char_length(profile_accent) <= 16);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_showcase text[] NOT NULL DEFAULT '{}' CHECK (cardinality(profile_showcase) <= 6);
+-- The Discord username, when Mides sends one with the Discord id (it did not
+-- on 2026-10-28). Shown to the account itself, as text.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS discord_username text CHECK (char_length(discord_username) <= 32);
+-- The osu! card: what /me said at link time, or /users/{id}/osu at the last
+-- "Refresh" (services/osu.service.js). Never fetched on a page view.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_country      text CHECK (osu_country ~ '^[A-Z]{2}$');
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_global_rank  integer CHECK (osu_global_rank > 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_country_rank integer CHECK (osu_country_rank > 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_pp           real CHECK (osu_pp >= 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_accuracy     real CHECK (osu_accuracy BETWEEN 0 AND 100);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_play_count   integer CHECK (osu_play_count >= 0);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_refreshed_at timestamptz;

@@ -298,7 +298,23 @@
     "notConfigured": "Die Anmeldung ist auf diesem Server nicht eingerichtet.",
     "failed": "Die Anmeldung konnte nicht gestartet werden: {{message}}",
     "privacy": "Overtone speichert nur dein öffentliches Mides-Profil: Name, Avatar und Banner. Niemals deine E-Mail-Adresse.",
-    "devTitle": "Entwicklungs-Anmeldung"
+    "devTitle": "Entwicklungs-Anmeldung",
+    "unavailable": "Die Anmeldung über Mides ist gerade nicht verfügbar.",
+    "reasons": {
+      "app_unknown": "Mides nimmt noch keine Anmeldungen für Overtone an. An deinem Konto liegt es nicht: versuche es später erneut.",
+      "unreachable": "Mides hat nicht geantwortet. Versuche es in ein paar Minuten erneut."
+    },
+    "mides": {
+      "redirect_not_allowed": "Mides nimmt noch keine Anmeldungen für Overtone an. An deinem Konto liegt es nicht: versuche es später erneut.",
+      "discord_mismatch": "Dieses Discord-Konto ist nicht das mit deinem Mides-Konto verknüpfte. Melde dich mit dem dort verknüpften Discord oder mit Google an.",
+      "sanctioned": "Mides hat dieses Konto nicht angemeldet. Prüfe dein Konto auf midesprojects.com.",
+      "account_blocked": "Mides hat dieses Konto nicht angemeldet. Prüfe dein Konto auf midesprojects.com.",
+      "cancelled": "Die Anmeldung wurde bei Discord oder Google abgebrochen.",
+      "bad_state": "Die Anmeldung hat zu lange gedauert oder wurde unterbrochen. Versuche es erneut.",
+      "token_error": "Discord oder Google hat die Anmeldung nicht abgeschlossen. Versuche es erneut.",
+      "provider_error": "Discord oder Google hat die Anmeldung nicht abgeschlossen. Versuche es erneut.",
+      "other": "Mides hat die Anmeldung abgelehnt ({{code}}). Versuche es erneut."
+    }
   },
   "callback": {
     "working": "Du wirst angemeldet…",
@@ -1954,7 +1970,8 @@
       "unavailable": "Discord verknüpfen ist auf diesem Server noch nicht verfügbar.",
       "notify": "Schick mir eine Discord-DM, wenn eine Analyse endet",
       "notifyHint": "Vom Overtone-Bot, für die Songs dieses Kontos. Du kannst es hier oder mit /notify off ausschalten.",
-      "botOff": "Der Overtone-Bot läuft auf diesem Server noch nicht: Bis dahin wird nichts gesendet."
+      "botOff": "Der Overtone-Bot läuft auf diesem Server noch nicht: Bis dahin wird nichts gesendet.",
+      "as": "Verknüpft als {{name}}"
     },
     "osu": {
       "title": "osu! verknüpfen",
@@ -1967,7 +1984,8 @@
       "working": "Dein osu!-Konto wird verknüpft…",
       "denied": "osu! wurde nicht verknüpft: Die Anfrage wurde auf osu! abgelehnt.",
       "stateMissing": "Diese Verknüpfung wurde nicht in diesem Browser gestartet oder hat zu lange gedauert. Fang in deinem Profil neu an.",
-      "failed": "osu! konnte nicht verknüpft werden: {{message}}"
+      "failed": "osu! konnte nicht verknüpft werden: {{message}}",
+      "linkedHint": "Verknüpft. Deine osu!-Karte steht in deinem Profil; „Aktualisieren“ liest sie neu von osu!."
     }
   },
   "social": {
@@ -2116,13 +2134,102 @@
       "makePublic": "Öffentlich machen",
       "tabs": {
         "timings": "Timings",
-        "collections": "Sammlungen"
+        "collections": "Sammlungen",
+        "edit": "Bearbeiten"
       },
       "totals": {
         "published": "Veröffentlicht",
         "timed": "Getimte Songs",
         "uses": "Nutzungen",
         "rating": "Sterne"
+      },
+      "about": "Über mich",
+      "links": {
+        "title": "Links",
+        "osu": "osu!-Profil",
+        "website": "Website",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "Profillink kopieren",
+      "copied": "Link kopiert",
+      "showcase": "Angeheftete Timings",
+      "badgeEarned": "Erhalten am {{date}}",
+      "stats": {
+        "title": "Tempo",
+        "bpm": "BPM der veröffentlichten Timings",
+        "tempo": "Festes oder wechselndes Tempo",
+        "mostUsed": "Meistgenutztes Timing",
+        "noneUsed": "Keines dieser Timings wurde bisher in einer Map verwendet.",
+        "uses_one": "{{count}} Nutzung",
+        "uses_other": "{{count}} Nutzungen"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "Globaler Rang",
+        "countryRank": "Landesrang",
+        "pp": "Performance",
+        "accuracy": "Genauigkeit",
+        "playCount": "Spielanzahl",
+        "ranked": "Ranked Maps",
+        "asOf": "Laut osu! am {{date}}",
+        "refresh": "Aktualisieren",
+        "refreshing": "Wird aktualisiert…",
+        "refreshSoon": "Die Karte wurde vor weniger als fünf Minuten von osu! gelesen. Versuche es später erneut."
+      },
+      "activity": {
+        "title": "Aktivität",
+        "empty": "Noch nichts Öffentliches.",
+        "more": "Mehr zeigen",
+        "kinds": {
+          "published": "Veröffentlicht",
+          "used": "In einer Map verwendet:",
+          "verified": "Als im Takt bestätigt:",
+          "review": "Hat Overtone bewertet",
+          "suggestion": "Vorschlag angenommen:"
+        }
+      },
+      "editor": {
+        "title": "Profil bearbeiten",
+        "intro": "Was du hier schreibst, steht auf deiner öffentlichen Seite, außer sie ist privat.",
+        "photoNote": "Dein Foto, dein Banner und dein Benutzername kommen aus deinem Mides-Profil und werden bei jeder Anmeldung aktualisiert.",
+        "photoLink": "Auf Mides ändern",
+        "displayName": "Anzeigename",
+        "displayNameHint": "Optional. Leer lassen, um deinen Mides-Namen ({{name}}) zu zeigen.",
+        "about": "Über mich",
+        "aboutHint": "Reiner Text, bis zu {{max}} Zeichen.",
+        "linksHint": "Nur https-Links, jeder zu seiner eigenen Seite. Leere ein Feld, um den Link zu entfernen.",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "Akzentfarbe",
+        "accentHint": "Färbt deine Seite in beiden Designs. Jede Wahl bleibt hell wie dunkel gut lesbar.",
+        "accents": {
+          "default": "Overtone-Petrol",
+          "blue": "Blau",
+          "violet": "Violett",
+          "pink": "Pink",
+          "orange": "Orange",
+          "green": "Grün",
+          "red": "Rot"
+        },
+        "save": "Speichern",
+        "saved": "Gespeichert.",
+        "failed": "Speichern fehlgeschlagen: {{message}}",
+        "badLink": "Diesen {{site}}-Link kann dieses Profil nicht zeigen. Prüfe, ob er https ist und zu dieser Seite führt."
+      },
+      "showcaseEditor": {
+        "title": "Angeheftete Timings",
+        "hint": "Hefte bis zu {{max}} deiner veröffentlichten Timings oben an deine Seite, in der Reihenfolge deiner Wahl.",
+        "up": "Nach oben",
+        "down": "Nach unten",
+        "pin": "Anheften",
+        "unpin": "Lösen",
+        "none": "Du hast noch keine veröffentlichten Timings zum Anheften.",
+        "full": "Alle sechs Plätze sind belegt: löse zuerst eines."
       }
     },
     "badges": {
@@ -2149,6 +2256,10 @@
       "ranked-match": {
         "name": "Ranked-Treffer",
         "why": "Ein Timing hat zur Ranked-Map seines Songs gepasst."
+      },
+      "ranked-mapper": {
+        "name": "Ranked Mapper",
+        "why": "Das verknüpfte osu!-Konto hat Ranked Maps."
       }
     }
   },

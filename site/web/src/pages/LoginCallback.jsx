@@ -6,7 +6,7 @@ import ReturnPage from '../components/ReturnPage.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
-import { takeSignInNote } from '../lib/sso-guard.js'
+import { midesErrorOf, takeSignInNote } from '../lib/sso-guard.js'
 
 /**
  * Where Mides sends the browser back, with `#code=` in the fragment (never in
@@ -20,11 +20,15 @@ function exchangeOnce() {
   if (pending) return pending
 
   const code = new URLSearchParams(window.location.hash.slice(1)).get('code')
+  // Mides sends a refusal back the same way, as `#error=<reason>` (its
+  // oauth.py): a sign-in that came back, but without a session.
+  const refused = code ? null : midesErrorOf(window.location.hash)
   // The code leaves the address bar and the history right away.
   window.history.replaceState(null, '', window.location.pathname)
   const note = takeSignInNote()
 
   pending = (async () => {
+    if (refused) return { error: 'mides', reason: refused, returnTo: note?.returnTo ?? null }
     if (!code || !note) return { error: 'state' }
     try {
       await api('/auth/sso/exchange', { method: 'POST', json: { code } })
@@ -50,6 +54,10 @@ export default function LoginCallback() {
     let live = true
     exchangeOnce().then(async (outcome) => {
       if (!live) return
+      // Mides' refusal is said on /login, with the buttons to try again.
+      if (outcome.error === 'mides') {
+        return navigate('/login', { replace: true, state: { midesError: outcome.reason, from: outcome.returnTo } })
+      }
       if (outcome.error) return setFailure(outcome)
       await refresh()
       navigate(outcome.returnTo, { replace: true })

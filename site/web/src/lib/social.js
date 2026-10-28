@@ -11,7 +11,28 @@ import { listQuery } from './timings.js'
 export const LIMITS = { comment: 1000, collectionName: 80 }
 
 /** The badges a profile can show, in the order it shows them (site/api `badgesOf`). */
-export const BADGES = ['first-timing', 'published-10', 'published-50', 'suggestion-accepted', 'used-by-others', 'ranked-match']
+export const BADGES = ['first-timing', 'published-10', 'published-50', 'suggestion-accepted', 'used-by-others', 'ranked-match', 'ranked-mapper']
+
+/** What the profile edit holds the text to (site/api utils/profile.js), so the form can say so first. */
+export const PROFILE_LIMITS = { about: 600, displayName: 40, showcase: 6 }
+
+/** The links a profile can carry, in the order it shows them. */
+export const LINK_KINDS = ['osu', 'website', 'youtube', 'twitch']
+
+/**
+ * Moves the item at `index` one place `by` (-1 up, +1 down) in a copy of
+ * `list`; the list unchanged when that would leave it. The showcase's order.
+ */
+export function move(list, index, by) {
+  const to = index + by
+  if (index < 0 || index >= list.length || to < 0 || to >= list.length) return list
+  const out = [...list]
+  ;[out[index], out[to]] = [out[to], out[index]]
+  return out
+}
+
+/** The absolute URL of a profile, for "copy link": this site's own origin, never one from the data. */
+export const profileUrl = (username, origin = window.location.origin) => `${origin}${userPath(username)}`
 
 /** The recent list's orders. */
 export const SORTS = ['new', 'rated', 'used']
@@ -123,5 +144,9 @@ export const userProfile = (username) => api(`/users/${encodeURIComponent(userna
 export const userTimings = (username, filters, options) => api(`/users/${encodeURIComponent(username)}/timings${sortedQuery(filters, options)}`)
 export const myProfile = () => api('/me/profile')
 export const setProfilePrivate = (on) => api('/me/profile', { method: 'PUT', json: { private: Boolean(on) } })
+export const updateProfile = (change) => api('/me/profile', { method: 'PUT', json: change })
+export const userActivity = (username, cursor = null) =>
+  api(`/users/${encodeURIComponent(username)}/activity${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`)
+export const refreshOsu = () => api('/links/osu/refresh', { method: 'POST', json: {} })
 export const timers = (by = 'uses') => api(`/timers?by=${by === 'stars' ? 'stars' : 'uses'}`)
 export const sortedTimings = (filters, options) => api(`/timings${sortedQuery(filters, options)}`)

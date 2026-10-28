@@ -137,7 +137,9 @@ export const ACCEPTED_STATES = ['planned', 'progress', 'done'];
  * - `published-10`, `published-50`: published that many;
  * - `suggestion-accepted`: a suggestion of theirs reached planned, in
  *   progress or done (the community records its author);
- * - `used-by-others`: another account marked one of their timings used.
+ * - `used-by-others`: another account marked one of their timings used;
+ * - `ranked-mapper`: the osu! account they linked has ranked maps
+ *   (`stats.rankedCount`, what osu! said at link time or at the last refresh).
  *
  * `ranked-match` (docs/16 §4: a published timing that matches the ranked
  * map's) waits for the osu! link (W9.2), which is what names a timing's
@@ -152,6 +154,7 @@ export const badgesOf = (stats) => {
   if (stats.acceptedSuggestion) badges.push('suggestion-accepted');
   if (stats.uses >= 1) badges.push('used-by-others');
   if ((stats.rankedMatches ?? 0) >= 1) badges.push('ranked-match');
+  if ((stats.rankedCount ?? 0) > 0) badges.push('ranked-mapper');
   return badges;
 };
 

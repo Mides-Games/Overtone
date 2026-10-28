@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useSearchParams } from 'react-router'
 
 import Connections from '../components/Connections.jsx'
+import ProfileEditor from '../components/social/ProfileEditor.jsx'
+import { Activity, ProfileAbout, ProfileStats, Showcase, ShareButton } from '../components/social/ProfileMore.jsx'
 import { Badges, ProfileCard, ProfileSkeleton, PublishedTimings } from '../components/social/ProfileParts.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
@@ -10,6 +12,7 @@ import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import Tabs from '../components/ui/Tabs.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { accentProps } from '../lib/accents.js'
 import {
   collectionPath,
   createCollection,
@@ -30,7 +33,20 @@ import {
  * the account's lists are renamed, shared or deleted. The switch that makes
  * the public page private lives here too.
  */
-const TABS = ['timings', 'collections']
+const TABS = ['timings', 'collections', 'edit']
+
+/** The public fields an edit changes on the header, as the profile names them. */
+const pick = ({ about, links, accent }) => ({
+  ...(about !== undefined ? { about } : {}),
+  ...(links !== undefined ? { links } : {}),
+  ...(accent !== undefined ? { accent } : {}),
+})
+
+/** The badges after a link, a refresh or an unlink of osu!: "Ranked mapper" follows the card. */
+const osuBadges = (badges, osu) => {
+  const without = badges.filter((b) => b !== 'ranked-mapper')
+  return osu?.rankedCount > 0 ? [...without, 'ranked-mapper'] : without
+}
 
 /**
  * Back from Mides' Discord page (`?linked=discord`, W9.1): Overtone keeps no
@@ -82,15 +98,28 @@ export default function Profile() {
   if (account === null) return <Navigate to="/login" replace state={{ from: '/profile' }} />
 
   const since = new Date(account.createdAt).toLocaleDateString(i18n.language, { dateStyle: 'long' })
+  const user = { ...account, ...(profile?.user ?? {}) }
+  const accent = accentProps(profile?.user.accent ?? account.accent)
+
+  /** After an edit: the page's own copy, and the navbar's name. */
+  const saved = (fields) => {
+    setProfile((p) => p && { ...p, user: { ...p.user, ...pick(fields), displayName: fields.displayName || p.edit.midesDisplayName || p.user.username }, edit: { ...p.edit, ...fields } })
+    // The showcase's rows (titles, stats) come from the server: read the profile again.
+    if ('showcase' in fields) myProfile().then(setProfile).catch(() => {})
+    refresh()
+  }
 
   return (
-    <div className="space-y-12">
-      <ProfileCard user={account} totals={profile?.totals ?? null}>
+    <div className={`space-y-12 ${accent.className ?? ''}`} style={accent.style}>
+      <ProfileCard user={user} totals={profile?.totals ?? null}>
         {profile && !profile.private && (
-          <Link to={userPath(account.username)} className="btn-ghost btn-sm">
-            <Icon name="user" size={15} />
-            {t('social.profile.publicPage')}
-          </Link>
+          <>
+            <ShareButton username={account.username} />
+            <Link to={userPath(account.username)} className="btn-ghost btn-sm">
+              <Icon name="user" size={15} />
+              {t('social.profile.publicPage')}
+            </Link>
+          </>
         )}
         <a
           href={`https://midesprojects.com/profile/${encodeURIComponent(account.username)}`}
@@ -119,6 +148,9 @@ export default function Profile() {
         </p>
       )}
 
+      {profile && <ProfileAbout user={profile.user} />}
+      {profile && <Showcase timings={profile.showcase} />}
+
       <div className="space-y-10">
         <Tabs
           id="profile"
@@ -142,14 +174,22 @@ export default function Profile() {
                   </>
                 }
               />
-              {profile && <Badges badges={profile.badges} />}
+              {profile && <ProfileStats stats={profile.stats} published={profile.totals.published} />}
+              <Activity username={account.username} />
+              {profile && <Badges badges={profile.badges} dates={profile.badgeDates} />}
             </>
           )}
           {tab === 'collections' && <ManageCollections />}
+          {tab === 'edit' &&
+            (profile ? (
+              <ProfileEditor edit={profile.edit} username={account.username} onSaved={saved} />
+            ) : (
+              <SkeletonRows rows={4} label={t('common.loading')} className="border-y border-line" />
+            ))}
         </section>
       </div>
 
-      <Connections />
+      <Connections onOsuChange={(osu) => setProfile((p) => p && { ...p, osu, badges: osuBadges(p.badges, osu) })} />
 
       <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-line pt-5">
         <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>

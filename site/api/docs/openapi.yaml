@@ -603,16 +603,29 @@ components:
         `timed` counts the songs they analysed that were never private; the
         other totals count published timings. Badges are earned by counts:
         `first-timing`, `published-10`, `published-50`, `suggestion-accepted`,
-        `used-by-others`; `ranked-match` waits for the osu! link (W9.2).
+        `used-by-others`, `ranked-mapper` (the linked osu! account has ranked
+        maps); `ranked-match` waits for a timing-to-beatmapset match.
+        `badgeDates` dates each from the records as they are now. `stats`
+        spreads the published timings over the BPM buckets of /stats, splits
+        them by single and variable tempo, and names the most used one.
+        `osu` is the linked osu! account as osu! said at link time or at its
+        owner's last refresh; never fetched on a page view.
       required: [user, totals, badges, collections, mine]
       properties:
         user:
           type: object
           properties:
             username: { type: string }
-            displayName: { type: [string, 'null'] }
+            displayName: { type: [string, 'null'], description: "The name written on Overtone, else the Mides one." }
             avatarUrl: { type: [string, 'null'] }
             bannerUrl: { type: [string, 'null'] }
+            about: { type: [string, 'null'], description: "Plain text; render it as text." }
+            links: { type: object, description: 'Any of osu, website, youtube, twitch: canonical https URLs.' }
+            accent: { type: [string, 'null'] }
+        badgeDates: { type: object }
+        stats: { type: object }
+        showcase: { type: array, items: { $ref: '#/components/schemas/RankedTiming' } }
+        osu: { type: [object, 'null'] }
         totals:
           type: object
           properties:
@@ -754,6 +767,15 @@ paths:
                   providers:
                     type: array
                     items: { type: string, enum: [discord, google] }
+                  sso:
+                    type: string
+                    enum: [ready, app_unknown, unreachable, unknown, 'off']
+                    description: |
+                      The pre-flight: whether Mides would take this app back to
+                      /login/callback, read from the redirect of Mides' SSO start
+                      (never followed) and kept ten minutes. `app_unknown` and
+                      `unreachable` mean the login page says sign-in is not
+                      available instead of sending anyone away.
 
   /auth/sso/start:
     get:
@@ -763,6 +785,8 @@ paths:
         server side and sets the short-lived signed `overtone_sso` cookie
         (path /api/v1/auth) that the exchange demands. With MIDES_DEV_LOGIN the
         URL is `${SITE_URL}/login/callback#code=dev.<provider>.<nonce>` instead.
+        A 503 `MIDES_APP_UNKNOWN` or `MIDES_UNAVAILABLE` when the pre-flight
+        says Mides would not bring the person back.
       parameters:
         - name: provider
           in: query
@@ -2126,9 +2150,36 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
 
+  /users/{username}/activity:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: A timer's public activity, newest first
+      description: |
+        Published timings, uses of them by other accounts (naming nobody),
+        "on time" votes cast as a mapper, reviews and accepted suggestions
+        staff have not hidden. 20 a page; `next` is the next page's cursor.
+        A private profile is a 404 for everyone but its owner.
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: '`{ items: [{ kind, at, timing? | stars? | suggestion? }], next }`.' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /users/{username}/card:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      summary: What a link preview of /u/{username} says
+      description: Read without a session, so a private profile is a 404 here too.
+      responses:
+        '200': { description: '`{ username, displayName, about, published }`.' }
+        '404': { $ref: '#/components/responses/Error' }
+
   /me/profile:
     get:
-      summary: Your own profile, private or not, with `private`
+      summary: Your own profile, private or not, with `private` and what you edit (`edit`)
       security: [{ session: [] }]
       responses:
         '200':
@@ -2138,8 +2189,16 @@ paths:
               schema: { $ref: '#/components/schemas/Profile' }
         '401': { $ref: '#/components/responses/Error' }
     put:
-      summary: Make your profile private or public again
-      description: A private profile is a 404 at /users/{username} and is left out of /timers. Your published timings stay published.
+      summary: Edit your profile
+      description: |
+        Any of the fields, only those sent. `about` (600 characters) and
+        `displayName` (40; empty falls back to Mides' name) are cleaned text.
+        `links` holds `osu`, `website`, `youtube` and `twitch`, each https on
+        its own site, kept in one canonical form. `accent` is one of the
+        palette or null. `showcase` pins up to 6 of your own published
+        timings, in order. A private profile is a 404 at /users/{username}
+        and is left out of /timers; your published timings stay published.
+        The photo, banner and username are Mides'.
       security: [{ session: [] }]
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
@@ -2149,13 +2208,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [private]
               properties:
                 private: { type: boolean }
+                about: { type: [string, 'null'], maxLength: 600 }
+                displayName: { type: [string, 'null'], maxLength: 40 }
+                links:
+                  type: object
+                  properties:
+                    osu: { type: [string, 'null'] }
+                    website: { type: [string, 'null'] }
+                    youtube: { type: [string, 'null'] }
+                    twitch: { type: [string, 'null'] }
+                accent: { type: [string, 'null'], enum: [blue, violet, pink, orange, green, red, null] }
+                showcase: { type: array, maxItems: 6, items: { type: string, pattern: '^[0-9a-f]{32}$' } }
       responses:
-        '200': { description: '`{ private }`.' }
+        '200': { description: '`{ private, about, displayName, links, accent, showcase }`.' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 
   /timers:
     get:

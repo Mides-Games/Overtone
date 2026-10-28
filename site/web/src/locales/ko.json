@@ -294,7 +294,23 @@
     "notConfigured": "이 서버에는 로그인이 설정되어 있지 않아요.",
     "failed": "로그인을 시작할 수 없어요: {{message}}",
     "privacy": "Overtone은 Mides 공개 프로필(이름, 아바타, 배너)만 보관해요. 이메일은 절대 보관하지 않아요.",
-    "devTitle": "개발용 로그인"
+    "devTitle": "개발용 로그인",
+    "unavailable": "지금은 Mides로 로그인할 수 없습니다.",
+    "reasons": {
+      "app_unknown": "Mides가 아직 Overtone 로그인을 받지 않습니다. 계정에는 문제가 없습니다. 나중에 다시 시도해 주세요.",
+      "unreachable": "Mides가 응답하지 않았습니다. 몇 분 뒤에 다시 시도해 주세요."
+    },
+    "mides": {
+      "redirect_not_allowed": "Mides가 아직 Overtone 로그인을 받지 않습니다. 계정에는 문제가 없습니다. 나중에 다시 시도해 주세요.",
+      "discord_mismatch": "이 Discord 계정은 Mides 계정에 연결된 계정이 아닙니다. 그곳에 연결된 Discord나 Google로 로그인해 주세요.",
+      "sanctioned": "Mides가 이 계정의 로그인을 허용하지 않았습니다. midesprojects.com에서 계정을 확인해 주세요.",
+      "account_blocked": "Mides가 이 계정의 로그인을 허용하지 않았습니다. midesprojects.com에서 계정을 확인해 주세요.",
+      "cancelled": "Discord 또는 Google에서 로그인이 취소되었습니다.",
+      "bad_state": "로그인이 너무 오래 걸렸거나 중단되었습니다. 다시 시도해 주세요.",
+      "token_error": "Discord 또는 Google이 로그인을 완료하지 않았습니다. 다시 시도해 주세요.",
+      "provider_error": "Discord 또는 Google이 로그인을 완료하지 않았습니다. 다시 시도해 주세요.",
+      "other": "Mides가 로그인을 거부했습니다({{code}}). 다시 시도해 주세요."
+    }
   },
   "callback": {
     "working": "로그인하는 중…",
@@ -1912,7 +1928,8 @@
       "unavailable": "이 서버에서는 아직 Discord 연결을 쓸 수 없어요.",
       "notify": "분석이 끝나면 Discord DM 받기",
       "notifyHint": "이 계정의 곡에 대해 Overtone 봇이 보내요. 여기서 또는 /notify off로 끌 수 있어요.",
-      "botOff": "이 서버에서는 Overtone 봇이 아직 돌아가지 않아요: 돌아가기 전까지는 아무것도 보내지 않아요."
+      "botOff": "이 서버에서는 Overtone 봇이 아직 돌아가지 않아요: 돌아가기 전까지는 아무것도 보내지 않아요.",
+      "as": "{{name}}(으)로 연결됨"
     },
     "osu": {
       "title": "osu! 연결",
@@ -1924,7 +1941,8 @@
       "working": "osu! 계정 연결하는 중…",
       "denied": "osu!가 연결되지 않았어요: osu!에서 요청이 거절되었어요.",
       "stateMissing": "이 연결은 이 브라우저에서 시작되지 않았거나 너무 오래 걸렸어요. 프로필에서 다시 시작하세요.",
-      "failed": "osu!를 연결할 수 없었어요: {{message}}"
+      "failed": "osu!를 연결할 수 없었어요: {{message}}",
+      "linkedHint": "연결됨. osu! 카드는 프로필에 표시되며, \"새로고침\"으로 osu!에서 다시 읽어 옵니다."
     }
   },
   "social": {
@@ -2063,13 +2081,101 @@
       "makePublic": "공개로 전환",
       "tabs": {
         "timings": "타이밍",
-        "collections": "컬렉션"
+        "collections": "컬렉션",
+        "edit": "편집"
       },
       "totals": {
         "published": "게시",
         "timed": "타이밍한 곡",
         "uses": "사용",
         "rating": "별점"
+      },
+      "about": "소개",
+      "links": {
+        "title": "링크",
+        "osu": "osu! 프로필",
+        "website": "웹사이트",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "프로필 링크 복사",
+      "copied": "링크를 복사했습니다",
+      "showcase": "고정한 타이밍",
+      "badgeEarned": "{{date}} 획득",
+      "stats": {
+        "title": "템포",
+        "bpm": "게시한 타이밍의 BPM",
+        "tempo": "고정 템포 또는 가변 템포",
+        "mostUsed": "가장 많이 사용된 타이밍",
+        "noneUsed": "아직 이 타이밍들은 맵에서 사용되지 않았습니다.",
+        "uses_other": "{{count}}회 사용"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "글로벌 순위",
+        "countryRank": "국가 순위",
+        "pp": "퍼포먼스",
+        "accuracy": "정확도",
+        "playCount": "플레이 횟수",
+        "ranked": "랭크 맵",
+        "asOf": "{{date}} 기준 osu! 정보",
+        "refresh": "새로고침",
+        "refreshing": "새로고치는 중…",
+        "refreshSoon": "카드를 osu!에서 읽은 지 5분이 지나지 않았습니다. 나중에 다시 시도해 주세요."
+      },
+      "activity": {
+        "title": "활동",
+        "empty": "아직 공개된 활동이 없습니다.",
+        "more": "더 보기",
+        "kinds": {
+          "published": "게시:",
+          "used": "맵에서 사용됨:",
+          "verified": "타이밍이 맞다고 확인:",
+          "review": "Overtone 리뷰 작성",
+          "suggestion": "제안 채택:"
+        }
+      },
+      "editor": {
+        "title": "프로필 편집",
+        "intro": "여기에 쓴 내용은 비공개가 아니라면 공개 페이지에 표시됩니다.",
+        "photoNote": "사진, 배너, 사용자 이름은 Mides 프로필에서 가져오며 로그인할 때마다 새로고침됩니다.",
+        "photoLink": "Mides에서 변경",
+        "displayName": "표시 이름",
+        "displayNameHint": "선택 사항입니다. 비워 두면 Mides 이름({{name}})이 표시됩니다.",
+        "about": "소개",
+        "aboutHint": "일반 텍스트, 최대 {{max}}자.",
+        "linksHint": "https 링크만, 각각 해당 사이트로 연결됩니다. 칸을 비우면 삭제됩니다.",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "강조 색상",
+        "accentHint": "두 테마 모두에서 페이지에 색을 입힙니다. 모든 색상은 밝은 테마와 어두운 테마에서 잘 읽힙니다.",
+        "accents": {
+          "default": "Overtone 틸",
+          "blue": "파랑",
+          "violet": "보라",
+          "pink": "분홍",
+          "orange": "주황",
+          "green": "초록",
+          "red": "빨강"
+        },
+        "save": "저장",
+        "saved": "저장했습니다.",
+        "failed": "저장하지 못했습니다: {{message}}",
+        "badLink": "이 {{site}} 링크는 이 프로필에 표시할 수 없습니다. https이고 해당 사이트의 링크인지 확인해 주세요."
+      },
+      "showcaseEditor": {
+        "title": "고정한 타이밍",
+        "hint": "게시한 타이밍을 최대 {{max}}개까지 원하는 순서로 페이지 맨 위에 고정할 수 있습니다.",
+        "up": "위로",
+        "down": "아래로",
+        "pin": "고정",
+        "unpin": "고정 해제",
+        "none": "아직 고정할 게시된 타이밍이 없습니다.",
+        "full": "여섯 자리가 모두 찼습니다. 먼저 하나를 해제해 주세요."
       }
     },
     "badges": {
@@ -2096,6 +2202,10 @@
       "ranked-match": {
         "name": "랭크 맵 일치",
         "why": "타이밍이 해당 곡의 랭크 맵과 일치했어요."
+      },
+      "ranked-mapper": {
+        "name": "랭크 매퍼",
+        "why": "연결된 osu! 계정에 랭크 맵이 있습니다."
       }
     }
   },

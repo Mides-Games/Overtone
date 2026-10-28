@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import SignInLink from '../SignInLink.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { userPath } from '../../lib/social.js'
 import { castVote, offVote, removeVote, timingVotes } from '../../lib/votes.js'
@@ -77,9 +78,9 @@ export default function Votes({ id, durationS, votes, onChange }) {
       ) : !account ? (
         account === null && (
           <p className="text-caption text-dim">
-            <Link to="/login" className="text-accent hover:underline">
+            <SignInLink className="text-accent hover:underline">
               {t('votes.signIn')}
-            </Link>
+            </SignInLink>
           </p>
         )
       ) : (

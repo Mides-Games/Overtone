@@ -44,8 +44,9 @@ test('every colour token the source names is declared in index.css', () => {
     }
   }
   walk(src)
-  // Set inline by the code itself, not by the stylesheet: the reader's font size, a stagger index, a popover's corner.
-  const local = new Set(['font-scale', 'i', 'origin'])
+  // Set inline by the code itself, not by the stylesheet: the reader's font size, a stagger index, a popover's corner,
+  // and a profile's accent for each theme (lib/accents.js, checked for contrast by test/accents.test.js).
+  const local = new Set(['font-scale', 'i', 'origin', 'pa-light', 'pa-light-hover', 'pa-light-ink', 'pa-dark', 'pa-dark-hover', 'pa-dark-ink'])
   const missing = []
   for (const file of files) {
     for (const [, name] of readFileSync(file, 'utf8').matchAll(/var\(--([\w-]+)/g)) {

@@ -20,6 +20,74 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## v1.0.0-stable — 2026-10-28 · The profile: edited on Overtone, the osu! card, and a sign-in that never strands
+
+### Changed
+
+- **The profile is edited here.** An About text (600 characters, cleaned, rendered as
+  text), a shown name over Mides' one (empty falls back), four links (osu!, website,
+  YouTube, Twitch; https only, each read to its own site and kept in one canonical form,
+  rendered `rel="noopener nofollow ugc"`), an accent from a six-colour palette, and up to
+  six pinned timings with reorder. Photo, banner and username stay Mides', refreshed at
+  every sign-in; the editor says so and links to Mides' `/settings`. `PUT /me/profile`
+  takes any of the fields, behind `requireSameOrigin`, its rate limit and
+  `utils/profile.js`; both stores; new `accounts` columns in `schema.sql`.
+- **The osu! card.** Linking reads rank, country rank, pp, accuracy, play count, country
+  and ranked maps from the `/me` the identify scope already gets; "Refresh" reads
+  `/users/{id}/osu` with the app's own client-credentials token (the link's token was
+  never kept), at most once per five minutes per account and ten an hour per address.
+  No page view asks osu! anything. Shown on `/profile` and, unless private, on
+  `/u/<name>`. A linked account with ranked maps earns the new **Ranked mapper** badge.
+- **More on a profile:** the BPM spread and single/variable split of the published
+  timings (the `/stats` charts, now `components/StatsCharts.jsx`), the most used timing,
+  badge dates (derived from the records, never stored), a paged public activity
+  (`GET /users/<name>/activity`: published, used by others without naming them,
+  confirmed on time as a mapper, reviews, accepted suggestions; nothing private or
+  hidden), "Copy profile link", and Open Graph tags for `/u/<name>` written by
+  `serve.mjs` from `GET /users/<name>/card` (asked without cookies, so a private profile
+  gets none). Public collections stay on the page. The Discord username shows on the
+  linked-accounts card when Mides sends one (it did not on 2026-10-28).
+- **Sign-in.** A pre-flight reads where Mides' SSO start would send the browser, without
+  following it: an app Mides does not know lands on Mides' own error page, so `/login`
+  now says "Sign-in through Mides is not available right now" with the reason instead
+  of sending anyone there. Mides' `#error=` returns are said in words on `/login`; a 403
+  from the exchange is `MIDES_FORBIDDEN`. "Sign in" links come back to the page they
+  were on.
+
+### Fixed
+
+- The Discord "Link on Mides" button sent people to `/connections/discord/link`, a page
+  Mides does not have (its `App.jsx` routes): a 404 on another site. The path is now
+  unset by default and the button appears only once it is configured; the bot's
+  `/link` code covers it meanwhile.
+- `/login/callback` read a Mides refusal (`#error=…` with no code) as "did not start in
+  this browser". It now shows Mides' reason.
+- The link fields were `type="url"`, so the browser refused `osu.ppy.sh/u/name` before
+  the API, which reads it as https, saw it.
+
+### Hardening
+
+- The accent is a palette name, never a colour from the request; each colour is
+  checked by `test/accents.test.js` at 4.5:1 on every surface of its theme, and its ink
+  on it, with the surfaces read from `index.css`. High contrast keeps its own accent.
+- The osu! avatar is not shown: `a.ppy.sh` stays out of `img-src`, since every visitor
+  of a public profile would tell osu!'s host whose page they read, for a second photo
+  when the Mides one is there.
+- A pinned timing must be the account's own and published (else the 404 of a missing
+  timing); one unpublished later drops out of the showcase when read.
+
+### Measured
+
+- site/api 208 tests and site/web 335 (with master's), all passing; `pnpm --dir site/web
+  budget` ok after raising the language chunks (Polish reached 50.4 kB gzip of its 50,
+  French 49.7, Russian 57.6 of 58; the profile adds about 4 kB per language) and the
+  changelog's (16.2 kB of 16, with this entry). Checked by hand at
+  375 px in Spanish, dark and light: the edit, a refused YouTube link, the saved
+  profile in violet. Not checked: the osu! card and the charts with real data (no osu!
+  app and no finished analysis in development), the pre-flight against the real Mides.
+
+---
+
 ## v1.0.0-stable — 2026-10-28 · The notification panel
 
 ### Changed
@@ -68,6 +136,8 @@ version is `v1.0.0-stable` (2026-10-28).
 - A stored `target` column: every kind's payload already holds its ids, so the target is
   derived from them (old rows included); a row may carry `payload.target` when a kind
   cannot be derived, as the staff rows do.
+
+---
 
 ## v1.0.0-stable — 2026-10-28 · The studio look: community and account pages
 

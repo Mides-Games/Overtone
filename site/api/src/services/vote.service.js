@@ -52,6 +52,9 @@ const mineOf = (v) =>
 const memory = new Map();
 let seq = 0;
 
+/** For the profile's activity (services/profile.service.js): timing id -> account id -> vote. */
+export const memoryVotes = () => memory;
+
 /** For the tests: start from nothing. */
 export const resetVoteMemory = () => memory.clear();
 

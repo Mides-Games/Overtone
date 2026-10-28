@@ -230,7 +230,11 @@ y su propio `BOT_TOKEN`: un bot de staging no habla con la API de producción.
 
 En `overtone-api` y `overtone-api-exp` se agregan `BOT_TOKEN` y, cuando exista la app
 de osu!, `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET` y `OSU_REDIRECT_URI`
-(`SITE_URL/link/osu`, una app de osu! por entorno). Todo lo que hay que registrar en
+(`SITE_URL/link/osu`, una app de osu! por entorno: en producción el callback de la app
+de osu! es `https://overtone.midesprojects.com/link/osu`, y `OSU_REDIRECT_URI` es
+exactamente ese valor). Con esas tres el perfil ofrece "Vincular osu!" y la tarjeta de
+osu! con "Actualizar"; sin ellas dice "todavía no disponible". `MIDES_DISCORD_LINK_PATH`
+queda sin poner hasta que Mides tenga la página de vincular Discord. Todo lo que hay que registrar en
 Discord, osu! y Mides está en `docs/bot.md`. Rotar `BOT_TOKEN` es cambiarlo en los dos
 servers del entorno y reiniciarlos.
 

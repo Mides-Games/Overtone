@@ -164,8 +164,11 @@ export const env = {
   botToken: text('BOT_TOKEN'),
   // W9.1: the Mides page that links a Discord account to the signed-in Mides
   // user and sends the browser back to `return_to` (docs/bot.md lists what
-  // Mides must offer). A path on MIDES_WEB_URL.
-  midesDiscordLinkPath: text('MIDES_DISCORD_LINK_PATH', '/connections/discord/link'),
+  // Mides must offer). A path on MIDES_WEB_URL. Unset by default: Mides had no
+  // such page on 2026-10-28 (its routes: App.jsx), and a button to a page that
+  // is not there would strand the person on another site. Set it once Mides
+  // serves one; until then the profile offers the bot's /link code.
+  midesDiscordLinkPath: text('MIDES_DISCORD_LINK_PATH'),
   // W9.2: the osu! OAuth app (osu.ppy.sh/home/account/edit#oauth). All three
   // or none: with any missing, linking osu! is off and the profile says so.
   osuClientId: text('OSU_CLIENT_ID'),
@@ -201,7 +204,7 @@ if (env.osuRedirectUri) {
   }
 }
 if (!osuSet) console.warn('[env] OSU_CLIENT_ID is not set: linking an osu! account is off.');
-if (!/^\/[A-Za-z0-9/_-]{0,120}$/.test(env.midesDiscordLinkPath)) {
+if (env.midesDiscordLinkPath && !/^\/[A-Za-z0-9/_-]{0,120}$/.test(env.midesDiscordLinkPath)) {
   problems.push('MIDES_DISCORD_LINK_PATH is a path on MIDES_WEB_URL, like /connections/discord/link.');
 }
 

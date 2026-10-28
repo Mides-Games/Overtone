@@ -8,6 +8,7 @@ import Skeleton from '../components/ui/Skeleton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
+import { MIDES_ERRORS, sitePath } from '../lib/sso-guard.js'
 
 const PROVIDERS = [
   {
@@ -39,23 +40,35 @@ export default function Login() {
   useEffect(() => {
     api('/auth/config')
       .then(setConfig)
-      .catch(() => setConfig({ devLogin: false, providers: [] }))
+      .catch(() => setConfig({ devLogin: false, providers: [], sso: 'unreachable' }))
   }, [])
 
-  if (account) return <Navigate to="/profile" replace />
+  // Where to come back to: the page that sent the person here (a path on this
+  // site only; sso-guard.js checks it again when the trip returns).
+  const from = sitePath(location.state?.from) ?? '/profile'
+  if (account) return <Navigate to={from} replace />
 
   async function go(provider) {
     setBusy(provider)
     setError(null)
     try {
-      await signIn(provider, location.state?.from ?? '/profile')
+      await signIn(provider, from)
     } catch (err) {
       setBusy(null)
-      setError(t('login.failed', { message: err.message }))
+      setError(
+        ['MIDES_APP_UNKNOWN', 'MIDES_UNAVAILABLE'].includes(err.code)
+          ? `${t('login.unavailable')} ${t(`login.reasons.${err.code === 'MIDES_APP_UNKNOWN' ? 'app_unknown' : 'unreachable'}`)}`
+          : t('login.failed', { message: err.message }),
+      )
     }
   }
 
-  const available = config?.providers ?? []
+  // The pre-flight (site/api mides.service.js): when Mides would not bring the
+  // person back, say so here instead of sending them to a dead end.
+  const blocked = ['app_unknown', 'unreachable'].includes(config?.sso) ? config.sso : null
+  // What Mides said when it sent someone back with `#error=` (LoginCallback.jsx).
+  const refused = typeof location.state?.midesError === 'string' ? location.state.midesError : null
+  const available = blocked ? [] : (config?.providers ?? [])
 
   return (
     <div className="rise mx-auto max-w-md space-y-8 py-4 sm:py-10">
@@ -73,7 +86,16 @@ export default function Login() {
           </div>
         )}
 
-        {config && available.length === 0 && (
+        {(blocked || refused) && (
+          <div role="alert" className="space-y-1.5 rounded-control border border-red/40 bg-red/10 p-3">
+            <p className="text-label font-semibold text-text">{t('login.unavailable')}</p>
+            <p className="text-caption text-muted">
+              {blocked ? t(`login.reasons.${blocked}`) : t(`login.mides.${MIDES_ERRORS.includes(refused) ? refused : 'other'}`, { code: refused })}
+            </p>
+          </div>
+        )}
+
+        {config && !blocked && available.length === 0 && (
           <p role="alert" className="text-label text-red">
             {t('login.notConfigured')}
           </p>

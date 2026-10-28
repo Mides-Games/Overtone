@@ -2,7 +2,7 @@ import { createHmac, randomInt } from 'node:crypto';
 
 import { env } from '../config/env.js';
 import { hasDatabase, query } from '../config/database.js';
-import { COLUMNS, memory as accountMemory } from './account.service.js';
+import { COLUMNS, memory as accountMemory, OSU_EMPTY } from './account.service.js';
 
 /**
  * An account's links to Discord and osu! (W9.1, W9.2), the bot's /link codes
@@ -62,19 +62,25 @@ export const setDiscord = async (accountId, discordId) => {
   if (!hasDatabase()) {
     if (discordId) {
       for (const other of accountMemory.accounts.values()) {
-        if (other.id !== accountId && other.discord_id === discordId) Object.assign(other, { discord_id: null, discord_notify: false });
+        if (other.id !== accountId && other.discord_id === discordId) Object.assign(other, { discord_id: null, discord_notify: false, discord_username: null });
       }
     }
     const row = accountMemory.accounts.get(accountId);
     if (!row) return null;
+    // A new id (the bot's code) comes with no name; the old name went with the old id.
+    if (row.discord_id !== discordId) row.discord_username = null;
     Object.assign(row, { discord_id: discordId, ...(discordId ? {} : { discord_notify: false }) });
     return row;
   }
   if (discordId) {
-    await query('UPDATE accounts SET discord_id = NULL, discord_notify = false WHERE discord_id = $1 AND id <> $2', [discordId, accountId]);
+    await query(
+      'UPDATE accounts SET discord_id = NULL, discord_notify = false, discord_username = NULL WHERE discord_id = $1 AND id <> $2',
+      [discordId, accountId],
+    );
   }
   const { rows: [row = null] } = await query(
-    `UPDATE accounts SET discord_id = $2, discord_notify = CASE WHEN $2::text IS NULL THEN false ELSE discord_notify END
+    `UPDATE accounts SET discord_id = $2, discord_notify = CASE WHEN $2::text IS NULL THEN false ELSE discord_notify END,
+                         discord_username = CASE WHEN discord_id IS NOT DISTINCT FROM $2::text THEN discord_username END
       WHERE id = $1 RETURNING ${COLUMNS}`,
     [accountId, discordId],
   );
@@ -102,18 +108,11 @@ export const setNotify = async (accountId, on) => {
  * older link of the same osu! user to another account goes.
  */
 export const setOsu = async (accountId, profile) => {
-  const fields = profile
-    ? {
-        osu_user_id: profile.id, osu_username: profile.username, osu_avatar_url: profile.avatarUrl,
-        osu_ranked_count: profile.rankedCount, osu_linked_at: new Date(),
-      }
-    : { osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null };
+  const fields = profile ? { ...osuColumns(profile), osu_linked_at: new Date(), osu_refreshed_at: new Date() } : { ...OSU_EMPTY };
   if (!hasDatabase()) {
     if (profile) {
       for (const other of accountMemory.accounts.values()) {
-        if (other.id !== accountId && Number(other.osu_user_id) === profile.id) {
-          Object.assign(other, { osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null });
-        }
+        if (other.id !== accountId && Number(other.osu_user_id) === profile.id) Object.assign(other, OSU_EMPTY);
       }
     }
     const row = accountMemory.accounts.get(accountId);
@@ -122,16 +121,54 @@ export const setOsu = async (accountId, profile) => {
     return row;
   }
   if (profile) {
-    await query(
-      `UPDATE accounts SET osu_user_id = NULL, osu_username = NULL, osu_avatar_url = NULL, osu_ranked_count = NULL, osu_linked_at = NULL
-        WHERE osu_user_id = $1 AND id <> $2`,
-      [profile.id, accountId],
-    );
+    const clear = Object.keys(OSU_EMPTY).map((column) => `${column} = NULL`).join(', ');
+    await query(`UPDATE accounts SET ${clear} WHERE osu_user_id = $1 AND id <> $2`, [profile.id, accountId]);
   }
+  return updateOsu(accountId, fields);
+};
+
+/** The osu! card's columns from a profile (osu.service.js `toOsuProfile`). */
+const osuColumns = (profile) => ({
+  osu_user_id: profile.id,
+  osu_username: profile.username,
+  osu_avatar_url: profile.avatarUrl,
+  osu_ranked_count: profile.rankedCount,
+  osu_country: profile.country ?? null,
+  osu_global_rank: profile.globalRank ?? null,
+  osu_country_rank: profile.countryRank ?? null,
+  osu_pp: profile.pp ?? null,
+  osu_accuracy: profile.accuracy ?? null,
+  osu_play_count: profile.playCount ?? null,
+});
+
+/** Writes `fields` (osu_* columns from the fixed lists above) to the account. */
+const updateOsu = async (accountId, fields) => {
+  const entries = Object.entries(fields);
   const { rows: [row = null] } = await query(
-    `UPDATE accounts SET osu_user_id = $2, osu_username = $3, osu_avatar_url = $4, osu_ranked_count = $5, osu_linked_at = $6
-      WHERE id = $1 RETURNING ${COLUMNS}`,
-    [accountId, fields.osu_user_id, fields.osu_username, fields.osu_avatar_url, fields.osu_ranked_count, fields.osu_linked_at],
+    `UPDATE accounts SET ${entries.map(([column], i) => `${column} = $${i + 2}`).join(', ')} WHERE id = $1 RETURNING ${COLUMNS}`,
+    [accountId, ...entries.map(([, value]) => value)],
+  );
+  return row;
+};
+
+/**
+ * A "Refresh" of the osu! card: the same osu! user's fields now. Only while
+ * that user is still the one linked (an unlink or a relink in between wins),
+ * and the link's date stays.
+ */
+export const refreshOsu = async (accountId, profile) => {
+  const fields = { ...osuColumns(profile), osu_refreshed_at: new Date() };
+  if (!hasDatabase()) {
+    const row = accountMemory.accounts.get(accountId);
+    if (!row || Number(row.osu_user_id) !== profile.id) return null;
+    Object.assign(row, fields);
+    return row;
+  }
+  const entries = Object.entries(fields);
+  const { rows: [row = null] } = await query(
+    `UPDATE accounts SET ${entries.map(([column], i) => `${column} = $${i + 3}`).join(', ')}
+      WHERE id = $1 AND osu_user_id = $2 RETURNING ${COLUMNS}`,
+    [accountId, profile.id, ...entries.map(([, value]) => value)],
   );
   return row;
 };

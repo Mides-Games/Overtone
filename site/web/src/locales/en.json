@@ -298,7 +298,23 @@
     "notConfigured": "Sign-in is not configured on this server.",
     "failed": "Could not start the sign-in: {{message}}",
     "privacy": "Overtone only keeps your public Mides profile: name, avatar and banner. Never your email.",
-    "devTitle": "Development sign-in"
+    "devTitle": "Development sign-in",
+    "unavailable": "Sign-in through Mides is not available right now.",
+    "reasons": {
+      "app_unknown": "Mides does not accept sign-ins for Overtone yet. Nothing is wrong with your account: try again later.",
+      "unreachable": "Mides did not answer. Try again in a few minutes."
+    },
+    "mides": {
+      "redirect_not_allowed": "Mides does not accept sign-ins for Overtone yet. Nothing is wrong with your account: try again later.",
+      "discord_mismatch": "That Discord account is not the one linked to your Mides account. Sign in with the Discord linked there, or with Google.",
+      "sanctioned": "Mides did not let this account sign in. Check your account on midesprojects.com.",
+      "account_blocked": "Mides did not let this account sign in. Check your account on midesprojects.com.",
+      "cancelled": "The sign-in was cancelled on Discord or Google.",
+      "bad_state": "The sign-in took too long or was interrupted. Try again.",
+      "token_error": "Discord or Google did not complete the sign-in. Try again.",
+      "provider_error": "Discord or Google did not complete the sign-in. Try again.",
+      "other": "Mides refused the sign-in ({{code}}). Try again."
+    }
   },
   "callback": {
     "working": "Signing you in…",
@@ -1954,7 +1970,8 @@
       "unavailable": "Linking Discord is not available on this server yet.",
       "notify": "Send me a Discord DM when an analysis ends",
       "notifyHint": "From the Overtone bot, for the songs of this account. You can turn it off here or with /notify off.",
-      "botOff": "The Overtone bot is not running on this server yet: nothing is sent until it is."
+      "botOff": "The Overtone bot is not running on this server yet: nothing is sent until it is.",
+      "as": "Linked as {{name}}"
     },
     "osu": {
       "title": "Linking osu!",
@@ -1967,7 +1984,8 @@
       "working": "Linking your osu! account…",
       "denied": "osu! was not linked: the request was declined on osu!.",
       "stateMissing": "This link did not start in this browser, or took too long. Start again from your profile.",
-      "failed": "osu! could not be linked: {{message}}"
+      "failed": "osu! could not be linked: {{message}}",
+      "linkedHint": "Linked. Your osu! card shows on your profile; Refresh reads it again from osu!."
     }
   },
   "social": {
@@ -2116,13 +2134,102 @@
       "makePublic": "Make it public",
       "tabs": {
         "timings": "Timings",
-        "collections": "Collections"
+        "collections": "Collections",
+        "edit": "Edit"
       },
       "totals": {
         "published": "Published",
         "timed": "Songs timed",
         "uses": "Uses",
         "rating": "Stars"
+      },
+      "about": "About",
+      "links": {
+        "title": "Links",
+        "osu": "osu! profile",
+        "website": "Website",
+        "youtube": "YouTube",
+        "twitch": "Twitch"
+      },
+      "share": "Copy profile link",
+      "copied": "Link copied",
+      "showcase": "Pinned timings",
+      "badgeEarned": "Earned {{date}}",
+      "stats": {
+        "title": "Tempo",
+        "bpm": "BPM of the published timings",
+        "tempo": "Single or variable tempo",
+        "mostUsed": "Most used timing",
+        "noneUsed": "None of these timings has been used in a map yet.",
+        "uses_one": "{{count}} use",
+        "uses_other": "{{count}} uses"
+      },
+      "osu": {
+        "title": "osu!",
+        "globalRank": "Global rank",
+        "countryRank": "Country rank",
+        "pp": "Performance",
+        "accuracy": "Accuracy",
+        "playCount": "Play count",
+        "ranked": "Ranked maps",
+        "asOf": "As osu! said on {{date}}",
+        "refresh": "Refresh",
+        "refreshing": "Refreshing…",
+        "refreshSoon": "The card was read from osu! less than five minutes ago. Try again later."
+      },
+      "activity": {
+        "title": "Activity",
+        "empty": "Nothing public yet.",
+        "more": "Show more",
+        "kinds": {
+          "published": "Published",
+          "used": "Used in a map:",
+          "verified": "Confirmed on time:",
+          "review": "Reviewed Overtone",
+          "suggestion": "Suggestion accepted:"
+        }
+      },
+      "editor": {
+        "title": "Edit your profile",
+        "intro": "What you write here shows on your public page, unless it is private.",
+        "photoNote": "Your photo, banner and username come from your Mides profile and refresh each time you sign in.",
+        "photoLink": "Change them on Mides",
+        "displayName": "Display name",
+        "displayNameHint": "Optional. Leave it empty to show your Mides name ({{name}}).",
+        "about": "About",
+        "aboutHint": "Plain text, up to {{max}} characters.",
+        "linksHint": "https links only, each to its own site. Leave a field empty to remove it.",
+        "placeholders": {
+          "osu": "https://osu.ppy.sh/users/…",
+          "website": "https://…",
+          "youtube": "https://www.youtube.com/@…",
+          "twitch": "https://www.twitch.tv/…"
+        },
+        "accent": "Accent colour",
+        "accentHint": "Colours your page, in both themes. Every choice reads clearly on light and dark.",
+        "accents": {
+          "default": "Overtone teal",
+          "blue": "Blue",
+          "violet": "Violet",
+          "pink": "Pink",
+          "orange": "Orange",
+          "green": "Green",
+          "red": "Red"
+        },
+        "save": "Save",
+        "saved": "Saved.",
+        "failed": "Could not save: {{message}}",
+        "badLink": "That {{site}} link is not one this profile can show. Check that it is https and on that site."
+      },
+      "showcaseEditor": {
+        "title": "Pinned timings",
+        "hint": "Pin up to {{max}} of your published timings to the top of your page, in the order you choose.",
+        "up": "Move up",
+        "down": "Move down",
+        "pin": "Pin",
+        "unpin": "Unpin",
+        "none": "You have no published timings to pin yet.",
+        "full": "All six places are taken: unpin one first."
       }
     },
     "badges": {
@@ -2149,6 +2256,10 @@
       "ranked-match": {
         "name": "Ranked match",
         "why": "A timing matched the ranked map of its song."
+      },
+      "ranked-mapper": {
+        "name": "Ranked mapper",
+        "why": "Their linked osu! account has ranked maps."
       }
     }
   },

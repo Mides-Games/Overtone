@@ -58,6 +58,28 @@ export function takeSignInNote() {
 }
 
 /**
+ * The reasons Mides sends back as `#error=<reason>` instead of a code (its
+ * oauth.py: `_fail_for` and `_sso_callback`), each with its own words on
+ * /login; anything else is shown by its code.
+ */
+export const MIDES_ERRORS = [
+  'redirect_not_allowed',
+  'discord_mismatch',
+  'sanctioned',
+  'account_blocked',
+  'cancelled',
+  'bad_state',
+  'token_error',
+  'provider_error',
+]
+
+/** The `error` of a callback's fragment: a short code of letters and `_`, or null. */
+export function midesErrorOf(hash) {
+  const raw = new URLSearchParams(String(hash ?? '').replace(/^#/, '')).get('error')
+  return raw && /^[a-z_]{1,40}$/.test(raw) ? raw : null
+}
+
+/**
  * Only a path on this site: a stored full URL would be an open redirect.
  * Browsers read `/\evil.example` (and `/<tab>/evil.example`) as
  * `//evil.example`, another host, so the check is the resolved URL's origin,

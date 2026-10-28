@@ -66,6 +66,9 @@ registerMemoryKind('comment', memory.comments);
 
 let seq = 0;
 
+/** For the profile's memory twin (services/profile.service.js): timing id -> account id -> { at }. */
+export const memoryUses = () => memory.uses;
+
 /** For the tests: start from nothing. */
 export const resetSocialMemory = () => {
   for (const map of Object.values(memory)) map.clear();

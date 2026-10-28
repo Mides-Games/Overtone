@@ -90,17 +90,36 @@ const avatar = (value) => {
   }
 };
 
-/** osu!'s /me in the four fields kept: an allow-list, like Mides' profile. */
+/** A whole number in [min, max], else `null`. */
+const whole = (value, min, max = 2 ** 31 - 1) => (Number.isInteger(value) && value >= min && value <= max ? value : null);
+/** A finite number in [min, max], rounded to two decimals, else `null`. */
+const decimal = (value, min, max) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? Math.round(value * 100) / 100 : null;
+
+/**
+ * osu!'s user (the link's /me, or /users/{id}/osu at a refresh) in the fields
+ * kept: an allow-list, like Mides' profile. The card's numbers are the osu!
+ * ruleset's `statistics`, which /me and /users/{id}/osu both carry; a field
+ * osu! leaves out, or sends as something else, is `null`, never a guess.
+ */
 export const toOsuProfile = (me) => {
   const id = Number(me?.id);
   const username = typeof me?.username === 'string' ? me.username.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 32) : '';
   if (!Number.isSafeInteger(id) || id <= 0 || !username) return null;
   const ranked = me.ranked_beatmapset_count ?? me.ranked_and_approved_beatmapset_count;
+  const stats = me.statistics && typeof me.statistics === 'object' ? me.statistics : {};
+  const country = typeof me.country_code === 'string' && /^[A-Z]{2}$/.test(me.country_code) ? me.country_code : null;
   return {
     id,
     username,
     avatarUrl: avatar(me.avatar_url),
     rankedCount: Number.isInteger(ranked) && ranked >= 0 ? ranked : null,
+    country,
+    globalRank: whole(stats.global_rank, 1),
+    countryRank: whole(stats.country_rank, 1),
+    pp: decimal(stats.pp, 0, 1e6),
+    accuracy: decimal(stats.hit_accuracy, 0, 100),
+    playCount: whole(stats.play_count, 0),
   };
 };
 
@@ -145,5 +164,60 @@ export const exchange = async (code, state) => {
   });
   const profile = me.ok ? toOsuProfile(await me.json().catch(() => null)) : null;
   if (!profile) throw new HttpError(502, 'osu! did not return a valid profile.', 'OSU_BAD_ANSWER');
+  return profile;
+};
+
+// ── "Refresh" on the osu! card (2026-10-28) ─────────────────────────────────
+//
+// The link's token was dropped at link time, so a refresh cannot use it. It
+// uses the app's own token instead (client credentials, scope `public`: the
+// osu! API's grant for reading public data with no user behind it) and reads
+// /users/{id}/osu, the same public profile anyone sees on osu!'s site. That
+// token is kept in this process's memory until a minute before it expires, so
+// a run of refreshes asks for it once; it never reaches a log, a row or a page.
+// Only the person's own "Refresh" calls this, rate limited per account
+// (routes/links.routes.js): no page view ever does.
+
+let appToken = null;
+
+export const resetAppToken = () => {
+  appToken = null;
+};
+
+const appAccess = async () => {
+  if (appToken && appToken.until > Date.now()) return appToken.value;
+  const response = await call('/oauth/token', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: Number(env.osuClientId),
+      client_secret: env.osuClientSecret,
+      grant_type: 'client_credentials',
+      scope: 'public',
+    }),
+  });
+  const grant = await response.json().catch(() => ({}));
+  if (!response.ok || typeof grant?.access_token !== 'string') {
+    if (grant?.error === 'invalid_client') console.error('[osu] the app token was refused as invalid_client: check OSU_CLIENT_ID and OSU_CLIENT_SECRET');
+    throw new HttpError(503, 'osu! did not let this server read the profile right now.', 'OSU_UNAVAILABLE');
+  }
+  const seconds = Number.isFinite(grant.expires_in) ? grant.expires_in : 3600;
+  appToken = { value: grant.access_token, until: Date.now() + Math.max(0, seconds - 60) * 1000 };
+  return appToken.value;
+};
+
+/** The osu! user `osuUserId`'s public profile now, in the kept fields. */
+export const refreshProfile = async (osuUserId) => {
+  if (!osuConfigured()) throw off();
+  const id = Number(osuUserId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new HttpError(409, 'Link osu! first.', 'OSU_NOT_LINKED');
+  const token = await appAccess();
+  const response = await call(`/api/v2/users/${id}/osu?key=id`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) appToken = null;
+  if (response.status === 404) throw new HttpError(404, 'osu! no longer has that account.', 'OSU_USER_GONE');
+  const profile = response.ok ? toOsuProfile(await response.json().catch(() => null)) : null;
+  if (!profile || profile.id !== id) throw new HttpError(502, 'osu! did not return a valid profile.', 'OSU_BAD_ANSWER');
   return profile;
 };

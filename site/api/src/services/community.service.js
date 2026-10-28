@@ -89,6 +89,9 @@ export const registerMemoryKind = (kind, map) => {
 /** For the social store's memory twin: the suggestions, to see whether an author had one accepted. */
 export const memorySuggestions = () => memory.suggestions.values();
 
+/** For the profile's activity (services/profile.service.js): the reviews. */
+export const memoryReviews = () => memory.reviews.values();
+
 /** For the tests: start from nothing. */
 export const resetMemory = () => {
   memory.suggestions.clear();

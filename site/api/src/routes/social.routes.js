@@ -2,11 +2,22 @@ import { Router } from 'express';
 
 import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
-import { accountById, accountByUsername, isStaff, setProfilePrivate } from '../services/account.service.js';
+import {
+  accountById,
+  accountByUsername,
+  isStaff,
+  osuCard,
+  profileFields,
+  setProfileFields,
+  shownName,
+} from '../services/account.service.js';
 import { analyses } from '../services/analysis.service.js';
 import { newPublicId } from '../services/community.service.js';
+import { midesSettingsUrl } from '../services/mides.service.js';
+import { ACTIVITY_PAGE, activity, profileExtras } from '../services/profile.service.js';
 import { social } from '../services/social.service.js';
 import { HttpError } from '../utils/http-error.js';
+import { profileEdit } from '../utils/profile.js';
 import {
   atMsOf,
   averageOf,
@@ -16,13 +27,14 @@ import {
   COMMENT_MAX,
   COMMENTS_PAGE,
   MIN_RATINGS_TO_RANK,
+  OFFSET_MAX,
   starsOf,
   TIMER_MIN_RATINGS,
   TIMER_MIN_USES,
   TIMER_SORTS,
   USERNAME,
 } from '../utils/social.js';
-import { decodeOffset, listFilters, recentEntry, songNames } from '../utils/timings.js';
+import { decodeOffset, encodeOffset, listFilters, recentEntry, songNames } from '../utils/timings.js';
 import { notify } from '../services/notification.service.js';
 import { field } from './community.routes.js';
 import { listPage } from './timings.routes.js';
@@ -47,8 +59,10 @@ import { listPage } from './timings.routes.js';
  *   DELETE /collections/:id/items/:timingId    yours
  *   GET    /users/:username                    a timer's public profile
  *   GET    /users/:username/timings            their published timings   ?sort=&cursor=
- *   GET    /me/profile                         yours, private or not
- *   PUT    /me/profile                         { private }
+ *   GET    /users/:username/activity           their public activity     ?cursor=
+ *   GET    /users/:username/card               a link preview's fields   (no session: private is a 404)
+ *   GET    /me/profile                         yours, private or not, with what you edit
+ *   PUT    /me/profile                         { private?, about?, displayName?, links?, accent?, showcase? }
  *   GET    /timers                             ?by=uses|stars             the ranking of timers
  *
  * The rules, in one place:
@@ -323,17 +337,25 @@ router.delete('/collections/:id/items/:timingId', collectionLimit, requireSameOr
  * counts published timings only.
  */
 const profileOf = async (account, req) => {
-  const [stats, collections] = await Promise.all([
+  const fields = profileFields(account);
+  const [stats, collections, showcase, mostUsed] = await Promise.all([
     social().profileStats(account.id),
     social().publicCollectionsOf(account.id),
+    showcaseOf(account, fields.showcase),
+    listPage({ ...listFilters({ sort: 'used' }), accountId: account.id, limit: 1 }).then((page) => page.timings[0] ?? null),
   ]);
   const mine = Boolean(req.account && req.account.id === account.id);
+  const badges = badgesOf({ ...stats, rankedCount: Number(account.osu_ranked_count ?? 0) });
+  const extras = await profileExtras(account, badges);
   return {
     user: {
       username: account.username,
-      displayName: account.display_name ?? null,
+      displayName: shownName(account),
       avatarUrl: account.avatar_url ?? null,
       bannerUrl: account.banner_url ?? null,
+      about: fields.about,
+      links: fields.links,
+      accent: fields.accent,
     },
     totals: {
       timed: stats.timed,
@@ -341,11 +363,56 @@ const profileOf = async (account, req) => {
       uses: stats.uses,
       rating: { average: averageOf(stats.ratingSum, stats.ratingCount), count: stats.ratingCount },
     },
-    badges: badgesOf(stats),
+    badges,
+    badgeDates: extras.badgeDates,
+    stats: { ...extras.stats, mostUsed },
+    showcase,
+    osu: osuCard(account),
     collections: collections.map((c) => collectionView(c, req)),
     mine,
-    ...(mine ? { private: Boolean(account.profile_private) } : {}),
+    // The owner's own view adds what they edit: the switch, their own text
+    // as written (the name before the fallback), and where Mides edits the rest.
+    ...(mine
+      ? {
+          private: Boolean(account.profile_private),
+          edit: { ...fields, midesDisplayName: account.display_name ?? null, midesSettingsUrl: midesSettingsUrl() },
+        }
+      : {}),
   };
+};
+
+/**
+ * The pinned timings, in the owner's order, as the lists show them: only the
+ * ids that are still the account's own published timings (one unpublished
+ * since is skipped, not shown as a hole).
+ */
+const showcaseOf = async (account, ids) => {
+  const rows = (await Promise.all(ids.map((id) => analyses().getPublished(id)))).filter((row) => row && row.accountId === account.id);
+  if (!rows.length) return [];
+  const stats = await social().statsFor(rows.map((row) => row.publicId));
+  return rows.map((row) => ({ ...recentEntry(row), ...(stats.get(row.publicId) ?? {}) }));
+};
+
+/** A profile's activity rows as the page reads them: timings named as the lists name them. */
+const activityView = async (rows) => {
+  const timingIds = [...new Set(rows.filter((r) => ['published', 'used', 'verified'].includes(r.kind)).map((r) => r.ref))];
+  const timings = new Map(
+    (await Promise.all(timingIds.map((id) => analyses().getPublished(id))))
+      .filter(Boolean)
+      .map((row) => {
+        const entry = recentEntry(row);
+        return [row.publicId, { id: entry.id, title: entry.title, artist: entry.artist, bpm: entry.bpm }];
+      }),
+  );
+  return rows
+    .map((r) => {
+      const base = { kind: r.kind, at: r.at.toISOString() };
+      if (r.kind === 'review') return { ...base, stars: r.stars };
+      if (r.kind === 'suggestion') return { ...base, suggestion: { id: r.ref, title: r.title, state: r.state } };
+      const timing = timings.get(r.ref);
+      return timing ? { ...base, timing } : null;
+    })
+    .filter(Boolean);
 };
 
 /** The account `:username` names, if this request may see its profile; else the 404 of a name nobody has. */
@@ -371,16 +438,55 @@ router.get('/users/:username/timings', readLimit, optionalSession, async (req, r
   res.json({ ...(await listPage(filters)), minRatings: MIN_RATINGS_TO_RANK });
 });
 
+router.get('/users/:username/activity', readLimit, optionalSession, async (req, res) => {
+  const account = await visibleProfile(req);
+  const offset = decodeOffset(req.query.cursor);
+  const { rows, more } = await activity(account, { offset, limit: ACTIVITY_PAGE });
+  res.set('Cache-Control', 'no-store');
+  res.json({ items: await activityView(rows), next: more && offset + ACTIVITY_PAGE <= OFFSET_MAX ? encodeOffset(offset + ACTIVITY_PAGE) : null });
+});
+
+/**
+ * What a link preview of /u/<username> says (deploy/web/serve.mjs writes it
+ * into the page's Open Graph tags): the shown name, the start of the About
+ * text and the published count. Never with a session, so a private profile is
+ * the same 404 here as everywhere and gets no tags.
+ */
+router.get('/users/:username/card', readLimit, async (req, res) => {
+  const { username } = req.params;
+  if (!USERNAME.test(username ?? '')) throw notFound('No such profile.');
+  const account = await accountByUsername(username);
+  if (!account || account.profile_private) throw notFound('No such profile.');
+  const stats = await social().profileStats(account.id);
+  const about = profileFields(account).about;
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    username: account.username,
+    displayName: shownName(account),
+    about: about ? [...about.replace(/\s+/g, ' ')].slice(0, 160).join('') : null,
+    published: stats.published,
+  });
+});
+
 router.get('/me/profile', readLimit, requireSession, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await profileOf(req.account, req));
 });
 
+/**
+ * The owner's edit: any of { private, about, displayName, links, accent,
+ * showcase }, only those sent (utils/profile.js reads each). A pinned timing
+ * must be one of the account's own published timings: anything else is the
+ * 404 of a timing that is not there.
+ */
 router.put('/me/profile', profileLimit, requireSameOrigin, requireSession, async (req, res) => {
-  const flag = req.body?.private;
-  if (typeof flag !== 'boolean') throw new HttpError(400, 'private is true or false.', 'BAD_FLAG');
-  await setProfilePrivate(req.account.id, flag);
-  res.json({ private: flag });
+  const edit = profileEdit(req.body);
+  if (edit.showcase) {
+    const rows = await Promise.all(edit.showcase.map((id) => analyses().getPublished(id)));
+    if (rows.some((row) => !row || row.accountId !== req.account.id)) throw notFound('No such timing of yours to pin.');
+  }
+  const row = await setProfileFields(req.account.id, edit);
+  res.json({ private: Boolean(row.profile_private), ...profileFields(row) });
 });
 
 // ── The ranking of timers (W6) ──────────────────────────────────────────────

@@ -293,7 +293,9 @@ async function basePolicy(s, index) {
     `script-src 'self'${hashes.length ? ' ' + hashes.join(' ') : ''}`,
     // Avatars and banners come from Mides' own origins and nowhere else: the
     // API keeps no image URL outside them either (site/api mides.service.js).
-    ["img-src 'self' data:", ...IMAGE_ORIGINS].join(' '),
+    // blob: is the page's own object URLs (the cover read from the reader's
+    // file, a map exported as PNG): made in this document, never fetched.
+    ["img-src 'self' data: blob:", ...IMAGE_ORIGINS].join(' '),
     "font-src 'self' data:",
     "style-src 'self'",
     "connect-src 'self'",

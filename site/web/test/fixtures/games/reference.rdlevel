@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "version": 55,
+    "artist": "Artist",
+    "song": "Song",
+    "author": "mapper",
+    "description": "Timing from Overtone: tempo and bars only. Check it by ear.",
+    "tags": "overtone"
+  },
+  "rows": [],
+  "decorations": [],
+  "actions": [
+    { "bar": 1, "beat": 1, "y": 0, "type": "PlaySong", "filename": "Artist - Song.ogg", "volume": 100, "pitch": 100, "pan": 0, "offset": 1234, "bpm": 150, "loop": false },
+    { "bar": 1, "beat": 1, "y": 0, "type": "SetCrotchetsPerBar", "crotchetsPerBar": 4, "visualBeatMultiplier": 1 },
+    { "bar": 3, "beat": 3.25, "y": 0, "type": "SetBeatsPerMinute", "beatsPerMinute": 140 }
+  ],
+  "conditionals": [],
+  "bookmarks": []
+}

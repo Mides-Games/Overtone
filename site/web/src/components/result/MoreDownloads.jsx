@@ -3,21 +3,25 @@ import { useTranslation } from 'react-i18next'
 
 import { MAX_TRACK_SECONDS, renderClickTrack } from '../../lib/click-track.js'
 import { exportLines } from '../../lib/export-options.js'
+import { SNAP_DIVISORS } from '../../lib/mapping.js'
 import { patchOsuFile } from '../../lib/osu-patch.js'
 import { downloadName, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
 import ExportOptions, { useExportOptions } from './ExportOptions.jsx'
+import DawExports from './DawExports.jsx'
 import GameFormats from './GameFormats.jsx'
 
 /**
  * The downloads after the .osz (W3.20), folded away so the export row stays
  * one button: the reader's own .osu with the red lines put in, the click
- * track as a WAV, the other games' files (W12.7), the CSV, the result as
+ * track as a WAV, the other games' files (W12.7, W13.11), the tempo map for
+ * music software (W13.10), the CSV, the result as
  * JSON and a plain-text summary. All of it is built in this browser; the .osu
  * and the song never leave it. On top, the export options (W12.8), which the
- * .osz above, the copy, the .osu and the games' files follow; the clicks, the
+ * .osz above, the copy, the .osu, the games' and the DAWs' files follow; the clicks, the
  * CSV, the summary and the JSON do not (they are the timing as the page has it).
  * The click track may carry the subdivisions the player clicks (`clicks`,
- * W12.6); it never carries the player's latency shift.
+ * W12.6); it never carries the player's latency shift. The patched .osu may
+ * also snap its hit objects to the new grid (W13.2), off until asked.
  */
 export default function MoreDownloads({ id, analysis, lines, adjustment, grid, clicks = grid, durationS, songBuffer, player, checks, csvHref = null }) {
   const { t } = useTranslation()
@@ -27,6 +31,7 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
   const written = useMemo(() => exportLines(lines, options), [lines, options])
   const osuInput = useRef(null)
   const [patch, setPatch] = useState(null) // { report } | { error } | 'busy'
+  const [snap, setSnap] = useState(0) // 0 = leave the objects where they are
   const [track, setTrack] = useState(null) // { busy, progress } | { error } | { capped }
   const [withSubs, setWithSubs] = useState(true)
   const subdivided = clicks !== grid
@@ -35,7 +40,7 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
     if (!file) return
     setPatch('busy')
     try {
-      const out = await patchOsuFile(file, written)
+      const out = await patchOsuFile(file, written, { snap: snap || null })
       if (out.error) return setPatch({ error: out.error })
       saveText(out.bytes, out.name, 'application/octet-stream')
       setPatch({ report: out.report })
@@ -97,6 +102,20 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
             {t('exports.patchPick')}
           </button>
           <p className="text-caption text-dim">{t('exports.patchNote')}</p>
+          <fieldset className="space-y-1.5">
+            <legend className="text-caption text-text">{t('exports.snapLabel')}</legend>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className="tool-btn px-2.5" aria-pressed={!snap} onClick={() => setSnap(0)}>
+                {t('exports.snapOff')}
+              </button>
+              {SNAP_DIVISORS.map((d) => (
+                <button key={d} type="button" className="tool-btn min-w-11" aria-pressed={snap === d} onClick={() => setSnap(d)}>
+                  1/{d}
+                </button>
+              ))}
+            </div>
+            <p className="text-caption text-dim">{t('exports.snapNote')}</p>
+          </fieldset>
           {patch?.report && <PatchReport report={patch.report} />}
           {patch?.error && (
             <p role="alert" className="text-caption text-red">
@@ -145,7 +164,9 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
         </div>
       </div>
 
-      <GameFormats analysis={analysis} lines={written} offsetDecimals={options.offsetDecimals} />
+      <GameFormats analysis={analysis} lines={written} offsetDecimals={options.offsetDecimals} durationS={durationS} />
+
+      <DawExports analysis={analysis} lines={written} durationS={durationS} />
 
       <div className="space-y-2 border-t border-line px-4 py-3">
         <h3 className="label">{t('exports.filesTitle')}</h3>
@@ -186,7 +207,24 @@ function PatchReport({ report }) {
       <p>{t('exports.patched', { removed: report.redRemoved, added: report.redAdded, kept: report.greensKept })}</p>
       {report.greensBefore > 0 && <p>{t('exports.greensBefore', { count: report.greensBefore })}</p>}
       {report.carried > 0 && <p>{t('exports.carried', { count: report.carried })}</p>}
-      {report.hitObjects > 0 && <p className="text-amber">{t('exports.objects', { count: report.hitObjects })}</p>}
+      {report.snap ? (
+        <>
+          <p>
+            {report.snap.moved
+              ? t('exports.snapped', {
+                  divisor: `1/${report.snap.divisor}`,
+                  moved: report.snap.moved,
+                  total: report.snap.total,
+                  max: report.snap.maxMs,
+                  median: report.snap.medianMs,
+                })
+              : t('exports.snappedNone', { divisor: `1/${report.snap.divisor}`, total: report.snap.total })}
+          </p>
+          {report.snap.shared > 0 && <p className="text-amber">{t('exports.snapShared', { n: report.snap.shared })}</p>}
+        </>
+      ) : (
+        report.hitObjects > 0 && <p className="text-amber">{t('exports.objects', { count: report.hitObjects })}</p>
+      )}
     </div>
   )
 }

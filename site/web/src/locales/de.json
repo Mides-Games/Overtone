@@ -826,7 +826,13 @@
     "filesTitle": "Dateien",
     "json": "Ergebnis (JSON)",
     "summary": "Zusammenfassung (TXT)",
-    "filesNote": "CSV und Zusammenfassung folgen deinen Anpassungen; das JSON ist das Ergebnis der Engine, so wie der Server es geschickt hat."
+    "filesNote": "CSV und Zusammenfassung folgen deinen Anpassungen; das JSON ist das Ergebnis der Engine, so wie der Server es geschickt hat.",
+    "snapLabel": "Hit-Objects am neuen Timing ausrichten",
+    "snapOff": "Aus",
+    "snapNote": "Jedes Objekt rückt auf den nächsten Tick des neuen Rasters mit diesem Divisor; nur seine Zeit ändert sich (und das Ende eines Spinners oder Holds). Slider behalten ihre Länge in Schlägen. Ohne Ausrichten bleiben die Objekte, wo sie sind.",
+    "snapped": "Auf {{divisor}} ausgerichtet: {{moved}} von {{total}} Objekten verschoben, um höchstens {{max}} ms (Median {{median}} ms).",
+    "snappedNone": "Auf {{divisor}} ausgerichtet: Keins der {{total}} Objekte musste sich bewegen.",
+    "snapShared": "Objekte, die jetzt auf demselben Tick liegen wie das vorige: {{n}}. Prüf sie im Editor."
   },
   "community": {
     "nav": "Community",
@@ -1078,7 +1084,17 @@
     "quaMeter_other": "Quaver kennt nur 4/4 und 3/4: {{count}} red lines in einer anderen Taktart werden als 4/4 geschrieben.",
     "chartFitted_one": "{{count}} Tempowechsel fällt zwischen die Ticks von Clone Hero: Das BPM davor wird minimal angepasst, damit er pünktlich landet (innerhalb von {{ms}} ms).",
     "chartFitted_other": "{{count}} Tempowechsel fallen zwischen die Ticks von Clone Hero: Das BPM vor jedem wird minimal angepasst, damit sie pünktlich landen (innerhalb von {{ms}} ms).",
-    "failed": "Aus diesen red lines ließ sich diese Datei nicht erstellen."
+    "failed": "Aus diesen red lines ließ sich diese Datei nicht erstellen.",
+    "beatSaber": "Beat Saber: eine v3-Schwierigkeit, ExpertStandard.dat, nur mit den BPM-Events. Trag sie in deiner Info.dat ein und gib der Info.dat ein BPM von {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: ein gerader Pfad, ein Feld pro Schlag, mit SetSpeed, wo sich das Tempo ändert. Leg den Song daneben.",
+    "fnf": "Friday Night Funkin’: das Chart-JSON, das das Spiel vor 0.3 und Psych Engine lesen, in Abschnitten von 16 Steps mit changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: ein .rdlevel mit PlaySong (BPM und Offset), SetBeatsPerMinute und SetCrotchetsPerBar. Leg den Song daneben.",
+    "adofaiOdd_one": "{{count}} Tempowechsel fällt zwischen die Felder von A Dance of Fire and Ice: Das Feld davor bekommt ein eigenes Tempo, damit der Wechsel pünktlich kommt.",
+    "adofaiOdd_other": "{{count}} Tempowechsel fallen zwischen die Felder von A Dance of Fire and Ice: Das Feld vor jedem bekommt ein eigenes Tempo, damit sie pünktlich kommen.",
+    "fnfOdd_one": "{{count}} Tempowechsel fällt zwischen die Abschnitte von Friday Night Funkin’: Ein kürzerer Abschnitt davor, mit eigenem Tempo, bringt ihn pünktlich.",
+    "fnfOdd_other": "{{count}} Tempowechsel fallen zwischen die Abschnitte von Friday Night Funkin’: Ein kürzerer Abschnitt vor jedem, mit eigenem Tempo, bringt sie pünktlich.",
+    "rdMeter_one": "{{count}} Taktartwechsel fällt mitten in einen Takt von Rhythm Doctor, wo er keinen beginnen kann: Die Takte dort behalten die Taktart davor.",
+    "rdMeter_other": "{{count}} Taktartwechsel fallen mitten in einen Takt von Rhythm Doctor, wo sie keinen beginnen können: Die Takte dort behalten die Taktart davor."
   },
   "oszPlus": {
     "title": ".osz-Optionen",
@@ -1105,7 +1121,13 @@
     "openTipFirefox": "Öffne in Firefox Einstellungen → Allgemein → Dateien und Anwendungen, such den .osz-Typ und stell ihn auf „Mit osu! öffnen“. Die nächste .osz geht direkt an osu!.",
     "openTipOsu": "Dafür muss osu! installiert sein und .osz-Dateien öffnen, was sein Installer einrichtet. Die Seite kann die Datei nicht für dich öffnen: Eine Webseite führt nie aus, was sie herunterlädt.",
     "openTipClose": "Verstanden",
-    "openTipNever": "Nicht mehr zeigen"
+    "openTipNever": "Nicht mehr zeigen",
+    "divisor": "Beat-Snap-Divisor",
+    "divisorAt": "{{divisor}}: der Divisor, auf den die Anschläge fallen, als BeatDivisor des Editors geschrieben.",
+    "divisorNone": "Zu wenige Anschläge auf dem Raster: Der Editor behält sein 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Lange Stille zwischen den Anschlägen, innerhalb der Break-Abstände von osu!: {{spans}}.",
+    "breaksNone": "Keine Stille von 5 s oder mehr zwischen den Anschlägen."
   },
   "listening": {
     "subdivision": "Zwischen den Beats",
@@ -2246,6 +2268,114 @@
     "pwa": {
       "sharedAdded": "Der Song, den du geteilt hast, steht auf der Liste. Prüf ihn und drück auf Analysieren.",
       "sharedNone": "Aus dem Teilen kam nichts Brauchbares an: Teile eine MP3-, OGG-, WAV-, FLAC-, M4A- oder Opus-Datei oder wähl sie unten aus."
+    }
+  },
+  "mapSet": {
+    "title": "Das Mapset",
+    "mode": "Spielmodus",
+    "modeNote": "In jeder Schwierigkeit als Mode geschrieben; bei mania steht die Tastenzahl in CircleSize.",
+    "keys": "Tasten",
+    "test": "Testmap",
+    "off": "Aus",
+    "testNote": "Eine spielbare Schwierigkeit, „Overtone test“, mit einem Kreis auf jedem Schlag oder halben Schlag: Der erste Schlag des Takts beginnt eine Combo mit Finish, die halben Schläge klingen mit Whistle. Spiel sie in osu! und spür, ob das Timing verschoben ist. Sie ist zum Prüfen da, nicht zum Ranken.",
+    "testBreaks": "Breaks, die sie leer lässt: {{n}}.",
+    "difficulties": "Leere Schwierigkeiten",
+    "difficultiesNote": "Jede ist eine eigene .osu im Set, mit demselben Timing und ohne Objekte. HP, CS, OD und AR sind ein Ausgangspunkt, den du im Editor änderst.",
+    "count": "Schwierigkeiten in der .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Wo die Anschläge liegen",
+    "all": "Ganzer Song",
+    "perLine": "Unter jeder red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "Vorschlag {{divisor}}",
+    "none": "zu wenige Anschläge für eine Aussage",
+    "other": "keiner",
+    "aria": "{{divisor}}: {{pct}} %",
+    "note": "Jeder Anschlag, den die Engine gehört hat, nach dem einfachsten Divisor des Schlags, auf dem er liegt (innerhalb eines 48stel Schlags, höchstens 15 ms); schwache Anschläge zählen weniger. Das schlägt den Beat-Snap-Divisor des Editors vor; es misst nicht das Timing."
+  },
+  "daw": {
+    "title": "Musiksoftware (Tempo-Map)",
+    "midi": "MIDI-Tempo-Map",
+    "midiNote": "Eine MIDI-Datei vom Typ 1 mit 960 Ticks pro Schlag: ein Tempo und eine Taktart an jeder red line, jeder Wechsel innerhalb von {{ms}} ms an seiner Zeit.",
+    "leadIn": "Takt 1 ist ein Vorlauftakt, der auf der ersten Zählzeit der ersten red line endet, damit die Takte danach zum Song passen.",
+    "reaperNote": "Reaper: ein Projekt mit dem Tempo, einem Marker auf jeder red line und dem Song auf einer Spur. Speicher es im Ordner, in dem {{file}} liegt.",
+    "reaperNoAudio": "Reaper: ein Projekt mit dem Tempo und einem Marker auf jeder red line. Leg den Song selbst auf eine Spur.",
+    "ableton": "Ableton Live kann keine Tempo-Map aus Text lesen, deshalb gibt es hier keine Live-Datei. Nimm die MIDI-Datei: Zieh sie ins Arrangement, und Live kann ihre Tempo- und Taktartwechsel übernehmen (je nach Version fragt es nach, oder eine Import-Option schaltet es ein)."
+  },
+  "calculator": {
+    "title": "Timing-Rechner",
+    "description": "BPM und ms pro Schlag, Ticks, der Abstand zwischen zwei red lines, Drift und das BPM aus zwei Zeitpunkten: die Rechnerei beim Timen einer Map, direkt in deinem Browser.",
+    "intro": "Die Rechnerei beim Timen einer Map, gerechnet, während du tippst. Nichts verlässt diese Seite.",
+    "keys": "Tastatur: Tab wechselt zwischen den Feldern; ↑ und ↓ ändern das aktive Feld um 1, mit Shift um 10, mit Alt um 0,1. Wähl ein Ergebnis, um seine Zahl zu kopieren.",
+    "copy": "{{label}} kopieren: {{value}}",
+    "copied": "Kopiert",
+    "fromResult": "Timing-Rechner",
+    "bpmMs": {
+      "title": "BPM ↔ ms pro Schlag",
+      "bpm": "BPM",
+      "ms": "ms pro Schlag",
+      "beat": "Ein Schlag",
+      "exactBpm": "BPM",
+      "bar": "Ein 4/4-Takt",
+      "quarter": "Ein 1/4-Tick"
+    },
+    "ticks": {
+      "title": "ms ↔ Ticks",
+      "bpm": "BPM",
+      "divisor": "Beat-Divisor",
+      "span": "Spanne",
+      "count": "Ticks",
+      "tick": "Ein Tick",
+      "ticks": "Die Spanne in Ticks",
+      "nearest": "Nächster ganzer Tick",
+      "off": "Die Spanne liegt {{ms}} ms dahinter.",
+      "toMs": "Die Ticks in ms"
+    },
+    "lines": {
+      "title": "Zwischen zwei red lines",
+      "intro": "Wo die zweite Linie auf dem Raster der ersten liegt.",
+      "from": "Erste red line",
+      "bpm": "Ihr BPM",
+      "to": "Zweite red line",
+      "meter": "Schläge pro Takt",
+      "span": "Abstand",
+      "beats": "Abstand in Schlägen",
+      "bars": "Abstand in Takten",
+      "nearest": "Nächster Schlag des ersten Rasters",
+      "off": "Zweite Linie gegenüber diesem Schlag",
+      "offNote": "Positiv: Sie kommt zu spät.",
+      "earliest": "Frühester Offset des ersten Rasters"
+    },
+    "drift": {
+      "title": "Drift",
+      "intro": "Wie weit ein Raster mit einem BPM über einige Takte von einem anderen wegläuft, und die BPM, die innerhalb einer Drift bleiben, die du akzeptierst.",
+      "right": "Das richtige BPM",
+      "mapped": "Das BPM der Map",
+      "bars": "Takte",
+      "meter": "Schläge pro Takt",
+      "total": "Drift bis zum letzten Takt",
+      "sign": "Positiv: Das Raster der Map kommt zu spät.",
+      "perBar": "Drift pro Takt",
+      "allowed": "Akzeptierte Drift",
+      "slower": "Langsamstes BPM darin",
+      "faster": "Schnellstes BPM darin",
+      "precision": "Nötige BPM-Genauigkeit"
+    },
+    "span": {
+      "title": "BPM aus zwei Zeitpunkten",
+      "intro": "Zwei Momente im Song und die Zahl der Schläge dazwischen.",
+      "start": "Erster Zeitpunkt",
+      "end": "Zweiter Zeitpunkt",
+      "beats": "Schläge dazwischen",
+      "bpm": "BPM",
+      "beat": "Ein Schlag"
     }
   },
   "practice": {

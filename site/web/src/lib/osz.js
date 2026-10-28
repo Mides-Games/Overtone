@@ -8,6 +8,7 @@
  * reader uploaded or picked again, already checked against the analysis's
  * SHA-1 by the page.
  */
+import { breakRows, DEFAULT_DIFFICULTY, DIFFICULTIES, normalKeys, normalMode, redPoints, SNAP_DIVISORS, testObjects, testVersion } from './mapping.js'
 import { timingText } from './timing.js'
 import { zipStore } from './zip.js'
 
@@ -71,9 +72,9 @@ export function mapTags(extra = '') {
  * line before a green one at the same ms (the green one then overrides its
  * effects, as the editor writes them).
  */
-export function mergeRows(redRows, greens = []) {
+export function mergeRows(reds, greens = []) {
   const all = [
-    ...redRows.map((row, i) => ({ timeMs: Number(row.split(',')[0]), red: 0, i, row })),
+    ...reds.map((row, i) => ({ timeMs: Number(row.split(',')[0]), red: 0, i, row })),
     ...greens.map((g, i) => ({ timeMs: g.timeMs, red: 1, i, row: g.row })),
   ]
   return all.sort((a, b) => a.timeMs - b.timeMs || a.red - b.red || a.i - b.i).map((x) => x.row)
@@ -90,12 +91,39 @@ export function mergeRows(redRows, greens = []) {
  * `leadInMs`, `background` (the image's name in the .osz, written in
  * `[Events]` as the editor writes it) and `greens`, kiai green lines from
  * lib/osz-suggest.js `kiaiRows`.
+ *
+ * The W13 ones, each optional and lib/mapping.js's: `mode` (0-3) and, for
+ * mania, `keys` written as `CircleSize`; `beatDivisor` (the suggested one,
+ * else osu!'s 4); `breaks` in `[Events]`; `version` and `difficulty` (`{ hp,
+ * cs, od, ar }`) for a set's other difficulties; `hitObjects`, the test map's
+ * rows.
  */
-export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, options = null, previewMs = null, leadInMs = 0, background = null, greens = [], tags = '' }) {
-  const red = timingText(result, lines, adjustment, options)
-    .split('\r\n')
-    .filter((row) => row && row !== '[TimingPoints]' && !row.startsWith('//'))
-  const rows = mergeRows(red, greens)
+export function osuFile({
+  title,
+  artist,
+  creator,
+  audioName,
+  lines,
+  result,
+  adjustment,
+  options = null,
+  previewMs = null,
+  leadInMs = 0,
+  background = null,
+  greens = [],
+  tags = '',
+  mode = 0,
+  keys = 4,
+  beatDivisor = 4,
+  breaks = [],
+  version = 'Timing',
+  difficulty = DEFAULT_DIFFICULTY,
+  hitObjects = [],
+}) {
+  const rows = mergeRows(redRows(result, lines, adjustment, options), greens)
+  const m = normalMode(mode)
+  const divisor = SNAP_DIVISORS.includes(beatDivisor) ? beatDivisor : 4
+  const cs = m === 3 ? normalKeys(keys) : difficulty.cs
   const preview = Number.isFinite(previewMs) && previewMs >= 0 ? Math.round(previewMs) : -1
   const lead = Number.isFinite(leadInMs) && leadInMs > 0 ? Math.round(leadInMs) : 0
   const titleAscii = ascii(title) || 'Untitled'
@@ -110,13 +138,13 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     'Countdown: 0',
     'SampleSet: Soft',
     'StackLeniency: 0.7',
-    'Mode: 0',
+    `Mode: ${m}`,
     'LetterboxInBreaks: 0',
     'WidescreenStoryboard: 1',
     '',
     '[Editor]',
     'DistanceSpacing: 1',
-    'BeatDivisor: 4',
+    `BeatDivisor: ${divisor}`,
     'GridSize: 32',
     'TimelineZoom: 1',
     '',
@@ -126,17 +154,17 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     `Artist:${artistAscii}`,
     `ArtistUnicode:${field(artist) || artistAscii}`,
     `Creator:${field(creator) || 'Overtone'}`,
-    'Version:Timing',
+    `Version:${field(version) || 'Timing'}`,
     'Source:',
     `Tags:${mapTags(tags)}`,
     'BeatmapID:0',
     'BeatmapSetID:-1',
     '',
     '[Difficulty]',
-    'HPDrainRate:5',
-    'CircleSize:4',
-    'OverallDifficulty:5',
-    'ApproachRate:5',
+    `HPDrainRate:${difficulty.hp}`,
+    `CircleSize:${cs}`,
+    `OverallDifficulty:${difficulty.od}`,
+    `ApproachRate:${difficulty.ar}`,
     'SliderMultiplier:1.4',
     'SliderTickRate:1',
     '',
@@ -144,14 +172,23 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     '//Background and Video events',
     ...(background ? [`0,0,"${background}",0,0`] : []),
     '//Break Periods',
+    ...breakRows(breaks),
     '',
     '[TimingPoints]',
     ...rows,
     '',
     '',
     '[HitObjects]',
+    ...hitObjects,
     '',
   ].join('\r\n')
+}
+
+/** The export's red lines as `[TimingPoints]` rows, comments left out: osu! reads the file, a person reads the page. */
+export function redRows(result, lines, adjustment, options = null) {
+  return timingText(result, lines, adjustment, options)
+    .split('\r\n')
+    .filter((row) => row && row !== '[TimingPoints]' && !row.startsWith('//'))
 }
 
 /**
@@ -160,7 +197,11 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
  *
  * `extras` holds what the reader ticked under ".osz options": `cover`
  * (`{ ext, bytes }` from lib/tags.js `readCover`, written as `bg.<ext>`),
- * `previewMs`, `leadInMs` and `greens`. Left out, the .osz is what it was.
+ * `previewMs`, `leadInMs` and `greens`; and the W13 ones: `beatDivisor`,
+ * `breaks`, `mode` and `keys` (every difficulty's), `difficulties` (names
+ * from lib/mapping.js `DIFFICULTIES`, each an empty .osu with the same
+ * timing) and `testSub` (1 or 2: a playable test difficulty with a circle on
+ * every beat or half beat, W13.1). Left out, the .osz is what it was.
  */
 export async function buildOsz({ file, analysis, lines, adjustment, creator, options = null, extras = {} }) {
   const { title, artist } = songNames({ ...analysis, filename: analysis.filename ?? file.name })
@@ -168,12 +209,20 @@ export async function buildOsz({ file, analysis, lines, adjustment, creator, opt
   const audioName = `audio${ext}`
   const who = field(creator) || 'Overtone'
   const set = safeName(`${artist} - ${title}`) || 'Overtone'
-  const { cover = null, previewMs = null, leadInMs = 0, greens = [] } = extras
+  const { cover = null, previewMs = null, leadInMs = 0, greens = [], beatDivisor = 4, breaks = [], mode = 0, keys = 4, difficulties = [], testSub = null } = extras
   const background = cover && /^(jpg|png)$/.test(cover.ext) ? `bg.${cover.ext}` : null
-  const osu = osuFile({ title, artist, creator: who, audioName, lines, result: analysis.result, adjustment, options, previewMs, leadInMs, background, greens })
+  const base = { title, artist, creator: who, audioName, lines, result: analysis.result, adjustment, options, previewMs, leadInMs, background, greens, beatDivisor, breaks, mode, keys }
+  // A version's "/" (the test map's "1/2") cannot be in a file name: osu! reads the version from the file, not its name.
+  const osuName = (version) => `${safeName(`${artist} - ${title} (${who}) [${version.replace(/\//g, '-')}]`) || 'overtone'}.osu`
+  const sets = [{ version: 'Timing' }, ...DIFFICULTIES.filter((d) => difficulties.includes(d.name)).map((d) => ({ version: d.name, difficulty: d }))]
+  if (testSub) {
+    const durationMs = (analysis.result?.duration_s ?? 0) * 1000
+    const points = redPoints(redRows(analysis.result, lines, adjustment, options))
+    sets.push({ version: testVersion(testSub), hitObjects: testObjects({ points, durationMs, sub: testSub, mode, keys, breaks }) })
+  }
   const bytes = zipStore([
     { name: audioName, data: new Uint8Array(await file.arrayBuffer()) },
-    { name: `${safeName(`${artist} - ${title} (${who}) [Timing]`) || 'overtone'}.osu`, text: osu },
+    ...sets.map((set) => ({ name: osuName(set.version), text: osuFile({ ...base, ...set }) })),
     ...(background ? [{ name: background, data: cover.bytes }] : []),
   ])
   return { name: `${set}.osz`, bytes }

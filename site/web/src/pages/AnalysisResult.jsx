@@ -26,6 +26,7 @@ import usePageMeta from '../hooks/usePageMeta.js'
 import { useCoverAccent } from '../hooks/useCoverAccent.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { formatRange } from '../lib/analysis-options.js'
+import { calculatorPath } from '../lib/calc.js'
 import { checkSpans } from '../lib/check-spans.js'
 import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
@@ -512,6 +513,10 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
             {t('compare.withAdjusted')}
           </Link>
         )}
+        {/* The first red line's BPM and offset, as the page has them, filled in. */}
+        <Link to={calculatorPath(lines[0])} className="btn-ghost h-8 px-3 text-caption">
+          {t('calculator.fromResult')}
+        </Link>
       </CompareWithMap>
 
       <AdjustExport

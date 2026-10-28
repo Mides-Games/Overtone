@@ -65,6 +65,72 @@
  *   `chartSyncTrack` reports how many sections were fitted and the worst miss.
  * - **Bars**, as in `.ssc`: a `TS` at tick 0 and wherever the bar changes.
  * The audio is named `song.<ext>` in the file, the name Clone Hero looks for.
+ *
+ * The four after them (W13.11) are JSON. We wrote each from its format as the
+ * community documents it and as we know the games' loaders; we have opened
+ * none of them in its game or editor, and each paragraph says where we are
+ * least sure. Numbers are written to `JSON_DECIMALS` (6), and every position
+ * is worked from where the file puts the change before it (`writtenBeats`,
+ * `unitTimeline`), so a rounding moves one change by a hair and never
+ * accumulates. Tests: test/game-formats-more.test.js, against hand-made
+ * files in test/fixtures/games and read back by each game's arithmetic.
+ *
+ * **Beat Saber** gets a **v3** difficulty file (`"version": "3.3.0"`), named
+ * `ExpertStandard.dat`: `bpmEvents: [{ b, m }]`, `b` the beat and `m` the BPM
+ * from that beat on, and every other v3 list empty. We chose v3 over v2
+ * because v2 has no official BPM event of its own (the editors kept them in
+ * `_customData._BPMChanges`, and a late v2 used event type 100), while v3's
+ * `bpmEvents` are the game's; v4 drops them for an audio file's BPM data,
+ * which editors convert from v3. The beats are accumulated through the tempi,
+ * as StepMania's are: a change at beat b after a BPM m holds from there on.
+ * Beat 0 is the audio's start (Info.dat's `_songTimeOffset` is not used by the
+ * game as far as we know, so we do not lean on it), so as in Clone Hero a
+ * lead-in reaches the first line's grid: one beat from 0 to its first beat at
+ * least half a beat in, its own BPM (2/3 to 2 times the first line's). Beats
+ * are not whole, so nothing is fitted. A BPM event that repeats the one
+ * before (a meter change alone: Beat Saber has no meter) is left out. Info.dat
+ * is the editor's: the page names the BPM to give it (the first line's),
+ * which is what the game's note jump distance reads.
+ *
+ * **A Dance of Fire and Ice** (`.adofai`, settings version 13) is a path of
+ * tiles: with every `angleData` entry 0 the path is straight and each move is
+ * one beat at the current speed. `settings.offset` is the time of tile 0 in
+ * whole ms (as we understand it: the first tile is the first beat; if the
+ * editor shows it a beat late, move the offset by one beat), `settings.bpm`
+ * the first speed, and a `SetSpeed` action (`speedType: "Bpm"`,
+ * `beatsPerMinute`) on a floor sets the speed from that tile on. A change
+ * must sit on a tile, so a span that is not whole beats ends on one **odd
+ * tile**: whole beats at the span's own BPM, then one tile of 0.5 to 1.5
+ * beats whose BPM is set so the next line lands on its tile (two SetSpeeds:
+ * the odd tile's and the line's). The grid stays the song's everywhere but in
+ * that tile. Angled tiles could give a fractional beat instead, but which way
+ * an angle counts is easy to get backwards untested, and a wrong guess there
+ * would be silent; a speed is not. The tiles run to the song's end. A first
+ * line before the audio is drawn forward by whole beats.
+ *
+ * **Friday Night Funkin'** gets the legacy chart JSON that the game before
+ * 0.3 and Psych Engine read (`{ song: { song, bpm, notes: [sections] } }`;
+ * 0.3's own format is two files, and its editor imports this one, as far as
+ * we know). A section is 16 steps (4 beats); a section with `changeBPM: true`
+ * sets `bpm` from its start, and the game adds the sections' steps up from the
+ * audio's start. Sections carry `lengthInSteps` (the old game's) and
+ * `sectionBeats` (Psych's), so a section may be shorter. Changes sit on
+ * section starts, so: a lead-in from 0 of whole steps at the first line's BPM
+ * (fitted so it ends on the first line's first section, which is at least
+ * half a section in), and a span that is not whole sections ends on an odd
+ * section of the nearest whole steps, fitted the same way when keeping the
+ * span's BPM would miss the next line by more than `ODD_TOLERANCE_MS`.
+ *
+ * **Rhythm Doctor** (`.rdlevel`, settings version 55) places events by bar and
+ * beat, both from 1. `PlaySong` at bar 1 beat 1 carries the song's `bpm` and
+ * `offset` (whole ms: where bar 1 beat 1 is in the audio, the first line);
+ * `SetBeatsPerMinute` (`beatsPerMinute`) changes the tempo at a later beat,
+ * fractional when the change is off the grid; `SetCrotchetsPerBar` sets the
+ * bar's length (Rhythm Doctor's default is 8) from a bar's first beat, so it
+ * is written at bar 1 and at a new meter that starts a bar. A new meter in the
+ * middle of a running bar is not written and the page counts it. The events
+ * carry `y: 0`, the editor's row. How finely Rhythm Doctor stores a beat we do
+ * not know; we write 6 decimals.
  */
 import { songNames } from './osz.js'
 import { roundHalfEven } from './timing.js'
@@ -384,6 +450,394 @@ export function chartFile({ title, artist, creator, audioName, lines }) {
 }
 
 // ---------------------------------------------------------------------------
+// What the games after W13.11 share
+// ---------------------------------------------------------------------------
+
+/** How far a change may land from its time before the span before it gets an odd unit (ADOFAI, FNF). */
+export const ODD_TOLERANCE_MS = 0.5
+/** The decimals a beat or a BPM is written with in the JSON formats. */
+export const JSON_DECIMALS = 6
+/** No game file grows past this many tiles or sections, whatever the song's length says. */
+const MAX_UNITS = 20000
+
+const roundTo = (x, d = JSON_DECIMALS) => Number(fixed(x, d))
+
+/**
+ * Beats accumulated through the tempi, as a game that counts beats reads
+ * them: `anchors[0]` is beat 0, at a time the file states exactly; each later
+ * anchor's beat is worked from where the file puts the one before it (its
+ * written beat and BPM), then rounded to `decimals`. So a rounding moves one
+ * change by a hair and never the ones after it. `{ beats, bpms, times,
+ * worstMs }`, `times` where the file puts each anchor.
+ */
+export function writtenBeats(anchors, decimals = JSON_DECIMALS) {
+  const bpms = anchors.map((a) => roundTo(a.bpm, decimals))
+  const beats = [0]
+  const times = [anchors[0].timeMs]
+  let worstMs = 0
+  for (let i = 1; i < anchors.length; i++) {
+    const beat = roundTo(beats[i - 1] + ((anchors[i].timeMs - times[i - 1]) * bpms[i - 1]) / 60000, decimals)
+    const time = times[i - 1] + ((beat - beats[i - 1]) * 60000) / bpms[i - 1]
+    beats.push(beat)
+    times.push(time)
+    worstMs = Math.max(worstMs, Math.abs(time - anchors[i].timeMs))
+  }
+  return { beats, bpms, times, worstMs }
+}
+
+/**
+ * A span cut into whole units (tiles of a beat, sections of steps) at its own
+ * BPM, for a game where a change can only sit on a unit's edge: `{ units:
+ * [{ size, bpm }], endMs }`. `size` is in the game's smallest unit (a beat
+ * for ADOFAI, a step for FNF), `full` the size of a whole unit. The span's
+ * own grid runs from its start; the last unit is the odd one: its size is the
+ * nearest whole number of small units to what is left, and its BPM is fitted
+ * so it ends on the change when keeping the span's own would miss by more than
+ * `ODD_TOLERANCE_MS`. `oddFirst` puts the odd unit first instead (a lead-in,
+ * whose grid must end on the first line, not start there).
+ */
+function cutSpan({ startMs, endMs, bpm, smallBeats, full, oddFirst = false }) {
+  const wanted = roundTo(bpm)
+  const smallMs = (smallBeats * 60000) / wanted
+  const span = endMs - startMs
+  const small = span / smallMs
+  let whole = Math.floor(small / full)
+  let odd = Math.round(small - whole * full)
+  // Less than half a small unit left: the last whole unit takes it.
+  if (odd === 0 && whole > 0) {
+    whole -= 1
+    odd = full
+  }
+  odd = Math.max(1, odd)
+  whole = Math.min(whole, MAX_UNITS)
+  const units = Array.from({ length: whole }, () => ({ size: full, bpm: wanted }))
+  const restMs = span - whole * full * smallMs
+  const fitted = restMs > 0 && Math.abs(odd * smallMs - restMs) > ODD_TOLERANCE_MS
+  const oddUnit = { size: odd, bpm: fitted ? roundTo((odd * smallBeats * 60000) / restMs) : wanted }
+  if (oddFirst) units.unshift(oddUnit)
+  else units.push(oddUnit)
+  return units
+}
+
+/** The time a unit takes in the file: `size` small units of `smallBeats` beats at its BPM. */
+const unitMs = (unit, smallBeats) => (unit.size * smallBeats * 60000) / unit.bpm
+
+/**
+ * Units from `startMs` through every line, each span cut by `cutSpan`, and the
+ * last line's grid on to `endMs`. `{ units, starts, worstMs, odd }`: `starts`
+ * the unit index each line begins at, `odd` how many spans needed a fitted unit.
+ */
+function unitTimeline(points, { startMs, smallBeats, full, endMs, leadIn = null }) {
+  const units = []
+  const starts = []
+  let at = startMs
+  let worstMs = 0
+  let odd = 0
+  const push = (list) => {
+    for (const u of list) {
+      units.push(u)
+      at += unitMs(u, smallBeats)
+    }
+  }
+  if (leadIn) {
+    const list = cutSpan({ startMs: at, endMs: leadIn.endMs, bpm: leadIn.bpm, smallBeats, full, oddFirst: true })
+    // A fitted lead-in is not a tempo change of the song's: `odd` counts the spans between lines only.
+    push(list)
+    worstMs = Math.abs(at - leadIn.endMs)
+  }
+  points.forEach((p, i) => {
+    starts.push(units.length)
+    const next = points[i + 1]
+    const fullMs = (full * smallBeats * 60000) / p.bpm
+    if (!next) {
+      const left = Math.max(1, Math.ceil((endMs - at) / fullMs))
+      push(Array.from({ length: Math.min(left, MAX_UNITS - units.length) }, () => ({ size: full, bpm: roundTo(p.bpm) })))
+      return
+    }
+    const list = cutSpan({ startMs: at, endMs: next.timeMs, bpm: p.bpm, smallBeats, full })
+    if (list.at(-1).bpm !== roundTo(p.bpm)) odd++
+    push(list)
+    worstMs = Math.max(worstMs, Math.abs(at - next.timeMs))
+  })
+  return { units, starts, worstMs, odd }
+}
+
+/** The song's end in ms, or a minute past the last line when the page does not know it. */
+const songEndMs = (points, durationS) => (Number.isFinite(durationS) && durationS > 0 ? durationS * 1000 : points.at(-1).timeMs + 60000)
+
+/**
+ * `gameLines` with two lines at one time made one, the later in the list
+ * winning (osu! plays the last of them): a span of nothing cannot be cut.
+ */
+const spanLines = (lines) => {
+  const points = gameLines(lines)
+  return points.filter((p, i) => !points[i + 1] || points[i + 1].timeMs - p.timeMs > 1e-6)
+}
+
+/** The first line's time moved on by whole beats until it is not before the audio (a game cannot start before it). */
+const notBeforeZero = (p) => (p.timeMs >= 0 ? p.timeMs : p.timeMs + Math.ceil(-p.timeMs / (60000 / p.bpm)) * (60000 / p.bpm))
+
+// ---------------------------------------------------------------------------
+// Beat Saber
+// ---------------------------------------------------------------------------
+
+export const BEAT_SABER_VERSION = '3.3.0'
+
+/**
+ * Beat Saber's v3 `bpmEvents`: `{ events: [{ b, m }], infoBpm, report: {
+ * leadIn, worstMs } }`. Beat 0 is the audio's start; a lead-in beat reaches
+ * the first line's first beat at least half a beat in; each change's beat is
+ * accumulated through the tempi (`writtenBeats`). An event whose BPM is the
+ * one before it (a meter change alone: Beat Saber has no meter) is left out.
+ */
+export function beatSaberBpmEvents(lines) {
+  const points = spanLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const first = points[0]
+  const beat0 = 60000 / first.bpm
+  const phase = (((first.timeMs % beat0) + beat0) % beat0)
+  const onZero = phase < 1e-6 || beat0 - phase < 1e-6
+  const target = onZero ? 0 : phase >= beat0 / 2 ? phase : phase + beat0
+  const anchors = []
+  if (target > 0) anchors.push({ timeMs: 0, bpm: 60000 / target })
+  anchors.push({ timeMs: target, bpm: first.bpm }, ...points.slice(1))
+  const { beats, bpms, worstMs } = writtenBeats(anchors)
+  const events = []
+  beats.forEach((b, i) => {
+    if (events.length && events.at(-1).m === bpms[i]) return
+    events.push({ b, m: bpms[i] })
+  })
+  return { events, infoBpm: roundTo(first.bpm), report: { leadIn: target > 0, worstMs } }
+}
+
+/** A v3 difficulty file: the BPM events and every other list empty. `{ text, report }`. */
+export function beatSaberFile({ lines }) {
+  const { events, infoBpm, report } = beatSaberBpmEvents(lines)
+  const map = {
+    version: BEAT_SABER_VERSION,
+    bpmEvents: events,
+    rotationEvents: [],
+    colorNotes: [],
+    bombNotes: [],
+    obstacles: [],
+    sliders: [],
+    burstSliders: [],
+    waypoints: [],
+    basicBeatmapEvents: [],
+    colorBoostBeatmapEvents: [],
+    lightColorEventBoxGroups: [],
+    lightRotationEventBoxGroups: [],
+    lightTranslationEventBoxGroups: [],
+    basicEventTypesWithKeywords: { d: [] },
+    useNormalEventsAsCompatibleEvents: false,
+  }
+  return { text: `${JSON.stringify(map, null, 2)}\n`, report: { ...report, infoBpm } }
+}
+
+// ---------------------------------------------------------------------------
+// A Dance of Fire and Ice
+// ---------------------------------------------------------------------------
+
+/**
+ * The level's tiles and speeds: `{ offset, bpm, tiles, actions: [{ floor,
+ * bpm }], report: { worstMs, odd } }`. Tile 0 is at `offset` (whole ms);
+ * every tile is one beat on a straight path; a SetSpeed on a floor sets the
+ * tempo from that tile on.
+ */
+export function adofaiTimeline(lines, { durationS } = {}) {
+  const points = spanLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const startMs = notBeforeZero(points[0])
+  const offset = Math.round(startMs)
+  const { units, starts, worstMs, odd } = unitTimeline(points, { startMs: offset, smallBeats: 1, full: 1, endMs: songEndMs(points, durationS) })
+  const actions = []
+  let current = units[0]?.bpm
+  units.forEach((u, floor) => {
+    if (floor > 0 && u.bpm !== current) actions.push({ floor, bpm: u.bpm })
+    current = u.bpm
+  })
+  return { offset, bpm: units[0].bpm, tiles: units.length, starts, actions, report: { worstMs: Math.max(worstMs, Math.abs(offset - startMs)), odd } }
+}
+
+export const ADOFAI_VERSION = 13
+
+/** A whole .adofai: a straight path of one-beat tiles, SetSpeed by BPM, no decorations. `{ text, report }`. */
+export function adofaiFile({ title, artist, creator, audioName, lines, durationS }) {
+  const { offset, bpm, tiles, actions, report } = adofaiTimeline(lines, { durationS })
+  const level = {
+    // One angle per tile after the first, 0 (to the right) for each: a straight line, a beat a tile.
+    angleData: Array.from({ length: tiles }, () => 0),
+    settings: {
+      version: ADOFAI_VERSION,
+      artist: field(artist),
+      song: field(title),
+      author: field(creator),
+      levelDesc: 'Timing from Overtone: tiles and speeds only. Check it by ear.',
+      levelTags: 'overtone',
+      songFilename: field(audioName),
+      bpm,
+      volume: 100,
+      offset,
+      pitch: 100,
+      hitsound: 'Kick',
+      hitsoundVolume: 100,
+      countdownTicks: 4,
+    },
+    actions: actions.map((a) => ({ floor: a.floor, eventType: 'SetSpeed', speedType: 'Bpm', beatsPerMinute: a.bpm, bpmMultiplier: 1 })),
+    decorations: [],
+  }
+  // The angles on one line, as the editor writes them: a tile a line would make a long song thousands of lines.
+  const text = JSON.stringify(level, null, 2).replace(/"angleData": \[[^\]]*\]/, `"angleData": [${level.angleData.join(', ')}]`)
+  return { text: `${text}\n`, report: { ...report, tiles } }
+}
+
+// ---------------------------------------------------------------------------
+// Friday Night Funkin'
+// ---------------------------------------------------------------------------
+
+export const FNF_STEPS_PER_SECTION = 16
+
+/**
+ * The chart's sections: `{ sections: [{ steps, bpm, changeBPM }], bpm,
+ * report: { leadIn, worstMs, odd } }`. A section is 16 steps (4 beats) at its
+ * BPM; the song starts at the audio's start, so a lead-in section of the
+ * first line's tempo (fitted to whole steps) reaches its first section's
+ * start; a span that is not whole sections ends on an odd one (`cutSpan`).
+ */
+export function fnfSections(lines, { durationS } = {}) {
+  const points = spanLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const first = points[0]
+  const sectionMs = FNF_STEPS_PER_SECTION * (15000 / first.bpm)
+  const phase = (((first.timeMs % sectionMs) + sectionMs) % sectionMs)
+  const onZero = phase < 1e-6 || sectionMs - phase < 1e-6
+  const target = onZero ? 0 : phase >= sectionMs / 2 ? phase : phase + sectionMs
+  const anchored = [{ ...first, timeMs: target }, ...points.slice(1)]
+  const { units, worstMs, odd } = unitTimeline(anchored, {
+    startMs: 0,
+    smallBeats: 0.25,
+    full: FNF_STEPS_PER_SECTION,
+    endMs: songEndMs(points, durationS),
+    leadIn: target > 0 ? { endMs: target, bpm: first.bpm } : null,
+  })
+  const bpm = units[0].bpm
+  let current = bpm
+  const sections = units.map((u) => {
+    const changeBPM = u.bpm !== current
+    current = u.bpm
+    return { steps: u.size, bpm: u.bpm, changeBPM }
+  })
+  return { sections, bpm, report: { leadIn: target > 0, worstMs, odd } }
+}
+
+/** The legacy chart JSON that the base game before 0.3 and Psych Engine read. `{ text, report }`. */
+export function fnfFile({ title, lines, durationS }) {
+  const { sections, bpm, report } = fnfSections(lines, { durationS })
+  const chart = {
+    song: {
+      song: field(title),
+      notes: sections.map((s) => ({
+        lengthInSteps: s.steps,
+        sectionBeats: s.steps / 4,
+        typeOfSection: 0,
+        mustHitSection: true,
+        changeBPM: s.changeBPM,
+        bpm: s.bpm,
+        altAnim: false,
+        sectionNotes: [],
+      })),
+      bpm,
+      needsVoices: false,
+      speed: 1,
+      player1: 'bf',
+      player2: 'dad',
+      gfVersion: 'gf',
+      stage: 'stage',
+      validScore: true,
+    },
+  }
+  return { text: `${JSON.stringify(chart)}\n`, report: { ...report, sections: sections.length } }
+}
+
+// ---------------------------------------------------------------------------
+// Rhythm Doctor
+// ---------------------------------------------------------------------------
+
+export const RHYTHM_DOCTOR_VERSION = 55
+
+/**
+ * The level's timing events: `{ offset, bpm, events: [{ bar, beat, type,
+ * value }], report: { worstMs, meterLost } }`. Bar 1 beat 1 is the first line,
+ * `offset` ms into the audio (whole ms); later beats are accumulated through
+ * the tempi (`writtenBeats`) and named by bar and beat (both from 1) in bars of
+ * the running `crotchetsPerBar`, which changes only at a bar's start.
+ */
+export function rhythmDoctorTimeline(lines) {
+  const points = spanLines(lines)
+  if (!points.length) throw new Error('No timing to export.')
+  const startMs = notBeforeZero(points[0])
+  const offset = Math.round(startMs)
+  const { beats, bpms, worstMs } = writtenBeats([{ timeMs: offset, bpm: points[0].bpm }, ...points.slice(1)])
+  const events = [{ bar: 1, beat: 1, type: 'SetCrotchetsPerBar', value: points[0].meter }]
+  let segBeat = 0
+  let segBar = 1
+  let cpb = points[0].meter
+  let meterLost = 0
+  const where = (b) => {
+    const into = b - segBeat
+    let bars = Math.floor(into / cpb + 1e-9)
+    let beat = roundTo(into - bars * cpb)
+    if (beat >= cpb - 1e-9) {
+      bars += 1
+      beat = 0
+    }
+    return { bar: segBar + bars, beat: roundTo(beat + 1) }
+  }
+  for (let i = 1; i < points.length; i++) {
+    const at = where(beats[i])
+    if (points[i].meter !== cpb) {
+      if (Math.abs(at.beat - 1) < 1e-6) {
+        events.push({ ...at, type: 'SetCrotchetsPerBar', value: points[i].meter })
+        segBeat = beats[i]
+        segBar = at.bar
+        cpb = points[i].meter
+      } else meterLost++
+    }
+    if (bpms[i] !== bpms[i - 1]) events.push({ ...at, type: 'SetBeatsPerMinute', value: bpms[i] })
+  }
+  return { offset, bpm: bpms[0], events, report: { worstMs: Math.max(worstMs, Math.abs(offset - startMs)), meterLost } }
+}
+
+/** A whole .rdlevel: the song, its tempo and bars, no rows. `{ text, report }`. */
+export function rhythmDoctorFile({ title, artist, creator, audioName, lines }) {
+  const { offset, bpm, events, report } = rhythmDoctorTimeline(lines)
+  const actions = [
+    { bar: 1, beat: 1, y: 0, type: 'PlaySong', filename: field(audioName), volume: 100, pitch: 100, pan: 0, offset, bpm, loop: false },
+    ...events.map((e) =>
+      e.type === 'SetCrotchetsPerBar'
+        ? { bar: e.bar, beat: e.beat, y: 0, type: e.type, crotchetsPerBar: e.value, visualBeatMultiplier: 1 }
+        : { bar: e.bar, beat: e.beat, y: 0, type: e.type, beatsPerMinute: e.value },
+    ),
+  ]
+  const level = {
+    settings: {
+      version: RHYTHM_DOCTOR_VERSION,
+      artist: field(artist),
+      song: field(title),
+      author: field(creator),
+      description: 'Timing from Overtone: tempo and bars only. Check it by ear.',
+      tags: 'overtone',
+    },
+    rows: [],
+    decorations: [],
+    actions,
+    conditionals: [],
+    bookmarks: [],
+  }
+  return { text: `${JSON.stringify(level, null, 2)}\n`, report }
+}
+
+// ---------------------------------------------------------------------------
 // The page's entry point
 // ---------------------------------------------------------------------------
 
@@ -393,13 +847,18 @@ export const GAME_FORMATS = [
   { id: 'sm', ext: 'sm', game: 'StepMania · Etterna' },
   { id: 'ssc', ext: 'ssc', game: 'StepMania 5' },
   { id: 'chart', ext: 'chart', game: 'Clone Hero' },
+  { id: 'beatsaber', ext: 'dat', game: 'Beat Saber' },
+  { id: 'adofai', ext: 'adofai', game: 'A Dance of Fire and Ice' },
+  { id: 'fnf', ext: 'json', game: "Friday Night Funkin'" },
+  { id: 'rdlevel', ext: 'rdlevel', game: 'Rhythm Doctor' },
 ]
 
 /**
  * One game's file for the page: `{ name, text, report }`. `lines` are the
- * export's (after `exportLines`); `analysis` names the song and its audio.
+ * export's (after `exportLines`); `analysis` names the song and its audio,
+ * `durationS` its length (how many tiles or sections the last line gets).
  */
-export function gameFile(kind, { analysis, lines, offsetDecimals = 3, creator }) {
+export function gameFile(kind, { analysis, lines, offsetDecimals = 3, creator, durationS }) {
   const { title, artist } = songNames({ ...analysis, filename: analysis?.filename })
   const audio = String(analysis?.filename ?? 'audio.mp3')
   const ext = (/\.[A-Za-z0-9]{1,5}$/.exec(audio)?.[0] ?? '.mp3').toLowerCase()
@@ -409,9 +868,15 @@ export function gameFile(kind, { analysis, lines, offsetDecimals = 3, creator })
     .replace(/[^A-Za-z0-9._ -]+/g, '')
     .trim()
     .slice(0, 80) || 'overtone'
-  const base = { title, artist, creator: who, lines, offsetDecimals }
+  const base = { title, artist, creator: who, lines, offsetDecimals, durationS: durationS ?? analysis?.result?.duration_s }
   if (kind === 'qua') return { name: `${stem}.qua`, ...quaFile({ ...base, audioName: audio }) }
   if (kind === 'sm' || kind === 'ssc') return { name: `${stem}.${kind}`, ...stepmaniaFile({ ...base, kind, audioName: audio }) }
   if (kind === 'chart') return { name: 'notes.chart', ...chartFile({ ...base, audioName: `song${ext}` }) }
+  // Beat Saber finds a difficulty by the name Info.dat gives it; ExpertStandard.dat is the editors' usual one for Expert.
+  if (kind === 'beatsaber') return { name: 'ExpertStandard.dat', ...beatSaberFile(base) }
+  if (kind === 'adofai') return { name: `${stem}.adofai`, ...adofaiFile({ ...base, audioName: audio }) }
+  // FNF looks a chart up by the song's folder name, lower case with dashes.
+  if (kind === 'fnf') return { name: `${stem.toLowerCase().replace(/[\s._-]+/g, '-').replace(/^-+|-+$/g, '') || 'overtone'}.json`, ...fnfFile(base) }
+  if (kind === 'rdlevel') return { name: `${stem}.rdlevel`, ...rhythmDoctorFile({ ...base, audioName: audio }) }
   throw new Error(`Unknown format: ${kind}`)
 }

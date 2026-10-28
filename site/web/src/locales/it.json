@@ -826,7 +826,13 @@
     "filesTitle": "File",
     "json": "Risultato (JSON)",
     "summary": "Riepilogo (TXT)",
-    "filesNote": "Il CSV e il riepilogo seguono le tue modifiche; il JSON è il risultato del motore così come l'ha inviato il server."
+    "filesNote": "Il CSV e il riepilogo seguono le tue modifiche; il JSON è il risultato del motore così come l'ha inviato il server.",
+    "snapLabel": "Allinea gli hit object al nuovo timing",
+    "snapOff": "No",
+    "snapNote": "Ogni oggetto va al tick più vicino della nuova griglia con questo divisore; cambia solo il suo tempo (e la fine di uno spinner o di un hold). Gli slider tengono la loro lunghezza in battiti. Senza allineamento, gli oggetti restano dove sono.",
+    "snapped": "Allineato a {{divisor}}: spostati {{moved}} oggetti su {{total}}, al massimo di {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Allineato a {{divisor}}: nessuno dei {{total}} oggetti ha dovuto muoversi.",
+    "snapShared": "Oggetti ora sullo stesso tick del precedente: {{n}}. Controllali nell'editor."
   },
   "community": {
     "nav": "Community",
@@ -1078,7 +1084,17 @@
     "quaMeter_other": "Quaver conosce solo 4/4 e 3/4: {{count}} red line in un'altra metrica vengono scritte come 4/4.",
     "chartFitted_one": "{{count}} cambio di tempo cade tra i tick di Clone Hero: il BPM precedente viene ritoccato di pochissimo perché cada a tempo (entro {{ms}} ms).",
     "chartFitted_other": "{{count}} cambi di tempo cadono tra i tick di Clone Hero: il BPM prima di ciascuno viene ritoccato di pochissimo perché cadano a tempo (entro {{ms}} ms).",
-    "failed": "Impossibile creare quel file da queste red line."
+    "failed": "Impossibile creare quel file da queste red line.",
+    "beatSaber": "Beat Saber: una difficoltà v3, ExpertStandard.dat, con i soli eventi di BPM. Indicala nel tuo Info.dat e dai a Info.dat un BPM di {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: un percorso dritto, una casella per battito, con SetSpeed dove cambia il tempo. Metti la canzone accanto.",
+    "fnf": "Friday Night Funkin’: il JSON del chart che leggono il gioco prima della 0.3 e Psych Engine, in sezioni da 16 step con changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: un .rdlevel con PlaySong (BPM e offset), SetBeatsPerMinute e SetCrotchetsPerBar. Metti la canzone accanto.",
+    "adofaiOdd_one": "{{count}} cambio di tempo cade tra le caselle di A Dance of Fire and Ice: la casella prima ha una velocità propria, così il cambio arriva in tempo.",
+    "adofaiOdd_other": "{{count}} cambi di tempo cadono tra le caselle di A Dance of Fire and Ice: la casella prima di ognuno ha una velocità propria, così arrivano in tempo.",
+    "fnfOdd_one": "{{count}} cambio di tempo cade tra le sezioni di Friday Night Funkin’: una sezione più corta prima, con una velocità propria, lo fa arrivare in tempo.",
+    "fnfOdd_other": "{{count}} cambi di tempo cadono tra le sezioni di Friday Night Funkin’: una sezione più corta prima di ognuno, con una velocità propria, li fa arrivare in tempo.",
+    "rdMeter_one": "{{count}} cambio di metro cade a metà di una battuta di Rhythm Doctor, dove non può iniziarne una: quelle battute tengono il metro precedente.",
+    "rdMeter_other": "{{count}} cambi di metro cadono a metà di una battuta di Rhythm Doctor, dove non possono iniziarne una: quelle battute tengono il metro precedente."
   },
   "oszPlus": {
     "title": "Opzioni dell'.osz",
@@ -1105,7 +1121,13 @@
     "openTipFirefox": "In Firefox, apri Impostazioni → Generale → File e applicazioni, trova il tipo .osz e impostalo per aprirsi con osu!. Il prossimo .osz andrà dritto in osu!.",
     "openTipOsu": "Serve osu! installato con i file .osz associati, cosa che fa il suo installer. Il sito non può aprire il file al posto tuo: una pagina web non esegue mai ciò che scarica.",
     "openTipClose": "Ho capito",
-    "openTipNever": "Non mostrare più"
+    "openTipNever": "Non mostrare più",
+    "divisor": "Divisore di snap",
+    "divisorAt": "{{divisor}}: il divisore su cui cadono gli attacchi, scritto come BeatDivisor dell'editor.",
+    "divisorNone": "Troppi pochi attacchi sulla griglia: l'editor tiene il suo 1/4.",
+    "breaks": "Break",
+    "breaksAt": "Lunghi silenzi tra gli attacchi, dentro i margini di un break di osu!: {{spans}}.",
+    "breaksNone": "Nessun silenzio di 5 s o più tra gli attacchi."
   },
   "listening": {
     "subdivision": "Tra i battiti",
@@ -2246,6 +2268,114 @@
     "pwa": {
       "sharedAdded": "La canzone che hai condiviso è nell'elenco. Controllala e premi Analizza.",
       "sharedNone": "Dalla condivisione non è arrivato nulla di utilizzabile: condividi un file MP3, OGG, WAV, FLAC, M4A o Opus, oppure sceglilo qui sotto."
+    }
+  },
+  "mapSet": {
+    "title": "Il set della mappa",
+    "mode": "Modalità di gioco",
+    "modeNote": "Scritta come Mode in ogni difficoltà; per mania, il numero di tasti va in CircleSize.",
+    "keys": "Tasti",
+    "test": "Mappa di prova",
+    "off": "No",
+    "testNote": "Una difficoltà giocabile, \"Overtone test\", con un cerchio su ogni battito o mezzo battito: il primo battito della battuta apre una combo con un finish, i mezzi battiti suonano con whistle. Giocala in osu! e senti se il timing è sfasato. Serve a controllare, non a rankare.",
+    "testBreaks": "Break che lascia vuoti: {{n}}.",
+    "difficulties": "Difficoltà vuote",
+    "difficultiesNote": "Ognuna è un .osu a sé nel set, con lo stesso timing e senza oggetti. HP, CS, OD e AR sono un punto di partenza da cambiare nell'editor.",
+    "count": "Difficoltà nel .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Dove cadono gli attacchi",
+    "all": "Tutto il brano",
+    "perLine": "Sotto ogni red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "suggerito {{divisor}}",
+    "none": "troppi pochi attacchi per dirlo",
+    "other": "nessuno",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Ogni attacco sentito dall'engine, secondo il divisore più semplice del battito su cui cade (entro 1/48 di battito, al massimo 15 ms); gli attacchi deboli contano meno. Suggerisce il divisore di snap dell'editor; non misura il timing."
+  },
+  "daw": {
+    "title": "Software musicali (mappa del tempo)",
+    "midi": "Mappa del tempo MIDI",
+    "midiNote": "Un file MIDI di tipo 1 a 960 tick per battito: un tempo e un metro a ogni red line, ogni cambio entro {{ms}} ms dal suo momento.",
+    "leadIn": "La battuta 1 è una battuta di attacco che finisce sul primo battito forte della prima red line, così le battute dopo combaciano con la canzone.",
+    "reaperNote": "Reaper: un progetto con il tempo, un marker su ogni red line e la canzone su una traccia. Salvalo nella cartella che contiene {{file}}.",
+    "reaperNoAudio": "Reaper: un progetto con il tempo e un marker su ogni red line. La canzone mettila tu su una traccia.",
+    "ableton": "Ableton Live non sa leggere una mappa del tempo da testo, quindi qui non c’è un file per Live. Usa il file MIDI: trascinalo nell’Arrangement e Live può prenderne i cambi di tempo e di metro (a seconda della versione lo chiede, oppure lo attiva un’opzione di importazione)."
+  },
+  "calculator": {
+    "title": "Calcolatrice di timing",
+    "description": "BPM e ms per battito, tick, la distanza tra due red line, la deriva e il BPM da due istanti: i conti del timing di una mappa, fatti nel tuo browser.",
+    "intro": "I conti del timing di una mappa, fatti mentre scrivi. Niente esce da questa pagina.",
+    "keys": "Tastiera: Tab passa da un campo all’altro; ↑ e ↓ cambiano il campo attivo di 1, con Shift di 10, con Alt di 0,1. Scegli un risultato per copiarne il numero.",
+    "copy": "Copia {{label}}: {{value}}",
+    "copied": "Copiato",
+    "fromResult": "Calcolatrice di timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms per battito",
+      "bpm": "BPM",
+      "ms": "ms per battito",
+      "beat": "Un battito",
+      "exactBpm": "BPM",
+      "bar": "Una battuta in 4/4",
+      "quarter": "Un tick da 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ tick",
+      "bpm": "BPM",
+      "divisor": "Divisore del battito",
+      "span": "Intervallo",
+      "count": "Tick",
+      "tick": "Un tick",
+      "ticks": "L’intervallo in tick",
+      "nearest": "Tick intero più vicino",
+      "off": "L’intervallo lo supera di {{ms}} ms.",
+      "toMs": "I tick in ms"
+    },
+    "lines": {
+      "title": "Tra due red line",
+      "intro": "Dove cade la seconda linea sulla griglia della prima.",
+      "from": "Prima red line",
+      "bpm": "Il suo BPM",
+      "to": "Seconda red line",
+      "meter": "Battiti per battuta",
+      "span": "Distanza",
+      "beats": "Distanza in battiti",
+      "bars": "Distanza in battute",
+      "nearest": "Battito più vicino della prima griglia",
+      "off": "Seconda linea rispetto a quel battito",
+      "offNote": "Positivo: è in ritardo.",
+      "earliest": "L’offset più presto della prima griglia"
+    },
+    "drift": {
+      "title": "Deriva",
+      "intro": "Quanto una griglia a un BPM si allontana da un’altra in qualche battuta, e i BPM che restano entro una deriva che accetti.",
+      "right": "Il BPM giusto",
+      "mapped": "Il BPM della mappa",
+      "bars": "Battute",
+      "meter": "Battiti per battuta",
+      "total": "Deriva all’ultima battuta",
+      "sign": "Positivo: la griglia della mappa è in ritardo.",
+      "perBar": "Deriva per battuta",
+      "allowed": "Deriva che accetti",
+      "slower": "BPM più lento che ci sta",
+      "faster": "BPM più veloce che ci sta",
+      "precision": "Precisione di BPM che serve"
+    },
+    "span": {
+      "title": "BPM da due istanti",
+      "intro": "Due momenti della canzone e il numero di battiti tra loro.",
+      "start": "Primo istante",
+      "end": "Secondo istante",
+      "beats": "Battiti in mezzo",
+      "bpm": "BPM",
+      "beat": "Un battito"
     }
   },
   "practice": {

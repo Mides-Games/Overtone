@@ -1703,3 +1703,99 @@ page's demo, which clips in every language. Spot checks of ja and ru at 375 px. 
 all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
+
+### Votes, the mapper's badge, the bell, the staff panel and limit notices (W13.14-W13.17, W13.19, W13.20, 2026-10-28)
+
+The API's new routes are `routes/votes.routes.js`, `routes/notifications.routes.js` and
+`routes/staff.routes.js`, each with its rules at the top; the stores are
+`services/vote.service.js` and `services/notification.service.js` (memory and
+PostgreSQL), the shared rules `utils/votes.js`. The web's are `components/social/Votes.jsx`,
+`components/Bell.jsx`, `components/LimitNotice.jsx`, the pages `Notifications.jsx` and
+`Staff.jsx`, and `lib/votes.js`, `lib/notifications.js`, `lib/limits.js`.
+
+- **Votes (W13.14).** `PUT /timings/<id>/vote { verdict, proposedBpm?, proposedOffsetMs?, trainingOk? }`.
+  One per account (`timing_votes_once`; a second is an edit), signed in, never on your
+  own timing (403 `OWN_TIMING`), 30 per ten minutes per address. "On time" carries
+  nothing; "off" may propose a BPM (20-1000, kept to three decimals) and/or an offset
+  (whole ms from -10 s to the song's end), else 400 `BAD_VOTE`. The page shows the two
+  counts and never who voted. A vote with a correction is `pending` in the staff queue;
+  changing the correction makes it pending again, saving the same one keeps the
+  decision. `trainingOk` is the voter's permission, a box unticked by default, for the
+  correction to be used as data by the engine's stages (W11): stored and shown to
+  staff, read by nothing yet. Why anonymous: a public "off" with a name invites
+  arguments, and staff, who act on it, see the voter.
+- **The badge (W13.16).** A mapper is an account whose linked osu! profile had ranked
+  maps when it was linked (`osu_ranked_count > 0`, W9.2's own number). Their "on time"
+  verifies the timing: `/t/<id>` names the first one (linked when their profile is
+  public), the osu! name and the ranked count, and how many more; `/recent` and the
+  other lists carry `verified`. The vote form says this before anyone votes. No account
+  is linked to osu! in development, so the tests and the browser check used accounts
+  seeded with the osu! fields set.
+- **Marks on the map (W13.15).** The timed comments (not hidden, inside the song) are
+  drawn on a lane under the tempo map, at the map's zoom (`TempoMap` takes `marks` and
+  `onMark`; the view is kept as state when there are marks). Marks closer than 14 px
+  share one button showing their number. Hovering or focusing shows a note with each
+  comment's time, author and first 80 characters; a click plays from that time.
+- **The bell (W13.17).** `notifications` (the drafted table, now used) gained
+  `public_id` and `dedupe_key`: one row per account and thing, so a vote changed three
+  times is one notification brought back to unread. Kinds: a suggestion's state (to its
+  author), a comment, the first "I used this" and a vote on your published timing, and
+  an analysis of yours that ended. Nobody is told of their own doing; a vote's
+  notification names its voter only when it is a mapper's confirmation; a comment's
+  carries who and where, not the text (a comment staff hide later must not live on in
+  a bell). An analysis's notification is marked read when its owner reads the ended
+  analysis (`GET /analyses/<id>`), so a song the tray already announced is not news
+  twice. An account keeps its newest 200. The navbar's bell polls
+  `GET /me/notifications/unread` once a minute while the tab is visible, not at all
+  while it is hidden, again on focus, and backs off 2, 4, 8 up to 15 minutes after
+  failures; the list is read when the dropdown opens. Writing a notification never
+  fails the request that caused it. The bell and `/notifications` share one count.
+- **The staff panel (W13.19).** `/staff`, `GET /staff/overview` and
+  `GET|POST /staff/corrections`: Mides moderators only; for anyone else, signed in or
+  not, the 404 of a route that does not exist, in the page and the API. The queue
+  (counts, the oldest wait, the first 30 rows as staff see them, private rows still
+  nameless), the worker (`/health`'s status, plus memory: the worker sends the analysis
+  process's resident MB, the last job's peak and its limit with each claim where /proc
+  exists; the API keeps whole numbers only and the panel says when there is none), the
+  last week's failures with their code (`too_heavy` and `timeout` from the worker's
+  prefix, `stale` from the sweeper, `removed` by a moderator, `failed` otherwise), the
+  open reports, the corrections queue (accept or dismiss, with an optional reason,
+  written to `moderation_log` as kind `vote`), the last 50 actions of every kind, and
+  the counts waiting for review. It reads again every 30 s while the tab is visible.
+  Removing or requeueing a job stays on `/queue`, hiding on the item's page.
+- **Limit notices (W13.20).** `QUOTA_EXCEEDED` and `CACHE_LIMIT` now carry
+  `frees: reset`, `resetAt` (the next 00:00 UTC) and `retryAfterS`, and send
+  Retry-After; `PENDING_LIMIT` carries `frees: finish` and `pending` (`limitRefusal` in
+  `services/analysis.service.js`, one place for the early check and the store's).
+  `/analyze` shows why and, for the daily counts, a countdown that runs from
+  `retryAfterS` and the moment the answer came (a visitor's clock may be wrong); for
+  the pending cap, "when one of yours finishes", which turns into "you can send again"
+  when the tray sees one of this tab's songs end.
+- **Pages and SEO.** `/notifications` and `/staff` are private (the SEO test's list and
+  robots.txt). Every string is in the ten languages.
+
+Checked:
+
+- `site/api` 189/189: 15 new in `test/community-plus.test.js` over HTTP on the memory
+  store (the vote's rules; the same-origin header, sign-in, own and unpublished
+  timings; one vote per account and its edit; counts that name nobody; the badge from
+  seeded mappers, a private profile unlinked, `verified` in the list; the corrections
+  queue, its 404s for non-staff, accept, 409 on a repeat, the decision kept or reset by
+  an edit, the log; the bell for comments, a first use and votes, nothing for one's own
+  doing, no voter name and no comment text; a suggestion's state; read marks scoped to
+  the account; an analysis notification marked seen; the worker's memory on the panel;
+  failure codes; a private queue row nameless on the panel; the quota and pending
+  refusals over HTTP; no hash in any response; the vote rate limit).
+- `site/web` 247/247 (7 new: the "off" form, the marks, the notification links and
+  texts, the poll schedule, the shared count, the countdown), `budget` ok.
+- `tests/test_worker.py` `MemoryReportTests` 3/3, run alone.
+- In the browser (API in memory, seeded by a script outside the repository, no worker)
+  at 375 px: `/t/<id>` with the badge, three marks (two merged) and their note, an
+  "off" vote with a BPM; the bell's dropdown and "mark all read"; `/staff` as a member
+  (404) and as staff, accepting a correction; both limit notices on `/analyze`. Spanish
+  and dark, English and light; no horizontal scroll; `/staff` also at 1440 px.
+
+Not checked: the PostgreSQL stores (neither `check` nor the routes ran against a
+database here), a real worker's memory report (Windows has no /proc), a real osu!
+link's ranked count, a screen reader on the marks and the bell, a mark's hover with a
+real mouse (focus was used).

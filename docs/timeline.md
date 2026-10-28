@@ -20,6 +20,46 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · Votes on timings, a mapper's badge, a notification bell and a staff panel
+
+### Changed
+
+- A published timing takes one vote per account (W13.14): "on time", or "off" with an
+  optional proposed BPM and offset. The page shows the counts and names nobody; a
+  correction waits for staff, and the voter may tick a box to let the engine's stages
+  use it as data (stored only).
+- A mapper's "on time" (an account whose linked osu! profile had ranked maps) puts a
+  "verified by a mapper" badge with their name on the timing and on `/recent` (W13.16).
+- Timed comments are marks on the tempo map: hover or focus shows them, a click plays
+  from there (W13.15).
+- A bell in the navbar and `/notifications` (W13.17): suggestion states, comments, a
+  first use, votes and analyses that ended unseen. Polled once a minute while the tab
+  is visible.
+- `/staff` (W13.19): the queue and the worker (with its memory, which the worker now
+  sends with each claim on Linux), the week's failures with their codes, open reports,
+  the corrections queue, the whole moderation log and what waits for review. A 404 for
+  everyone else, in the page and the API.
+- A refusal for the daily quota, the stored-results cap or the pending cap says why
+  and when it frees up, with a live countdown to 00:00 UTC (W13.20).
+
+### Hardening
+
+- Votes are anonymous except a verifying mapper's; a vote's notification never names
+  its voter. A comment's notification carries who and where, not the text. Every new
+  write has the same-origin guard and a per-address limit (30 votes in ten minutes);
+  another account's notification ids mark nothing.
+
+### Measured
+
+- site/api 189/189 (15 new), site/web 247/247 (7 new), `budget` ok (Staff 3.3 kB,
+  Notifications 1.2 kB), 3 new worker tests run alone, `facts: ok`. In the browser at
+  375 px: the marks and their note, a vote with a correction, the bell, `/staff` (as
+  staff, and the 404 as a member), and both limit notices; ES and EN, dark and light.
+  Not measured: the PostgreSQL store (only the memory one ran), the worker's memory
+  report from a real Linux worker.
+
+---
+
 ## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
 
 ### Fixed

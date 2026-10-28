@@ -171,8 +171,10 @@ def _self_test(tr, vote: bool, hash_: str) -> None:
 def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | None, self_test: bool) -> None:
     """The child's whole life: limit itself, warm up, then analyse on request.
 
-    Messages to the worker: ``("ready", vote, hash, limited, peak_mb)`` or
-    ``("broken", kind, text)`` once; then per job ``("length", seconds)``,
+    Messages to the worker: ``("ready", vote, hash, limited, peak_mb, hashes)``
+    (``hash`` is the normal mode's, ``hashes`` every mode's) or
+    ``("broken", kind, text)`` once; then per job, asked as ``("analyse",
+    path, max_seconds, mode, options)``, ``("length", seconds)``,
     any number of ``("progress", stage, fraction)``, and one ``("result",
     dict)`` or ``("failed", kind, text)``. After a ``too_heavy`` the child
     leaves, so the next job gets a fresh heap.
@@ -187,13 +189,14 @@ def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | Non
         if threads:
             tr.limit_onnx_threads(threads)
         vote = tr.beat_vote_available() if vote_wanted is not False else False
-        hash_ = tr.engine_hash(vote)
+        hashes = tr.engine_hashes(vote)
+        hash_ = hashes[tr.DEFAULT_MODE]
         if self_test:
             _self_test(tr, vote, hash_)
     except BaseException as exc:  # noqa: BLE001 -- told to the worker, which decides
         conn.send(("broken", kind_of(exc), f"{type(exc).__name__}: {exc}"))
         return
-    conn.send(("ready", vote, hash_, limited, address_space_mb()))
+    conn.send(("ready", vote, hash_, limited, address_space_mb(), hashes))
 
     while True:
         try:
@@ -202,10 +205,13 @@ def run_child(conn, threads: int | None, memory_mb: int, vote_wanted: bool | Non
             return
         if request[0] != "analyse":
             return
-        _, path, max_seconds = request
+        path, max_seconds = request[1], request[2]
+        mode = request[3] if len(request) > 3 and request[3] in tr.MODES else tr.DEFAULT_MODE
+        options = request[4] if len(request) > 4 else None
         conn.send(("length", tr.audio_seconds(path)))
         try:
-            result = tr.analyse(path, vote=vote, hash_=hash_, max_seconds=max_seconds,
+            result = tr.analyse(path, vote=vote, hash_=hashes[mode], max_seconds=max_seconds,
+                                mode=mode, options=options,
                                 progress=lambda stage, fraction: conn.send(("progress", stage, fraction)))
         except BaseException as exc:  # noqa: BLE001
             kind = kind_of(exc)
@@ -235,6 +241,7 @@ class Runner:
         self.heartbeat_s = heartbeat_s
         self.vote = False
         self.hash = None
+        self.hashes = {}
         self.limited = False
         self.peak_mb = None
         self.warmups = 0
@@ -270,15 +277,19 @@ class Runner:
                            " raise it, or 0 turns the limit off)")
             self._drop(kill=True)
             raise WorkerBroken(f"the analysis process could not start: {reason}")
-        _, self.vote, self.hash, self.limited, self.peak_mb = message
+        _, self.vote, self.hash, self.limited, self.peak_mb, *rest = message
+        # A child from before modes announced only the normal mode's hash.
+        self.hashes = dict(rest[0]) if rest and isinstance(rest[0], dict) else {"normal": self.hash}
 
     def analyse(self, path, *, max_seconds: float | None = None,
-                progress: Callable[[str, float], None] | None = None) -> dict:
-        """One job's ``timing-result v1``. Raises JobFailed."""
+                progress: Callable[[str, float], None] | None = None,
+                mode: str = "normal", options: dict | None = None) -> dict:
+        """One job's ``timing-result v1``, in ``mode`` with the person's
+        ``options`` (worker/timing_result.py). Raises JobFailed."""
         self.start()
         started = time.monotonic()
         limit = timeout_for(None, max_seconds, self.limits)
-        self._conn.send(("analyse", str(path), max_seconds))
+        self._conn.send(("analyse", str(path), max_seconds, mode, options or {}))
         last = ("load", 0.0)
         beat = started + self.heartbeat_s
         while True:

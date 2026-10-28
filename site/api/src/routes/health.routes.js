@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { hasDatabase, query } from '../config/database.js';
 import { env } from '../config/env.js';
+import { COSTS } from '../utils/estimate.js';
 import { workerStatus } from '../utils/worker-status.js';
 
 const router = Router();
@@ -37,6 +38,9 @@ router.get('/health', async (_req, res) => {
       maxAudioSeconds: env.maxAudioSeconds,
       maxUploadMb: env.maxUploadMb,
     },
+    // W11.1, W3.16: what one job costs per mode (utils/estimate.js), so the
+    // form can say roughly how long each mode takes for the file picked.
+    costs: COSTS,
   });
 });
 

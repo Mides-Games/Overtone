@@ -1,13 +1,23 @@
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { useSettings } from '../context/SettingsContext.jsx'
+import { motionReduced } from '../lib/settings.js'
+import { activeIndex, buildLines, gridOf, loopTime, osuRow, readoutsOf, spanOf, steppedIndex } from '../lib/strip.js'
 
 /**
  * An example of what an analysis gives back, drawn the way the app draws it:
- * the onset envelope, the beat grid with stronger bar lines, red lines where
- * timing points go, and a playhead. Four bars of 4/4 at 174 BPM. The numbers
- * are an example and the panel says so; nothing here comes from a real song.
+ * the onset envelope, the beat grid with stronger bar lines, a red line where
+ * each timing point goes, and a playhead that plays the example in real time,
+ * the readouts following the red line it is in. Four red lines: 174, 186, a
+ * bar change to 3/4 and a slower outro at 160 (lib/strip.js). The numbers are
+ * an example and the panel says so; nothing here comes from a real song.
  *
- * Everything is placed on one scale: 16 beats across the plot, 4 onset slots
- * per beat, so a red line sits exactly on its downbeat.
+ * Everything is placed on one time scale, so a red line sits exactly on its
+ * downbeat. The playhead moves by a transform on one SVG element, and React
+ * renders again only when the red line under it changes. It stops when the
+ * strip is off-screen or the tab hidden; with reduced motion (the system's or
+ * the site setting) it does not sweep and steps from line to line instead.
  */
 const W = 640
 const H = 168
@@ -15,10 +25,14 @@ const X0 = 20
 const X1 = 620
 const TOP = 26
 const BASE = 150
-const BEATS = 16
 const SLOTS = 4
-const BEAT_W = (X1 - X0) / BEATS
-const RED_LINE_BARS = [0, 2]
+
+const LINES = buildLines()
+const SPAN = spanOf(LINES)
+const GRID = gridOf(LINES)
+const xOf = (time) => X0 + ((time - SPAN.start) / (SPAN.end - SPAN.start)) * (X1 - X0)
+
+const LEVEL_TONE = { high: 'var(--accent)', medium: 'var(--lavender)', check: 'var(--amber)' }
 
 // A seeded generator, so the drawing is the same on every load and in tests.
 function mulberry32(seed) {
@@ -31,90 +45,160 @@ function mulberry32(seed) {
   }
 }
 
+// Attacks on the grid's 1/4 ticks: strongest on the downbeat, then the beat,
+// the half and the quarters, some of which are left out.
 const ONSETS = (() => {
   const random = mulberry32(174)
   const out = []
-  for (let beat = 0; beat < BEATS; beat++) {
+  for (const beat of GRID) {
+    const length = LINES[beat.line].beatLength
     for (let slot = 0; slot < SLOTS; slot++) {
-      const strength = slot === 0 ? (beat % 4 === 0 ? 0.95 : 0.72) : slot === 2 ? 0.46 : 0.26
-      if (slot % 2 === 1 && random() < 0.35) continue
+      const strength = slot === 0 ? (beat.bar ? 0.95 : 0.7) : slot === 2 ? 0.45 : 0.24
+      if (slot % 2 === 1 && random() < 0.4) continue
       const height = (BASE - TOP) * strength * (0.62 + 0.38 * random())
-      out.push({ x: X0 + (beat + slot / SLOTS) * BEAT_W, height })
+      out.push({ x: xOf(beat.time + (slot / SLOTS) * length), height })
     }
   }
   return out
 })()
 
-const SECTIONS = [
-  { share: 50, tone: 'var(--accent)', key: 'high' },
-  { share: 32, tone: 'var(--lavender)', key: 'medium' },
-  { share: 18, tone: 'var(--amber)', key: 'check' },
-]
+/** Whether motion is cut: the site setting, else the system's preference, followed live. */
+function useReducedMotion() {
+  const setting = useSettings()?.settings?.reducedMotion ?? 'system'
+  const [system, setSystem] = useState(() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return undefined
+    const query = matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setSystem(query.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  return motionReduced(setting, system)
+}
+
+/** Whether `ref`'s element is on screen and the tab visible: the strip runs only then. */
+function useRunning(ref) {
+  const [onScreen, setOnScreen] = useState(true)
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden')
+  useEffect(() => {
+    const element = ref.current
+    if (!element || typeof IntersectionObserver !== 'function') return undefined
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry.isIntersecting))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [ref])
+  useEffect(() => {
+    const onChange = () => setVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  }, [])
+  return onScreen && visible
+}
 
 export default function TimingStrip() {
   const { t } = useTranslation()
+  const figure = useRef(null)
+  const playhead = useRef(null)
+  const reduced = useReducedMotion()
+  const running = useRunning(figure)
+  const [active, setActive] = useState(0)
+  // Where the example had got to when it last stopped, so it resumes there.
+  const elapsed = useRef(0)
 
+  useEffect(() => {
+    if (!running) return undefined
+    const place = (time) => playhead.current?.setAttribute('transform', `translate(${xOf(time).toFixed(2)} 0)`)
+
+    if (reduced) {
+      const show = () => {
+        const index = steppedIndex(LINES, elapsed.current)
+        setActive(index)
+        place(LINES[index].offset)
+      }
+      show()
+      const timer = setInterval(() => {
+        elapsed.current += 4000
+        show()
+      }, 4000)
+      return () => clearInterval(timer)
+    }
+
+    let frame = 0
+    let last = null
+    const tick = (now) => {
+      if (last !== null) elapsed.current += Math.min(now - last, 100)
+      last = now
+      const time = loopTime(LINES, elapsed.current)
+      place(time)
+      const index = activeIndex(LINES, time)
+      setActive((current) => (current === index ? current : index))
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [running, reduced])
+
+  const line = LINES[active]
+  const values = readoutsOf(line)
   const readouts = [
-    { label: t('strip.bpm'), value: '174.00' },
-    { label: t('strip.offset'), value: '1 284', unit: 'ms' },
-    { label: t('strip.meter'), value: '4/4' },
-    { label: t('strip.confidence'), value: '0.93' },
+    { label: t('strip.bpm'), value: values.bpm },
+    { label: t('strip.offset'), value: values.offset, unit: 'ms' },
+    { label: t('strip.meter'), value: values.meter },
+    { label: t('strip.confidence'), value: values.confidence, tone: LEVEL_TONE[line.level] },
   ]
 
   return (
-    <figure className="panel overflow-hidden" aria-label={t('strip.caption')}>
+    <figure ref={figure} className="panel overflow-hidden" aria-label={t('strip.caption')}>
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-        <span className="label">{t('strip.title')}</span>
-        <span className="chip-accent">{t('strip.example')}</span>
+        <span className="label truncate">
+          {t('strip.title')} · <span className="readout">{t('strip.line', { n: active + 1, count: LINES.length })}</span>
+        </span>
+        <span className="chip-accent shrink-0">{t('strip.example')}</span>
       </div>
 
-      <div className="relative bg-surface-2">
+      <div className="bg-surface-2">
         <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={t('strip.caption')}>
-          {Array.from({ length: BEATS + 1 }, (_, beat) => {
-            const x = X0 + beat * BEAT_W
-            const bar = beat % 4 === 0
-            return (
-              <g key={beat}>
-                <line x1={x} x2={x} y1={TOP} y2={BASE} stroke={bar ? 'var(--line-strong)' : 'var(--grid)'} strokeWidth={bar ? 1.2 : 1} />
-                {bar && beat < BEATS && (
-                  <text x={x + 4} y={TOP - 8} fill="var(--dim)" fontSize="10" className="font-mono">
-                    {beat / 4 + 1}
-                  </text>
-                )}
-              </g>
-            )
+          {GRID.map((beat, i) => {
+            const x = xOf(beat.time)
+            return <line key={i} x1={x} x2={x} y1={TOP} y2={BASE} stroke={beat.bar ? 'var(--line-strong)' : 'var(--grid)'} strokeWidth={beat.bar ? 1.2 : 1} />
           })}
 
           {ONSETS.map((o, i) => (
-            <rect key={i} x={o.x - 1.5} y={BASE - o.height} width="3" height={o.height} rx="1" fill="var(--onset)" />
+            <rect key={i} x={o.x - 1.25} y={BASE - o.height} width="2.5" height={o.height} rx="1" fill="var(--onset)" />
           ))}
 
           <line x1={X0} x2={X1} y1={BASE} y2={BASE} stroke="var(--line-strong)" strokeWidth="1" />
 
-          {RED_LINE_BARS.map((bar) => {
-            const x = X0 + bar * 4 * BEAT_W
+          {LINES.map((l, i) => {
+            const x = xOf(l.offset)
+            const meterChange = i > 0 && l.meter !== LINES[i - 1].meter
+            const label = `${Math.round(l.bpm)}${meterChange ? ` ${l.meter}/4` : ''}`
+            const on = i === active
             return (
-              <g key={bar}>
+              <g key={i} opacity={on ? 1 : 0.55}>
                 <rect x={x - 1} y={TOP - 4} width="2" height={BASE - TOP + 4} fill="var(--red)" />
-                <rect x={x + 1} y={TOP + 2} width="44" height="15" rx="2" fill="var(--red)" />
-                <text x={x + 5} y={TOP + 13} fill="var(--bg)" fontSize="10" fontWeight="600" className="font-mono">
-                  174.00
+                <rect x={x + 1} y={TOP - 4} width={meterChange ? 54 : 30} height="17" rx="2" fill="var(--red)" className="max-sm:hidden" />
+                <text x={x + 5} y={TOP + 9} fill="var(--bg)" fontSize="12" fontWeight="700" className="font-mono max-sm:hidden">
+                  {label}
                 </text>
               </g>
             )
           })}
-        </svg>
 
-        <div className="pointer-events-none absolute inset-y-[15%] left-[3.125%] right-[3.125%]" aria-hidden="true">
-          <div className="playhead h-full w-full border-l border-accent" />
-        </div>
+          <line ref={playhead} x1="0" x2="0" y1={TOP - 6} y2={BASE + 6} stroke="var(--accent)" strokeWidth="1.5" transform={`translate(${xOf(line.offset)} 0)`} />
+
+          {/* Each line's section along the foot, in its confidence level's colour. */}
+          {LINES.map((l, i) => (
+            <rect key={i} x={xOf(l.offset) + 1} y={BASE + 8} width={Math.max(0, xOf(l.end) - xOf(l.offset) - 2)} height="5" rx="2" fill={LEVEL_TONE[l.level]} opacity={i === active ? 1 : 0.45} />
+          ))}
+        </svg>
       </div>
 
-      <dl className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4" aria-live="off">
         {readouts.map((r) => (
-          <div key={r.label} className="space-y-1 bg-surface px-4 py-3">
+          <div key={r.label} className="min-w-0 space-y-1 bg-surface px-4 py-3">
             <dt className="label">{r.label}</dt>
-            <dd className="readout text-title text-text">
+            <dd className="readout text-title text-text" style={r.tone ? { color: r.tone } : undefined}>
               {r.value}
               {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
             </dd>
@@ -123,16 +207,15 @@ export default function TimingStrip() {
       </dl>
 
       <div className="space-y-2 border-t border-line px-4 py-3">
-        <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full">
-          {SECTIONS.map((s) => (
-            <span key={s.key} style={{ width: `${s.share}%`, background: s.tone }} />
-          ))}
-        </div>
+        <p className="truncate font-mono text-caption text-muted" title={t('strip.osuRow')}>
+          <span className="text-dim">[TimingPoints] </span>
+          {osuRow(line)}
+        </p>
         <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
-          {SECTIONS.map((s) => (
-            <li key={s.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ background: s.tone }} />
-              {t(`strip.${s.key}`)}
+          {['high', 'medium', 'check'].map((key) => (
+            <li key={key} className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: LEVEL_TONE[key] }} />
+              {t(`strip.${key}`)}
             </li>
           ))}
         </ul>

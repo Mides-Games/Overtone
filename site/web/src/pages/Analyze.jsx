@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
+import AnalysisOptions from '../components/AnalysisOptions.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { buildRequest, EMPTY_FORM } from '../lib/analysis-options.js'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.js'
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
-import { batchFiles } from '../lib/timing.js'
-import { zipStore } from '../lib/zip.js'
+import BatchTools from '../components/BatchTools.jsx'
+import { sharedState, takeSharedAudio } from '../lib/pwa.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -49,12 +51,21 @@ export default function Analyze() {
   const [state, setState] = useState({ kind: 'idle' })
   const [recent] = useState(recentAnalyses)
   const { live, settings } = useTracker()
+  // W3.21: the options, folded away; W3.16/W11.1: what each mode costs.
+  const [asking, setAsking] = useState(EMPTY_FORM)
+  const [costs, setCosts] = useState(null)
 
   useEffect(() => {
     api('/health')
-      .then((data) => setLimits(data.limits))
+      .then((data) => {
+        setLimits(data.limits)
+        setCosts(data.costs ?? null)
+      })
       .catch(() => setLimits(null))
   }, [])
+
+  const single = items.length === 1 ? items[0] : null
+  const request = buildRequest(asking, { durationS: single?.seconds ?? null, allowStretch: items.length <= 1 })
 
   const update = (key, patch) => setItems((list) => list.map((item) => (item.key === key ? { ...item, ...patch } : item)))
 
@@ -76,6 +87,21 @@ export default function Analyze() {
     }
   }
 
+  // W12.23: an audio file shared to the installed app arrives here through
+  // the service worker (?shared=1): it goes on the list like a picked one,
+  // and the query goes, so a reload does not look for it again.
+  const [shared, setShared] = useState(null) // null | 'added' | 'none'
+  useEffect(() => {
+    const kind = sharedState(window.location.search)
+    if (!kind) return
+    navigate('/analyze', { replace: true })
+    if (kind === 'none') return setShared('none')
+    takeSharedAudio().then((file) => {
+      if (file) pickAudio([file])
+      setShared(file ? 'added' : 'none')
+    })
+  }, [])
+
   function problemWith({ file, seconds }) {
     if (!EXTENSIONS.includes(extensionOf(file))) return t('analyze.errors.UNSUPPORTED_FORMAT')
     if (limits && file.size > limits.maxUploadMb * 1_048_576) {
@@ -95,6 +121,7 @@ export default function Analyze() {
     event.preventDefault()
     const waiting = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error')
     if (!waiting.length) return setState({ kind: 'error', message: t('analyze.pickAudio') })
+    if (request.error) return setState({ kind: 'error', message: t(`modes.errors.${request.error}`) })
     const alone = items.length === 1
     if (alone) {
       const problem = problemWith(waiting[0])
@@ -123,7 +150,8 @@ export default function Analyze() {
       }
       update(item.key, { upload: { kind: 'sending', sent: 0 } })
       try {
-        const options = { private: hidden, ...item.tags }
+        // The mode and hints (W11.1, W3.21) and the length, for the queue's estimate (W3.16).
+        const options = { private: hidden, ...item.tags, mode: request.mode, hints: request.options, duration: item.seconds }
         // A song analysed before is answered from its stored result, and not uploaded at all.
         const created =
           (await lookupAudio(item.file, options)) ??
@@ -148,22 +176,14 @@ export default function Analyze() {
   // every page: this checkbox is the same setting as the tray's switch.
   const canNotify = typeof Notification !== 'undefined' && Notification.permission !== 'denied'
 
-  // W3.15: every timing of the batch in one ZIP, from the readings the cards
-  // already hold (the tracker's). Built here, so the server sends nothing new.
-  const timings = batchFiles(
-    items.map((item) => {
-      const data = item.upload.kind === 'sent' ? live[item.upload.id]?.data : null
-      return { ...item, status: data?.status, result: data?.result ?? null }
-    }),
-  )
-  function downloadAll() {
-    const url = URL.createObjectURL(new Blob([zipStore(timings)], { type: 'application/zip' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'overtone-timings.zip'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
+  // W3.15 and W12.22: the batch's songs as the cards already hold them (the
+  // tracker's readings and the picked files), for its downloads. Built here,
+  // so the server sends nothing new.
+  const batchItems = items.map((item) => {
+    const data = item.upload.kind === 'sent' ? live[item.upload.id]?.data : null
+    return { file: item.file, status: data?.status, result: data?.result ?? null, analysis: data }
+  })
+  const finished = batchItems.filter((item) => item.status === 'done' && item.result).length
 
   const perDay = account ? limits?.userDailyLimit : limits?.anonDailyLimit
   const atOnce = account ? limits?.userMaxPending : limits?.anonMaxPending
@@ -180,6 +200,11 @@ export default function Analyze() {
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="min-w-0 space-y-6">
           <form onSubmit={submit} className="panel min-w-0 space-y-5 p-5 sm:p-6">
+            {shared && (
+              <p role="status" className={`rounded-control border px-3 py-2 text-label ${shared === 'added' ? 'border-accent/40 bg-accent/5' : 'border-amber/40 bg-amber/10'}`}>
+                {shared === 'added' ? t('platform.pwa.sharedAdded') : t('platform.pwa.sharedNone')}
+              </p>
+            )}
             <label
               htmlFor="audio"
               onDragOver={(e) => {
@@ -244,6 +269,15 @@ export default function Analyze() {
               </ul>
             )}
 
+            <AnalysisOptions
+              form={asking}
+              onChange={setAsking}
+              costs={costs}
+              durationS={single?.seconds ?? null}
+              allowStretch={items.length <= 1}
+              error={request.error}
+            />
+
             <label className="flex cursor-pointer items-start gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
               <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
               <span className="space-y-0.5">
@@ -252,11 +286,7 @@ export default function Analyze() {
               </span>
             </label>
 
-            {items.length > 1 && timings.length > 0 && (
-              <button type="button" onClick={downloadAll} className="btn-ghost w-full">
-                {t('analyze.batch.download', { count: timings.length })}
-              </button>
-            )}
+            {items.length > 1 && finished > 0 && <BatchTools items={batchItems} creator={account?.username} />}
 
             {items.length > 1 && canNotify && (
               <label className="flex cursor-pointer items-center gap-3 px-1 text-label">
@@ -367,6 +397,11 @@ export function messageFor(t, error, limits) {
       return t('analyze.errors.CACHE_LIMIT', { count: error.details?.limit ?? '' })
     case 'NETWORK':
       return t('analyze.errors.NETWORK')
+    case 'BAD_OPTIONS':
+    case 'BAD_MODE':
+      return t('modes.errors.server', { message: error.message })
+    case 'NOT_SAME_AUDIO':
+      return t('modes.reanalyse.mismatch')
     default:
       return t('analyze.failed', { message: error.message })
   }

@@ -80,9 +80,14 @@ class Api:
             raw = response.read()
             return json.loads(raw) if raw else None
 
-    def claim(self, engine_hash: str) -> dict | None:
-        """The next queued job, or None when the queue is empty (204)."""
-        return self.call("POST", "/jobs/claim", {"engine_hash": engine_hash})
+    def claim(self, engine_hash: str, engine_hashes: dict | None = None) -> dict | None:
+        """The next queued job, or None when the queue is empty (204).
+        ``engine_hash`` is the normal mode's; ``engine_hashes`` names every
+        mode's, which the API keys each mode's cached results by."""
+        body = {"engine_hash": engine_hash}
+        if engine_hashes:
+            body["engine_hashes"] = engine_hashes
+        return self.call("POST", "/jobs/claim", body)
 
     def download(self, job_id: str, attempt: int, target: Path) -> None:
         with self._request("GET", f"/jobs/{job_id}/audio?attempt={int(attempt)}") as response, \
@@ -115,7 +120,10 @@ def run_job(api: Api, job: dict, runner: isolate.Runner) -> str:
                 pass  # progress is a courtesy; the result is what matters
 
         try:
-            result = runner.analyse(audio, max_seconds=job.get("max_seconds"), progress=progress)
+            # The mode and the hints the person chose (W11.1, W3.21); a job
+            # from an API without them is a normal one with none.
+            result = runner.analyse(audio, max_seconds=job.get("max_seconds"), progress=progress,
+                                    mode=job.get("mode") or "normal", options=job.get("options") or {})
         except isolate.JobFailed as exc:
             api.call("POST", f"/jobs/{job_id}/fail", {"attempt": attempt, "error": str(exc)[:500]})
             return "failed" if exc.code == "failed" else f"failed ({exc.code})"
@@ -231,7 +239,7 @@ def main() -> int:
                 return 4
             print(f"[worker] a new analysis process is warm in {time.perf_counter() - started:.1f} s", flush=True)
         try:
-            job = api.claim(hash_)
+            job = api.claim(hash_, runner.hashes)
             if unreachable:
                 print("[worker] the API answers again", flush=True)
                 unreachable = False

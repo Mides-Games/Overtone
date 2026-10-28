@@ -454,6 +454,82 @@ Not checked: opening the patched `.osu` or the WAVs in osu! or an audio editor (
 number above was read), Safari and Firefox, a 10-minute render's memory on a phone,
 and listening.
 
+### A fuller .osz (W12.9, 2026-10-27)
+
+Under the `.osz` button, ".osz options" (`components/result/OszOptions.jsx`) adds four
+things to the archive, each a checkbox. All of it is worked out in the browser from the
+reader's own file and the song the page already decoded for the waveform; nothing is sent.
+
+- **The cover** (`readCover` in `lib/tags.js`): ID3v2.3/2.4 `APIC` (MP3; tag-wide and
+  per-frame unsynchronisation, the v2.4 data length indicator and UTF-16 descriptions
+  handled; compressed or encrypted frames skipped), MP4 `covr` (M4A, `moov` found past an
+  `mdat` as the title reader does), FLAC `PICTURE` blocks, and the base64
+  `METADATA_BLOCK_PICTURE` comment of Ogg Vorbis and Opus, with the comment packet put back
+  together across Ogg pages. The front cover (type 3) wins. Only JPEG and PNG are kept,
+  recognised by their first bytes, not the declared MIME; a tag over 16 MB is skipped. It
+  goes in as `bg.jpg` / `bg.png` with `0,0,"bg.jpg",0,0` in `[Events]`, and is shown as a
+  thumbnail beside the download button. Not read: ID3v2.2 `PIC`, WAV covers, covers in a
+  FLAC's Vorbis comment block.
+- **`PreviewTime`** (`previewTime` in `lib/osz-suggest.js`): the mean square of the song in
+  50 ms frames; the 15 s window with the highest mean, moved back to the earliest start
+  still within 5 % of it (so a long chorus previews from its top), snapped to the nearest
+  bar start of the red lines as the reader has them. Without it, osu!'s `-1`.
+- **`AudioLeadIn`** (`leadIn`): our rule, not osu!'s. The first sound is the earlier of the
+  first red line and the engine's first attack. Under 1.5 s from the start, a lead-in that
+  brings it to 2 s is suggested, in steps of 100 ms (first sound at 0.4 s → 1600 ms). Why:
+  osu! starts the clock early enough for the first approach circle, not for the player to
+  catch the beat, and 1.5-2 s is what mappers commonly leave; a song that starts later
+  needs none.
+- **Kiai** (`kiaiSections`, `kiaiRows`): each bar's RMS in dB, from the first red line on.
+  A bar is hot above the midpoint between the song's median bar and its 95th-percentile
+  bar, and only if that gap is at least 3 dB (a song mastered flat gets no suggestion, as
+  the whole synthetic corpus does). Hot bars are joined across one-bar gaps, runs under 4
+  bars dropped, the 3 loudest runs kept. Each becomes green lines (`-100`, effects 1) at
+  its first bar and effects 0 at the bar after it; a red line inside a run gets a kiai
+  green line at its own time, since a red line carries its own effects (0) and would end
+  kiai there.
+- **Defaults:** cover on (the reader's own picture; it changes nothing in the timing),
+  preview on (it only decides where song select starts playing, and any bar of the loud
+  part beats `-1`), lead-in off (it changes when the game starts the song), kiai off (where
+  kiai goes is a mapping decision, and loudness is a crude stand-in for "the chorus"). The
+  preview, lead-in and kiai rows carry a "suggestion" chip and the area says to check them
+  in the editor. An option with nothing to offer is greyed out and says why.
+- **Tags:** every `.osu` the site builds carries `Tags:overtone overtone_timings` (owner's
+  rule), first and never dropped; `osuFile` takes more tags and keeps them after those two
+  (`mapTags`), though the page has no field for them yet. The desktop app's own `.osz`
+  (`python/overtone.py`) is engine-side and was not changed.
+- **"Open it in osu! when it finishes":** a web page cannot run what it downloads, so the
+  `.osz` is saved as before (`.osz`, `application/x-osu-beatmap-archive`) and a
+  dismissible tip then says how to let the browser open `.osz` files by itself: Chrome or
+  Edge, the download's menu → "Always open files of this type"; Firefox, Settings →
+  General → Files and Applications. It also says osu! must be installed with `.osz`
+  associated, which its installer does. "Don't show again" is kept in `localStorage`
+  (`overtone.osz.openTipDismissed`). `osu://` was considered and dropped: as far as we
+  know, both osu!stable and lazer register it for online things only (`osu://b/<id>`,
+  `osu://s/<set>`, `osu://dl/<id>`, editor timestamps, spectating), and nothing in it
+  imports a local file. That is from their documented links, not from a test against an
+  installed client.
+
+Checked in the browser pane on 2026-10-27 with one real worker (Beat This! vote off), two
+FLACs built from bench WAVs with a 64×64 PNG `PICTURE` block:
+
+- `with-drop-180`: cover found and shown, preview 0:00.400, lead-in 1600 ms (first sound
+  0.4 s in), kiai "no stretch clearly louder" (the corpus is flat: every bar -20 dB but the drop).
+- `edm-174` with a ×1.6 "chorus" from 22 to 40 s and ×0.6 elsewhere: preview 0:21.121,
+  kiai 0:21.121–0:40.432 (the gain edges are not on bars, so the bar holding each edge is
+  hot). With every option on, the `.osz` was built by the page and read back in it: entries
+  `audio.flac` (byte size equal), the `.osu` and `bg.png` (7830 bytes, PNG signature, same
+  as the thumbnail); the `.osu` with `AudioLeadIn: 1600`, `PreviewTime: 21121`,
+  `0,0,"bg.png",0,0`, `Tags:overtone overtone_timings` and the red line followed by the kiai
+  on/off green lines. The tip showed after the download and stayed away after "Don't show
+  again".
+- EN and ES, dark and light, 375 px with nothing past the edge.
+
+Not checked: a real song (only bench audio with a made-up loud stretch), any cover format
+but FLAC in the browser (the others by node:test on built bytes), the archive opened in
+osu! itself, Firefox's and Safari's own download behaviour, and whether the suggestions
+are any good for mapping: they are loudness heuristics, and the page says so.
+
 ### The queue, moderated (W3.18, 2026-10-27)
 
 Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`
@@ -600,7 +676,8 @@ rules are tested), hearing the chime, a screen reader, Safari, a real worker run
   `session.service.js` (the three cookies, their lifetimes and flags); the spool and
   ADR-W4 (when the audio is deleted); `rate-limit.js` (windows swept a minute after
   they end); the web's `localStorage` keys (`mides.theme`, `mides.lang`,
-  `overtone.player.volumes`, `overtone.recentAnalyses`, `overtone.sso`). There is
+  `overtone.player.volumes`, `overtone.player.latencyMs`, `overtone.player.listening`,
+  `overtone.recentAnalyses`, `overtone.sso`). There is
   **no expiry job** for analyses, songs, accounts or the moderation log, and the page
   says so ("no automatic expiry is set yet") instead of naming a period. It also says
   plainly that the IP hash is keyed, not anonymous. A change to what is stored has to
@@ -627,11 +704,14 @@ rules are tested), hearing the chime, a screen reader, Safari, a real worker run
   `index.html`, and `hooks/usePageMeta.js`, which every page calls to set its
   `<title>` ("Name · Overtone") and description tags (`lib/meta.js`, tested). The logo and every
   icon (`favicon.svg`, `favicon-32`, `apple-touch-icon` 180, `icon-192`, `icon-512`, a
-  maskable 512 and a 1200x630 `og-image`) are Overtone's own mark, the desktop app's
-  icon, written by `assets/logo.py` with the standard library (2026-10-27: they had been
-  a redrawn ring and the Mides mark, which the owner called an imitation).
-  `components/Mark.jsx` shows `favicon.svg`; `test/logo.test.js` holds it equal to
-  `assets/logo.svg` and every PNG at its stated size. The Mides mark (`Logo.jsx`, the
+  maskable 512 and a 1200x630 `og-image`) are Overtone's own mark, written by
+  `assets/logo.py` with the standard library beside the desktop app's icon (2026-10-27:
+  they had been a redrawn ring and the Mides mark, which the owner called an imitation).
+  The site uses its web variant (`render_web`, `assets/logo-web.svg`): the fundamental
+  alone, thicker and inset, and the red line as a rounded bar, because the full icon's
+  faint harmonics read as noise in a browser tab. `components/Mark.jsx` shows
+  `favicon.svg`; `test/logo.test.js` holds it equal to `assets/logo-web.svg` and every
+  PNG at its stated size. The Mides mark (`Logo.jsx`, the
   same path as midesprojects.com's own component) stays only where Mides Projects is named.
 - **`deploy/web/serve.mjs`** serves `.xml` as `application/xml` (it fell to
   `application/octet-stream` before); `.txt` and `.webmanifest` already had their
@@ -817,3 +897,394 @@ Not checked: a real worker's result on a public page, picking a matching file on
 the public page in the browser (the check route is tested, the button is not),
 a real link preview on Discord, and the HTTP routes against PostgreSQL (the store
 was, the routes ran on the memory one).
+
+### Other games' formats and the export options (W12.7, W12.8, 2026-10-27)
+
+Both live in the result page's "More downloads" group; the `.osz` stays the one
+primary button above it.
+
+**Other games** (`lib/game-formats.js`, `components/result/GameFormats.jsx`): Quaver
+`.qua`, StepMania `.sm` (which Etterna reads: it has no timing format of its own, so
+the page says so rather than inventing one), StepMania 5 `.ssc` and Clone Hero
+`notes.chart`, built in the browser from the red lines as the page has them (×2/÷2
+and the nudge included) after the export options. Timing only, no notes, and the
+group's title says so. The module's comment holds each format's rules:
+
+- Quaver: absolute `StartTime` (ms, float) and `Bpm` per point, each point its own
+  grid, so nothing accumulates. `Signature: Triple` on a 3/4 line; Quaver knows 4/4
+  and 3/4 only, so another meter is written as 4/4 and the page counts them.
+- StepMania: beat 0 is the first red line, `#OFFSET` its time in seconds, negated;
+  every later change is `beat=bpm`, its beat accumulated through the tempi before
+  it. A change off the grid is a fractional beat, written as is (6 decimals, as v3).
+  StepMania stores a change on a row (48 per beat), so it moves such a change when
+  it loads the file; `stepmaniaRowShift` measures that from the written numbers and
+  the page shows it from 0.5 ms. `.sm` has no time signatures (the page says the
+  meter is lost there); `.ssc` writes `#TIMESIGNATURES` at the first line, at a new
+  meter and at a line off the running bar (osu! starts a bar at every red line).
+- Clone Hero: `Resolution = 192`, `B` in milli-BPM, `TS` for the meter, `Offset = 0`.
+  Tick 0 is the audio's start; a lead-in bar from tick 0 reaches the first line's
+  first downbeat at least half a bar in. A change between ticks gets the nearest
+  tick, and the BPM before it is fitted (to the milli-BPM) only when keeping it would
+  land the change more than 0.5 ms off; the game's own arithmetic is followed, so the
+  error does not accumulate. The page counts the fitted sections and their worst miss.
+
+v3's exporters (`quaver_timing_text`, `stepmania_timing_text` in `python/overtone.py`)
+are matched character for character but the comment line, including Python's
+half-to-even on exact decimal ties (`fixed`). Checked with a one-off script (not
+committed) on 67 sets of red lines (7 by hand, 60 random: 1-8 lines, 60-280 BPM at
+0-9 decimals, meters 3-7, offsets from -200 ms): 536 texts compared, 0 differ. Two
+deliberate differences: the site adds `Signature: Triple` (v3 writes no meter) and
+writes an offset of exactly 0 as `0.000000` where v3 writes `-0.000000`.
+
+**Export options** (`lib/export-options.js`, `components/result/ExportOptions.jsx`),
+remembered in this browser under `overtone.exports` and read defensively: offset
+decimals 0-3 (Quaver's StartTime and StepMania's #OFFSET; osu! always gets whole ms,
+Clone Hero ticks), the BPM rounded to 0-3 decimals with the drift that causes by the
+end of the worst line (the song's end for the last one), the first red line only,
+and a whole-ms offset added to every line. That offset is not the nudge: the nudge
+is a correction the reader hears in the clicks; this one is a target's convention
+and moves only what is written, so it stays out of the clicks, and since it is
+remembered across songs the line under the `.osz` names every option in force.
+They apply to the `.osz`, the copied `[TimingPoints]` (which then carries a comment
+naming them), the patched `.osu` and the games' files; not to the clicks, the CSV,
+the summary or the JSON.
+
+Checked in the browser pane (5192/3022, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the group at desktop width
+and at 375 px in ES, dark and light, nothing past the edge; BPM to 2 decimals and
++9 ms set, the drift line (1.15 ms by the end of line 1) and the amber "options on"
+line shown, both kept after a reload; the four files caught in the page and read
+back, their caveats listed (StepMania's rows, the .sm meter, one Clone Hero section
+fitted). `site/web` tests: `game-formats.test.js` (fixture lines with a change on a
+non-whole beat and a meter change, each format read back by its own rules) and
+`export-options.test.js`.
+
+Not checked: opening any of the files in Quaver, StepMania, Etterna or Clone Hero
+(no game was run; the rows rule and Clone Hero's Offset handling are from what we
+know of those games' loaders, not from a test), Safari and Firefox.
+
+### Listening tools: latency, tap tempo, tap offset, A/B, subdivisions (W12.2-W12.6, 2026-10-27)
+
+A panel under the transport (`components/result/Listening.jsx`) for checking a timing
+by ear. The rules are pure functions in `lib/listening.js`, tested in
+`test/listening.test.js`; the player (`lib/player.js`) carries the audio side.
+
+- **Subdivisions (W12.6).** `clickGrid(lines, duration, { subdivision })` in
+  `lib/timing.js` adds 1, 2 or 3 `SUB` clicks between beats, counted from each line's
+  offset exactly as the engine's `click_schedule` does, so none crosses into the next
+  line. They sound with the existing level-0 tone (1318.5 Hz, 0.4) through their own
+  gain under the clicks' bus (muting the clicks mutes them), at their own volume
+  (default 60 % of the clicks'). Off, 1/2, 1/3, 1/4 and the volume are kept in
+  `overtone.player.listening`. The map draws them dashed under the beat lines once
+  they are 7 px apart, and the legend names them. The click-track WAV offers "with
+  the 1/n subdivisions" (on by default when they are on) at the same volume.
+  The map, the arrow keys, the loop snapping and the taps keep the beats-only grid.
+- **A/B (W12.5).** Once the reader has adjusted the lines, the player also holds the
+  engine's own lines' clicks; "Your lines / The engine's" (or A) swaps them at the
+  same playhead: the clicks already handed to the audio context are dropped and
+  scheduled again from now, the song untouched. Unadjusted, the switch is disabled
+  and says the two are the same.
+- **Tap tempo (W12.3).** The Tap button (pointer down, Space or Enter on it) or T
+  anywhere. A run restarts after a 2 s pause and keeps the last 24 taps. From 4 taps:
+  the median interval with stray intervals dropped (beyond 3 robust deviations, or
+  10 % of the interval when the hand is steadier than that), as BPM, with the spread
+  of the kept intervals' BPM. Divided by the playback rate, then compared with the red
+  line at the playhead: "matches" within 4 %, "about ×2" or "about ×0.5" within 4 % of
+  those, the ratio otherwise.
+- **Tap offset (W12.4).** While the song plays, each tap is also placed on the song's
+  timeline where it was heard (`heardPositionAt`, the context's output timestamp) less
+  the calibrated latency, and measured against the nearest beat of the reader's
+  current lines. From 8 kept taps (stray ones beyond 3 robust deviations or 15 ms
+  dropped): the median signed offset and its spread, proposed as current nudge plus
+  that offset. "Set the global offset to …" applies it through the existing
+  adjustment and clears the taps; nothing changes before the press. Without a
+  calibrated latency the page says a late hand reads as a late song.
+- **Latency (W12.2).** "Calibrate…" opens a modal `<dialog>` (Esc closes it, focus goes
+  back to the button): 24 clicks at 100 BPM, nothing to look at on purpose, tapped with
+  Space, Enter, T or a pad. The first four are not counted. Each tap is placed in
+  context time with the same output-timestamp mapping, so the latency the browser
+  reports is already out; what is measured is what it does not report plus the
+  person's own timing. The median of the counted taps, stray ones dropped; refused
+  under 8 kept taps or over a 40 ms spread. "Save" keeps it in
+  `overtone.player.latencyMs` (validated on read, ±500 ms); Reset forgets it.
+- **What the latency moves.** The taps, always. The clicks only when the reader ticks
+  "Play the clicks that much early" (off by default, kept in
+  `overtone.player.listening`): the song and the clicks leave through the same audio
+  context and output, so any device delay reaches both alike, and moving the clicks
+  alone would put them off the song by that much. The roadmap asked for the clicks
+  to move; the switch keeps that available without making it the default (see the
+  timeline). No export ever carries it.
+- **Keys:** T taps, A swaps the clicks, S steps the subdivision; `tempo.keys` says so.
+  Every page-wide key goes through `lib/keys.js` `pageKeyIgnored`, which now also
+  steps aside while a modal dialog is open (Space in the calibration does not play
+  the song).
+
+Checked with the dev site (5191/3021, the real worker, Beat This! vote off) in the
+browser pane, `change-128-142.wav`, the song at volume 0:
+
+- Tap tempo: 12 T presses timed to the grid read 128 BPM ±0.0, "matches the red line
+  here (128)". The same presses 20 ms after each beat proposed +20 ms ±2.0 (12 kept);
+  applied, the global offset read 20. With a latency of 20 ms saved and taps 40 ms
+  after the moved grid, it proposed +19 ms ±5.2 (9 of 12 kept), i.e. 39 ms in all.
+- Calibration: 24 taps 35 ms after each click, one 200 ms off: 35 ms ±1.0, 19 kept and
+  1 dropped; saved, shown as "35 ms", read back after a reload. Esc and Close both
+  close it, focus returns to Calibrate, Space while it is open did not start the song.
+- A swaps `abEngine` once the lines are adjusted; S set 1/2 and the grid went from
+  135 to 269 clicks; the subdivision survived a reload.
+- The map drew the dashed subdivisions when zoomed in (11 to 49 lines across four
+  zoom levels) and none further out.
+- The clicks-only WAV with 1/2 at a 50 % subdivision volume: 269 clicks, the 269 of the
+  grid, the subdivisions at 0.20 peak (0.4 × 0.5), the first at 0.6345 s (0.400 +
+  0.234 s).
+- 375 px wide in ES, light: nothing past the edge but the red-line table, which scrolls
+  in its own box as before; the dialog fits (18-357 px).
+- `site/web` 101/101 (11 new), `vite build`, `bench/facts.py` ok.
+
+Not checked: listening (the pane's audio was at volume 0, and every number above
+was read, not heard), a human hand on the calibration (the taps were synthesised at
+exact times), Bluetooth or any device whose reported latency is wrong, Safari and
+Firefox, a phone's touch taps, screenshots of the dialog and the map (the pane was
+hidden most of the time, so they were checked through the DOM and the canvas
+calls), and the dark theme of the dialog beyond its tokens.
+
+### Comparing timings (W12.10, W12.11, 2026-10-27)
+
+Two timings of one song side by side, all in the browser. Code: `lib/compare.js` (the
+math, pure), `components/compare/` (the report and the map panel), `pages/Compare.jsx`.
+
+- **Grids, not first beats.** A red line a whole number of beats from the other's, at the
+  same tempo, is the same grid: osu! plays the same clicks. Lines are paired in order when
+  within four beats of the slower one (at least 1 s). Per pair: the BPM difference (or
+  ×2 / ×½), the offset as the phase of B's grid against A's at the later of the two lines
+  (the sparser grid's beat, the denser grid's nearest one), the same at their last shared
+  beat (a difference that grows is drift), the meter, and which beat the bar starts on.
+  A line only one side has is listed, saying whether the other grid already agrees there.
+- **The verdict** looks up every beat of the sparser grid, from the later first line to
+  the end, in the other grid, judging each beat by the line its partner belongs to:
+  `same` (every beat within 5 ms and every tempo within 0.05 BPM, the accuracy baseline's
+  tolerances, named on the page), `offset` (one constant shift past 5 ms), `double`,
+  `half`, or `different` with the share on the same grid, the share at half or double and
+  the first beat that parts. Signs read B minus A.
+- **With a map (W12.10)**, on the result page and a published timing's page: the reader
+  picks an `.osu` (16 MB and 2000 red lines at most). It is read with `File.text()` and
+  kept in the page's state only, never uploaded or stored. The map's lines are dashed in
+  `--compare` blue on the tempo plot and the overview, with their BPM along the plot's
+  foot; the tooltip adds the map's BPM; "Clicks from" plays the map's grid instead of the
+  result's (the drawn grid and the loops stay the result's). It compares against the
+  lines as the reader adjusted them, and warns when the map's `AudioFilename` is not the
+  analysed file's name (a hint: maps rename their audio).
+- **Two analyses (W12.11)**, `/compare?a=<id>&b=<id>`, each side optionally `ax`/`bx`
+  (×0.5 or ×2) and `an`/`bn` (a nudge, ±1000 ms). A side is read as the visitor's own
+  (`GET /analyses/:id`) or else as published (`GET /timings/:id`), with one 404 text for
+  both; a missing side is picked from the account's history (this browser's list without
+  an account), as the other side at ×2 or ×0.5, or by pasting a `/t/` link or an id. The
+  song is A's audio from the visitor's file, checked as on the result page; the clicks
+  play A's or B's grid. When both are the visitor's and their SHA-1s differ, the page
+  says the two are different audio. Offered from the history, a public timing and the
+  result page (and "the engine's against your adjusted one" when adjusted). Out of the
+  sitemap and disallowed in robots.txt: the page depends on who asks.
+
+Checked with the dev site (5194/3024, one real worker, Beat This! off), uploads made from
+the page so the browser owned them, `.osu` and audio handed to the inputs as `File`s:
+
+- `change-128-142.wav` against a hand-made map (second line 2 ms late, in 3/4): "same grid
+  within 1.9 ms", the meter change reported; "Clicks from: Map" put the player on the
+  map's 136-click grid. The map's dashed lines and labels drawn, dark theme.
+- `/compare` with that analysis against itself at ×2 +3 ms: "double within 3.0 ms" (this
+  read `different` before the fix in the timeline); at -8 ms by typing in the nudge field:
+  "8.0 ms earlier on every beat"; against `halftime-150-75.wav`: different, the unpaired
+  line listed; B's clicks (269) over the picked song.
+- The picker: this browser's list, then the account's history after the dev sign-in; a
+  pasted `/t/` link used, a bad one refused; an unknown id given the shared 404 text.
+- A published timing's page: "Compare" in the header, the map panel at 375 px in ES, dark
+  (the table scrolls in its own box, the page does not); `/compare` at 375 px in ES, light.
+  The history's "Compare" links (this browser's list).
+
+Not checked: a real ranked map (`.osu` files were made by hand), the published-side
+fallback of `/compare` as a stranger (the browser that published it also owned it; the
+`/timings/:id` read is the one the public page uses), listening, Safari and Firefox.
+
+### Command palette, shortcuts and settings (W12.14, W12.15, 2026-10-27)
+
+**The palette** (`components/CommandPalette.jsx`). Ctrl+K (⌘K on a Mac) or the
+search button in the bar opens it on every page; on a phone the button leads the
+places' row, because the top row has no room left at a large font size. It lists
+the tray's in-flight analyses first, then this browser's recent ones
+(`lib/recent.js`), the pages, and the actions: switch language, the three themes,
+high contrast on or off, open settings, the shortcut help, sign in or out. Each
+page and action also matches its name in the other language ("inicio" finds Home).
+
+- The ranking is `lib/commands.js`, a subsequence match that favours word starts
+  and runs and ignores case and accents, falling back to a plain left-to-right walk
+  when jumping to a word start would strand a later character. Ties keep the
+  palette's own order.
+- Both dialogs are native modal `<dialog>`s: the page behind is inert, Tab stays
+  inside, Escape closes, and the focus goes back where it was. The palette is the
+  ARIA combobox pattern: the field (`role=combobox`) owns a `listbox`, the arrows,
+  Home, End and the page keys move `aria-activedescendant`, Enter runs the option,
+  and the inside is remounted on every open, so it starts empty.
+- `?` opens the shortcut help: the global keys and the result page's
+  (`components/result/TempoMap.jsx`, which now uses the same `isTyping` and
+  ignores keys from inside an open dialog). `?` never fires in a text field;
+  Ctrl+K does, as in editors, because it never types anything.
+
+**`/settings`** (`pages/Settings.jsx`, `context/SettingsContext.jsx`,
+`lib/settings.js`). Everything is stored in this browser and applies at once:
+
+- **Theme**: system, dark or light, in the existing `mides.theme` key (shared with
+  midesprojects.com), which gains the value `system`; `ThemeContext` follows the
+  OS's switch while it is chosen. Not duplicated in `overtone.settings`.
+- `overtone.settings` = `{ contrast, fontScale, palette, reducedMotion }`, each
+  read defensively; they reach `<html>` as the classes `contrast-more`,
+  `palette-cb`, `motion-reduce` / `motion-allow` and the property `--font-scale`.
+- **High contrast**: one more token set in `src/index.css` per theme. Every text
+  token is at 7:1 or more on every surface down to `--surface-3`, and the strong
+  line at 3:1 on the page; `test/settings.test.js` computes each ratio from the CSS.
+- **Font size**, 90 to 130 % in fives: it scales the root size (so rem spacing
+  grows with the text) and the px text tokens. The few arbitrary `text-[Npx]`
+  sizes (the wordmark, some headings) and the tempo map's 11 px canvas labels
+  do not scale.
+- **Colour-blind-safe palette**: the map already drew only with tokens; the one
+  colour it hard-coded, the ink on a red chip, is now `--red-ink`. The palette
+  moves `--red`, `--amber` and `--lavender` on the whole site, so the map, the
+  table and the chips keep agreeing; the accent stays. The values came from a
+  random search over hues near each meaning, scored by the smallest CIELAB distance
+  between the map's four colours under Machado et al.'s (2009) simulation of
+  protanopia, deuteranopia and tritanopia. The test recomputes that distance.
+- **Motion**: the reduced-motion rule now runs under the media query unless
+  `motion-allow` is set, and always under `motion-reduce`.
+- **Player**: the default volumes write `overtone.player.volumes` through the
+  player's own `savedVolumes` / `saveVolumes` (now exported). The device latency
+  (`overtone.player.latencyMs`, written by W12.2's calibration) is shown, can be
+  typed (-250 to 1000 ms, a comma or "ms" allowed) or forgotten, and links to the
+  visitor's latest result, or to `/recent` when there is none.
+- **Language**: the same `mides.lang` as the bar's toggle.
+
+**Before the first frame.** `index.html`'s one inline script already set the theme
+and the language; it now also applies `overtone.settings` and the `system` theme.
+`deploy/web/serve.mjs` allows that script by its hash, computed from the built
+file, so no CSP change was needed; a new test in `site/api/test/serve.test.js`
+serves the real `index.html` and checks `script-src` names exactly its hash and
+that nothing says `unsafe-inline`. `test/settings.test.js` runs the inline script
+in a `vm` against stored values (valid, invalid and broken) and checks it leaves
+`<html>` exactly as `lib/settings.js` does, so the page never jumps when the app
+starts. Setting a style through the CSSOM is allowed under `style-src 'self'`.
+
+`/settings` is not in the sitemap and `robots.txt` disallows it (a browser's own
+settings have nothing to find); it is linked from the account menu and the footer.
+
+Checked:
+
+- `site/web` 113/113: 13 new in `test/commands.test.js` (matching, ranking,
+  keywords, ties, positions, typing targets, the global keys) and 10 in
+  `test/settings.test.js` (reading, writing, applying, latency parsing, the early
+  script against the library, the contrast ratios and the colour-blind distances);
+  `test/seo.test.js` now lists `/settings` as private. `vite build`.
+- `site/api` 101/101 (1 new in `test/serve.test.js`).
+- In the browser at 800 px and 375 px, EN and ES, dark, light and "as the system"
+  with the OS scheme emulated both ways (it follows a live switch): each setting
+  reaches `<html>` and storage; the stored ones apply on a reload before the app
+  (contrast, palette, motion with the ticker stopped, 120 % font); the latency
+  field refuses "abc" and takes "42,5 ms"; the palette opens from the keyboard,
+  from a field and from the phone's button, ranks, matches Spanish names, runs a
+  page and a theme, closes on Escape and gives the focus back; the help lists
+  every key; the account menu and the footer link to `/settings`. At 130 % the
+  bar's places pushed the sign-in button off at 800 px and the top row overflowed
+  at 375 px: the places now scroll and the phone's search button moved to the
+  second row. No horizontal overflow at 375 px at 100 % or 130 % on `/settings`.
+
+Not checked: the tempo map's canvas repainting under high contrast and the
+colour-blind palette (no finished analysis without the worker; the map re-reads
+the tokens on every class change of `<html>`, which is how the theme already
+worked), a real `?` key press (the browser tool's key events did not produce `?`,
+so it was dispatched as a `KeyboardEvent`), a screen reader, a real colour-blind
+reader, every other page at 130 % (only `/settings`, the home page and the bar
+were looked at; the home page's example offset wraps at 130 % on 800 px), and the
+latency written by W12.2's real calibration, which is on another branch.
+
+### How it works, questions, the glossary and the statistics (W12.12, W12.13, 2026-10-27)
+
+**Pages.** `/how-it-works`, `/faq`, `/glossary` and `/stats`, each with `usePageMeta`, in
+the sitemap and in a new Learn column of the footer. Their text is in the locale files
+under `learn` and `siteStats`.
+
+- **How it works** (`pages/HowItWorks.jsx`): six steps, each written from and citing the
+  file that specifies it (`docs/05-dsp-pipeline.md` A.1-A.11, `docs/site.md`,
+  `python/overtone.py` `analyze_audio`, `_beat_this_vote`, `_follow_drift`,
+  `worker/timing_result.py` `HIGH`, `MEDIUM`, `LOOSE_RESIDUAL_MS`, `STAGES`), linked on
+  GitHub through `lib/repo.js`, which accepts only a plain relative path. The only
+  accuracy figures are the synthetic benchmark's, as on the disclaimer; Corpus B is
+  described (20 hand-timed ranked maps, red lines within 5 ms) without a number, since
+  the site publishes none. The time an analysis takes is the figure from "Run it on
+  another machine" above (about 10 s for 60 s with the vote, on the development
+  machine), and the page points to `/stats` for this site's own. The diagram
+  (`components/learn/PipelineDiagram.jsx`) is inline SVG with Tailwind's fill and stroke
+  utilities over the theme tokens; each box links to its step.
+- **FAQ** (`pages/Faq.jsx`): the limits are read from `GET /api/v1/health`, never
+  written in the text; if the API does not answer, the page says so and links `/status`.
+  The formats are `utils/upload.js` `AUDIO_EXTENSIONS`; what is kept of the audio is the
+  privacy page's reading of the code.
+- **Glossary** (`pages/Glossary.jsx`, `lib/glossary.js`): twelve terms. An entry's
+  anchor is its id (`/glossary#drift`); the router does not scroll to a hash, so the
+  page does, and outlines the entry. Spanish uses the site's "deriva" for drift.
+- **`<Term id>`** (`components/Term.jsx`): a dotted underline (`.term` in `index.css`)
+  that is a button. It opens a non-modal popover with the short definition and a link to
+  the entry; Enter or Space opens it and moves the focus into it, Escape, Close or
+  tabbing past either end closes it and returns the focus to the word; a click outside,
+  a scroll or a resize closes it. The popover is portalled to `<body>` and `fixed` from
+  the word's box, because the red lines table scrolls and its header is sticky. It sits
+  on the result page's readouts (BPM, offset, meter, red lines), the confidence legend
+  and the table's BPM, meter, confidence, drift and fit headers, so the public `/t/<id>`
+  page has it too.
+
+**Statistics.** `GET /api/v1/stats` (`routes/stats.routes.js`, `utils/stats.js`, a
+`stats()` on both stores in `services/analysis.service.js`):
+
+- Totals of the engine's own runs (done, refused, failed), published timings and
+  distinct songs; cache hits are their own total; a deleted analysis counts nowhere.
+- The main BPM of done analyses in 20-BPM buckets from 80 to 260, open at both ends. The
+  memory store buckets as PostgreSQL's `width_bucket(bpm, edges)` does, with the same
+  edges array, and its percentile is `percentile_cont`'s, so the two stores agree.
+- One tempo against tempo changes, read as `utils/timings.js` `isVariable` reads it (red
+  lines at more than one BPM).
+- The median and 90th percentile of `finished_at - created_at` for done runs of the last
+  30 days: upload to result, queue wait included, said so on the page. Null below five.
+- Queued and running jobs.
+
+The pg store reads it all in one statement. The answer is built field by field by
+`shapeStats`, cached for a minute per process (concurrent requests share one
+computation), served with `Cache-Control: public, max-age` for what is left of the
+minute, and limited to 60 requests per address per 10 minutes. No schema change.
+
+The page (`pages/Stats.jsx`, `lib/stats.js`) draws the histogram as horizontal bars and
+the tempo share as one split bar, inline SVG at the box's pixel width (ResizeObserver),
+each an image with a summary, every bar with its count as text, and the histogram's
+numbers as a table behind "Show as a table". The accent and lavender pass the dataviz
+validator on colour-blind separation and contrast in both themes; it flags their
+lightness and chroma bands, which the labels and the table cover.
+
+Checked:
+
+- `site/api` 107/107: 7 new in `test/stats.test.js` (bucket edges and percentiles against
+  the PostgreSQL definitions; the totals, histogram, tempo share, median 30 s and p90
+  46 s and the queue over HTTP; a cache hit and a deletion not counted; the minute's
+  cache; the whole body searched for every id, SHA-1, hash, file name, tag and username
+  the rows carried, and every key checked against the ones `shapeStats` writes; the rate
+  limit).
+- The pg store's `stats()` against PostgreSQL through PGlite 0.5.11 behind
+  `pglite-socket` (a scratch install outside the repository), schema applied twice, the
+  same rows: every figure as on the memory store.
+- `site/web` 96/96: `test/learn.test.js` (every glossary term in both languages, every
+  underlined id a term, the same steps and questions in both languages, every cited file
+  present in the repository, every FAQ link a route) and `test/stats.test.js`; `vite
+  build`; `bench/facts.py` ok.
+- In the browser pane (web on 5195, the API on 3025 with `OVERTONE_WORKER=0`, results
+  posted by a stand-in worker): the four pages at 375 px and desktop, EN and ES, dark and
+  light, no horizontal scroll; the result page's popovers by keyboard (focus in, Escape
+  back to the word) and by click; the glossary link landing on its entry below the
+  sticky header; the FAQ's limits as `/health` stated them.
+
+Not checked: a screen reader on the popover and the charts; touch on a real phone; the
+`/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
+cache across several API processes (each keeps its own minute); the text against a
+mapper's reading, which only a mapper can give.

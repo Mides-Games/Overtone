@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import CompareWithMap from '../components/compare/CompareWithMap.jsx'
+import Term from '../components/Term.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
@@ -357,10 +358,10 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
 
   const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
-    { label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
-    { label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
-    { label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
-    { label: t('result.redLines'), value: String(lines.length) },
+    { term: 'bpm', label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
+    { term: 'offset', label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
+    { term: 'meter', label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
+    { term: 'redLine', label: t('result.redLines'), value: String(lines.length) },
   ]
 
   return (
@@ -369,7 +370,9 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
           {readouts.map((r) => (
             <div key={r.label} className="space-y-1 bg-surface px-4 py-3">
-              <dt className="label">{r.label}</dt>
+              <dt className="label">
+                <Term id={r.term}>{r.label}</Term>
+              </dt>
               <dd className="readout text-title text-text">
                 {r.value}
                 {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
@@ -379,6 +382,9 @@ export function Result({ id, analysis, verify = null, csvHref = null }) {
         </dl>
         <div className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
+            <li className="label">
+              <Term id="confidence">{t('strip.confidence')}</Term>
+            </li>
             {Object.entries(LEVELS).map(([key, level]) => (
               <li key={key} className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />

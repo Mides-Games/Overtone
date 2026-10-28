@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatBpm, formatClock, formatMs } from '../../lib/timing.js'
+import Term from '../Term.jsx'
 
 export const LEVELS = {
   high: { tone: 'var(--accent)', key: 'strip.high' },
@@ -37,21 +38,33 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
 
   return (
     <section className="space-y-3">
-      <h2 className="label">{t('result.redLines')}</h2>
+      <h2 className="label">
+        <Term id="redLine">{t('result.redLines')}</Term>
+      </h2>
       <div ref={box} className="relative max-h-[28rem] overflow-auto rounded-panel border border-line">
         <table className="w-full min-w-[46rem] text-left text-label">
           <thead className="sticky top-0 z-[1] bg-surface-2">
             <tr className="label">
               <th className="px-3 py-2 font-semibold">#</th>
               <th className="px-3 py-2 font-semibold">{t('result.time')}</th>
-              <th className="px-3 py-2 font-semibold">{t('strip.bpm')}</th>
-              <th className="px-3 py-2 font-semibold">{t('strip.meter')}</th>
-              <th className="px-3 py-2 font-semibold">{t('strip.confidence')}</th>
-              <th className="px-3 py-2 font-semibold" title={t('tempo.driftHint')}>
-                {t('tempo.drift')}
+              <th className="px-3 py-2 font-semibold">
+                <Term id="bpm">{t('strip.bpm')}</Term>
               </th>
-              <th className="px-3 py-2 font-semibold" title={t('tempo.residualHint')}>
-                {t('tempo.residual')}
+              <th className="px-3 py-2 font-semibold">
+                <Term id="meter">{t('strip.meter')}</Term>
+              </th>
+              <th className="px-3 py-2 font-semibold">
+                <Term id="confidence">{t('strip.confidence')}</Term>
+              </th>
+              <th className="px-3 py-2 font-semibold">
+                <Term id="drift">
+                  {t('tempo.drift')}
+                </Term>
+              </th>
+              <th className="px-3 py-2 font-semibold">
+                <Term id="fit">
+                  {t('tempo.residual')}
+                </Term>
               </th>
               <th className="px-3 py-2 font-semibold">
                 <span className="sr-only">{t('tempo.actions')}</span>

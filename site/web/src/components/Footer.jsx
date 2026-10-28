@@ -2,10 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { gutter } from '../lib/gutter.js'
+import { REPO_URL } from '../lib/repo.js'
 import Logo from './Logo.jsx'
 import Mark from './Mark.jsx'
-
-const REPO_URL = 'https://github.com/Mides-Projects/Overtone'
 
 const link = 'text-label text-muted transition hover:text-text'
 
@@ -37,7 +36,7 @@ export default function Footer() {
 
   return (
     <footer id="site-footer" className="border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-6xl gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]" style={gutter}>
+      <div className="mx-auto grid max-w-6xl gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr]" style={gutter}>
         <div className="space-y-3">
           <div className="flex items-center gap-2.5">
             <Mark size={20} />
@@ -52,6 +51,15 @@ export default function Footer() {
             { label: t('nav.profile'), to: '/profile' },
             { label: t('settings.title'), to: '/settings' },
             { label: t('legal.footer.status'), to: '/status' },
+          ]}
+        />
+        <Column
+          title={t('learn.footer.title')}
+          links={[
+            { label: t('learn.footer.how'), to: '/how-it-works' },
+            { label: t('learn.footer.faq'), to: '/faq' },
+            { label: t('learn.footer.glossary'), to: '/glossary' },
+            { label: t('learn.footer.stats'), to: '/stats' },
           ]}
         />
         <Column

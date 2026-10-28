@@ -286,6 +286,25 @@ h3 {
   .chip-accent {
     @apply chip border-accent/40 bg-accent/10 text-accent;
   }
+  /* A glossary word (components/Term.jsx): the text it sits in, dotted underneath. */
+  .term {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: inherit;
+    text-decoration: underline dotted;
+    text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .term:hover,
+  .term[aria-expanded='true'] {
+    text-decoration-color: var(--accent);
+  }
 }
 
 /* The signal strip: the ticker, quiet and monospaced. */

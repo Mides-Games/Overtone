@@ -2227,5 +2227,74 @@
       "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
       "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
+  },
+  "calculator": {
+    "title": "Calculadora de timing",
+    "description": "BPM y ms por tiempo, ticks, la distancia entre dos red lines, el corrimiento y el BPM a partir de dos marcas: la aritmética de timear un mapa, hecha en tu navegador.",
+    "intro": "La aritmética de timear un mapa, calculada mientras escribís. Nada sale de esta página.",
+    "keys": "Teclado: Tab pasa de un campo a otro; ↑ y ↓ mueven el campo en el que estás de a 1, con Shift de a 10, con Alt de a 0,1. Elegí un resultado para copiar su número.",
+    "copy": "Copiar {{label}}: {{value}}",
+    "copied": "Copiado",
+    "fromResult": "Calculadora de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms por tiempo",
+      "bpm": "BPM",
+      "ms": "ms por tiempo",
+      "beat": "Un tiempo",
+      "exactBpm": "BPM",
+      "bar": "Un compás de 4/4",
+      "quarter": "Un tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Divisor de tiempo",
+      "span": "Intervalo",
+      "count": "Ticks",
+      "tick": "Un tick",
+      "ticks": "El intervalo en ticks",
+      "nearest": "Tick entero más cercano",
+      "off": "El intervalo lo pasa por {{ms}} ms.",
+      "toMs": "Los ticks en ms"
+    },
+    "lines": {
+      "title": "Entre dos red lines",
+      "intro": "Dónde cae la segunda línea sobre la grilla de la primera.",
+      "from": "Primera red line",
+      "bpm": "Su BPM",
+      "to": "Segunda red line",
+      "meter": "Tiempos por compás",
+      "span": "Distancia",
+      "beats": "Distancia en tiempos",
+      "bars": "Distancia en compases",
+      "nearest": "Tiempo más cercano de la primera grilla",
+      "off": "Segunda línea respecto de ese tiempo",
+      "offNote": "Positivo: llega tarde.",
+      "earliest": "El offset más temprano de la primera grilla"
+    },
+    "drift": {
+      "title": "Corrimiento",
+      "intro": "Cuánto se aleja una grilla a un BPM de otra en unos compases, y los BPM que se mantienen dentro de un corrimiento que aceptás.",
+      "right": "El BPM correcto",
+      "mapped": "El BPM del mapa",
+      "bars": "Compases",
+      "meter": "Tiempos por compás",
+      "total": "Corrimiento al último compás",
+      "sign": "Positivo: la grilla del mapa llega tarde.",
+      "perBar": "Corrimiento por compás",
+      "allowed": "Corrimiento que aceptás",
+      "slower": "BPM más lento dentro de eso",
+      "faster": "BPM más rápido dentro de eso",
+      "precision": "Precisión de BPM que hace falta"
+    },
+    "span": {
+      "title": "BPM a partir de dos marcas",
+      "intro": "Dos momentos de la canción y la cantidad de tiempos entre ellos.",
+      "start": "Primera marca",
+      "end": "Segunda marca",
+      "beats": "Tiempos entre ellas",
+      "bpm": "BPM",
+      "beat": "Un tiempo"
+    }
   }
 }

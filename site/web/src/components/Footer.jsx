@@ -59,6 +59,7 @@ export default function Footer() {
             { label: t('learn.footer.how'), to: '/how-it-works' },
             { label: t('learn.footer.faq'), to: '/faq' },
             { label: t('learn.footer.glossary'), to: '/glossary' },
+            { label: t('calculator.title'), to: '/tools/calculator' },
             { label: t('learn.footer.stats'), to: '/stats' },
           ]}
         />

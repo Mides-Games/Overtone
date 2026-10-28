@@ -2227,5 +2227,74 @@
       "sharedAdded": "A música que você compartilhou está na lista. Confira e clique em Analisar.",
       "sharedNone": "Nada utilizável chegou pelo compartilhamento: compartilhe um arquivo MP3, OGG, WAV, FLAC, M4A ou Opus, ou escolha-o abaixo."
     }
+  },
+  "calculator": {
+    "title": "Calculadora de timing",
+    "description": "BPM e ms por batida, ticks, a distância entre duas red lines, o desvio e o BPM a partir de dois instantes: as contas de fazer o timing de um mapa, feitas no seu navegador.",
+    "intro": "As contas de fazer o timing de um mapa, calculadas enquanto você digita. Nada sai desta página.",
+    "keys": "Teclado: Tab passa de um campo para outro; ↑ e ↓ mudam o campo atual em 1, com Shift em 10, com Alt em 0,1. Escolha um resultado para copiar o número.",
+    "copy": "Copiar {{label}}: {{value}}",
+    "copied": "Copiado",
+    "fromResult": "Calculadora de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms por batida",
+      "bpm": "BPM",
+      "ms": "ms por batida",
+      "beat": "Uma batida",
+      "exactBpm": "BPM",
+      "bar": "Um compasso 4/4",
+      "quarter": "Um tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Divisor da batida",
+      "span": "Intervalo",
+      "count": "Ticks",
+      "tick": "Um tick",
+      "ticks": "O intervalo em ticks",
+      "nearest": "Tick inteiro mais próximo",
+      "off": "O intervalo passa dele em {{ms}} ms.",
+      "toMs": "Os ticks em ms"
+    },
+    "lines": {
+      "title": "Entre duas red lines",
+      "intro": "Onde a segunda linha cai na grade da primeira.",
+      "from": "Primeira red line",
+      "bpm": "O BPM dela",
+      "to": "Segunda red line",
+      "meter": "Batidas por compasso",
+      "span": "Distância",
+      "beats": "Distância em batidas",
+      "bars": "Distância em compassos",
+      "nearest": "Batida mais próxima da primeira grade",
+      "off": "Segunda linha em relação a essa batida",
+      "offNote": "Positivo: está atrasada.",
+      "earliest": "O offset mais cedo da primeira grade"
+    },
+    "drift": {
+      "title": "Desvio",
+      "intro": "O quanto uma grade num BPM se afasta de outra ao longo de alguns compassos, e os BPMs que ficam dentro de um desvio que você aceita.",
+      "right": "O BPM certo",
+      "mapped": "O BPM do mapa",
+      "bars": "Compassos",
+      "meter": "Batidas por compasso",
+      "total": "Desvio no último compasso",
+      "sign": "Positivo: a grade do mapa está atrasada.",
+      "perBar": "Desvio por compasso",
+      "allowed": "Desvio que você aceita",
+      "slower": "BPM mais lento dentro disso",
+      "faster": "BPM mais rápido dentro disso",
+      "precision": "Precisão de BPM necessária"
+    },
+    "span": {
+      "title": "BPM a partir de dois instantes",
+      "intro": "Dois momentos da música e o número de batidas entre eles.",
+      "start": "Primeiro instante",
+      "end": "Segundo instante",
+      "beats": "Batidas entre eles",
+      "bpm": "BPM",
+      "beat": "Uma batida"
+    }
   }
 }

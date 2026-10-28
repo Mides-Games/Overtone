@@ -2227,5 +2227,74 @@
       "sharedAdded": "La canzone che hai condiviso è nell'elenco. Controllala e premi Analizza.",
       "sharedNone": "Dalla condivisione non è arrivato nulla di utilizzabile: condividi un file MP3, OGG, WAV, FLAC, M4A o Opus, oppure sceglilo qui sotto."
     }
+  },
+  "calculator": {
+    "title": "Calcolatrice di timing",
+    "description": "BPM e ms per battito, tick, la distanza tra due red line, la deriva e il BPM da due istanti: i conti del timing di una mappa, fatti nel tuo browser.",
+    "intro": "I conti del timing di una mappa, fatti mentre scrivi. Niente esce da questa pagina.",
+    "keys": "Tastiera: Tab passa da un campo all’altro; ↑ e ↓ cambiano il campo attivo di 1, con Shift di 10, con Alt di 0,1. Scegli un risultato per copiarne il numero.",
+    "copy": "Copia {{label}}: {{value}}",
+    "copied": "Copiato",
+    "fromResult": "Calcolatrice di timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms per battito",
+      "bpm": "BPM",
+      "ms": "ms per battito",
+      "beat": "Un battito",
+      "exactBpm": "BPM",
+      "bar": "Una battuta in 4/4",
+      "quarter": "Un tick da 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ tick",
+      "bpm": "BPM",
+      "divisor": "Divisore del battito",
+      "span": "Intervallo",
+      "count": "Tick",
+      "tick": "Un tick",
+      "ticks": "L’intervallo in tick",
+      "nearest": "Tick intero più vicino",
+      "off": "L’intervallo lo supera di {{ms}} ms.",
+      "toMs": "I tick in ms"
+    },
+    "lines": {
+      "title": "Tra due red line",
+      "intro": "Dove cade la seconda linea sulla griglia della prima.",
+      "from": "Prima red line",
+      "bpm": "Il suo BPM",
+      "to": "Seconda red line",
+      "meter": "Battiti per battuta",
+      "span": "Distanza",
+      "beats": "Distanza in battiti",
+      "bars": "Distanza in battute",
+      "nearest": "Battito più vicino della prima griglia",
+      "off": "Seconda linea rispetto a quel battito",
+      "offNote": "Positivo: è in ritardo.",
+      "earliest": "L’offset più presto della prima griglia"
+    },
+    "drift": {
+      "title": "Deriva",
+      "intro": "Quanto una griglia a un BPM si allontana da un’altra in qualche battuta, e i BPM che restano entro una deriva che accetti.",
+      "right": "Il BPM giusto",
+      "mapped": "Il BPM della mappa",
+      "bars": "Battute",
+      "meter": "Battiti per battuta",
+      "total": "Deriva all’ultima battuta",
+      "sign": "Positivo: la griglia della mappa è in ritardo.",
+      "perBar": "Deriva per battuta",
+      "allowed": "Deriva che accetti",
+      "slower": "BPM più lento che ci sta",
+      "faster": "BPM più veloce che ci sta",
+      "precision": "Precisione di BPM che serve"
+    },
+    "span": {
+      "title": "BPM da due istanti",
+      "intro": "Due momenti della canzone e il numero di battiti tra loro.",
+      "start": "Primo istante",
+      "end": "Secondo istante",
+      "beats": "Battiti in mezzo",
+      "bpm": "BPM",
+      "beat": "Un battito"
+    }
   }
 }

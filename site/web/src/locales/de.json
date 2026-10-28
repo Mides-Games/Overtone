@@ -2227,5 +2227,74 @@
       "sharedAdded": "Der Song, den du geteilt hast, steht auf der Liste. Prüf ihn und drück auf Analysieren.",
       "sharedNone": "Aus dem Teilen kam nichts Brauchbares an: Teile eine MP3-, OGG-, WAV-, FLAC-, M4A- oder Opus-Datei oder wähl sie unten aus."
     }
+  },
+  "calculator": {
+    "title": "Timing-Rechner",
+    "description": "BPM und ms pro Schlag, Ticks, der Abstand zwischen zwei red lines, Drift und das BPM aus zwei Zeitpunkten: die Rechnerei beim Timen einer Map, direkt in deinem Browser.",
+    "intro": "Die Rechnerei beim Timen einer Map, gerechnet, während du tippst. Nichts verlässt diese Seite.",
+    "keys": "Tastatur: Tab wechselt zwischen den Feldern; ↑ und ↓ ändern das aktive Feld um 1, mit Shift um 10, mit Alt um 0,1. Wähl ein Ergebnis, um seine Zahl zu kopieren.",
+    "copy": "{{label}} kopieren: {{value}}",
+    "copied": "Kopiert",
+    "fromResult": "Timing-Rechner",
+    "bpmMs": {
+      "title": "BPM ↔ ms pro Schlag",
+      "bpm": "BPM",
+      "ms": "ms pro Schlag",
+      "beat": "Ein Schlag",
+      "exactBpm": "BPM",
+      "bar": "Ein 4/4-Takt",
+      "quarter": "Ein 1/4-Tick"
+    },
+    "ticks": {
+      "title": "ms ↔ Ticks",
+      "bpm": "BPM",
+      "divisor": "Beat-Divisor",
+      "span": "Spanne",
+      "count": "Ticks",
+      "tick": "Ein Tick",
+      "ticks": "Die Spanne in Ticks",
+      "nearest": "Nächster ganzer Tick",
+      "off": "Die Spanne liegt {{ms}} ms dahinter.",
+      "toMs": "Die Ticks in ms"
+    },
+    "lines": {
+      "title": "Zwischen zwei red lines",
+      "intro": "Wo die zweite Linie auf dem Raster der ersten liegt.",
+      "from": "Erste red line",
+      "bpm": "Ihr BPM",
+      "to": "Zweite red line",
+      "meter": "Schläge pro Takt",
+      "span": "Abstand",
+      "beats": "Abstand in Schlägen",
+      "bars": "Abstand in Takten",
+      "nearest": "Nächster Schlag des ersten Rasters",
+      "off": "Zweite Linie gegenüber diesem Schlag",
+      "offNote": "Positiv: Sie kommt zu spät.",
+      "earliest": "Frühester Offset des ersten Rasters"
+    },
+    "drift": {
+      "title": "Drift",
+      "intro": "Wie weit ein Raster mit einem BPM über einige Takte von einem anderen wegläuft, und die BPM, die innerhalb einer Drift bleiben, die du akzeptierst.",
+      "right": "Das richtige BPM",
+      "mapped": "Das BPM der Map",
+      "bars": "Takte",
+      "meter": "Schläge pro Takt",
+      "total": "Drift bis zum letzten Takt",
+      "sign": "Positiv: Das Raster der Map kommt zu spät.",
+      "perBar": "Drift pro Takt",
+      "allowed": "Akzeptierte Drift",
+      "slower": "Langsamstes BPM darin",
+      "faster": "Schnellstes BPM darin",
+      "precision": "Nötige BPM-Genauigkeit"
+    },
+    "span": {
+      "title": "BPM aus zwei Zeitpunkten",
+      "intro": "Zwei Momente im Song und die Zahl der Schläge dazwischen.",
+      "start": "Erster Zeitpunkt",
+      "end": "Zweiter Zeitpunkt",
+      "beats": "Schläge dazwischen",
+      "bpm": "BPM",
+      "beat": "Ein Schlag"
+    }
   }
 }

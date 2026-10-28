@@ -2173,5 +2173,74 @@
       "sharedAdded": "공유한 곡이 목록에 추가됐어요. 확인하고 분석을 누르세요.",
       "sharedNone": "공유로 쓸 수 있는 게 오지 않았어요: MP3, OGG, WAV, FLAC, M4A, Opus 파일을 공유하거나 아래에서 선택하세요."
     }
+  },
+  "calculator": {
+    "title": "타이밍 계산기",
+    "description": "BPM과 한 박의 ms, 틱, 두 red line 사이의 간격, 어긋남, 두 시점으로 구하는 BPM: 맵 타이밍에 필요한 계산을 브라우저에서 해요.",
+    "intro": "맵 타이밍에 필요한 계산을 입력하는 대로 해요. 이 페이지에서 아무것도 나가지 않아요.",
+    "keys": "키보드: Tab으로 필드를 옮기고, ↑와 ↓로 지금 필드를 1씩, Shift와 함께 10씩, Alt와 함께 0.1씩 바꿔요. 결과를 고르면 그 숫자가 복사돼요.",
+    "copy": "{{label}} 복사: {{value}}",
+    "copied": "복사됨",
+    "fromResult": "타이밍 계산기",
+    "bpmMs": {
+      "title": "BPM ↔ 한 박의 ms",
+      "bpm": "BPM",
+      "ms": "한 박의 ms",
+      "beat": "한 박",
+      "exactBpm": "BPM",
+      "bar": "4/4 한 마디",
+      "quarter": "1/4 틱 하나"
+    },
+    "ticks": {
+      "title": "ms ↔ 틱",
+      "bpm": "BPM",
+      "divisor": "비트 분할",
+      "span": "구간",
+      "count": "틱 수",
+      "tick": "틱 하나",
+      "ticks": "구간을 틱으로",
+      "nearest": "가장 가까운 정수 틱",
+      "off": "구간이 그보다 {{ms}} ms 더 길어요.",
+      "toMs": "틱 수를 ms로"
+    },
+    "lines": {
+      "title": "두 red line 사이",
+      "intro": "두 번째 선이 첫 번째 선의 그리드 어디에 떨어지는지.",
+      "from": "첫 번째 red line",
+      "bpm": "그 BPM",
+      "to": "두 번째 red line",
+      "meter": "한 마디의 박 수",
+      "span": "간격",
+      "beats": "간격 (박)",
+      "bars": "간격 (마디)",
+      "nearest": "첫 그리드에서 가장 가까운 박",
+      "off": "그 박에 대한 두 번째 선",
+      "offNote": "양수: 늦어요.",
+      "earliest": "첫 그리드의 가장 이른 오프셋"
+    },
+    "drift": {
+      "title": "어긋남",
+      "intro": "한 BPM의 그리드가 다른 BPM에서 몇 마디 동안 얼마나 어긋나는지, 그리고 받아들일 수 있는 어긋남 안에 드는 BPM.",
+      "right": "맞는 BPM",
+      "mapped": "맵의 BPM",
+      "bars": "마디 수",
+      "meter": "한 마디의 박 수",
+      "total": "마지막 마디까지의 어긋남",
+      "sign": "양수: 맵의 그리드가 늦어요.",
+      "perBar": "마디당 어긋남",
+      "allowed": "받아들일 어긋남",
+      "slower": "그 안에서 가장 느린 BPM",
+      "faster": "그 안에서 가장 빠른 BPM",
+      "precision": "필요한 BPM 정밀도"
+    },
+    "span": {
+      "title": "두 시점으로 구하는 BPM",
+      "intro": "곡의 두 순간과 그 사이의 박 수.",
+      "start": "첫 번째 시점",
+      "end": "두 번째 시점",
+      "beats": "사이의 박 수",
+      "bpm": "BPM",
+      "beat": "한 박"
+    }
   }
 }

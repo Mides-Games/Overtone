@@ -2281,5 +2281,74 @@
       "sharedAdded": "La chanson que vous avez partagée est dans la liste. Vérifiez-la et appuyez sur Analyser.",
       "sharedNone": "Rien d'utilisable n'est arrivé du partage : partagez un fichier MP3, OGG, WAV, FLAC, M4A ou Opus, ou choisissez-le ci-dessous."
     }
+  },
+  "calculator": {
+    "title": "Calculatrice de timing",
+    "description": "BPM et ms par temps, ticks, l’écart entre deux red lines, la dérive et le BPM à partir de deux instants : l’arithmétique du timing d’une map, calculée dans votre navigateur.",
+    "intro": "L’arithmétique du timing d’une map, calculée pendant que vous tapez. Rien ne quitte cette page.",
+    "keys": "Clavier : Tab passe d’un champ à l’autre ; ↑ et ↓ font varier le champ actif de 1, de 10 avec Maj, de 0,1 avec Alt. Choisissez un résultat pour copier son nombre.",
+    "copy": "Copier {{label}} : {{value}}",
+    "copied": "Copié",
+    "fromResult": "Calculatrice de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms par temps",
+      "bpm": "BPM",
+      "ms": "ms par temps",
+      "beat": "Un temps",
+      "exactBpm": "BPM",
+      "bar": "Une mesure de 4/4",
+      "quarter": "Un tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Diviseur de temps",
+      "span": "Durée",
+      "count": "Ticks",
+      "tick": "Un tick",
+      "ticks": "La durée en ticks",
+      "nearest": "Tick entier le plus proche",
+      "off": "La durée le dépasse de {{ms}} ms.",
+      "toMs": "Les ticks en ms"
+    },
+    "lines": {
+      "title": "Entre deux red lines",
+      "intro": "Où la seconde ligne tombe sur la grille de la première.",
+      "from": "Première red line",
+      "bpm": "Son BPM",
+      "to": "Seconde red line",
+      "meter": "Temps par mesure",
+      "span": "Écart",
+      "beats": "Écart en temps",
+      "bars": "Écart en mesures",
+      "nearest": "Temps le plus proche de la première grille",
+      "off": "Seconde ligne par rapport à ce temps",
+      "offNote": "Positif : elle est en retard.",
+      "earliest": "L’offset le plus tôt de la première grille"
+    },
+    "drift": {
+      "title": "Dérive",
+      "intro": "De combien une grille à un BPM s’écarte d’une autre sur un nombre de mesures, et les BPM qui restent dans une dérive que vous acceptez.",
+      "right": "Le bon BPM",
+      "mapped": "Le BPM de la map",
+      "bars": "Mesures",
+      "meter": "Temps par mesure",
+      "total": "Dérive à la dernière mesure",
+      "sign": "Positif : la grille de la map est en retard.",
+      "perBar": "Dérive par mesure",
+      "allowed": "Dérive acceptée",
+      "slower": "BPM le plus lent qui y reste",
+      "faster": "BPM le plus rapide qui y reste",
+      "precision": "Précision de BPM nécessaire"
+    },
+    "span": {
+      "title": "BPM à partir de deux instants",
+      "intro": "Deux moments de la chanson et le nombre de temps entre eux.",
+      "start": "Premier instant",
+      "end": "Second instant",
+      "beats": "Temps entre les deux",
+      "bpm": "BPM",
+      "beat": "Un temps"
+    }
   }
 }

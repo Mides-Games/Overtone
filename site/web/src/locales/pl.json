@@ -2335,5 +2335,74 @@
       "sharedAdded": "Udostępniony utwór jest na liście. Sprawdź go i naciśnij Analizuj.",
       "sharedNone": "Z udostępnienia nie dotarło nic użytecznego: udostępnij plik MP3, OGG, WAV, FLAC, M4A lub Opus albo wybierz go poniżej."
     }
+  },
+  "calculator": {
+    "title": "Kalkulator timingu",
+    "description": "BPM i ms na uderzenie, ticki, odstęp między dwiema red lines, dryf i BPM z dwóch znaczników czasu: rachunki timingu mapy, liczone w twojej przeglądarce.",
+    "intro": "Rachunki timingu mapy, liczone na bieżąco, gdy piszesz. Nic nie opuszcza tej strony.",
+    "keys": "Klawiatura: Tab przechodzi między polami; ↑ i ↓ zmieniają bieżące pole o 1, z Shift o 10, z Alt o 0,1. Wybierz wynik, żeby skopiować jego liczbę.",
+    "copy": "Kopiuj {{label}}: {{value}}",
+    "copied": "Skopiowano",
+    "fromResult": "Kalkulator timingu",
+    "bpmMs": {
+      "title": "BPM ↔ ms na uderzenie",
+      "bpm": "BPM",
+      "ms": "ms na uderzenie",
+      "beat": "Jedno uderzenie",
+      "exactBpm": "BPM",
+      "bar": "Jeden takt 4/4",
+      "quarter": "Jeden tick 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticki",
+      "bpm": "BPM",
+      "divisor": "Dzielnik uderzenia",
+      "span": "Odcinek",
+      "count": "Ticki",
+      "tick": "Jeden tick",
+      "ticks": "Odcinek w tickach",
+      "nearest": "Najbliższy pełny tick",
+      "off": "Odcinek wychodzi {{ms}} ms za niego.",
+      "toMs": "Te ticki w ms"
+    },
+    "lines": {
+      "title": "Między dwiema red lines",
+      "intro": "Gdzie druga linia wypada na siatce pierwszej.",
+      "from": "Pierwsza red line",
+      "bpm": "Jej BPM",
+      "to": "Druga red line",
+      "meter": "Uderzenia na takt",
+      "span": "Odstęp",
+      "beats": "Odstęp w uderzeniach",
+      "bars": "Odstęp w taktach",
+      "nearest": "Najbliższe uderzenie pierwszej siatki",
+      "off": "Druga linia względem tego uderzenia",
+      "offNote": "Dodatnie: jest spóźniona.",
+      "earliest": "Najwcześniejszy offset pierwszej siatki"
+    },
+    "drift": {
+      "title": "Dryf",
+      "intro": "Jak daleko siatka przy jednym BPM odjeżdża od innej przez kilka taktów, i BPM, które mieszczą się w dryfie, jaki akceptujesz.",
+      "right": "Właściwe BPM",
+      "mapped": "BPM w mapie",
+      "bars": "Takty",
+      "meter": "Uderzenia na takt",
+      "total": "Dryf do ostatniego taktu",
+      "sign": "Dodatni: siatka mapy jest spóźniona.",
+      "perBar": "Dryf na takt",
+      "allowed": "Akceptowany dryf",
+      "slower": "Najwolniejsze BPM w tym zakresie",
+      "faster": "Najszybsze BPM w tym zakresie",
+      "precision": "Potrzebna dokładność BPM"
+    },
+    "span": {
+      "title": "BPM z dwóch znaczników czasu",
+      "intro": "Dwa momenty piosenki i liczba uderzeń między nimi.",
+      "start": "Pierwszy znacznik",
+      "end": "Drugi znacznik",
+      "beats": "Uderzenia pomiędzy",
+      "bpm": "BPM",
+      "beat": "Jedno uderzenie"
+    }
   }
 }

@@ -1307,6 +1307,12 @@ anime-single (78.8 / 92.8 dev, 81.9 / 94.3 held out) never reaches the tracker, 
 constant grid cannot move it. The 30 ms setting is on for its dev gain; its anime
 numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 239849c.
 
+The perf gate on the server (run 20261028-025947-3a9144, 9231b97) caught the cost: on
+`_ramp`, the one perf case on the tracker path, `local` went from 0.047 s to 15.2 s of
+CPU (0.056 -> 2.8 s wall), Beat This! now heard to test the grid. Every other stage
+held. The `_ramp` budget in `bench/perf_snapshot.json` takes the server's reading;
+the cost is the feature, paid only by songs the precision grid gives up on.
+
 ### Rejected / tried and dropped
 
 - **The song's octave from Beat This! (`SONG_OCTAVE_BEAT_THIS`).** bands dev 46.7 → 43.7,

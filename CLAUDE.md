@@ -115,6 +115,14 @@ and holds the number stated here to them, so a test that lands without its count
 Their PostgreSQL paths run against an
 in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
 `DATABASE_URL` is set.
+
+The release build is a build step, not a gate: it builds a release's executables into
+`dist/release/<version>/` (gitignored), smoke-tests the frozen engine once, and publishes
+only with `--publish`, from `master` (docs/release.md):
+
+```bash
+.venv/Scripts/python.exe scripts/release.py <version>   # CLI .exe, engine and site ZIPs, SHA256SUMS, notes
+```
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral
 memory (peak working set, read from outside with the one-liner in the mode's doc) and
 resampling speed, which no 44.1 kHz fixture exercises.
@@ -233,12 +241,16 @@ crates/                   the v4 Rust workspace
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
                           its systemd timer and setup-deploy-user.sh (docs/server.md);
                           eggs/ and web/ host the site (docs/deploy.md)
+scripts/                  release.py: a release's executables, checksums and notes, and
+                          `bump` to set every version; overtone-engine.spec freezes the
+                          Python engine's command line; requirements-release.txt pins
+                          PyInstaller (docs/release.md)
 .github/workflows/        deploy.yml only: a push asks the server to update
 docs/                     audit, stack evaluation, architecture, UI, DSP, roadmap,
                           ML evaluation, naming, precision plan, MSI distribution
                           (historical: the installer was parked), comfort features,
                           audit backlog, other languages, web platform, site, workflow,
-                          library server, timeline
+                          library server, releases, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

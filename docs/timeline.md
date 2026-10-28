@@ -20,6 +20,64 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Releases carry executables, built in one line
+
+### Changed
+
+- `scripts/release.py <version>` builds a release's assets into `dist/release/<version>/`:
+  the Rust engine's `overtone-cli-<version>-windows-x64.exe`; the Python engine's
+  command line frozen by PyInstaller into `overtone-engine-<version>-windows-x64.zip`
+  (`overtone.exe` with the Beat This! model, so the vote works offline and no Python is
+  needed); the site for self-hosting in `overtone-site-<version>.zip` (built web, the
+  API's tracked source, `serve.mjs`, a README); `SHA256SUMS.txt`; and `notes.md`, the
+  "Changed" bullets of every timeline entry since the previous release tag.
+  `--publish` tags `v<version>`, pushes the tag and runs `gh release create`, as a
+  prerelease for `alpha`, `beta` and `rc`. docs/release.md is the routine.
+- One version everywhere: the script refuses to build unless Cargo.toml's workspace
+  version (which the Python engine's `app_version()` reads), the crates' path pins,
+  Cargo.lock and both site packages agree. `scripts/release.py bump <version>` sets
+  them all; the site's packages, still at 0.1.0, were aligned to 0.2.0-alpha with it.
+- PyInstaller is pinned in `scripts/requirements-release.txt`, apart from the
+  engine's requirements; the script refuses a venv that differs from the pins.
+
+### Hardening
+
+- `--publish` refuses a dirty tree, any branch but `master`, an existing tag and notes
+  over GitHub's 125,000 characters, before anything is built.
+- The frozen engine is smoke-tested before it is zipped: one run in a scratch profile
+  with PATH holding only Windows' folders, on the benchmark's `change-128-142` case. It
+  must print exactly two red lines within 0.05 BPM under a `v<version>` header, and the
+  run is checked for writes into its own folder.
+- The site ZIP takes the API from `git ls-files`, so neither `node_modules` nor a real
+  `.env` can ride along; a Git LFS pointer in place of the model stops the build.
+
+### Measured
+
+- 2026-10-27, this machine, version 0.2.0-alpha, `--since v0.2.0-alpha`: CLI 5.01 MB,
+  engine ZIP 198.70 MB (594 files, 397.7 MB unpacked), site ZIP 0.45 MB (80 files);
+  `sha256sum -c` passes on all three.
+- Smoke: `overtone.exe` read `400,468.750000973913` and `30400,422.535211267606`, that is
+  128.000 and 142.000 BPM, in 23.3 s and 23.7 s on two builds; no writes into its folder.
+- Build times, cold then warm: cargo 84.2 s / 0.2 s, PyInstaller 98.2 s / 62.8 s, site
+  build 1.8 s / 1.5 s; the warm run took 113.6 s end to end. Notes: 94 entries since
+  v0.2.0-alpha, 63,586 characters.
+- Not measured: the executables on a clean Windows without Python or the Visual C++
+  runtime; any Linux or macOS build (none exists); the Rust executable is built, not
+  smoke-tested.
+
+### Rejected / tried and dropped
+
+- A release workflow in GitHub Actions: CLAUDE.md keeps Actions to deploying, and a
+  check a person cannot run in one line does not exist.
+- Bundling the model into `_internal` as the desktop spec did: the engine now reads its
+  data one folder above its code, which frozen is the folder holding `overtone.exe`, so
+  the model and a one-line version file go there instead and the engine's code is left
+  as it is.
+- The site's API with its `node_modules` (`pnpm deploy --prod`): the asset is source for
+  self-hosting, and a native module built here would not match the host it lands on.
+
+---
+
 ## Unreleased — 2026-10-27 · API tokens, versions, whole batches, images, the app and copied rows
 
 ### Changed

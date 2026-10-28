@@ -1703,3 +1703,81 @@ page's demo, which clips in every language. Spot checks of ja and ru at 375 px. 
 all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
+
+### The timing editor and the offset lab (W7, W12.17, 2026-10-28)
+
+The result page's tempo map has an **Edit** mode (the ✎ button in its header, or E).
+The desktop app's Timing section is the reference (tags `v3-desktop-app`,
+`v3-desktop-full`): its pure editing functions are still in `python/overtone.py` and
+are ported to `site/web/src/lib/editor.js`.
+
+- **What edits.** A red line drags on the map, snapped to the nearest attack or beat
+  within 8 px (Alt: free), with its landing time drawn as it moves; a double-click adds
+  one with the BPM and bar of the line before it. Under the map, the selected line's
+  time and BPM are typed and its bar (1-16 beats) picked; it moves by ∓10 / ∓1 / +1 /
+  +10 ms; a line is added at the playhead or deleted (never the first); a section
+  splits at the playhead, merges with the next, or doubles or halves. Split and merge
+  refit the BPM to the section's attacks as the desktop did (`_refit_section` over
+  `_grade_span`): under 8 attacks, or a grid explaining under 40 % of their weight,
+  keeps the BPM and says why.
+- **Keys** while editing: ← → move the selected line 1 ms (Shift 10 ms), N adds at the
+  playhead, Delete or Backspace deletes; Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and
+  redo anywhere on the page outside a field, once there is a history. The map's own ← →
+  (a beat) give way while a line is selected. Every action is also a button, so all of
+  it is reachable by Tab; `?` lists the editor's keys.
+- **History.** Every edit is a named step ("Red line 3 moved +10 ms"); the list is in
+  view, the current step marked (`aria-current`), and any step can be gone back to; 200
+  at most. Each edit, undo, redo and refusal (`editor.errors.*`) is spoken through a
+  polite live region. The selected line carries an accent focus band the full height of
+  the map, and edited lines a ✎ on their chip and in the table.
+- **The edits are the reader's.** `adjustment` gains `edits`: the edited lines before
+  the ×2 / ÷2 and the nudge (`toBase`), so either still applies after an edit.
+  `adjustLines(result, adjustment)` reads them, so the clicks, the A/B (whose engine
+  side stays the engine's), the copy, the copied rows, the .osz, the CSV, the summary,
+  the other games' formats, the image and the click track follow, exactly as the nudge
+  does. The `[TimingPoints]` comment reads `// Edited on the Overtone site (edited: 3
+  red lines, x2): check it by ear`; the summary says `Edited`. The JSON download stays
+  the engine's result. Edits that come back to the engine's lines are no edit.
+- **Kept** in this browser per analysis (`overtone.edits.<id>`, restored on reload as a
+  step that undoes to the engine's reading), and, for the owner, as a **version**
+  (W12.21): `POST /analyses/:id/versions` takes `lines`, up to 512 packed rows
+  `[timeMs, beatMs, meter, meterKnown, source]`, checked line by line by
+  `version.service.js` `parseLines` (numbers only, BPM 1-5000, meter 1-16, sorted at
+  least 1 ms apart). The table gains `lines jsonb` and `lines_key` (their SHA-256), so
+  the same edit saved twice is one version and an edit can be saved with no factor or
+  nudge; the old check and uniqueness on factor and nudge are dropped and replaced. That
+  route's JSON body may be 48 kB (the rest of the API keeps 16 kB). Applying a version
+  puts its edits in force as one undoable step. A visitor on a published timing can
+  edit too; it stays in their browser.
+- **Refused on purpose.** Two red lines under 1 ms apart (osu! reads them as one), more
+  than 512 lines, a BPM outside 1-5000, a rescale outside 30-600 (the desktop's bound).
+  The "compare with adjusted" link is hidden for an edited timing: its lines do not fit
+  in a link.
+- **Held to the Python.** `test/fixtures/editor-golden.py` runs the desktop's helpers on
+  16 fixed cases (splits that fit, one read at 1/3, one with too few attacks and a weak
+  one, refused splits, a merge, the plain edits) and writes `editor-golden.json`;
+  `test/editor.test.js` matches every line to 1e-6 ms and BPM and every share to 1e-9.
+  Two differences, stated in `editor.js`: the site's lines are already where the engine
+  shows them (the worker writes them after `snap_timing_points`), and above 5000 attacks
+  in one span the refit keeps the strongest with ties broken by time, where numpy's
+  unstable sort breaks them its own way.
+
+**The offset lab** (`components/result/OffsetLab.jsx`, `lib/offset-lab.js`), inside the
+editor, ported from the desktop's: the MP3's own gapless numbers (the LAME tag's encoder
+delay and padding, read in the browser from the first 8 kB of the reader's file), and the
+blind test: each of ±10, ±20 and ±30 ms against none, three times, shuffled; each trial
+plays the same 6 s twice (the reader's loop, else from the first red line) with the clicks
+shifted by a hidden amount (`Player.setClickShift`, never saved or exported), and the
+reader picks the one in time. The report is a win rate per shift with a Wilson 95 %
+interval; the preferred shift (best rate above one half, the smaller on a tie) can be
+applied as the page's nudge. It asks for the song, 100 % speed and the clicks on. The
+desktop's other half, the first attack through Python's and Rust's decoders side by side,
+needs both engines and the file on one machine and is not ported.
+
+Seen in the browser (web 5241, API 3071 with `site/e2e/serve-api.mjs`'s fake worker): an
+uploaded WAV's result in Spanish at desktop width and at 375 px (no horizontal scroll);
+nudges by key, undo, merge, split at the playhead, a double-click add, the spoken
+messages, saving the edit as a version and its diff, and the edits restored after a
+reload. Not seen: a drag with a real mouse (the pointer path was driven by script), the
+blind test played through, the light theme properly (only toggled by script), a screen
+reader, Safari and Firefox.

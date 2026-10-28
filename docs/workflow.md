@@ -1,8 +1,8 @@
 # Modalidad de trabajo por tarea
 
 Todo cambio en este repo recorre estos pasos, en orden, sin saltarse ninguno.
-Está pegada a las reglas de `AGENTS.md` (un cambio lógico por commit, sin
-trailers, todo gate en una línea local).
+Está pegada a las reglas de `AGENTS.md` (**un commit por PR en `master`**,
+sin trailers, todo gate en una línea local).
 
 ## 0. Elegir la tarea y la opción
 
@@ -66,21 +66,38 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   No reducir `--tune` / `--heldout` para declarar el roadmap cerrado: el bar es
   +15 puntos tanto en ajuste como en la muestra independiente.
 
-## 4. Commitear
+## 4. Commitear: pocos commits (decisión del dueño, 2026-10-28)
 
-El formato vive en `AGENTS.md` y no se negocia: commits, ramas y títulos de
-PR en **inglés**, asunto `type(scope/task): short imperative description`
-(e.g. `fix(engine/octave): prefer the mapped pulse on ties`), tipos
-`feature · fix · refactor · perf · bench · test · docs · chore`, rama
+El historial de `master` se llenaba de commits chicos, merges de integración y
+correcciones de conteos: ruido para quien lee y para la organización. Desde el
+2026-10-28:
+
+- **Un PR = un commit en `master`.** Los PR se mergean solo con **squash**
+  (el repo y el ruleset no permiten otro método): el asunto del commit es el
+  título del PR y el cuerpo es su descripción. Lo que pase en la rama no llega
+  a `master`.
+- **En la rama, la menor cantidad posible.** Un commit por tarea, y se
+  enmienda (`git commit --amend`) en vez de sumar "fix typo", "update counts" o
+  "address review". Para traer `master` a la rama se usa
+  `git rebase origin/master`, no un merge: nada de commits "Merge master into …".
+- **Agrupar.** Cambios chicos y relacionados (una corrección de texto, un
+  conteo, un doc) van en el mismo PR que la tarea que los causó, no en PRs
+  propios. Una tarea de varias partes es un PR, no uno por parte.
+- **La rama se borra sola** al mergear el PR.
+
+El formato vive en `AGENTS.md` y no se negocia: títulos de PR (que serán el
+commit) y ramas en **inglés**, `type(scope/task): short imperative
+description` (e.g. `fix(engine/octave): prefer the mapped pulse on ties`),
+tipos `feature · fix · refactor · perf · bench · test · docs · chore`, rama
 `type/short-topic` (e.g. `chore/repo-layout`).
 
-- Rama primero si el trabajo está en curso; nunca sobre la rama base a medias.
-- Asunto en una línea + cuerpo con el **porqué** (el diff ya dice el
-  qué). Sin `Co-Authored-By`, sin firmas de herramienta.
-- El cuerpo cita la medición del paso 3 y los gates corridos con su resultado.
-- Antes de cerrar el commit: todo `.rs` nuevo tiene su línea `mod` y todo
-  cambio necesario está staged (`git status` + compilar con solo lo staged
-  en la cabeza). Dos commits incompletos por esta causa bastan para la regla.
+- Rama primero; nunca se trabaja sobre `master`.
+- La descripción del PR (que será el cuerpo del commit) dice el **porqué**
+  (el diff ya dice el qué), cita la medición del paso 3 y los gates corridos
+  con su resultado. Sin `Co-Authored-By`, sin firmas de herramienta.
+- Antes de cerrar: todo `.rs` nuevo tiene su línea `mod` y todo cambio
+  necesario está staged (`git status` + compilar con solo lo staged en la
+  cabeza).
 
 ## 5. Auditar
 
@@ -93,10 +110,10 @@ Releer el diff buscando, en este orden:
 3. Rendimiento: ¿hay un O(n²) evitable en el path caliente? ¿alguna
    asignación por beat que un pre-size elimina? Medir antes de tocar.
 
-## 6. Commitear de nuevo (solo si el paso 5 cambió algo)
+## 6. Corregir lo que encontró la auditoría (solo si el paso 5 cambió algo)
 
-Mismo formato que el paso 4, cuerpo explicando qué encontró la auditoría.
-Si no cambió nada, se omite sin culpa.
+Se enmienda el mismo commit (`git commit --amend`), no se suma otro: el PR
+sigue siendo uno y su descripción dice qué encontró la auditoría.
 
 ## 7. Proseguir con la siguiente tarea
 
@@ -163,7 +180,7 @@ escritas, y `.github/ISSUE_TEMPLATE/` hace lo mismo con los reportes:
 - Qué cambió y por qué (una o dos frases; el diff ya dice el cómo).
 - Gates corridos con su resultado (comando + números, pega la salida).
 - Checklist:
-  - [ ] un cambio lógico por commit, formato `type(scope/task): …` en inglés
+  - [ ] un PR por tarea, título `type(scope/task): …` en inglés (será el único commit en `master`)
   - [ ] gates verdes + `bench/facts.py` ok
   - [ ] entrada en `docs/timeline.md` (o "sin entrada porque …")
   - [ ] roadmap actualizado si cambió una fase

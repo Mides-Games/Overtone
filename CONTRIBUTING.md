@@ -78,7 +78,9 @@ missing and skip. See [`bench/local_data.py`](bench/local_data.py).
 
 ## Pull requests
 
-Open them with `gh` against `master`; a PR is required for everyone. The
+Open them with `gh` against `master`; a PR is required for everyone, and it lands as
+one squashed commit (the only merge method allowed), so keep the branch to one commit
+you amend and rebase rather than a trail of fixes and merges. The
 template asks three things: what changed, why, and which gates were run with
 what result. Paste the gate output; numbers, not impressions.
 

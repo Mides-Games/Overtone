@@ -2,10 +2,11 @@ import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import Flag from '../components/Flag.jsx'
 import { useSettings } from '../context/SettingsContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
-import { LANGS } from '../i18n.js'
+import { CODES, LANGS } from '../lib/languages.js'
 import { DEFAULT_VOLUME, saveVolumes, savedVolumes } from '../lib/player.js'
 import { recentAnalyses } from '../lib/recent.js'
 import {
@@ -207,8 +208,16 @@ function Language() {
       <Choice
         legend={t('settings.language.label')}
         name="language"
-        value={LANGS.includes(i18n.language) ? i18n.language : 'en'}
-        options={LANGS.map((value) => ({ value, label: t(`settings.language.${value}`) }))}
+        value={CODES.includes(i18n.language) ? i18n.language : 'en'}
+        options={LANGS.map((lang) => ({
+          value: lang.code,
+          label: (
+            <span lang={lang.code} className="flex items-center gap-2">
+              <Flag code={lang.flag} size={18} />
+              {lang.name}
+            </span>
+          ),
+        }))}
         onChange={(lng) => i18n.changeLanguage(lng)}
       />
     </Section>
@@ -355,6 +364,28 @@ export default function Settings() {
       <Appearance />
       <Language />
       <Audio />
+      <ApiTokens />
     </div>
+  )
+}
+
+/**
+ * W12.20: personal API tokens live on their own sub-page, `/settings/tokens`:
+ * unlike everything above they belong to an account, not to this browser, and
+ * the page needs a sign-in. This section says what they are and leads there.
+ */
+function ApiTokens() {
+  const { t } = useTranslation()
+  return (
+    <Section title={t('platform.tokens.title')} note={t('platform.tokens.settingsNote')}>
+      <div className="flex flex-wrap gap-3">
+        <Link to="/settings/tokens" className="btn-ghost">
+          {t('platform.tokens.manage')} →
+        </Link>
+        <Link to="/developers" className="btn-ghost">
+          {t('platform.tokens.docs')}
+        </Link>
+      </div>
+    </Section>
   )
 }

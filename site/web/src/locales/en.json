@@ -13,8 +13,8 @@
     "signOut": "Sign out",
     "account": "Account menu",
     "changeTheme": "Change theme",
-    "changeLanguage": "Cambiar a español",
-    "otherLanguage": "ES",
+    "changeLanguage": "Change language",
+    "language": "Language: {{name}}",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "queue": "Queue"
@@ -29,36 +29,126 @@
     "eyebrow": "osu! timing, measured",
     "title": "Time a song in minutes, not hours",
     "subtitle": "Upload the audio and Overtone finds the BPM, the offset and every red line, and tells you how sure it is about each section.",
-    "cta": "Time a song",
-    "secondary": "Sign in to keep your history",
-    "honest": "Overtone does not promise perfect timing. Its benchmark is exact on synthetic tracks; on real ranked maps it is a strong first draft. Confidence is shown so you know where to look.",
-    "features": {
-      "upload": {
-        "title": "Upload, get red lines",
-        "body": "BPM, offset, bars and signature changes, ready to paste into [TimingPoints]."
+    "cta": "Analyze a song",
+    "checkByEar": "Check by ear",
+    "howCta": "How it works",
+    "draft": "A strong first draft, not a finished map: check it by ear.",
+    "draftLink": "What Overtone does not promise",
+    "facts": {
+      "free": "Free",
+      "noAccount": "No account needed",
+      "deleted": "Audio deleted after analysis"
+    },
+    "live": {
+      "title": "Live numbers",
+      "analyses": "Analyses done",
+      "queue": "In the queue now"
+    },
+    "gain": {
+      "eyebrow": "What you gain",
+      "title": "Spend the evening mapping, not tapping",
+      "time": {
+        "title": "Hours of timing, back",
+        "body": "The BPM, the offset and the first red line in minutes, instead of an evening of tapping along and nudging by milliseconds."
       },
-      "confidence": {
-        "title": "Confidence per section",
-        "body": "Every section says how much evidence backs it, instead of a number that looks precise."
+      "variable": {
+        "title": "Tempo changes, split for you",
+        "body": "A song that speeds up, slows down or changes meter comes back as separate red lines, each with its own BPM and offset."
       },
-      "account": {
-        "title": "With a Mides account",
-        "body": "Keep your analyses, publish timings, and see who else timed the same song."
+      "osz": {
+        "title": "Opens in osu!, ready to map",
+        "body": "Download a .osz with your song and its red lines inside. Open it in osu! and start placing notes."
+      },
+      "check": {
+        "title": "Tools to check it by ear",
+        "body": "Clicks over the song, a loop on any section, playback down to half speed, and a confidence level per section that says where to listen first."
+      },
+      "free": {
+        "title": "Free, no sign-up, nothing kept",
+        "body": "No account is needed. Your audio is deleted from the server as soon as its analysis ends; only the timing stays."
+      },
+      "try": {
+        "title": "Try it on a song you know",
+        "body": "One upload is enough to see whether it saves you time."
       }
     },
-    "checkByEar": "Check by ear"
+    "steps": {
+      "eyebrow": "How it works",
+      "title": "Three steps, one song",
+      "more": "The whole pipeline, explained",
+      "upload": {
+        "title": "Upload",
+        "body": "Drop an MP3, OGG, WAV, FLAC, M4A or Opus file, or several at once."
+      },
+      "analyse": {
+        "title": "Analyse",
+        "body": "It waits its turn in the queue, then the engine finds the beats, the BPM, the offset and every tempo change. Follow it from any page."
+      },
+      "check": {
+        "title": "Check and download",
+        "body": "Listen with the clicks, loop and slow down the parts that matter, then download the .osz or copy the [TimingPoints]."
+      }
+    },
+    "recent": {
+      "eyebrow": "Recently timed",
+      "title": "Songs people just timed",
+      "loading": "Loading the latest timings"
+    },
+    "about": {
+      "eyebrow": "Who we are",
+      "title": "A Mides Projects tool, open to everyone",
+      "body": "Overtone is part of Mides Projects and was founded by githalt. It started as a desktop app that timed songs on your own computer, and became this site so anyone can use it from a browser.",
+      "open": "Open source under the MIT licence: the engine and this site, in one repository.",
+      "desktop": "From a desktop tool to the web, with the same engine underneath.",
+      "independent": "Not affiliated with osu! or ppy.",
+      "source": "Source code on GitHub",
+      "mides": "midesprojects.com"
+    },
+    "faq": {
+      "eyebrow": "Questions",
+      "title": "Before you upload",
+      "more": "All questions",
+      "free": {
+        "q": "Is it free?",
+        "a": "Yes. Analysing, listening and downloading cost nothing. There is a daily limit per person to keep the queue fair; signing in with Mides raises it."
+      },
+      "audio": {
+        "q": "Is my audio kept?",
+        "a": "No. The file is deleted from the server as soon as its analysis ends or fails. What stays is the timing and a fingerprint of the file (its SHA-1), so the same song is answered at once next time."
+      },
+      "accuracy": {
+        "q": "How accurate is it?",
+        "a": "On the synthetic benchmark every section lands within 0.05 BPM and 5 ms. On real songs it is a strong first draft: each section shows its confidence, and the ones to check by ear are marked."
+      },
+      "formats": {
+        "q": "Which formats does it take?",
+        "a": "MP3, OGG, WAV, FLAC, M4A and Opus. You can send several songs in one go."
+      },
+      "account": {
+        "q": "Do I need an account?",
+        "a": "No. You can analyse, download and even publish without one. A Mides account keeps your history on every device and raises the daily limit."
+      }
+    },
+    "final": {
+      "title": "Your next map starts with its timing",
+      "body": "Upload a song and have red lines to check in minutes.",
+      "community": "Community",
+      "recent": "All recent timings"
+    }
   },
   "strip": {
     "title": "Analysis",
     "example": "Example",
-    "caption": "An example analysis: four bars of 4/4 at 174 BPM with red lines on bars 1 and 3.",
+    "caption": "An example analysis played in real time: four red lines at 174, 186 and 160 BPM, with one passage in 3/4. The readouts follow the red line under the playhead.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Meter",
     "confidence": "Confidence",
     "high": "High confidence",
     "medium": "Medium",
-    "check": "Check by ear"
+    "check": "Check by ear",
+    "line": "red line {{n}} of {{count}}",
+    "osuRow": "This red line as osu! writes it in [TimingPoints]"
   },
   "analyze": {
     "title": "Analyze a song",
@@ -150,7 +240,8 @@
       "no_pulse": "Overtone found no steady pulse in this audio, so it does not report a BPM.",
       "too_short": "This audio is too short to time: it needs at least two seconds.",
       "too_long": "This audio is longer than the limit.",
-      "refused": "Overtone could not time this audio."
+      "refused": "Overtone could not time this audio.",
+      "bad_stretch": "The stretch chosen holds less than ten seconds of this audio."
     },
     "refusedWhy": "A guessed BPM would look precise and be wrong. Noise, ambient pads and free-time music end here on purpose.",
     "redLines": "Red lines",
@@ -191,15 +282,8 @@
   },
   "profile": {
     "signInFirst": "Sign in to see your profile.",
-    "timingsSoon": "Your timings, ratings and uses will appear here once publishing opens.",
     "onMides": "Open on midesprojects.com",
-    "since": "On Overtone since {{date}}",
-    "stats": {
-      "timings": "Timings",
-      "uses": "Uses",
-      "rating": "Rating"
-    },
-    "timings": "Published timings"
+    "since": "On Overtone since {{date}}"
   },
   "footer": {
     "tagline": "Automatic timing for osu!, measured and honest about its confidence.",
@@ -370,6 +454,7 @@
     "updated": "Last updated {{date}}",
     "date": "27 October 2026",
     "toBeSet": "To be set",
+    "translationNote": "This translation is provided for convenience; the English version prevails.",
     "resultLink": "What “check by ear” means",
     "terms": {
       "title": "Terms of use",
@@ -571,7 +656,7 @@
             "These stay in your browser's local storage and are never sent to the server:"
           ],
           "li": [
-            "mides.theme and mides.lang: light or dark, English or Spanish.",
+            "mides.theme and mides.lang: light or dark, and the language you chose.",
             "overtone.player.volumes: the song and click-track volumes.",
             "overtone.player.latencyMs: your audio latency, if you calibrated it.",
             "overtone.player.listening: the click subdivision, its volume and whether the clicks are moved by your latency.",
@@ -829,7 +914,8 @@
       "logEmpty": "Nothing moderated yet.",
       "kind": {
         "suggestion": "suggestion",
-        "review": "review"
+        "review": "review",
+        "comment": "comment"
       },
       "did": {
         "state": "@{{moderator}} moved it from {{from}} to {{to}}",
@@ -1167,7 +1253,8 @@
       "contrastOn": "Turn high contrast on",
       "contrastOff": "Turn high contrast off",
       "settings": "Open settings",
-      "shortcuts": "Keyboard shortcuts"
+      "shortcuts": "Keyboard shortcuts",
+      "language": "Language: {{name}}"
     },
     "help": {
       "title": "Keyboard shortcuts",
@@ -1240,9 +1327,7 @@
     "reset": "Reset contrast, size, colours and motion",
     "language": {
       "title": "Language",
-      "label": "Language of the site",
-      "en": "English",
-      "es": "Español"
+      "label": "Language of the site"
     },
     "audio": {
       "title": "Player",
@@ -1677,6 +1762,468 @@
       "queued": "Waiting",
       "running": "Being analysed",
       "link": "See the queue"
+    }
+  },
+  "modes": {
+    "names": {
+      "fast": "Fast",
+      "normal": "Normal",
+      "strict": "Strict"
+    },
+    "about": {
+      "fast": "The engine alone, without the Beat This! network: its vote on the red lines and its octave checks are skipped. A fraction of the wait; on real music the octave and the red lines are checked less.",
+      "normal": "The usual analysis: the engine, then the Beat This! vote and the octave checks.",
+      "strict": "For now the same analysis as Normal: nothing extra has been measured to help yet. A finer check of each red line will go here."
+    },
+    "options": {
+      "title": "Options (optional)",
+      "changed": "changed",
+      "defaults": "defaults",
+      "mode": "Mode",
+      "modeNote": "Choose by how long you want to wait. The same song in another mode is another result.",
+      "tempo": "Tempo",
+      "unknown": "Don't know",
+      "constant": "One BPM throughout",
+      "changes": "The tempo changes",
+      "meter": "Beats per bar",
+      "beats_one": "{{count}} beat per bar",
+      "beats_other": "{{count}} beats per bar",
+      "bpm": "BPM",
+      "about": "About",
+      "range": "Between",
+      "aboutBpm": "Approximate BPM",
+      "fromBpm": "Lowest BPM",
+      "toBpm": "Highest BPM",
+      "stretch": "Only a stretch (start – end)",
+      "from": "Start (m:ss)",
+      "to": "End (m:ss)",
+      "stretchNote": "Leave both empty for the whole song. The result's times stay in the song's own timeline.",
+      "stretchOne": "A stretch can be chosen for one song at a time.",
+      "honest": "Hints never override the audio. An expected tempo picks the octave the engine reads the song at, and a meter fills only the bars the engine could not prove; where the audio disagrees with a hint, the result says so.",
+      "reset": "Back to the defaults"
+    },
+    "errors": {
+      "bpm": "A BPM is a number from 30 to 400.",
+      "range": "The first BPM of the range has to be the lower one.",
+      "meter": "Beats per bar is a whole number from 1 to 16.",
+      "stretch": "Write the stretch as m:ss or seconds, with an end.",
+      "stretchBatch": "A stretch can be chosen for one song at a time: clear it, or send one song.",
+      "stretchPast": "The stretch ends after the song does.",
+      "stretchShort": "The stretch has to be at least 10 seconds long.",
+      "server": "The server refused the options: {{message}}"
+    },
+    "estimate": {
+      "label": "Estimate:",
+      "left": "Done in",
+      "seconds_one": "{{count}} s",
+      "seconds_other": "{{count}} s",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "about": "≈ {{value}}",
+      "range": "≈ {{low}} – {{high}}",
+      "atLeast": "at least {{value}}",
+      "why": "an estimate from the measured cost per minute of audio, with one worker",
+      "queueNote": "The times to finish are estimates (≈): what one analysis was measured to cost per minute of audio, for its mode, with one worker, so a range and never a promise. When a song's length is not known, the ones behind it read \"at least\"."
+    },
+    "result": {
+      "title": "How it was analysed",
+      "noVote": "(The Beat This! model was not available to the worker, so it did not vote.)",
+      "stretch": "Only {{from}} – {{to}} of the song was analysed. The red lines and every time here are in the song's own timeline; outside that stretch nothing was measured.",
+      "hints": "Your hints:",
+      "aboutBpm": "about {{bpm}} BPM",
+      "rangeBpm": "{{low}}–{{high}} BPM",
+      "stretchShort": "only {{from}}–{{to}}"
+    },
+    "checks": {
+      "tempo_not_constant_one": "You said one BPM throughout, and the engine found {{count}} tempo.",
+      "tempo_not_constant_other": "You said one BPM throughout; the engine found {{count}} different tempos. Its red lines are kept: listen where they change.",
+      "tempo_constant": "You said the tempo changes; the engine found one BPM ({{bpm}}) throughout.",
+      "bpm_far": "You expected about {{expected}} BPM; the engine reads {{bpm}}.",
+      "bpm_outside_one": "{{count}} red line falls outside your range of {{low}}–{{high}} BPM.",
+      "bpm_outside_other": "{{count}} red lines fall outside your range of {{low}}–{{high}} BPM.",
+      "double": "Doubled it would fit: try ×2 in the adjustments.",
+      "half": "Halved it would fit: try ÷2 in the adjustments.",
+      "octave_window": "Your tempo chose the octave the engine read the song at ({{low}}–{{high}} BPM).",
+      "octave_window_moved": "Your tempo chose the octave the engine read the song at ({{low}}–{{high}} BPM). Without it, the engine would have read it at {{bpm}} BPM.",
+      "meter_differs": "You said {{meter}} beats per bar; where the engine could prove the bar it found {{found}}, and kept its own.",
+      "meter_applied_one": "{{count}} red line had no bar the engine could prove: it uses your {{meter}} beats per bar.",
+      "meter_applied_other": "{{count}} red lines had no bar the engine could prove: they use your {{meter}} beats per bar."
+    },
+    "reanalyse": {
+      "title": "Analyse again",
+      "note": "The same song in another mode, with the same hints. This browser sends the file it still holds, or asks you to pick it again and checks it is the same audio first. Asked for before, it is answered from the stored result.",
+      "go": "Analyse in {{mode}}",
+      "pick": "Pick {{name}} again to send it: it is checked against this analysis first.",
+      "mismatchFile": "{{name}} is not the audio of this analysis.",
+      "mismatch": "That file is not the audio of the analysis it was meant to re-analyse.",
+      "related": "Linked analyses",
+      "from": "The original",
+      "into": "Analysed again",
+      "compare": "Compare"
+    }
+  },
+  "links": {
+    "title": "Linked accounts",
+    "loadFailed": "Your linked accounts could not be loaded. Reload the page to try again.",
+    "unlink": "Unlink",
+    "back": "Back to your profile",
+    "discord": {
+      "linked": "Linked. The Overtone bot knows you, and /time-song counts on your account.",
+      "notLinked": "Not linked. Link it to use the Overtone bot with your account and its quota.",
+      "onMides": "Link on Mides",
+      "code": "Link with the bot",
+      "codeHint": "Type this in Discord, to the Overtone bot, within {{minutes}} minutes:",
+      "unavailable": "Linking Discord is not available on this server yet.",
+      "notify": "Send me a Discord DM when an analysis ends",
+      "notifyHint": "From the Overtone bot, for the songs of this account. You can turn it off here or with /notify off.",
+      "botOff": "The Overtone bot is not running on this server yet: nothing is sent until it is."
+    },
+    "osu": {
+      "title": "Linking osu!",
+      "link": "Link osu!",
+      "notLinked": "Not linked.",
+      "unavailable": "Linking osu! is not available on this server yet.",
+      "ranked_one": "{{count}} ranked map",
+      "ranked_other": "{{count}} ranked maps",
+      "scope": "Overtone asks osu! only for your public identity (the identify scope): your id, name, picture and ranked map count, read once. It keeps no osu! token and never acts on your account.",
+      "working": "Linking your osu! account…",
+      "denied": "osu! was not linked: the request was declined on osu!.",
+      "stateMissing": "This link did not start in this browser, or took too long. Start again from your profile.",
+      "failed": "osu! could not be linked: {{message}}"
+    }
+  },
+  "social": {
+    "nav": {
+      "timers": "Timers"
+    },
+    "title": "What people did with this timing",
+    "failed": "That did not work. Try again in a moment.",
+    "cancel": "Cancel",
+    "more": "Show more",
+    "stars": {
+      "title": "Stars",
+      "count_one": "{{count}} rating",
+      "count_other": "{{count}} ratings",
+      "pick_one": "{{count}} star",
+      "pick_other": "{{count}} stars",
+      "yours": "Your rating",
+      "yoursHint": "Rate how well it fits the song. One rating per account; you can change it.",
+      "again": "Press your rating again to take it back.",
+      "own": "This is your timing: you cannot rate it.",
+      "signIn": "Sign in to rate it",
+      "notRanked_one": "\"Best rated\" counts a timing from {{count}} rating on.",
+      "notRanked_other": "\"Best rated\" counts a timing from {{count}} ratings on."
+    },
+    "uses": {
+      "title": "Used in maps",
+      "count_one": "Used by {{count}} person",
+      "count_other": "Used by {{count}} people",
+      "short_one": "{{count}} use",
+      "short_other": "{{count}} uses",
+      "mark": "I used this",
+      "marked": "You used it",
+      "save": "Save",
+      "editLink": "Change map link",
+      "unmark": "Unmark",
+      "link": "Your map on osu! (optional)",
+      "linkHint": "An osu.ppy.sh beatmapset link. It is shown as written, as a link, next to your name.",
+      "badLink": "That is not an osu.ppy.sh beatmapset link.",
+      "own": "This is your timing: uses count only from other people.",
+      "signIn": "Sign in to say you used it",
+      "goneAccount": "a deleted account"
+    },
+    "collections": {
+      "title": "Collections",
+      "eyebrow": "Collection",
+      "description": "A list of published timings someone put together on Overtone.",
+      "publicTitle": "Public collections",
+      "public": "Public",
+      "private": "Private",
+      "count_one": "{{count}} timing",
+      "count_other": "{{count}} timings",
+      "none": "You have no collections yet. Make one below.",
+      "noneYet": "You have no collections yet.",
+      "newName": "New collection name",
+      "newPlaceholder": "New collection, e.g. \"My mapset\"",
+      "create": "Create",
+      "privateNote": "A new collection is private.",
+      "manage": "Manage your collections",
+      "signIn": "Sign in to keep this in a collection",
+      "intro": "Your lists of published timings. A private one opens only for you; a public one has its own page and shows on your profile.",
+      "rename": "Rename",
+      "save": "Save",
+      "makePublic": "Make public",
+      "makePrivate": "Make private",
+      "delete": "Delete",
+      "deleteYes": "Delete it",
+      "full": "That collection is full.",
+      "tooMany": "You have as many collections as an account can keep.",
+      "empty": "Nothing here yet, or every timing in it was taken back by whoever published it.",
+      "notFoundTitle": "Collection not found",
+      "notFound": "This collection does not exist, or it is private."
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "No comments yet.",
+      "signIn": "Sign in to comment",
+      "body": "Your comment",
+      "placeholder": "What did you notice? Say where with a time.",
+      "at": "At (m:ss)",
+      "atHint": "Optional: a time in the song, so a click on it plays from there.",
+      "here": "Player position",
+      "post": "Comment",
+      "badTime": "That is not a time inside the song (m:ss).",
+      "seek": "Move the player here",
+      "seekTo": "Move the player to {{at}}",
+      "delete": "Delete",
+      "deleteConfirm": "Delete your comment?",
+      "deleteYes": "Delete",
+      "openTiming": "Open its timing"
+    },
+    "errors": {
+      "TOO_LONG": "That is too long.",
+      "TOO_SHORT": "Write something first.",
+      "BAD_TIME": "That is not a time inside the song.",
+      "RATE_LIMITED": "Too many at once. Wait a moment."
+    },
+    "sort": {
+      "label": "Order",
+      "new": "Newest",
+      "rated": "Best rated",
+      "used": "Most used",
+      "ratedNote_one": "Only timings with at least {{count}} rating, ordered so that many good ratings beat a few perfect ones.",
+      "ratedNote_other": "Only timings with at least {{count}} ratings, ordered so that many good ratings beat a few perfect ones.",
+      "usedNote": "Timings people said they used in a map, the most used first.",
+      "ratedEmpty": "No timing has enough ratings to be ranked yet.",
+      "usedEmpty": "Nobody has said they used one yet."
+    },
+    "timers": {
+      "title": "Timers",
+      "subtitle": "The people whose published timings others used in their maps, or rated best. Small and honest: there is a minimum to enter.",
+      "link": "Ranking of timers",
+      "by": {
+        "uses": "By uses",
+        "stars": "By stars"
+      },
+      "minUses_one": "A timer enters with {{count}} use of their timings by other people.",
+      "minUses_other": "A timer enters with {{count}} uses of their timings by other people.",
+      "minStars_one": "A timer enters with {{count}} rating received.",
+      "minStars_other": "A timer enters with {{count}} ratings received.",
+      "published_one": "{{count}} published",
+      "published_other": "{{count}} published",
+      "empty": "Nobody has reached the minimum yet.",
+      "howOrdered": "Stars are ordered by an average that counts three more ratings of 3, so a few perfect ratings do not beat many good ones. Private profiles are left out."
+    },
+    "profile": {
+      "title": "Timer",
+      "description": "@{{name}}'s published timings on Overtone, with their stars, uses and badges.",
+      "edit": "Edit your profile",
+      "publicPage": "Your public page",
+      "notFoundTitle": "Profile not found",
+      "notFound": "Nobody here goes by that name, or their profile is private.",
+      "privateNote": "Your profile is private: only you see this page.",
+      "timings": "Published timings",
+      "badges": "Badges",
+      "noBadges": "No badges yet: they come with publishing.",
+      "noTimings": "Nothing published yet.",
+      "noOwnTimings": "You have not published a timing yet. Publish one from its result or your history.",
+      "isPublic": "Your profile is public",
+      "isPrivate": "Your profile is private",
+      "privateHint": "A private profile is not shown to anyone else (its page says \"not found\") and you leave the ranking of timers. Your published timings stay published, with your name on them.",
+      "makePrivate": "Make it private",
+      "makePublic": "Make it public",
+      "tabs": {
+        "timings": "Timings",
+        "collections": "Collections"
+      },
+      "totals": {
+        "published": "Published",
+        "timed": "Songs timed",
+        "uses": "Uses",
+        "rating": "Stars"
+      }
+    },
+    "badges": {
+      "first-timing": {
+        "name": "First timing",
+        "why": "Published a timing."
+      },
+      "published-10": {
+        "name": "10 published",
+        "why": "Published ten timings."
+      },
+      "published-50": {
+        "name": "50 published",
+        "why": "Published fifty timings."
+      },
+      "suggestion-accepted": {
+        "name": "Idea accepted",
+        "why": "A suggestion of theirs was planned, started or done."
+      },
+      "used-by-others": {
+        "name": "Used by others",
+        "why": "Someone else said they used one of their timings in a map."
+      },
+      "ranked-match": {
+        "name": "Ranked match",
+        "why": "A timing matched the ranked map of its song."
+      }
+    }
+  },
+  "platform": {
+    "tokens": {
+      "eyebrow": "Settings",
+      "title": "API tokens",
+      "intro": "A personal token lets a script, a bot or a community tool call the Overtone API as you, without a browser. Give each tool its own, with only the scopes it needs, and revoke it when you stop using it.",
+      "docs": "How to use the API",
+      "fromProfile": "Personal API tokens",
+      "yours": "Your tokens",
+      "count_one": "{{count}} of {{max}}",
+      "count_other": "{{count}} of {{max}}",
+      "none": "No tokens yet.",
+      "loadFailed": "Your tokens could not be loaded. Try again in a moment.",
+      "never": "never",
+      "created": "made {{when}}",
+      "lastUsed": "last used {{when}}",
+      "revoke": "Revoke",
+      "revokeConfirm": "Revoke it now",
+      "keep": "Keep it",
+      "revokeFailed": "It could not be revoked. Try again.",
+      "newTitle": "New token",
+      "name": "Name",
+      "namePlaceholder": "e.g. my Discord bot",
+      "scopes": "What it may do",
+      "scope": {
+        "read_analyses": "Read your own analyses, their [TimingPoints], CSV and versions.",
+        "upload": "Send songs to be analysed as your account, within its daily quota.",
+        "read_timings": "Read published timings, with the token's own rate limit."
+      },
+      "make": "Make token",
+      "making": "Making…",
+      "note": "The token is shown once and Overtone keeps only a hash of it. It never manages tokens, publishes, deletes or posts: those stay on the website. Signing out does not revoke it.",
+      "problems": {
+        "name": "Give it a name, so you know later what uses it.",
+        "long": "A name is at most {{max}} characters.",
+        "scopes": "Choose at least one thing it may do.",
+        "limit": "You have the most tokens an account can have. Revoke one first.",
+        "failed": "The token could not be made. Try again in a moment."
+      },
+      "madeTitle": "“{{name}}” is ready",
+      "madeOnce": "Copy it now: it will not be shown again. Anyone who has it can act as you within its scopes, so keep it out of public code.",
+      "copy": "Copy token",
+      "copied": "Copied",
+      "copyFailed": "Could not copy: select it by hand",
+      "done": "I have copied it",
+      "tryIt": "Try it from a terminal:",
+      "settingsNote": "Personal tokens let your own scripts and bots use the API as you. Unlike the settings above they belong to your account, not to this browser, so they need a sign-in.",
+      "manage": "Manage API tokens"
+    },
+    "developers": {
+      "eyebrow": "For developers",
+      "title": "The Overtone API",
+      "intro": "Everything the website does goes through this API. With a personal token, your own scripts and bots can read your analyses, send songs and read the published timings.",
+      "footer": "API for developers",
+      "startTitle": "Getting started",
+      "step1": "Sign in and make a personal token with the scopes your tool needs.",
+      "step2": "Send it in the Authorization header as \"Bearer <token>\" from your script, bot or server.",
+      "step3": "Call the operations marked with a scope below. The rest are the website's own.",
+      "tokensLink": "Your tokens",
+      "ruleScopes": "A token reaches only the operations of its scopes; anything else answers 403. A revoked token answers 401.",
+      "ruleLimit": "Each token has its own rate limit: 120 requests a minute, and the uploads and reads have their own limits counted per token. A 429 says how long to wait in Retry-After.",
+      "ruleBrowser": "The API answers no cross-origin browser requests, so a token is for scripts and servers, not for another website's page. Never put one in public code.",
+      "ruleAudio": "Uploaded audio is deleted as soon as it is analysed and is never served back.",
+      "base": "Base path",
+      "englishNote": "the reference is in English, as the API's own document is.",
+      "filter": "Show operations",
+      "show": {
+        "all": "All",
+        "token": "With a token"
+      },
+      "overview": "About this API",
+      "tokenHint": "The token scope this operation needs",
+      "anyToken": "any token",
+      "browserOnly": "Website only: not reachable with a token.",
+      "params": "Parameters",
+      "required": "required",
+      "body": "Body",
+      "responses": "Responses",
+      "schemas": "Schemas"
+    },
+    "versions": {
+      "title": "Versions",
+      "note": "Every analysis of this same audio you made, and the adjustments you saved. A saved version keeps only its ×2 / ÷2 and nudge: the timing itself is the engine's.",
+      "engine": "as the engine read it",
+      "thisOne": "this one",
+      "now": "as shown now",
+      "open": "Open",
+      "labelPlaceholder": "A note for this version (optional)",
+      "save": "Save {{adjustment}} as a version",
+      "saved": "This adjustment is saved as a version.",
+      "howToSave": "Try ×2, ÷2 or a nudge above, then save it here to keep it.",
+      "saveFailed": "The version could not be saved. Try again.",
+      "limit": "This timing has the most saved versions it can keep. Delete one first.",
+      "loadFailed": "The versions could not be loaded.",
+      "apply": "Apply",
+      "forget": "Delete the version {{name}}",
+      "compare": "Compare two versions",
+      "loading": "Reading the other version…",
+      "otherFailed": "The other version could not be read.",
+      "same": "These two versions have the same red lines.",
+      "summary": "Red lines move by up to {{ms}} ms and {{bpm}} BPM; {{onlyA}} only in A, {{onlyB}} only in B.",
+      "dTime": "B − A ms",
+      "dBpm": "B − A BPM",
+      "none": "none"
+    },
+    "copy": {
+      "hint": "Tick red lines to copy them as [TimingPoints] rows (Shift-click for a stretch).",
+      "ticked_one": "{{count}} red line ticked",
+      "ticked_other": "{{count}} red lines ticked",
+      "copyTicked": "Copy rows",
+      "clear": "Clear",
+      "all": "Tick every red line",
+      "tick": "Tick red line {{n}}",
+      "one": "Copy this red line as a [TimingPoints] row",
+      "copied": "Copied: paste it under [TimingPoints]",
+      "failed": "Could not copy"
+    },
+    "image": {
+      "title": "Image and embed",
+      "png": "Tempo map as PNG",
+      "svg": "Tempo map as SVG",
+      "embed": "Copy embed code",
+      "copied": "Embed code copied",
+      "copyFailed": "Could not copy",
+      "preview": "See the embed",
+      "failed": "The image could not be made in this browser. The SVG may still work.",
+      "note": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. The embed shows this timing's card on another site, with a link back here.",
+      "notePrivate": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. Publish the timing to embed it on another site."
+    },
+    "embed": {
+      "title": "Timing",
+      "loading": "Loading the timing…",
+      "notFound": "This timing is not published.",
+      "failed": "The timing could not be loaded.",
+      "chartAlt": "The tempo map: red lines and tempo over the song",
+      "more_one": "and {{count}} more red line",
+      "more_other": "and {{count}} more red lines",
+      "open": "Open on Overtone"
+    },
+    "batch": {
+      "title": "The whole batch",
+      "adjust": "One adjustment for every song",
+      "adjustNote": "×2, ÷2 or a nudge here apply to every song of the batch in both downloads. Check each song by ear on its own page.",
+      "adjusted": "Every song is written {{adjustment}}: the downloads say so in a comment line. Check them by ear.",
+      "osz_one": "Download {{count}} song as .osz (zip)",
+      "osz_other": "Download all {{count}} songs as .osz (zip)",
+      "oszBusy": "Building .osz {{done}} of {{total}}…",
+      "oszNote": "Each .osz carries its song, built here from the files you picked, one at a time. Up to {{max}} MB of audio in one zip.",
+      "tooLarge": "These songs come to {{mb}} MB, over the {{max}} MB one zip can carry here. Download their .osz one by one from their pages.",
+      "oszFailed": "The .osz files could not be built in this browser.",
+      "oszSome": "Left out, their .osz could not be built: {{names}}"
+    },
+    "pwa": {
+      "sharedAdded": "The song you shared is on the list. Check it and press Analyze.",
+      "sharedNone": "Nothing usable arrived from the share: share an MP3, OGG, WAV, FLAC, M4A or Opus file, or pick it below."
     }
   }
 }

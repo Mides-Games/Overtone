@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useSettings } from '../context/SettingsContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { fold, globalShortcut, rankCommands } from '../lib/commands.js'
+import { BUNDLED, LANGS } from '../lib/languages.js'
 import { recentAnalyses } from '../lib/recent.js'
 import { IN_FLIGHT } from '../lib/tracker.js'
 import { useTracker } from '../lib/tracking.js'
@@ -106,9 +107,9 @@ function useCommands({ openHelp }) {
   const tray = useTracker()
 
   return useMemo(() => {
-    const other = i18n.language === 'es' ? 'en' : 'es'
-    // The other language's name of a thing, so "inicio" finds Home on the English site.
-    const also = (key) => [i18n.t(key, { lng: other })]
+    // A thing's name in the two bundled languages besides the current one, so
+    // "inicio" finds Home on the English site and "home" on any other.
+    const also = (key) => BUNDLED.filter((lng) => lng !== i18n.language).map((lng) => i18n.t(key, { lng }))
     const go = (to) => () => navigate(to)
 
     const analyses = []
@@ -156,7 +157,6 @@ function useCommands({ openHelp }) {
     const themeAction = (value) =>
       action(`theme-${value}`, `palette.actions.theme.${value}`, () => setTheme(value), theme === value ? { hint: t('palette.current') } : {})
     const actions = [
-      action('language', 'nav.changeLanguage', () => i18n.changeLanguage(other)),
       themeAction('dark'),
       themeAction('light'),
       themeAction('system'),
@@ -172,6 +172,25 @@ function useCommands({ openHelp }) {
           })
         : action('sign-in', 'nav.signIn', go('/login')),
     ]
+    // One action per language (W12.16), after the others so ten do not crowd
+    // the empty list; each also answers to its name in English and in the
+    // site's language ("german", "alemán") and to its code.
+    const named = (lng, code) => {
+      try {
+        return new Intl.DisplayNames([lng], { type: 'language' }).of(code)
+      } catch {
+        return code
+      }
+    }
+    for (const lang of LANGS) {
+      actions.push({
+        id: `action:language-${lang.code}`,
+        label: t('palette.actions.language', { name: lang.name }),
+        hint: lang.code === i18n.language ? t('palette.current') : t('palette.groups.action'),
+        keywords: [lang.code, named('en', lang.code), named(i18n.language, lang.code), t('nav.changeLanguage'), ...also('nav.changeLanguage')],
+        run: () => i18n.changeLanguage(lang.code),
+      })
+    }
     return [...analyses, ...pages, ...actions]
   }, [t, i18n, navigate, account, signOut, theme, setTheme, settings.contrast, update, tray, openHelp])
 }

@@ -1,4 +1,5 @@
 import { HttpError } from './http-error.js';
+import { LIST_SORTS, OFFSET_MAX } from './social.js';
 
 /**
  * Published timings (W3.27, W5.1) and a person's history (W3.26): what each
@@ -63,6 +64,16 @@ export const decodeCursor = (raw) => {
   return { micros: BigInt(match[1]), id: match[2] };
 };
 
+/** An offset cursor, `o<n>`: the pages of an order by numbers (W6). */
+export const encodeOffset = (offset) => `o${offset}`;
+
+export const decodeOffset = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  const match = typeof raw === 'string' ? /^o(\d{1,5})$/.exec(raw) : null;
+  if (!match || Number(match[1]) > OFFSET_MAX) throw new HttpError(400, 'cursor is not one this API gave.', 'BAD_CURSOR');
+  return Number(match[1]);
+};
+
 /** A Date (memory) as microseconds, as a BigInt: what a cursor compares. */
 export const microsOf = (date) => BigInt(new Date(date).getTime()) * 1000n;
 
@@ -107,6 +118,13 @@ export const cleanQuery = (raw) => {
  * silent "everything".
  */
 export const listFilters = (query = {}, { kind = 'recent' } = {}) => {
+  // The recent list's order (W6): newest, best rated or most used. The two
+  // by numbers page by offset (utils/social.js LIST_SORTS says why).
+  let sort = 'new';
+  if (kind === 'recent' && query.sort !== undefined && query.sort !== '') {
+    if (!LIST_SORTS.includes(query.sort)) throw new HttpError(400, `sort is one of ${LIST_SORTS.join(', ')}.`, 'BAD_FILTER');
+    sort = query.sort;
+  }
   const filters = {
     q: cleanQuery(query.q),
     bpmMin: number(query.bpmMin, 'bpmMin'),
@@ -115,7 +133,11 @@ export const listFilters = (query = {}, { kind = 'recent' } = {}) => {
     status: null,
     from: null,
     to: null,
-    cursor: decodeCursor(query.cursor),
+    sort,
+    cursor: sort === 'new' ? decodeCursor(query.cursor) : null,
+    offset: sort === 'new' ? 0 : decodeOffset(query.cursor),
+    // Set by a profile's list, never read from the query.
+    accountId: null,
     limit: PAGE_SIZE,
   };
   if (query.tempo !== undefined && query.tempo !== '') {
@@ -150,6 +172,7 @@ export const matches = (row, filters) => {
   if (filters.bpmMax !== null && (bpm === null || bpm > filters.bpmMax)) return false;
   if (filters.tempo && isVariable(row.result) !== (filters.tempo === 'variable')) return false;
   if (filters.status && row.status !== filters.status) return false;
+  if (filters.accountId && row.accountId !== filters.accountId) return false;
   if (filters.from && row.createdAt < filters.from) return false;
   if (filters.to && row.createdAt >= filters.to) return false;
   if (filters.q) {

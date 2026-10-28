@@ -213,6 +213,27 @@ workers). Swap en 0 en todos.
 - **Block IO 100** en los workers: decodificar audio no tiene que competir con
   los mundos de Minecraft escribiendo a disco.
 
+### El bot de Discord (`overtone-bot`, W9.3, 2026-10-27)
+
+Un octavo y un noveno server, cuando existan los secretos: `overtone-bot` (master) y
+`overtone-bot-exp` (experimental), con el egg **bot**. 256 MB de RAM, 50 % de CPU,
+1 GB de disco. **No necesita allocation propia:** solo abre conexiones hacia afuera
+(el gateway de Discord y la API). Hasta que tenga `DISCORD_TOKEN`, `BOT_TOKEN` y
+`OVERTONE_API`, arranca, dice `[overtone-bot] OFF: ... not set` y se detiene (sale
+con 0, sin loop de reinicios). Cada entorno tiene **su propia aplicación de Discord**
+y su propio `BOT_TOKEN`: un bot de staging no habla con la API de producción.
+
+| Server | Variables propias |
+|---|---|
+| `overtone-bot` | `DISCORD_TOKEN` (Developer Portal → la aplicación → Bot), `BOT_TOKEN` (el mismo que `overtone-api`, distinto de `WORKER_TOKEN`), `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>` (directo, nunca por `overtone-web`, que no reenvía `/api/internal`), `DISCORD_APP_ID` (con él, cada arranque registra los comandos); opcionales `BOT_POLL_MS` (3000), `BOT_DM_POLL_MS` (15000) |
+| `overtone-bot-exp` | Lo mismo contra `overtone-api-exp`, con otra aplicación de Discord y `DISCORD_GUILD_ID` del server de pruebas (los comandos aparecen al instante y solo ahí) |
+
+En `overtone-api` y `overtone-api-exp` se agregan `BOT_TOKEN` y, cuando exista la app
+de osu!, `OSU_CLIENT_ID`, `OSU_CLIENT_SECRET` y `OSU_REDIRECT_URI`
+(`SITE_URL/link/osu`, una app de osu! por entorno). Todo lo que hay que registrar en
+Discord, osu! y Mides está en `docs/bot.md`. Rotar `BOT_TOKEN` es cambiarlo en los dos
+servers del entorno y reiniciarlos.
+
 ### Variables por server
 
 En todos: `BRANCH` según la tabla, `AUTO_UPDATE=1`, `USER_UPLOAD=0` y
@@ -379,12 +400,13 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
 
 En el panel, el release es reiniciar. Push a GitHub no despliega nada solo.
 
-1. `feat/*` → PR a `experimental` → merge.
+Desde el 2026-10-28 hay una sola rama, `master` (decisión del dueño). Los
+servers que antes seguían `experimental` (`overtone-*-exp`) siguen `master`.
+
+1. Una rama de trabajo → PR a `master` → merge.
 2. En el panel, reiniciar `overtone-api-exp`, `overtone-worker-exp` y
    `overtone-web-exp`, en ese orden: la migración va primero.
-3. Probar en staging.
-4. PR `experimental` → `master` → merge → reiniciar `overtone-api`,
-   `overtone-worker` y `overtone-web`.
+3. Probar en el sitio; los ejecutables del release salen de `scripts/release.py`.
 
 Esto hace `start.sh` en cada arranque, con `AUTO_UPDATE=1`. Es la lógica que
 tenía `deploy/overtone-update.sh` en la VPS:

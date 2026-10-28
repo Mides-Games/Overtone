@@ -25,6 +25,11 @@ commit messages are English; only the website's own UI strings stay bilingual
   accuracy claim names its measurement; a gate change names the gates run
   and their result.
 - One logical change per commit. A DSP change and a UI change are two commits.
+- **`master` is the only long-lived branch** (owner's decision, 2026-10-28: `experimental`
+  and the `parked/` branches were merged and deleted; the parked desktop app lives on as
+  the tags `v3-desktop-app` and `v3-desktop-full`). Work happens on a short branch, lands
+  in `master` through a PR (required for everyone, admins included) and the branch is
+  deleted.
 - Never commit on the default branch when the change is in progress; branch first.
   Branch names share the subject's shape without the description:
   `type/short-topic`, e.g. `chore/repo-layout`, `fix/octave-hint`.
@@ -35,7 +40,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## CI
 
 - **GitHub Actions deploys, and only deploys** (owner's decision, 2026-10-26). One
-  workflow, `.github/workflows/deploy.yml`: a push to `experimental` asks the
+  workflow, `.github/workflows/deploy.yml`: a push to `master` asks the
   owner's server to update, signing in as `overtone-deploy`, whose key can start
   `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
   pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
@@ -50,7 +55,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (525 on 2026-10-27)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (538 on 2026-10-28)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -101,19 +106,28 @@ cargo run --release -q -p overtone-bench -- map        # no false changes
 
 Every mode reads the golden vectors, so a new golden fixture must pass all five.
 
-And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
+And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (108 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (183 on 2026-10-27)
+pnpm --dir site/api test                               # all pass (173 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (238 on 2026-10-28)
 pnpm --dir site/web build                              # the site builds
+pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
 ```
 
-`bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
-the number stated here to them, so a test that lands without its count moving is named.
+`bench/facts.py` counts the `test(` calls in `site/api/test`, `site/web/test` and `bot/test`
+and holds the number stated here to them, so a test that lands without its count moving is named.
 Their PostgreSQL paths run against an
 in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
 `DATABASE_URL` is set.
+
+The release build is a build step, not a gate: it builds a release's executables into
+`dist/release/<version>/` (gitignored), smoke-tests the frozen engine once, and publishes
+only with `--publish`, from `master` (docs/release.md):
+
+```bash
+.venv/Scripts/python.exe scripts/release.py <version>   # CLI .exe, engine and site ZIPs, SHA256SUMS, notes
+```
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral
 memory (peak working set, read from outside with the one-liner in the mode's doc) and
 resampling speed, which no 44.1 kHz fixture exercises.
@@ -161,7 +175,9 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
    A field the user did not ask to change comes out byte-identical, CRLF included.
 6. No telemetry, no update checks, no third-party APIs. The engine, the command line
    and the gates run fully offline. The website talks only to its own API and worker
-   (`site/`, `docs/site.md`); the measurement server (`overtone_server.py`) only answers
+   (`site/`, `docs/site.md`), to Mides for sign-in, and to osu!'s OAuth only when a
+   person links their osu! account (W9.2, `identify`, one read); the Discord bot
+   (`bot/`, `docs/bot.md`) talks to Discord and to that API; the measurement server (`overtone_server.py`) only answers
    and makes no outbound calls. The desktop app was parked on 2026-10-26
    (`parked/desktop-app`, tag `v3-desktop-app`); editing tools come back on the web (W7).
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
@@ -172,12 +188,14 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 The root holds almost nothing on purpose: `README.md`, the workspaces
 (`Cargo.toml`, `Cargo.lock`; `package.json`, `pnpm-workspace.yaml`,
-`pnpm-lock.yaml` for the site), the agent rules (`AGENTS.md`, `CLAUDE.md` —
+`pnpm-lock.yaml` for the site and the bot), the agent rules (`AGENTS.md`, `CLAUDE.md` —
 identical) and the Git plumbing (`.gitignore`, `.gitattributes`). Everything
 else lives in a folder:
 
 ```
 site/                     the website, Overtone's only interface (docs/site.md)
+bot/                      the Discord bot (discord.js): /time-song and friends through the
+                          API's /api/internal/bot; scripts/register.mjs (docs/bot.md)
 python/                   v3 engine, osu! I/O and the command line
   overtone.py               engine and command line
   overtone_paths.py         where Overtone's files live, and the release's version
@@ -228,12 +246,16 @@ crates/                   the v4 Rust workspace
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
                           its systemd timer and setup-deploy-user.sh (docs/server.md);
                           eggs/ and web/ host the site (docs/deploy.md)
+scripts/                  release.py: a release's executables, checksums and notes, and
+                          `bump` to set every version; overtone-engine.spec freezes the
+                          Python engine's command line; requirements-release.txt pins
+                          PyInstaller (docs/release.md)
 .github/workflows/        deploy.yml only: a push asks the server to update
 docs/                     audit, stack evaluation, architecture, UI, DSP, roadmap,
                           ML evaluation, naming, precision plan, MSI distribution
                           (historical: the installer was parked), comfort features,
                           audit backlog, other languages, web platform, site, workflow,
-                          library server, timeline
+                          library server, releases, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

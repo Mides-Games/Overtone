@@ -40,7 +40,8 @@
         var root = document.documentElement
         var theme = localStorage.getItem('mides.theme')
         if (theme === 'light' || (theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches)) root.classList.remove('dark')
-        if (localStorage.getItem('mides.lang') === 'es') root.lang = 'es'
+        var lang = localStorage.getItem('mides.lang')
+        if (['en', 'es', 'fr', 'de', 'it', 'pl', 'pt-BR', 'ja', 'ko', 'ru'].indexOf(lang) >= 0) root.lang = lang
         var s = JSON.parse(localStorage.getItem('overtone.settings') || '{}') || {}
         if (s.contrast === 'more') root.classList.add('contrast-more')
         if (s.palette === 'cb') root.classList.add('palette-cb')

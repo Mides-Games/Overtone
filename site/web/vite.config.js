@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 import { readChangelog, timelinePath } from './scripts/changelog.mjs'
+import { openapiPath, readOpenApi } from './scripts/openapi.mjs'
 
 /**
  * The web is served from the same origin as the API: in development Vite
@@ -33,8 +34,27 @@ function changelog() {
   }
 }
 
+/**
+ * `virtual:openapi`: the API's reference (site/api/docs/openapi.yaml) as the
+ * `/developers` page reads it (scripts/openapi.mjs, W12.20). Read when asked,
+ * like the changelog, so the page is always the document as it is.
+ */
+function openapi() {
+  const id = 'virtual:openapi'
+  const resolved = `\0${id}`
+  return {
+    name: 'overtone-openapi',
+    resolveId: (source) => (source === id ? resolved : null),
+    load(source) {
+      if (source !== resolved) return null
+      this.addWatchFile(openapiPath)
+      return `export default ${JSON.stringify(readOpenApi())}`
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), changelog()],
+  plugins: [react(), tailwindcss(), changelog(), openapi()],
   server: {
     port: 5173,
     strictPort: true,

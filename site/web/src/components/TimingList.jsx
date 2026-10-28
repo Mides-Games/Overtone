@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
+import { ratingLabel } from '../lib/social.js'
 import { bpmLabel, timingPath } from '../lib/timings.js'
 import Avatar from './Avatar.jsx'
 
@@ -41,6 +42,18 @@ function TimingRow({ timing }) {
           {timing.variable && <span className="chip-amber mr-1.5 px-1.5 py-0 align-middle">{t('timings.variable')}</span>}
           {t('timings.redLines', { count: timing.redLines })}
         </p>
+        {/* W6: stars and uses, when the list carries them and there is something to say. */}
+        {(timing.rating?.count > 0 || timing.uses > 0) && (
+          <p className="readout text-caption text-dim">
+            {timing.rating?.count > 0 && (
+              <span title={t('social.stars.count', { count: timing.rating.count })}>
+                <span className="text-amber">★</span> {ratingLabel(timing.rating.average)} ({timing.rating.count})
+              </span>
+            )}
+            {timing.rating?.count > 0 && timing.uses > 0 && ' · '}
+            {timing.uses > 0 && t('social.uses.short', { count: timing.uses })}
+          </p>
+        )}
       </div>
     </Link>
   )

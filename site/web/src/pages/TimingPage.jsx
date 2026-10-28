@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
+import Comments from '../components/social/Comments.jsx'
+import TimingSocial, { UploaderLink, useTimingSocial } from '../components/social/TimingSocial.jsx'
 import { shortDate, UploaderMark, uploaderName } from '../components/TimingList.jsx'
 import { useDocumentMeta } from '../hooks/useDocumentMeta.js'
+import { ratingLabel } from '../lib/social.js'
 import { comparePath } from '../lib/compare.js'
 import { bpmLabel, checkTimingAudio, publicTiming, songLine } from '../lib/timings.js'
 import { Result } from './AnalysisResult.jsx'
@@ -16,12 +19,18 @@ import { Result } from './AnalysisResult.jsx'
  * hashes it and asks the server whether it is this timing's audio (the
  * timing's hash never comes to the browser), and only then plays it against
  * the clicks and offers the .osz.
+ *
+ * Under the result (W6): its stars, who used it, the reader's collections,
+ * and comments, which may point at a time in the song (W13.15).
  */
 export default function TimingPage() {
   const { t, i18n } = useTranslation()
   const { id } = useParams()
   const [timing, setTiming] = useState(null)
   const [error, setError] = useState(null)
+  const [social, updateSocial] = useTimingSocial(id)
+  const playerRef = useRef(null)
+  const resultRef = useRef(null)
 
   useEffect(() => {
     let alive = true
@@ -70,6 +79,13 @@ export default function TimingPage() {
   // What the result view and the .osz read: the names stand in for the tags.
   const analysis = { id, status: 'done', result: timing.result, tagTitle: timing.title, tagArtist: timing.artist, filename: null }
 
+  // A comment's m:ss (W13.15): the player goes there and the map comes into view.
+  const seek = (ms) => {
+    playerRef.current?.seek(ms / 1000)
+    resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const position = () => playerRef.current?.position() ?? null
+
   return (
     <div className="space-y-8">
       <header className="rise flex flex-wrap items-end justify-between gap-4">
@@ -77,11 +93,18 @@ export default function TimingPage() {
           <p className="label text-accent">{t('timings.page.eyebrow')}</p>
           <h1 className="font-display text-[clamp(1.5rem,1.2rem+1.2vw,2.1rem)] font-bold break-words">{timing.title ?? t('timings.untitled')}</h1>
           {timing.artist && <p className="text-body text-muted">{timing.artist}</p>}
-          <div className="flex items-center gap-2 text-caption text-dim">
+          <div className="flex flex-wrap items-center gap-2 text-caption text-dim">
             <UploaderMark uploader={timing.uploader} size={24} />
             <span>
-              {uploaderName(t, timing)} · {t('timings.page.published', { date: shortDate(timing.publishedAt, i18n.language) })}
+              {timing.uploader ? <UploaderLink uploader={timing.uploader} linked={Boolean(social?.uploaderProfile)} /> : uploaderName(t, timing)} ·{' '}
+              {t('timings.page.published', { date: shortDate(timing.publishedAt, i18n.language) })}
             </span>
+            {social && (
+              <span className="readout">
+                · <span className="text-amber">★</span> {ratingLabel(social.rating.average)} ({social.rating.count}) ·{' '}
+                {t('social.uses.short', { count: social.uses.count })}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -95,7 +118,13 @@ export default function TimingPage() {
         </div>
       </header>
 
-      <Result id={id} analysis={analysis} verify={verify} csvHref={`/api/v1/timings/${id}/timing.csv`} />
+      <div ref={resultRef} className="scroll-mt-20">
+        <Result id={id} analysis={analysis} verify={verify} csvHref={`/api/v1/timings/${id}/timing.csv`} playerRef={playerRef} />
+      </div>
+
+      {social && <TimingSocial id={id} social={social} onChange={updateSocial} />}
+      {social === false && <p className="text-caption text-dim">{t('social.failed')}</p>}
+      <Comments id={id} durationS={timing.result?.duration_s ?? 0} onSeek={seek} position={position} />
     </div>
   )
 }

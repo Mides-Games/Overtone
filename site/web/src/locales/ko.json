@@ -1,0 +1,2175 @@
+{
+  "common": {
+    "skipToContent": "본문으로 건너뛰기",
+    "loading": "불러오는 중…",
+    "byMides": "Mides Projects의 도구"
+  },
+  "nav": {
+    "home": "홈",
+    "analyze": "분석",
+    "profile": "프로필",
+    "mides": "Mides",
+    "signIn": "로그인",
+    "signOut": "로그아웃",
+    "account": "계정 메뉴",
+    "changeTheme": "테마 변경",
+    "changeLanguage": "언어 변경",
+    "language": "언어: {{name}}",
+    "openMenu": "메뉴 열기",
+    "closeMenu": "메뉴 닫기",
+    "queue": "대기열"
+  },
+  "ticker": [
+    "Overtone · osu! 맵을 위한 자동 타이밍",
+    "모든 타이밍에 신뢰도가 표시돼요: 랭크 신청 전에 꼭 확인하세요",
+    "오픈 소스 · 엔진은 내 컴퓨터에서 오프라인으로도 돌아가요",
+    "Mides 계정으로 로그인 · Discord 또는 Google"
+  ],
+  "home": {
+    "eyebrow": "측정된 osu! 타이밍",
+    "title": "곡 하나의 타이밍을 몇 시간이 아니라 몇 분 만에",
+    "subtitle": "오디오를 올리면 Overtone이 BPM, 오프셋, 모든 red line을 찾아내고, 구간마다 얼마나 확신하는지도 알려줘요.",
+    "cta": "곡 분석하기",
+    "checkByEar": "귀로 확인하기",
+    "howCta": "작동 방식",
+    "draft": "완성된 맵이 아니라 탄탄한 초안이에요: 귀로 확인하세요.",
+    "draftLink": "Overtone이 약속하지 않는 것",
+    "facts": {
+      "free": "무료",
+      "noAccount": "계정 필요 없음",
+      "deleted": "분석 후 오디오 삭제"
+    },
+    "live": {
+      "title": "실시간 수치",
+      "analyses": "완료된 분석",
+      "queue": "지금 대기열에 있는 곡"
+    },
+    "gain": {
+      "eyebrow": "얻는 것",
+      "title": "탭하는 대신 매핑에 저녁을 쓰세요",
+      "time": {
+        "title": "타이밍에 쓰던 시간을 되찾으세요",
+        "body": "BPM, 오프셋, 첫 red line을 몇 분 만에. 저녁 내내 박자에 맞춰 탭하고 밀리초 단위로 조정할 필요가 없어요."
+      },
+      "variable": {
+        "title": "템포 변화는 알아서 나눠요",
+        "body": "빨라지거나 느려지거나 박자가 바뀌는 곡은 각자 BPM과 오프셋을 가진 red line으로 나뉘어 나와요."
+      },
+      "osz": {
+        "title": "osu!에서 바로 열어 매핑 시작",
+        "body": "곡과 red line이 들어 있는 .osz를 받으세요. osu!에서 열고 노트를 찍기 시작하면 돼요."
+      },
+      "check": {
+        "title": "귀로 확인하는 도구",
+        "body": "곡 위에 깔리는 클릭, 원하는 구간 반복, 절반 속도까지 느린 재생, 그리고 어디부터 들어봐야 할지 알려주는 구간별 신뢰도."
+      },
+      "free": {
+        "title": "무료, 가입 없음, 저장 없음",
+        "body": "계정이 필요 없어요. 분석이 끝나는 즉시 오디오는 서버에서 삭제되고, 타이밍만 남아요."
+      },
+      "try": {
+        "title": "잘 아는 곡으로 시험해 보세요",
+        "body": "한 번만 올려 봐도 시간이 절약되는지 알 수 있어요."
+      }
+    },
+    "steps": {
+      "eyebrow": "작동 방식",
+      "title": "세 단계, 곡 하나",
+      "more": "전체 파이프라인 설명",
+      "upload": {
+        "title": "업로드",
+        "body": "MP3, OGG, WAV, FLAC, M4A, Opus 파일을 끌어다 놓으세요. 여러 개를 한 번에 올려도 돼요."
+      },
+      "analyse": {
+        "title": "분석",
+        "body": "대기열에서 차례를 기다린 뒤, 엔진이 비트, BPM, 오프셋, 모든 템포 변화를 찾아요. 어느 페이지에서든 진행 상황을 볼 수 있어요."
+      },
+      "check": {
+        "title": "확인하고 다운로드",
+        "body": "클릭과 함께 듣고, 중요한 부분을 반복하거나 느리게 들은 다음, .osz를 받거나 [TimingPoints]를 복사하세요."
+      }
+    },
+    "recent": {
+      "eyebrow": "최근 타이밍",
+      "title": "방금 타이밍된 곡들",
+      "loading": "최신 타이밍을 불러오는 중"
+    },
+    "about": {
+      "eyebrow": "우리는 누구인가요",
+      "title": "모두에게 열린 Mides Projects의 도구",
+      "body": "Overtone은 Mides Projects의 일부이며 githalt가 만들었어요. 내 컴퓨터에서 곡의 타이밍을 맞추는 데스크톱 앱으로 시작해서, 누구나 브라우저에서 쓸 수 있도록 이 사이트가 되었어요.",
+      "open": "MIT 라이선스의 오픈 소스: 엔진과 이 사이트가 한 저장소에 있어요.",
+      "desktop": "데스크톱 도구에서 웹으로, 같은 엔진 그대로.",
+      "independent": "osu! 및 ppy와 관련이 없어요.",
+      "source": "GitHub의 소스 코드",
+      "mides": "midesprojects.com"
+    },
+    "faq": {
+      "eyebrow": "질문",
+      "title": "업로드하기 전에",
+      "more": "모든 질문",
+      "free": {
+        "q": "무료인가요?",
+        "a": "네. 분석, 듣기, 다운로드 모두 무료예요. 대기열을 공정하게 유지하기 위해 사람마다 하루 한도가 있고, Mides로 로그인하면 한도가 늘어나요."
+      },
+      "audio": {
+        "q": "제 오디오가 보관되나요?",
+        "a": "아니요. 분석이 끝나거나 실패하는 즉시 파일은 서버에서 삭제돼요. 남는 건 타이밍과 파일의 지문(SHA-1)뿐이라, 다음에 같은 곡이 오면 바로 답할 수 있어요."
+      },
+      "accuracy": {
+        "q": "얼마나 정확한가요?",
+        "a": "합성 벤치마크에서는 모든 구간이 0.05 BPM, 5 ms 이내에 들어와요. 실제 곡에서는 탄탄한 초안이에요: 구간마다 신뢰도가 표시되고, 귀로 확인해야 할 구간은 따로 표시돼요."
+      },
+      "formats": {
+        "q": "어떤 형식을 지원하나요?",
+        "a": "MP3, OGG, WAV, FLAC, M4A, Opus예요. 여러 곡을 한 번에 보낼 수 있어요."
+      },
+      "account": {
+        "q": "계정이 필요한가요?",
+        "a": "아니요. 계정 없이도 분석, 다운로드, 게시까지 할 수 있어요. Mides 계정이 있으면 모든 기기에서 기록이 유지되고 하루 한도가 늘어나요."
+      }
+    },
+    "final": {
+      "title": "다음 맵은 타이밍에서 시작돼요",
+      "body": "곡을 올리면 몇 분 안에 확인할 red line이 생겨요.",
+      "community": "커뮤니티",
+      "recent": "최근 타이밍 전체"
+    }
+  },
+  "strip": {
+    "title": "분석",
+    "example": "예시",
+    "caption": "실시간으로 재생되는 분석 예시: 174, 186, 160 BPM의 red line 네 개와 3/4 박자 구간 하나. 표시값은 재생 위치 아래의 red line을 따라가요.",
+    "bpm": "BPM",
+    "offset": "오프셋",
+    "meter": "박자",
+    "confidence": "신뢰도",
+    "high": "높은 신뢰도",
+    "medium": "보통",
+    "check": "귀로 확인",
+    "line": "red line {{n}} / {{count}}",
+    "osuRow": "osu!가 [TimingPoints]에 쓰는 형태의 이 red line"
+  },
+  "analyze": {
+    "title": "곡 분석하기",
+    "subtitle": "오디오를 올리면 Overtone이 BPM, 오프셋, 모든 red line을 찾아요. 오디오는 분석 후 삭제되고, 지문과 결과만 남아요.",
+    "audioHint": "MP3, OGG, WAV, FLAC, M4A 또는 Opus.",
+    "submit": "분석",
+    "sending": "업로드 중… {{percent}}%",
+    "pickAudio": "먼저 오디오 파일을 선택하세요.",
+    "tooLong": "이 곡은 {{minutes}}분이에요. 한도는 {{limit}}분이에요.",
+    "failed": "업로드 실패: {{message}}",
+    "drop": "곡이나 폴더를 여기에 끌어다 놓거나, 파일을 선택하세요",
+    "privacy": "계정이 필요 없어요. 파일은 분석이 끝나는 즉시 삭제되고, 같은 오디오를 다시 올리면 저장된 결과가 바로 나와요.",
+    "limitsTitle": "계정 없이",
+    "limitsTitleAccount": "내 계정으로",
+    "perDay": "하루 분석 횟수",
+    "maxLength": "최대 곡 길이",
+    "limitsNote": "Mides 계정이 있으면 하루 한도가 늘고 기록이 유지돼요.",
+    "limitsNoteAccount": "횟수는 00:00 UTC에 초기화돼요.",
+    "outputsTitle": "받게 될 것",
+    "outputs": {
+      "osz": "osu!에서 열 수 있는 .osz",
+      "timingPoints": "[TimingPoints] 블록",
+      "csv": "CSV, JSON, 요약",
+      "click": "클릭 트랙 (WAV)",
+      "osuPatch": "red line이 들어간 내 .osu"
+    },
+    "ready": "준비됨",
+    "soon": "곧 지원",
+    "recentTitle": "최근 내 분석",
+    "honest": "Overtone의 타이밍은 합성 벤치마크에서는 정확하지만, 실제 랭크 맵에서는 아직 측정 중이에요. 모든 결과를 탄탄한 초안으로 보고, 랭크 신청 전에 귀로 확인하세요.",
+    "errors": {
+      "UNSUPPORTED_FORMAT": "MP3, OGG, WAV, FLAC, M4A, Opus 파일을 선택하세요.",
+      "TOO_LARGE": "파일이 {{limit}} MB보다 커요.",
+      "EMPTY_UPLOAD": "파일이 비어 있어요.",
+      "QUOTA_ANON": "계정 없이는 하루에 {{limit}}곡까지 분석할 수 있어요. 더 하려면 로그인하거나 00:00 UTC 이후에 다시 오세요.",
+      "QUOTA_ACCOUNT": "오늘의 분석 {{limit}}회를 모두 썼어요. 횟수는 00:00 UTC에 초기화돼요.",
+      "RATE_LIMITED": "짧은 시간에 업로드가 너무 많아요. 몇 분 기다린 뒤 다시 시도하세요.",
+      "NETWORK": "서버에 연결할 수 없어요. 연결을 확인하고 다시 시도하세요.",
+      "PENDING_LIMIT_other": "이미 대기열에 {{count}}곡이 있어요. 하나가 끝나면 더 보내세요.",
+      "QUEUE_FULL": "지금은 대기열이 가득 찼어요. 몇 분 뒤에 다시 시도하세요.",
+      "CACHE_LIMIT": "오늘 저장된 결과를 {{count}}번 열었어요. 횟수는 00:00 UTC에 초기화돼요."
+    },
+    "private": "공개 대기열에 표시하지 않기",
+    "privateHint": "대기열에는 무언가 분석 중이라는 것만 보여요: 곡, 파일 이름, 업로더 모두 표시되지 않아요.",
+    "folder": "폴더 선택",
+    "atOnce_other": "대기열에 한 번에 최대 {{count}}곡",
+    "submitMany_other": "{{count}}곡 분석",
+    "sendingMany": "보내는 중…",
+    "card": {
+      "ready": "보낼 준비 완료",
+      "sent": "보냄",
+      "remove": "{{name}} 제거"
+    },
+    "batch": {
+      "notify": "묶음 전체가 끝나면 알림 받기",
+      "notifyTitle": "Overtone: 묶음 분석이 끝났어요",
+      "notifyBody": "{{total}}곡 중 {{done}}곡의 타이밍이 나왔어요.",
+      "download_other": "타이밍 {{count}}개 모두 다운로드 (ZIP)"
+    }
+  },
+  "result": {
+    "eyebrow": "분석",
+    "another": "다른 곡 분석하기",
+    "notFoundTitle": "분석을 찾을 수 없어요",
+    "notFound": "존재하지 않거나, 다른 브라우저에서 시작한 분석이에요. 분석은 시작한 사람만 볼 수 있어요.",
+    "reconnecting": "서버와 연결이 끊겼어요. 다시 시도하는 중…",
+    "queued": "대기 중: {{position}}번째",
+    "queuedNote": "곡이 분석 워커를 기다리고 있어요. 이 페이지를 열어 두거나 나중에 다시 와도 돼요.",
+    "running": "분석 중…",
+    "stages": {
+      "load": "오디오 디코딩",
+      "attacks": "모든 어택 찾기",
+      "coherence": "펄스 찾기",
+      "fallback": "일정한 그리드 없음: 비트 트래커 시도",
+      "tracker": "비트 추적",
+      "octave": "비트 옥타브 선택",
+      "sections": "템포 구간 맞추기",
+      "vote": "Beat This!로 비트 확인",
+      "result": "결과 작성"
+    },
+    "failedTitle": "분석에 실패했어요",
+    "failed": "Overtone이 이 파일을 읽지 못했어요. 손상되었거나 이름과 다른 오디오일 수 있어요. 파일은 삭제되었어요.",
+    "refusedTitle": "BPM 없음",
+    "refusal": {
+      "no_pulse": "Overtone이 이 오디오에서 일정한 펄스를 찾지 못해서 BPM을 알려주지 않아요.",
+      "too_short": "타이밍을 맞추기에 너무 짧은 오디오예요: 최소 2초가 필요해요.",
+      "too_long": "이 오디오는 한도보다 길어요.",
+      "refused": "Overtone이 이 오디오의 타이밍을 맞추지 못했어요.",
+      "bad_stretch": "선택한 범위에 이 오디오가 10초도 들어 있지 않아요."
+    },
+    "refusedWhy": "추측한 BPM은 정확해 보여도 틀려요. 노이즈, 앰비언트 패드, 자유 박자 음악은 일부러 여기서 멈춰요.",
+    "redLines": "Red line",
+    "time": "시간",
+    "meterGuess": "강세로 마디가 증명되지 않았어요: 마디가 어디서 시작하는지 확인하세요.",
+    "downloadOsz": ".osz 다운로드",
+    "oszBusy": ".osz 만드는 중…",
+    "oszFailed": "이 파일로 .osz를 만들 수 없었어요. 복사와 CSV는 여전히 쓸 수 있어요.",
+    "oszNote": ".osz를 열면 osu!가 이 red line들만 있고 노트는 없는 새 맵으로 가져와서, 바로 에디터에서 쓸 수 있어요. 여기, 내 파일로 만들어지며 아무것도 업로드되지 않아요.",
+    "oszNeedsAudio": ".osz에는 곡이 들어가요: 위에서 곡을 선택하면 만들어져요.",
+    "copy": "[TimingPoints] 복사",
+    "copied": "복사됨",
+    "copyFailed": "복사할 수 없어요: 다운로드를 이용하세요",
+    "downloadCsv": "CSV 다운로드",
+    "honest": "랭크 신청 전에 이 red line들을 귀로 확인하세요. Overtone은 합성 벤치마크에서는 정확하지만, 실제 랭크 맵에서의 정확도는 아직 연구 중이에요: 주황색 구간을 먼저 들어 보고, 나머지도 확인이 필요할 수 있어요.",
+    "engine": "엔진 v3 {{hash}} · Beat This! 투표 {{vote}}",
+    "voteOn": "켜짐",
+    "voteOff": "꺼짐",
+    "cached": "이전에 분석한 같은 오디오: 저장된 결과",
+    "removed": "모더레이터가 이 곡을 대기열에서 빼서 분석되지 않았어요. 파일은 삭제되었어요."
+  },
+  "login": {
+    "title": "로그인",
+    "subtitle": "Overtone은 Mides 계정을 써요. 새 비밀번호도, 기억할 것도 없어요.",
+    "discord": "Discord로 계속하기",
+    "google": "Google로 계속하기",
+    "devNote": "개발용 로그인이 켜져 있어요: 이 버튼들은 Mides 없이 테스트 계정으로 로그인해요.",
+    "notConfigured": "이 서버에는 로그인이 설정되어 있지 않아요.",
+    "failed": "로그인을 시작할 수 없어요: {{message}}",
+    "privacy": "Overtone은 Mides 공개 프로필(이름, 아바타, 배너)만 보관해요. 이메일은 절대 보관하지 않아요.",
+    "devTitle": "개발용 로그인"
+  },
+  "callback": {
+    "working": "로그인하는 중…",
+    "stateMissing": "이 로그인은 이 브라우저에서 시작되지 않았거나 너무 오래 걸렸어요. 다시 시작하세요.",
+    "failed": "로그인에 실패했어요: {{message}}",
+    "back": "로그인으로 돌아가기"
+  },
+  "profile": {
+    "signInFirst": "프로필을 보려면 로그인하세요.",
+    "onMides": "midesprojects.com에서 열기",
+    "since": "{{date}}부터 Overtone 사용 중"
+  },
+  "footer": {
+    "tagline": "osu!를 위한 자동 타이밍. 측정되고, 신뢰도에 솔직해요.",
+    "site": "Overtone",
+    "ecosystem": "Mides Projects",
+    "project": "프로젝트",
+    "source": "소스 코드",
+    "docs": "문서",
+    "rights": "© {{year}} Mides Projects"
+  },
+  "notFound": {
+    "title": "여기엔 아무것도 없어요",
+    "back": "홈으로 돌아가기"
+  },
+  "queue": {
+    "title": "대기열",
+    "subtitle": "분석을 기다리거나 지금 분석 중인 모든 곡과, 지난 한 시간 동안 끝난 곡들이에요.",
+    "live": "대기 및 분석 중",
+    "recent": "지난 한 시간 동안 완료",
+    "count_other": "{{count}}곡",
+    "empty": "대기열이 비어 있어요.",
+    "upload": "곡 분석하기",
+    "more_other": "…그리고 {{count}}곡이 더 기다리고 있어요.",
+    "privateSong": "비공개 업로드",
+    "privateUpload": "업로더 숨김",
+    "anonymous": "익명",
+    "yours": "내 곡",
+    "cached": "저장된 결과",
+    "privacy": "곡은 자체 태그로, 태그가 없으면 파일 이름으로 표시돼요. \"공개 대기열에 표시하지 않기\"를 선택한 곡은 비공개 업로드로 보여요. 폴더와 경로는 절대 표시되지 않고, 오디오는 절대 제공되지 않으며, 내 결과는 나만 열 수 있어요.",
+    "status": {
+      "queued": "대기 중",
+      "running": "분석 중",
+      "done": "완료",
+      "refused": "거부됨",
+      "failed": "실패",
+      "cancelled": "취소됨"
+    }
+  },
+  "tempo": {
+    "mapTitle": "템포 맵",
+    "mapLabel": "분석의 템포 맵",
+    "canvasLabel": "red line {{count}}개, 로컬 템포, 파형, 온셋과 그리드로부터의 어긋남이 표시된 곡의 타임라인. red line은 아래 표에도 나와 있어요.",
+    "overview": "곡 전체: 클릭하거나 드래그해서 보기를 옮기세요",
+    "zoomIn": "확대 (+)",
+    "zoomOut": "축소 (-)",
+    "fit": "맞추기",
+    "follow": "따라가기",
+    "followHint": "재생 중 재생 위치를 따라 화면 넘기기 (F)",
+    "tipTime": "시간",
+    "tipLocal": "로컬 템포",
+    "tipLine": "Red line",
+    "tipBefore": "첫 red line 이전: osu!는 여기서 그리드를 거꾸로 이어가요. 인트로가 같은 템포일 때만 맞아요.",
+    "legend": {
+      "lines": "Red line과 BPM",
+      "tempo": "로컬 템포",
+      "onsets": "온셋, 5 ms 이내 어긋남",
+      "grid": "red line의 비트와 마디",
+      "drift": "5–15 ms 어긋남 (빨강: 그 이상)"
+    },
+    "howTo": "휠로 확대, 드래그로 이동, 클릭으로 탐색하거나 red line 선택, Shift-드래그로 구간 반복(비트에 맞춰지며 Alt를 누르면 자유롭게).",
+    "howToTouch": "드래그로 이동, 핀치로 확대, 탭으로 탐색하거나 red line 선택.",
+    "play": "재생",
+    "pause": "일시정지",
+    "rate": "속도",
+    "loop": "반복",
+    "loopSection": "재생 위치 아래 red line의 구간",
+    "loopClear": "반복 해제",
+    "song": "곡",
+    "songVolume": "곡 볼륨",
+    "clicks": "클릭",
+    "clickVolume": "클릭 볼륨",
+    "keys": "Space 재생 · ← → 한 비트 (Shift: 한 마디) · + − 확대/축소 · 0 맞추기 · [ ] red line · L 반복 · C 클릭 · F 따라가기 · T 탭 · A 내 라인 / 엔진 라인 · S 분할",
+    "audio": {
+      "none": "클릭과 함께 듣고 파형을 보려면 {{name}}을(를) 다시 선택하세요.",
+      "checking": "같은 오디오인지 확인하는 중…",
+      "decoding": "이 브라우저에서 곡을 디코딩하는 중…",
+      "mismatch": "{{name}}은(는) 이 분석이 타이밍을 맞춘 오디오가 아니에요: 지문이 달라요. 업로드한 것과 같은 파일을 선택하세요.",
+      "unverifiable": "이 분석에는 파일을 대조할 지문이 없어서 여기서 재생할 수 없어요.",
+      "error": "이 브라우저는 이 파일을 디코딩할 수 없어요. 아래 타이밍은 이와 관계없어요.",
+      "ready": "이 브라우저에서 {{name}} 재생 중.",
+      "pick": "파일 선택",
+      "pickAgain": "다른 파일 선택",
+      "privacy": "곡은 여기, 내 기기에서 읽히고 SHA-1로 분석과 대조돼요. 서버는 오디오를 보관하거나 보내지 않아요."
+    },
+    "drift": "어긋남 ms",
+    "driftHint": "이 red line 아래 온셋들이 그리드(가장 가까운 1/1, 1/2, 1/3, 1/4 틱)에서 얼마나 떨어져 있는지: 가중 중앙값, ms 단위.",
+    "driftDetail": "90번째 백분위수와 온셋이 기우는 방향 (+: 그리드보다 늦음)",
+    "residual": "피팅 ms",
+    "residualHint": "이 구간에 대한 엔진 자체의 그리드 피팅 잔차, ms 단위.",
+    "actions": "재생 또는 반복",
+    "playFrom": "이 red line부터 재생",
+    "loopLine": "이 red line의 구간 반복",
+    "tableNote": "행에 마우스를 올리거나 선택하면 맵에서 해당 red line을 찾을 수 있어요. 신뢰도는 측정된 정확도가 아니라 엔진이 자체 피팅을 읽은 값이고, 어긋남은 엔진이 남긴 온셋에서 측정돼요.",
+    "confidenceNote": "신뢰도는 측정된 정확도가 아니라 엔진 자체의 값이에요: 모든 구간을 귀로 확인하세요.",
+    "factorTitle": "절반 또는 두 배",
+    "factorNote": "맵, 클릭, 내보내기의 모든 BPM을 절반 또는 두 배로. 엔진의 값은 그대로이니, 클릭에 맞춰 들어보고 맞게 들리는 쪽을 고르세요.",
+    "nudgeTitle": "전체 오프셋",
+    "nudgeNote": "모든 red line을 같은 ms만큼 옮기고, 클릭과 내보내기도 함께 옮겨요. 측정이 아니라 귀로 확인해야 할 조정이에요.",
+    "reset": "초기화",
+    "adjusted": "이 수치는 직접 조정한 값이에요: 복사본과 다운로드에 조정이 반영되고 주석 줄에 그렇게 적혀요. 사용하기 전에 귀로 확인하세요.",
+    "hint": "{{from}}부터 {{to}}까지 온셋이 한 비트 걸러 하나로 줄어들어요: 엔진은 이를 한 red line 안의 하프 타임 또는 더블 타임 가능성으로 봐요(주황색 표시). red line이 아니라 근거일 뿐이니 들어 보세요.",
+    "swing": "{{from}}부터 {{to}}까지 엇박 8분음표가 약 {{late}} ms(비트의 {{snap}}) 늦게 들어와요: 스윙이에요. 그 노트들은 귀로 스냅하세요."
+  },
+  "moderation": {
+    "staff": "스태프",
+    "remove": "제거",
+    "requeue": "대기열로 되돌리기",
+    "removePrompt": "이 작업을 대기열에서 제거할까요? 작업은 실패 처리되고 오디오는 삭제돼요. 기록에 남길 사유(선택):",
+    "requeuePrompt": "실행 중인 이 작업을 대기열로 되돌릴까요? 기록에 남길 사유(선택):",
+    "failed": "작업에 실패했어요.",
+    "errors": {
+      "NOT_LIVE": "더 이상 대기 중이거나 실행 중이 아니에요.",
+      "NOT_RUNNING": "실행 중인 작업만 되돌릴 수 있어요.",
+      "AUDIO_GONE": "오디오가 없어서 다시 분석할 수 없어요.",
+      "STAFF_ONLY": "스태프만 할 수 있어요."
+    },
+    "logTitle": "모더레이션 기록",
+    "logEmpty": "아직 모더레이션된 항목이 없어요.",
+    "did": {
+      "remove": "@{{moderator}} 님이 작업을 제거했어요",
+      "requeue": "@{{moderator}} 님이 작업을 대기열로 되돌렸어요"
+    }
+  },
+  "cancel": {
+    "button": "취소",
+    "busy": "취소하는 중…",
+    "notQueued": "이미 분석 중이라 더 이상 취소할 수 없어요.",
+    "failed": "취소할 수 없었어요. 다시 시도하세요."
+  },
+  "tray": {
+    "label": "내 분석",
+    "show": "분석",
+    "hide": "숨기기",
+    "titleCount_other": "{{count}}개 진행 중",
+    "empty": "진행 중인 항목이 없어요.",
+    "gone": "더 이상 사용할 수 없음",
+    "dismiss": "트레이에서 {{name}} 제거",
+    "clearFinished": "완료된 항목 지우기",
+    "inbox": "알림",
+    "noNotices": "아직 알림이 없어요.",
+    "clearInbox": "지우기",
+    "sound": "소리",
+    "notify": "알림",
+    "notifyBlocked": "브라우저가 이 사이트의 알림을 차단하고 있어요.",
+    "notifyTitle": "Overtone: 곡 분석이 끝났어요",
+    "notice": {
+      "done": "{{name}}의 타이밍이 나왔어요.",
+      "refused": "{{name}}이(가) 거부되었어요.",
+      "failed": "{{name}} 분석에 실패했어요.",
+      "batch": "묶음 완료: {{total}}곡 중 {{done}}곡의 타이밍이 나왔어요."
+    },
+    "showCount_other": "내 분석, {{count}}개 진행 중"
+  },
+  "legal": {
+    "footer": {
+      "title": "법적 고지",
+      "terms": "이용약관",
+      "privacy": "개인정보",
+      "disclaimer": "면책 조항",
+      "credits": "크레딧",
+      "status": "상태"
+    },
+    "draft": "초안: 운영자 검토용으로 작성되었으며 아직 효력이 없어요. 주황색 상자 안의 내용은 아직 채워야 해요.",
+    "updated": "마지막 업데이트: {{date}}",
+    "date": "2026년 10월 27일",
+    "toBeSet": "추후 지정",
+    "translationNote": "이 번역은 편의를 위해 제공돼요. 영어 버전이 우선해요.",
+    "resultLink": "“귀로 확인”의 의미",
+    "terms": {
+      "title": "이용약관",
+      "description": "Overtone 웹사이트 이용 약관: 누가 운영하는지, 무엇을 올릴 수 있는지, 무엇을 약속하지 않는지.",
+      "intro": "이 약관은 Overtone 웹사이트와 API에 적용돼요. 사이트를 이용하면 약관에 동의하는 것이며, 동의하지 않는다면 이용하지 말아 주세요.",
+      "sections": [
+        {
+          "h": "Overtone의 운영자",
+          "p": [
+            "Overtone은 Mides Projects의 일부이며 githalt가 만들었어요. osu! 비트맵의 타이밍을 맞추는 도구로, 곡을 듣고 BPM, 오프셋, red line을 제안해요.",
+            "사이트의 책임 운영자는 [[the operator's legal name and address]]예요."
+          ]
+        },
+        {
+          "h": "osu!와 관련 없음",
+          "p": [
+            "Overtone은 독립 프로젝트예요. osu! 또는 ppy Pty Ltd와 제휴하거나, 보증받거나, 연결되어 있지 않아요. “osu!”는 ppy Pty Ltd의 상표이며, 여기서는 도구의 용도를 설명하기 위해서만 언급해요."
+          ]
+        },
+        {
+          "h": "오픈 소스",
+          "p": [
+            "Overtone의 소스 코드는 github.com/Mides-Projects/Overtone에 MIT 라이선스로 공개되어 있어요. 그 라이선스는 코드에 적용돼요. 이 약관은 그 코드로 운영되는 서비스인 이 웹사이트의 이용에 적용돼요. Overtone이 기반으로 하는 소프트웨어는 각자의 라이선스를 유지하며, 크레딧 페이지에 나와 있어요."
+          ],
+          "links": [
+            {
+              "label": "크레딧",
+              "to": "/credits"
+            }
+          ]
+        },
+        {
+          "h": "내 계정",
+          "p": [
+            "계정 없이도 곡을 분석할 수 있어요. 로그인에는 Mides Projects 계정(Discord 또는 Google을 통해)을 쓰며, 그 계정에는 별도의 약관이 있어요. Overtone은 필요한 공개 프로필 항목만 보관하며, 개인정보 페이지에 나와 있어요."
+          ],
+          "links": [
+            {
+              "label": "개인정보",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "h": "업로드하는 것",
+          "p": [
+            "이런 방식으로 사용할 권리가 있는 오디오만 올리세요: 직접 만든 음악, 라이선스를 가진 음악, 또는 권리자가 허락한 음악. 올리는 것과 그 권리를 갖추는 책임은 이용자에게 있어요. 업로드한다고 Mides Projects가 오디오에 대한 권리를 얻지 않으며, Overtone도 어떤 권리도 요구하지 않아요.",
+            "오디오는 타이밍 계산에만 쓰이며, 분석이 끝나거나 취소되거나 제거되면 서버에서 삭제돼요. 누구에게도 공개되거나 제공되지 않아요. 남는 것은 결과와 개인정보 페이지에 나열된 항목이에요.",
+            "업로드를 비공개로 표시하지 않으면, 대기 중인 동안 공개 대기열과 최근 결과에 곡 이름(파일 태그 또는 파일 이름)과, 로그인한 경우 Mides 사용자 이름이 표시돼요."
+          ]
+        },
+        {
+          "h": "허용되는 사용",
+          "li": [
+            "사용할 권리가 없는 오디오나 오디오가 아닌 파일을 올리지 마세요.",
+            "대기열을 악용하지 마세요: 자동화된 대량 업로드 금지, 하루 한도·속도 제한·대기열 순서를 우회하려는 시도 금지.",
+            "다른 사람의 분석을 열려고 하거나, 서비스에 침입하거나 방해하려고 하지 마세요.",
+            "파일 이름이나 태그에 불쾌하거나 개인적인 정보를 넣지 마세요: 공개 대기열에 표시될 수 있어요."
+          ],
+          "after": [
+            "이 규칙을 어기면 모더레이터가 업로드를 대기열에서 제거할 수 있고, 이용이 제한되거나 거부될 수 있어요."
+          ]
+        },
+        {
+          "h": "보증 없음",
+          "p": [
+            "사이트와 그 결과는 법이 허용하는 범위에서 어떠한 보증도 없이 “있는 그대로”, “이용 가능한 상태로” 제공돼요. 타이밍은 자동 추정치예요: 틀릴 수 있으며 사용하기 전에 귀로 확인해야 해요. 서비스는 느리거나 이용할 수 없을 수 있고, 언제든 바뀌거나 중단될 수 있어요. 랭크 신청한 비트맵은 여전히 이용자의 책임이에요."
+          ],
+          "links": [
+            {
+              "label": "면책 조항",
+              "to": "/disclaimer"
+            }
+          ]
+        },
+        {
+          "h": "책임의 한계",
+          "p": [
+            "법이 허용하는 범위에서, Mides Projects, githalt 및 Overtone 기여자들은 사이트나 그 결과의 이용으로 생기는 어떠한 손해(작업 손실, 데이터 손실, 비트맵 거절 포함)에 대해서도 책임지지 않아요. 이 약관의 어떤 내용도 법이 제한을 허용하지 않는 책임을 제한하지 않아요."
+          ]
+        },
+        {
+          "h": "약관 변경",
+          "p": [
+            "새 기능이 추가될 때 등 이 약관은 바뀔 수 있어요. 맨 위의 날짜가 마지막 변경일이며, 중요한 변경은 사이트에서 알려 드려요. 변경 후 사이트를 계속 이용하면 새 약관에 동의하는 거예요."
+          ]
+        },
+        {
+          "h": "준거법 및 연락처",
+          "p": [
+            "이 약관은 [[the jurisdiction]]의 법을 따라요.",
+            "이 약관에 대한 문의: [[a contact address]]."
+          ]
+        }
+      ]
+    },
+    "disclaimer": {
+      "title": "면책 조항",
+      "description": "Overtone의 타이밍은 신뢰할 수 있고 재현 가능하지만 100 % 정확하지는 않아요: 귀로 확인할 탄탄한 초안이에요.",
+      "intro": "Overtone의 분석은 신뢰할 수 있고 재현 가능하지만 100 % 정확하지는 않아요. 모든 타이밍을 탄탄한 초안으로 보고, 사용하기 전에 귀로 확인하세요.",
+      "sections": [
+        {
+          "h": "재현 가능하지만 완벽하지는 않아요",
+          "p": [
+            "같은 오디오를 같은 엔진에 넣으면 매번 같은 결과가 나와요. 정답이 알려진 프로젝트의 합성 벤치마크에서는 24개 구간 모두 0.05 BPM, 5 ms 이내에 들어와요. 실제 곡은 더 어려워요: 라이브 연주, 템포 변화, 조용한 인트로, 스윙 때문에 red line이 움직이거나 BPM이 절반 또는 두 배가 될 수 있어요.",
+            "프로젝트는 측정값을 부풀리지 않고 있는 그대로 공개해요. 그 값은 테스트 곡에서의 엔진을 설명할 뿐, 여러분의 곡에서의 엔진을 설명하지는 않아요."
+          ]
+        },
+        {
+          "h": "신뢰도의 의미",
+          "p": [
+            "각 구간에는 높음, 보통, 귀로 확인 중 하나의 단계가 표시돼요. 이는 엔진 자체의 확신과 비트가 그리드에 얼마나 잘 맞는지를 읽은 값이지, 측정된 정확도가 아니에요. 높음은 근거가 일관되었다는 뜻이지, 라인이 맞다고 보장하는 게 아니에요."
+          ]
+        },
+        {
+          "h": "타이밍을 확인하는 방법",
+          "li": [
+            "결과 페이지에서 클릭 트랙과 함께 곡을 재생하고, 각 구간의 시작과 모든 red line 주변을 들어 보세요.",
+            "“귀로 확인”으로 표시된 구간부터 시작하세요.",
+            "매핑하기 전에 어색하게 들리는 부분은 osu! 에디터에서 고치세요."
+          ]
+        },
+        {
+          "h": "내 비트맵, 내 책임",
+          "p": [
+            "Overtone은 결과에 대해 어떠한 보증도 하지 않아요. 비트맵의 타이밍과 랭크 여부는 매퍼의 책임으로 남아요. Overtone은 osu! 또는 ppy Pty Ltd와 관련이 없어요."
+          ],
+          "links": [
+            {
+              "label": "이용약관",
+              "to": "/terms"
+            }
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "개인정보",
+      "description": "Overtone 웹사이트가 무엇을, 왜, 얼마나 오래 저장하는지를 코드에서 읽은 그대로. 오디오는 절대 보관하지 않아요.",
+      "intro": "이 페이지는 Overtone 웹사이트가 무엇을, 왜, 얼마나 오래 저장하는지를 소스 코드가 하는 그대로 나열해요. 추적, 광고, 분석 도구는 없어요.",
+      "sections": [
+        {
+          "h": "오디오는 보관하지 않아요",
+          "p": [
+            "올린 파일은 분석될 때까지 무작위 id로 서버 디스크에서 기다리고, 분석이 끝나거나 실패하거나 취소되거나 모더레이터가 제거하면 삭제돼요. 같은 오디오가 이전에 분석된 적이 있으면 즉시 삭제되고 저장된 결과가 재사용돼요. 본인이나 다른 누구에게도 다시 제공되지 않으며, 공개되지도 않아요.",
+            "브라우저는 결과 페이지에서 재생하기 위해 열린 탭 안에서만 자체 사본을 가지고 있어요. 저장되지 않으며, 다시 전송되지도 않아요."
+          ]
+        },
+        {
+          "h": "분석마다 저장되는 것",
+          "li": [
+            "오디오의 SHA-1 지문, 길이, 바이트 크기. 지문은 같은 오디오를 다시 알아보는 데 쓰이며, 소리로 되돌릴 수 없어요.",
+            "파일 이름(최대 200자), 그리고 파일에 태그가 있었다면 브라우저가 읽은 제목과 아티스트.",
+            "비공개로 표시했는지 여부.",
+            "결과: 템포, 오프셋, red line, 비트, 그리드를 맞춘 어택, 엔진의 신뢰도, 그리고 결과를 만든 엔진의 버전.",
+            "상태와 시간: 언제 대기열에 들어갔고 언제 끝났는지.",
+            "누구의 것인지: 로그인했다면 계정, 아니라면 익명 쿠키(아래 참조)의 해시. 쿠키 자체는 절대 저장하지 않아요.",
+            "하루 한도를 위한 IP 주소와 날짜의 키 해시(HMAC). 주소 자체는 저장하지 않아요. 다만 익명은 아니에요: 서버의 비밀 키를 가진 사람은 특정 주소가 특정 날에 업로드했는지 확인할 수 있어요."
+          ]
+        },
+        {
+          "h": "내 계정",
+          "p": [
+            "로그인하면 Overtone은 Mides 사용자 id, 사용자 이름과 표시 이름, 프로필 사진과 배너의 주소, Mides 계정에 있다면 Discord id, 그리고 Mides 역할(누가 모더레이터인지 알기 위해)을 보관해요. 이메일, 전화번호, Mides 비밀번호나 토큰은 보관하지 않아요. 이 항목들은 로그인할 때마다 갱신돼요.",
+            "로그인은 midesprojects.com에서, Mides Projects 자체의 개인정보 약관에 따라 이루어져요."
+          ]
+        },
+        {
+          "h": "기타 기록",
+          "li": [
+            "속도 제한: 주소별로 키 해시와 카운터를 두며, 해당 시간 창이 끝나고 약 1분 뒤 삭제돼요.",
+            "모더레이션: 모더레이터가 업로드를 대기열에서 제거하거나 되돌리면, 모더레이터의 사용자 이름, 작업, 분석, 사유가 기록돼요."
+          ]
+        },
+        {
+          "h": "보관 기간",
+          "li": [
+            "오디오: 분석이 끝날 때까지, 보통 몇 분.",
+            "대기 중에 취소된 업로드: 기록과 오디오 모두 즉시 삭제.",
+            "속도 제한 카운터: 시간 창이 끝나고 약 1분 뒤.",
+            "세션 쿠키: 30일(서버 기본값). 로그아웃하면 계정의 모든 세션이 끝나요.",
+            "분석, 결과, 계정 기록, 모더레이션 기록: 아직 자동 만료가 설정되지 않았어요. [[how long these are kept]]"
+          ]
+        },
+        {
+          "h": "쿠키",
+          "p": [
+            "사이트가 작동하는 데 필요한 쿠키만 써요. 모두 퍼스트 파티이고, HttpOnly(어떤 스크립트도 읽을 수 없음)이며 SameSite=Lax예요. 서드 파티 쿠키가 없어서 쿠키 배너도 없어요. 실제 사이트에서는 이름에 __Host- 접두사가 붙어요."
+          ],
+          "li": [
+            "overtone_session: 로그인 세션(계정 id, 만료 시각, 로그아웃하면 바뀌는 버전), 30일 동안.",
+            "overtone_anon: 이 브라우저가 계정 없이 시작한 분석을 열 수 있게 해 주는 무작위 id, 1년 동안. 서버는 그 해시만 보관해요.",
+            "overtone_sso: 로그인하는 동안 10분간 설정되어, 누군가 다른 계정으로 로그인시키지 못하게 해요."
+          ]
+        },
+        {
+          "h": "브라우저에 보관되는 것",
+          "p": [
+            "다음 항목은 브라우저의 로컬 저장소에 남으며 서버로 전송되지 않아요:"
+          ],
+          "li": [
+            "mides.theme와 mides.lang: 라이트 또는 다크, 사이트 언어.",
+            "overtone.player.volumes: 곡과 클릭 트랙의 볼륨.",
+            "overtone.player.latencyMs: 보정했다면 오디오 지연 시간.",
+            "overtone.player.listening: 클릭 분할, 그 볼륨, 그리고 클릭을 지연 시간만큼 옮길지 여부.",
+            "overtone.recentAnalyses: 이 브라우저가 시작한 최근 분석 10개의 id와 파일 이름, 다시 찾기 위해.",
+            "overtone.sso: 로그인 후 돌아올 위치, 돌아오면 삭제돼요."
+          ],
+          "after": [
+            "브라우저에서 이 사이트의 데이터를 지우면 모두 삭제돼요. 브라우저 알림은 묶음이 끝날 때 알림을 요청한 경우에만 써요."
+          ]
+        },
+        {
+          "h": "추적 없음",
+          "p": [
+            "분석 도구, 텔레메트리, 광고, 서드 파티 스크립트나 글꼴이 없어요. 이 사이트 외에 브라우저가 연결하는 곳은 midesprojects.com뿐이에요: 로그인과 프로필 사진 표시를 위해서요.",
+            "사이트의 호스팅 및 네트워크 제공업체는 IP 주소 같은 자체 기술 로그를 보관할 수 있어요: [[which providers, and what they keep]]."
+          ]
+        },
+        {
+          "h": "삭제와 문의",
+          "p": [
+            "분석이나 계정 기록을 삭제하고 싶거나 이 페이지에 대해 묻고 싶다면 [[a contact address]](으)로 연락하세요. 해당 분석(링크)이나 Mides 사용자 이름을 알려 주세요.",
+            "아직 대기열에서 기다리는 곡은 해당 페이지에서 취소할 수 있으며, 즉시 삭제돼요."
+          ]
+        }
+      ]
+    },
+    "contents": "목차"
+  },
+  "credits": {
+    "title": "크레딧",
+    "description": "Overtone을 만드는 사람들, 그리고 Overtone의 기반이 되는 오픈 소스 소프트웨어와 모델, 각각의 라이선스.",
+    "intro": "Overtone은 다른 사람들의 오픈 소스 작업 위에 서 있어요. 아래 목록은 손으로 입력한 게 아니라, 설치된 패키지 자체의 메타데이터(site/web/scripts/credits.mjs)에서 생성돼요.",
+    "team": "팀",
+    "founder": "창립자",
+    "projectOf": "Mides Projects의 프로젝트",
+    "contributors": "기여자",
+    "contributorsBody": "코드에 기여한 모든 사람은 GitHub에 나와 있어요.",
+    "overtone": "Overtone",
+    "overtoneBody": "Overtone 자체는 {{licence}} 라이선스의 오픈 소스이며, 저작권은 {{year}} {{holder}}에 있어요.",
+    "model": "비트 모델",
+    "modelBody": "{{what}}, 라이선스 {{licence}}, 저작권 {{year}} {{holder}}. Overtone은 체크포인트 {{checkpoint}}를 실행해 비트에 투표해요.",
+    "engine": "분석 엔진 (Python)",
+    "engineBody": "엔진이 python/requirements.lock에 고정한 패키지들, 그 버전 그대로.",
+    "site": "웹사이트 (npm)",
+    "siteBody": "웹과 API의 의존성, 그리고 실행되는 패키지가 끌어오는 모든 패키지. 빌드 도구는 배포되지 않는 자체 의존성 없이 나열돼요.",
+    "web": "웹, 브라우저에서",
+    "webBuild": "웹, 빌드 도구",
+    "api": "API, 서버에서",
+    "package": "패키지",
+    "version": "버전",
+    "licence": "라이선스",
+    "direct": "직접",
+    "fonts": "글꼴",
+    "noFonts": "다운로드하는 글꼴은 없어요: 사이트는 기기에 이미 있는 글꼴(Segoe UI, Bahnschrift, Cascadia Mono 또는 시스템의 대체 글꼴)을 써요.",
+    "count_other": "패키지 {{count}}개"
+  },
+  "status": {
+    "title": "서비스 상태",
+    "description": "Overtone API, 데이터베이스, 분석 워커가 지금 작동 중인지.",
+    "intro": "사이트 자체 상태 점검이 지금 알려주는 내용이에요. 이 페이지가 열려 있는 동안 30초마다 다시 확인하고, 서비스가 응답하지 않으면 덜 자주 확인해요.",
+    "api": "API",
+    "database": "데이터베이스",
+    "worker": "분석 워커",
+    "states": {
+      "ok": "작동 중",
+      "down": "응답 없음",
+      "none": "메모리 내 (개발용)",
+      "unknown": "아직 확인되지 않음",
+      "unreachable": "연결할 수 없음"
+    },
+    "notes": {
+      "api": "사이트의 요청에 응답해요.",
+      "database": "대기열, 결과, 계정을 보관해요.",
+      "worker": "분석을 실행해요. 멈춰 있는 동안 업로드는 대기열에서 기다려요.",
+      "workerSeen": "{{seconds}}초 전에 마지막으로 응답했어요.",
+      "workerUnknown": "API가 마지막으로 시작된 뒤 워커가 한 번도 연결하지 않았어요.",
+      "unreachable": "API가 응답하지 않아서 나머지를 확인할 수 없어요."
+    },
+    "checked": "{{time}}에 확인함",
+    "retry": "지금 확인",
+    "checking": "확인하는 중…"
+  },
+  "errorPage": {
+    "title": "문제가 생겼어요",
+    "body": "이 페이지에서 오류가 발생해 멈췄어요. 보통 새로고침하면 해결돼요. 서버에 있는 업로드와 결과는 영향을 받지 않아요.",
+    "reload": "페이지 새로고침",
+    "home": "홈페이지로 가기"
+  },
+  "check": {
+    "title": "여기를 확인하세요",
+    "note": "시간순 정렬. 이것부터 들어 보세요.",
+    "empty": "표시된 항목이 없어요: 모든 구간이 높음이고, 어택이 그리드 가까이 있으며, 엔진이 하프 타임·더블 타임이나 스윙을 찾지 못했어요. 그래도 랭크 신청 전에 한 번 들어 보세요.",
+    "show": "보기",
+    "play": "클릭과 함께 이 범위 반복",
+    "how": "보기를 누르면 맵에 범위가 표시되고, ⟲는 클릭과 함께 반복해요. 각 항목은 새로운 측정이 아니라 엔진이 이미 보고한 근거예요.",
+    "needsAudio": "보기를 누르면 맵에 범위가 표시돼요. 클릭과 함께 반복하려면 위에서 곡을 선택하세요.",
+    "line": "red line {{n}}",
+    "lines": "red line {{from}}–{{to}}",
+    "drift": "p90 어긋남 {{ms}} ms",
+    "pulse": "하프 타임 또는 더블 타임?",
+    "triplets": "셋잇단",
+    "reason": {
+      "check": "확인",
+      "medium": "보통",
+      "drift": "어긋남",
+      "hint": "펄스",
+      "swing": "스윙"
+    },
+    "why": {
+      "check": "엔진이 이 구간을 확신하지 못해요: 낮은 신뢰도, 느슨한 피팅 또는 경고.",
+      "medium": "보통 신뢰도: 아마 맞지만 들어 볼 만해요.",
+      "drift": "어택 10개 중 1개가 이 그리드에서 {{ms}} ms 넘게 떨어져 있어요.",
+      "hint": "여기서는 온셋이 한 비트 걸러 하나로 줄어들어요: 하프 타임 또는 더블 타임일 수 있어요.",
+      "swing": "여기서는 엇박 8분음표가 늦게 들어와요: 스윙이에요."
+    }
+  },
+  "exports": {
+    "more": "추가 다운로드",
+    "patchTitle": "내 .osu에 타이밍 넣기",
+    "patchPick": ".osu 선택…",
+    "patchNote": "red line은 이것들(조정한 그대로)로 바뀌고, green line, 히트 오브젝트, 다른 모든 줄은 바이트 단위까지 그대로 유지돼요. 여기서 패치되며 파일은 업로드되지 않아요. osu!에서 새 파일을 확인할 때까지 원본은 보관하세요.",
+    "patched": "red line {{removed}}개 대신 {{added}}개를 넣어 다운로드했어요. green line {{kept}}개는 그대로 유지했어요.",
+    "greensBefore_other": "green line {{count}}개가 이제 첫 red line보다 앞에 있어요. 그대로 유지돼요: osu!는 첫 red line 기준으로 읽어요.",
+    "carried_other": "제거된 red line이 히트사운드, 키아이, 슬라이더 속도를 정하던 곳에 green line {{count}}개를 추가해서, 맵의 소리와 슬라이더가 이전과 같아요.",
+    "objects_other": "히트 오브젝트 {{count}}개는 옮기지 않았어요: 새 그리드에 맞지 않을 수 있어요. 에디터에서 확인하세요.",
+    "patchError": {
+      "notOsu": "osu! 비트맵(.osu)이 아니에요: 첫 줄이 \"osu file format\"이 아니에요.",
+      "noTimingPoints": "이 .osu에는 red line을 넣을 [TimingPoints] 섹션이 없어요.",
+      "noLines": "넣을 red line이 없어요.",
+      "tooBig": ".osu라기엔 파일이 너무 커요.",
+      "failed": ".osu를 읽을 수 없었어요."
+    },
+    "clickTitle": "클릭 트랙 (WAV)",
+    "clicksOnly": "클릭만",
+    "clicksMix": "곡 위에 클릭",
+    "rendering": "렌더링 중…",
+    "clickNote": "들리는 그대로의 클릭, 마디 첫 박 강조, 곡 길이만큼(최대 {{minutes}}분). 곡 위에 내 볼륨으로. 여기서 렌더링되며 아무것도 업로드되지 않아요.",
+    "clickNeedsAudio": "들리는 그대로의 클릭, 마디 첫 박 강조, 곡 길이만큼(최대 {{minutes}}분). 곡 위에 섞으려면 위에서 곡을 선택하세요.",
+    "clickCapped": "곡이 {{minutes}}분보다 길어요: 트랙은 거기서 멈춰요.",
+    "clickFailed": "이 브라우저에서 클릭 트랙을 렌더링할 수 없었어요.",
+    "filesTitle": "파일",
+    "json": "결과 (JSON)",
+    "summary": "요약 (TXT)",
+    "filesNote": "CSV와 요약은 조정한 값을 따르고, JSON은 서버가 보낸 엔진 결과 그대로예요."
+  },
+  "community": {
+    "nav": "커뮤니티",
+    "title": "커뮤니티",
+    "subtitle": "Overtone이 다음에 할 일을 제안하고, 의견을 남기고, 무엇이 바뀌었는지 확인하세요.",
+    "tabs": {
+      "suggestions": "제안",
+      "reviews": "리뷰",
+      "changelog": "변경 기록"
+    },
+    "more_other": "{{count}}개 더 보기",
+    "cancel": "취소",
+    "yours": "내 것",
+    "loading": "불러오는 중…",
+    "deletedAccount": "삭제된 계정",
+    "states": {
+      "open": "열림",
+      "review": "검토 중",
+      "planned": "계획됨",
+      "progress": "진행 중",
+      "done": "완료",
+      "rejected": "거절됨"
+    },
+    "errors": {
+      "failed": "실패했어요. 다시 시도하세요.",
+      "load": "불러올 수 없었어요. 잠시 후 다시 시도하세요.",
+      "NETWORK": "서버에 연결할 수 없어요.",
+      "TOO_SHORT": "너무 짧아요.",
+      "TOO_LONG": "너무 길어요.",
+      "REASON_REQUIRED": "사유가 필요해요.",
+      "STAFF_ONLY": "스태프만 할 수 있어요.",
+      "SIGN_IN_REQUIRED": "먼저 로그인하세요.",
+      "RATE_LIMITED": "한 번에 너무 많아요. 몇 분 기다리세요.",
+      "REVIEW_LIMIT": "계정 없이는 하루에 리뷰 두 개까지 남길 수 있어요. 수정할 수 있는 리뷰를 남기려면 로그인하세요.",
+      "FORM_TOO_FAST": "양식이 만료되었거나 너무 빨리 전송되었어요. 페이지를 새로고침하고 다시 시도하세요.",
+      "NOT_ACCEPTED": "이 리뷰는 받아들여지지 않았어요.",
+      "BAD_STARS": "별 1개에서 5개 중에 고르세요.",
+      "SAME_STATE": "이미 그 상태예요.",
+      "NO_CHANGE": "바꿀 내용이 없어요.",
+      "NOT_FOUND": "더 이상 존재하지 않아요."
+    },
+    "suggestions": {
+      "signInToPost": "제안을 올리거나 투표하려면 Mides로 로그인하세요.",
+      "signInToVote": "로그인하고 투표하기",
+      "sortBy": "정렬",
+      "sort": {
+        "votes": "투표순",
+        "new": "최신순"
+      },
+      "filter": "상태",
+      "allStates": "전체",
+      "empty": "아직 제안이 없어요.",
+      "new": "제안하기",
+      "title": "제목",
+      "body": "무엇을, 왜",
+      "post": "제안 올리기",
+      "voteLabel_other": "{{count}}표. 이 제안에 투표하기",
+      "staffSaid": "스태프:",
+      "details": "기록",
+      "less": "접기",
+      "noHistory": "아직 상태 변경이 없어요."
+    },
+    "reviews": {
+      "empty": "아직 리뷰가 없어요. 첫 리뷰를 남겨 보세요.",
+      "starsLabel_other": "별 5개 중 {{count}}개",
+      "starsLegend": "별점",
+      "count_other": "리뷰 {{count}}개",
+      "weighting_other": "익명 리뷰는 평균에 절반만 반영돼요(지금까지 {{count}}개).",
+      "formTitle": "리뷰 남기기",
+      "editTitle": "내 리뷰",
+      "yoursHidden": "모더레이터가 리뷰를 숨겼어요. 나와 스태프만 볼 수 있어요.",
+      "body": "내용",
+      "pickStars": "별 1개에서 5개 중에 고르세요.",
+      "anonymousNote": "계정 없이 남긴 리뷰는 익명이고, 평균에 절반만 반영되며, 나중에 수정할 수 없어요.",
+      "post": "리뷰 올리기",
+      "update": "리뷰 수정",
+      "delete": "삭제",
+      "deleteConfirm": "리뷰를 삭제할까요?",
+      "thanks": "고마워요. 리뷰가 올라갔어요.",
+      "anonymous": "익명",
+      "edited": "수정됨"
+    },
+    "moderation": {
+      "report": "신고",
+      "reported": "신고됨",
+      "reportPrompt": "무엇이 문제인가요? 스태프가 읽어요.",
+      "hide": "숨기기",
+      "unhide": "숨김 해제",
+      "hidePrompt": "스태프 외 모두에게 숨겨요. 기록에 남길 사유(필수):",
+      "unhidePrompt": "다시 보이게 해요. 기록에 남길 사유(선택):",
+      "statePrompt": "제안에 표시될 사유(선택):",
+      "rejectPrompt": "왜 거절하나요? 제안에 표시돼요(필수):",
+      "moveTo": "이동…",
+      "hiddenChip": "숨김",
+      "hiddenBecause": "숨김: {{reason}}",
+      "reports_other": "처리되지 않은 신고 {{count}}건",
+      "staffTitle": "스태프: 신고와 기록",
+      "openReports": "처리되지 않은 신고",
+      "noReports": "처리되지 않은 신고가 없어요.",
+      "logTitle": "모더레이션 기록",
+      "logEmpty": "아직 모더레이션된 항목이 없어요.",
+      "kind": {
+        "suggestion": "제안",
+        "review": "리뷰",
+        "comment": "댓글"
+      },
+      "did": {
+        "state": "@{{moderator}} 님이 {{from}}에서 {{to}}(으)로 옮겼어요",
+        "hide": "@{{moderator}} 님이 {{kind}}을(를) 숨겼어요",
+        "unhide": "@{{moderator}} 님이 {{kind}}을(를) 다시 표시했어요"
+      }
+    },
+    "changelog": {
+      "source": "프로젝트의 엔지니어링 기록(docs/timeline.md)에서: 최신 항목과 각각 무엇이 바뀌었는지.",
+      "empty": "항목이 없어요.",
+      "unreleased": "미출시"
+    }
+  },
+  "timings": {
+    "nav": {
+      "recent": "최근",
+      "history": "기록"
+    },
+    "untitled": "제목 없음",
+    "unknownArtist": "알 수 없는 아티스트",
+    "variable": "가변",
+    "redLines_other": "red line {{count}}개",
+    "anonymous": "익명",
+    "timedBy": "{{name}} 님의 타이밍",
+    "timedAnonymously": "익명의 타이밍",
+    "loadFailed": "목록을 읽을 수 없었어요. 잠시 후 다시 시도하세요.",
+    "more": "더 보기",
+    "publish": {
+      "title": "공유",
+      "note": "이 결과는 나만 열 수 있어요. 게시하면 공개 페이지가 생기고 최근 목록에 올라가요. 언제든 되돌릴 수 있어요.",
+      "isPublic": "공개 주소",
+      "privateWarning": "이 업로드는 비공개예요. 게시하면 공개되어 곡과 내 이름이 표시돼요.",
+      "publish": "게시",
+      "busy": "게시하는 중…",
+      "makePublic": "공개로 바꾸고 게시",
+      "keepPrivate": "비공개 유지",
+      "unpublish": "게시 취소",
+      "copyLink": "링크 복사",
+      "copied": "링크 복사됨",
+      "failed": "실패했어요. 잠시 후 다시 시도하세요."
+    },
+    "page": {
+      "eyebrow": "게시된 타이밍",
+      "published": "{{date}} 게시",
+      "yourOwn": "내 곡 타이밍 맞추기",
+      "notFoundTitle": "타이밍을 찾을 수 없어요",
+      "notFound": "이 타이밍은 존재하지 않거나, 게시한 사람이 되돌렸어요.",
+      "toRecent": "최근 타이밍 보기"
+    },
+    "audio": {
+      "none": "클릭과 함께 듣고, 파형을 보고, .osz를 만들려면 이 곡의 내 사본을 선택하세요.",
+      "mismatch": "{{name}}은(는) 이 타이밍을 만든 오디오가 아니에요: 지문이 달라요. 같은 릴리스의 곡을 선택하세요.",
+      "privacy": "파일은 여기, 내 기기에서 읽혀요. 서버에는 SHA-1만 보내고, 서버는 일치 여부만 답해요. 파일 자체는 절대 업로드되지 않아요."
+    },
+    "recent": {
+      "title": "최근 타이밍",
+      "subtitle": "사람들이 타이밍을 맞추고 게시하기로 한 곡들, 최신순. 각각 템포 맵, red line, 내보내기를 열 수 있어요.",
+      "empty": "아직 아무도 타이밍을 게시하지 않았어요.",
+      "noMatch": "이 필터에 맞는 게시된 타이밍이 없어요.",
+      "analyze": "곡 타이밍 맞추기"
+    },
+    "home": {
+      "title": "최근 게시됨",
+      "all": "최근 타이밍 전체"
+    },
+    "filters": {
+      "search": "제목 또는 아티스트",
+      "searchPlaceholder": "검색…",
+      "tempo": "템포",
+      "any": "전체",
+      "single": "단일 템포",
+      "variable": "가변 템포",
+      "bpm": "BPM",
+      "bpmMin": "최저 BPM",
+      "bpmMax": "최고 BPM",
+      "from": "부터",
+      "to": "까지",
+      "status": "상태",
+      "dates": "분석 기간",
+      "fromDate": "시작일",
+      "toDate": "종료일",
+      "clear": "필터 지우기"
+    },
+    "history": {
+      "title": "기록",
+      "subtitle": "이 계정으로 분석한 모든 것. 여기서 각각 게시, 게시 취소, 삭제할 수 있어요.",
+      "anonymousSubtitle": "계정이 없으면 이 브라우저만 최근 분석을 기억해요.",
+      "signInPrompt": "로그인하면 모든 분석을 한곳에 모으고, 어느 기기에서든 다시 찾고, 내 이름으로 게시할 수 있어요.",
+      "browserEmpty": "이 브라우저에는 아직 분석이 없어요.",
+      "forget": "잊기",
+      "empty": "아직 이 계정으로 분석한 게 없어요.",
+      "noMatch": "이 필터에 맞는 분석이 없어요.",
+      "public": "공개",
+      "openPublic": "공개 페이지 열기",
+      "delete": "삭제",
+      "deleteConfirm": "완전히 삭제할까요?",
+      "deleteYes": "삭제",
+      "deleteNo": "취소",
+      "deleteNote": "분석을 삭제하면 결과가 지워지고 공개 페이지도 즉시 내려가요. 아직 기다리는 곡은 해당 페이지에서 취소할 수 있고, 분석 중인 곡은 끝난 뒤에 삭제할 수 있어요.",
+      "failed": "실패했어요. 잠시 후 다시 시도하세요.",
+      "all": "기록"
+    }
+  },
+  "exportOptions": {
+    "title": "내보내기 옵션",
+    "reset": "원래 타이밍으로 되돌리기",
+    "offsetDecimals": "오프셋 소수점 (ms)",
+    "offsetDecimalsNote": "밀리초의 소수 단위를 받는 Quaver와 StepMania용. osu!는 항상 정수 ms로 읽고, Clone Hero는 틱 단위로 세요.",
+    "bpmDecimals": "BPM 반올림",
+    "bpmFull": "전체",
+    "bpmNote": "모든 BPM을 페이지에 있는 그대로 써요. 반올림하면 읽기 쉬워지지만, 각 red line 끝으로 갈수록 그리드가 어긋나요.",
+    "driftEnd": "BPM을 반올림하면 곡 끝에서 그리드가 최대 {{ms}} ms 어긋나요.",
+    "driftLine": "BPM을 반올림하면 red line {{line}} 끝에서 그리드가 최대 {{ms}} ms 어긋나요.",
+    "firstOnly": "첫 red line만",
+    "firstOnlyNote": "한 템포로 두고 싶은 곡용: 나머지는 확인 없이 첫 라인의 그리드를 따라가요.",
+    "firstOnlyOn_other": "이후의 red line {{count}}개가 내보내기에서 빠져요.",
+    "globalOffset": "모든 오프셋에 더하기",
+    "globalOffsetNote": "게임이나 팩 자체의 싱크 규칙용. 미세 조정과 달리 기록되는 값만 옮기고 들리는 클릭은 절대 옮기지 않으며, 곡이 바뀌어도 기억돼요.",
+    "inForce": {
+      "label": "내보내기 옵션 적용 중: {{list}}. .osz, 복사본, 다른 파일은 이를 따르지만 클릭은 따르지 않아요.",
+      "bpm_other": "BPM 소수점 {{count}}자리",
+      "first": "첫 red line만",
+      "offset": "{{ms}} ms 추가"
+    }
+  },
+  "gameFormats": {
+    "title": "다른 게임 (타이밍만, 노트 없음)",
+    "note": "내보내는 그대로의 red line을 각 게임의 단위로: 게임 에디터에서 파일을 열고 그 위에 채보하세요. 여기서 만들어지며 아무것도 업로드되지 않고, 어떤 게임에도 이 파일을 받아들이는지 확인받지 않았어요.",
+    "etterna": "Etterna는 StepMania의 .sm을 읽어요: 그걸 쓰세요. 자체 타이밍 형식이 없어서 따로 쓸 게 없어요.",
+    "cloneHero": "Clone Hero: notes.chart로 저장돼요. song{{ext}}라는 이름의 곡과 함께 한 폴더에 넣으세요.",
+    "rows_other": "StepMania는 템포 변화를 가장 가까운 1/48 비트에 둬요: 여기서는 변화 {{count}}개가 최대 {{ms}} ms 옮겨져요.",
+    "smMeter": ".sm에는 박자표가 없어서 마디가 4/4로 읽혀요. .ssc는 박자표를 유지해요.",
+    "quaMeter_other": "Quaver는 4/4와 3/4만 알아요: 다른 박자의 red line {{count}}개는 4/4로 기록돼요.",
+    "chartFitted_other": "템포 변화 {{count}}개가 Clone Hero의 틱 사이에 떨어져요: 제때 맞도록 각 변화 직전의 BPM을 아주 조금 조정해요({{ms}} ms 이내).",
+    "failed": "이 red line들로는 그 파일을 만들 수 없었어요."
+  },
+  "oszPlus": {
+    "title": ".osz 옵션",
+    "suggestion": "제안",
+    "note": "프리뷰, 리드인, 키아이는 곡의 음량과 red line에서 나온 제안이지 측정값이 아니에요: 랭크 신청 전에 osu! 에디터에서 확인하세요.",
+    "cover": "커버를 배경으로",
+    "coverFound": "파일 자체 태그에서 가져와 {{name}}(으)로 저장해요.",
+    "coverNone": "파일 태그에 JPEG나 PNG 커버가 없어요.",
+    "coverReading": "파일 태그를 읽는 중…",
+    "coverAlt": "태그에서 가져온 곡의 커버",
+    "preview": "프리뷰 시간",
+    "previewAt": "{{time}}: 가장 시끄러운 15초가 시작되는 마디.",
+    "previewNone": "두드러지는 구간이 없어요: 곡 선택 화면이 알아서 골라요.",
+    "needsSong": "위에서 곡을 디코딩해야 해요.",
+    "leadIn": "오디오 리드인",
+    "leadInAt": "{{ms}} ms: 첫 소리가 {{first}}초에 나와서 박자를 잡기엔 너무 빨라요.",
+    "leadInNone": "필요 없어요: 첫 소리가 {{first}}초에 나와요.",
+    "leadInUnknown": "근거가 없어요: red line도 어택도 없어요.",
+    "kiai": "키아이 타임",
+    "kiaiAt": "나머지보다 확실히 시끄러운 마디 위에 green line: {{spans}}.",
+    "kiaiNone": "나머지보다 확실히 시끄러운 구간이 없어요: 제안할 게 없어요.",
+    "openTipTitle": ".osz가 osu!에서 자동으로 열리게 하고 싶나요?",
+    "openTipChromium": "Chrome이나 Edge에서 다운로드 메뉴(다운로드 목록에서 옆의 ⋯)를 열고 “이 유형의 파일 항상 열기”를 선택하세요. 다음 .osz부터 바로 osu!로 가요.",
+    "openTipFirefox": "Firefox에서 설정 → 일반 → 파일 및 애플리케이션을 열고, .osz 유형을 찾아 osu!로 열도록 설정하세요. 다음 .osz부터 바로 osu!로 가요.",
+    "openTipOsu": "osu!가 설치되어 있고 .osz 파일이 osu!로 열리도록 되어 있어야 해요(설치 프로그램이 설정해 줘요). 사이트가 대신 파일을 열 수는 없어요: 웹 페이지는 다운로드한 것을 절대 실행하지 않아요.",
+    "openTipClose": "알겠어요",
+    "openTipNever": "다시 보지 않기"
+  },
+  "listening": {
+    "subdivision": "비트 사이",
+    "subOff": "끄기",
+    "subVolume": "분할 볼륨",
+    "legendSubs": "클릭이 재생하는 1/{{n}} 분할",
+    "exportSubs": "1/{{n}} 분할 포함",
+    "ab": "클릭 기준",
+    "abLabel": "클릭이 재생할 red line (A)",
+    "abYours": "내 라인",
+    "abEngine": "엔진 라인",
+    "abSame": "조정하기 전까지는 같아요",
+    "tap": "탭",
+    "clear": "탭 지우기",
+    "tapHint": "박자에 맞춰 T(또는 버튼)를 탭하세요: 네 번 탭하면 템포가 나오고, 곡이 재생 중일 때 여덟 번 탭하면 오프셋이 나와요.",
+    "tapMore_other": "템포를 내려면 {{count}}번 더 탭하세요.",
+    "taps_other": "{{count}}번 탭",
+    "compare": {
+      "match": "여기의 red line과 일치 ({{bpm}})",
+      "double": "여기 red line의 약 ×2 ({{bpm}}): 하프 타임일 수 있어요",
+      "half": "여기 red line의 약 ×0.5 ({{bpm}}): 더블 타임일 수 있어요",
+      "other": "여기 red line의 {{ratio}}× ({{bpm}})"
+    },
+    "offsetHint": "계속 박자에 맞춰 탭하세요: {{count}}번 탭하면 페이지가 전체 오프셋을 제안해요.",
+    "offsetReading_other": "탭이 그리드에서 {{ms}} ms, ±{{spread}} 떨어져 있어요(탭 {{count}}번 유지).",
+    "offsetApply": "전체 오프셋을 {{ms}} ms로 설정",
+    "offsetNoLatency": "지연 시간이 보정되지 않았어요: 탭은 들리는 대로 받아들여져서, 손이 늦으면 곡이 늦은 것으로 읽혀요.",
+    "latency": "지연 시간",
+    "latencyNone": "보정 안 됨",
+    "calibrate": "보정…",
+    "shiftClicks": "클릭을 그만큼 일찍 재생",
+    "note": "탭은 측정이 아니라 내 손이에요: 제안에는 편차가 함께 표시되고, 버튼을 누르기 전에는 아무것도 바뀌지 않아요. 지연 시간은 탭(원하면 클릭도)을 옮기지만, 내보내기는 절대 옮기지 않아요.",
+    "calTitle": "지연 시간 보정",
+    "calIntro": "일정한 클릭 {{count}}번이 들려요. 각 클릭에 맞춰 귀로 Space, T 또는 패드를 탭하세요: 일부러 볼 건 아무것도 없어요. 처음 네 번은 박자를 잡기 위한 거예요.",
+    "calStart": "시작",
+    "calAgain": "다시 시도",
+    "calClose": "닫기",
+    "calPad_other": "클릭마다 여기를 탭 · {{count}}번",
+    "calTooFew": "클릭 근처에 들어온 탭이 너무 적어서 판단할 수 없어요. 다시 시도하고 끝까지 따라 탭하세요.",
+    "calUnsteady": "탭이 너무 고르지 않아 판단할 수 없어요(±{{spread}} ms). 조금 더 편하게 다시 시도하세요.",
+    "calKept": "탭 {{kept}}번 유지, {{dropped}}번 제외",
+    "calSave": "{{ms}} ms 저장",
+    "calNote": "브라우저가 알려주지 않는 오디오 지연(블루투스는 보통 100 ms 이상 더해요)에 내 타이밍을 더한 값이에요. 이 브라우저에만 저장돼요."
+  },
+  "compare": {
+    "action": "비교",
+    "other": "다른 타이밍",
+    "result": "결과",
+    "resultAdjusted": "결과 (조정됨)",
+    "map": "맵",
+    "withAnother": "다른 타이밍과 비교",
+    "withAdjusted": "엔진의 타이밍과 내가 조정한 타이밍 비교",
+    "clicksFrom": "클릭 기준",
+    "verdict": {
+      "same": "{{ms}} ms 이내로 같은 그리드예요.",
+      "later": "템포는 같지만, 모든 비트에서 {{b}}이(가) {{a}}보다 {{ms}} ms 늦어요.",
+      "earlier": "템포는 같지만, 모든 비트에서 {{b}}이(가) {{a}}보다 {{ms}} ms 빨라요.",
+      "double": "{{b}}은(는) {{a}}의 두 배 템포이고, 그 외에는 {{ms}} ms 이내로 같은 그리드예요.",
+      "half": "{{b}}은(는) {{a}}의 절반 템포이고, 그 외에는 {{ms}} ms 이내로 같은 그리드예요.",
+      "different": "달라요: 곡의 {{share}} %가 일치하고, {{at}}에서 처음 갈라져요.",
+      "noOverlap": "비교할 게 없어요: 한 타이밍이 곡이 끝난 뒤에 시작해요."
+    },
+    "tolerance": "정확도 게이트의 허용치({{ms}} ms, {{bpm}} BPM)로 {{from}}부터 끝까지 모든 비트에서 판정해요. 정수 비트만큼 떨어진 라인은 같은 그리드예요.",
+    "related": "추가로 {{share}} %는 절반 또는 두 배 템포로 같은 비트에서 만나요.",
+    "meterDiffers_other": "red line {{count}}개에서 박자가 달라요.",
+    "barsShifted_other": "red line {{count}}개에서 마디가 다른 비트에서 시작해요.",
+    "unmatchedCount_other": "red line {{count}}개는 다른 타이밍에 짝이 없어요.",
+    "tableCaption": "시간으로 짝지은 {{a}}와 {{b}}의 red line",
+    "col": {
+      "time": "{{name}} 시각",
+      "offset": "오프셋",
+      "offsetHint": "두 라인이 시작하는 곳에서 두 번째 그리드가 첫 번째와 얼마나 떨어져 있는지, ms 단위. 정수 비트만큼 떨어져 있으면 0이에요.",
+      "end": "끝에서",
+      "endHint": "같은 값을 두 라인이 공유하는 마지막 비트에서 잰 것: 시작에는 없던 차이가 여기서 생겼다면 어긋남이에요.",
+      "status": "일치"
+    },
+    "kind": {
+      "double": "×2",
+      "half": "×½",
+      "other": "다른 템포"
+    },
+    "barShift_other": "마디 +{{count}}비트",
+    "agree": "일치",
+    "apart": "불일치",
+    "only": "{{name}}에만",
+    "onlyAgrees": "{{own}}에는 여기 라인이 있지만, {{other}}의 그리드가 이미 일치해서 바뀌는 게 없어요.",
+    "onlyMissing": "{{own}}에는 여기 라인이 있고 {{other}}에는 없어요.",
+    "signNote": "차이는 {{b}} 빼기 {{a}}예요: 오프셋이 양수면 {{b}}이(가) 더 늦어요.",
+    "playHere": "여기서부터 재생",
+    "withMap": {
+      "title": "맵과 비교",
+      "note": "같은 곡의 .osu를 선택하면 red line마다 이 타이밍과 무엇이 다른지(BPM, 오프셋, 박자) 볼 수 있어요.",
+      "privacy": ".osu는 이 브라우저에서 읽히고 페이지를 떠나면 잊혀요: 업로드되거나 저장되지 않아요.",
+      "pick": ".osu 선택",
+      "pickAgain": "다른 .osu",
+      "clear": "비교 그만하기",
+      "lines_other": "red line {{count}}개",
+      "otherAudio": "이 맵의 오디오 파일은 {{map}}이고, 이 분석은 {{file}}에 대한 거예요. 같은 오디오가 아니라면 비교는 의미가 없어요.",
+      "errors": {
+        "notOsu": ".osu 파일이 아니에요.",
+        "noTimingPoints": "이 .osu에는 [TimingPoints] 섹션이 없어요.",
+        "noRedLines": "이 .osu에는 비교할 red line이 없어요.",
+        "tooManyLines": "이 .osu에는 red line이 2000개 넘게 있어요.",
+        "tooBig": "파일이 16 MB를 넘어요.",
+        "unreadable": "파일을 읽을 수 없었어요."
+      }
+    },
+    "page": {
+      "title": "두 타이밍 비교",
+      "eyebrow": "비교",
+      "subtitle": "같은 곡에 대한 두 분석(내 것 또는 게시된 것), 또는 하나와 그 조정된 버전을 red line마다, 그리고 하나의 템포 맵에서 비교해요.",
+      "side": "타이밍 {{letter}}",
+      "swap": "A와 B 바꾸기",
+      "change": "변경",
+      "cancel": "취소",
+      "yours": "내 것",
+      "published": "게시됨",
+      "adjust": "조정",
+      "nudge": "미세 조정",
+      "sameAdjusted": "다른 쪽을 ×{{factor}}로",
+      "noneYours": "기록에 아직 완료된 분석이 없어요.",
+      "noneHere": "이 브라우저에는 아직 분석이 없어요. 기록에서 고르려면 로그인하세요.",
+      "pasteLabel": "분석 id 또는 게시된 타이밍 링크",
+      "pastePlaceholder": "/t/ 링크나 id 붙여넣기",
+      "use": "사용",
+      "badRef": "타이밍 링크나 분석 id가 아니에요.",
+      "errors": {
+        "notDone": "그 분석은 끝나지 않았거나 red line이 없어요.",
+        "notFound": "그런 타이밍이 없거나, 내 것이 아니고 게시되지도 않았어요.",
+        "network": "서버에 연결할 수 없어요. 잠시 후 다시 시도하세요."
+      },
+      "difference": "red line별 비교",
+      "otherAudio": "A와 B는 서로 다른 두 오디오 파일의 분석이에요: 같은 곡을 같은 방식으로 자른 경우에만 비교가 의미 있어요.",
+      "mapNote": "A의 템포 맵에 B의 red line이 파란 점선으로 표시돼요. 곡은 이 브라우저에서 읽은 A 오디오의 내 파일이고, 클릭은 그 위에 A 또는 B의 그리드를 재생해요."
+    }
+  },
+  "palette": {
+    "open": "페이지와 명령 검색 ({{shortcut}})",
+    "title": "이동 또는 실행",
+    "placeholder": "페이지, 분석 또는 명령…",
+    "results": "결과",
+    "empty": "“{{query}}”와 일치하는 항목이 없어요.",
+    "footer": "↑ ↓ 이동 · Enter 열기 · Esc 닫기 · ? 모든 단축키",
+    "inProgress": "분석 중",
+    "waiting": "대기 중",
+    "current": "현재",
+    "groups": {
+      "page": "페이지",
+      "analysis": "분석",
+      "action": "동작"
+    },
+    "actions": {
+      "theme": {
+        "dark": "다크 테마",
+        "light": "라이트 테마",
+        "system": "시스템 테마 따르기"
+      },
+      "contrastOn": "고대비 켜기",
+      "contrastOff": "고대비 끄기",
+      "settings": "설정 열기",
+      "shortcuts": "키보드 단축키",
+      "language": "언어: {{name}}"
+    },
+    "help": {
+      "title": "키보드 단축키",
+      "close": "닫기",
+      "note": "입력란에 입력하는 동안에는 어떤 키도 작동하지 않아요. 단, 아무것도 입력하지 않는 Ctrl+K(⌘K)는 예외예요.",
+      "global": {
+        "title": "어디서나",
+        "palette": "페이지, 분석 또는 명령으로 이동",
+        "help": "이 목록",
+        "close": "대화 상자 닫기"
+      },
+      "result": {
+        "title": "결과 페이지에서",
+        "play": "재생 또는 일시정지",
+        "beat": "한 비트 뒤로 또는 앞으로",
+        "bar": "한 마디 뒤로 또는 앞으로",
+        "zoom": "확대 또는 축소",
+        "fit": "곡 전체에 맞추기",
+        "lines": "이전 또는 다음 red line",
+        "loop": "선택 구간 반복 켜기/끄기",
+        "clicks": "클릭 켜기/끄기",
+        "follow": "재생 위치 따라가기 켜기/끄기"
+      }
+    }
+  },
+  "settings": {
+    "title": "설정",
+    "description": "이 브라우저에서 Overtone이 보이고 들리는 방식: 테마, 대비, 글자 크기, 맵 색상, 움직임, 볼륨, 지연 시간.",
+    "subtitle": "이 브라우저에서 Overtone이 보이고 들리는 방식. 선택은 바로 적용되고 이 기기에 저장돼요: 계정도 필요 없고, 아무것도 전송되지 않아요.",
+    "appearance": {
+      "title": "모양",
+      "note": "이 브라우저에만 적용돼요. 다른 기기는 각자의 설정을 유지해요."
+    },
+    "theme": {
+      "label": "테마",
+      "system": "시스템 따르기",
+      "dark": "다크",
+      "light": "라이트",
+      "hint": "“시스템 따르기”는 기기의 라이트/다크 모드를 따라 함께 바뀌어요."
+    },
+    "contrast": {
+      "label": "고대비",
+      "hint": "라이트 모드에서는 더 진한 글자와 굵은 선, 다크 모드에서는 더 밝게: 모든 글자 색이 배경 대비 7:1 이상(WCAG AAA)."
+    },
+    "font": {
+      "label": "글자 크기",
+      "hint": "90 %에서 130 %까지. 간격도 글자와 함께 커져서 줄 길이가 유지돼요."
+    },
+    "palette": {
+      "label": "템포 맵 색상",
+      "default": "기본",
+      "cb": "색맹 친화",
+      "hint": "제1색맹, 제2색맹, 제3색맹을 위해 red line, “귀로 확인”, 템포의 색을 맵과 그것들이 나오는 모든 곳에서 서로 구분되게 해요.",
+      "preview": "현재 맵 색상",
+      "swatch": {
+        "red": "Red line",
+        "amber": "귀로 확인",
+        "lavender": "템포",
+        "accent": "높은 신뢰도"
+      }
+    },
+    "motion": {
+      "label": "움직임",
+      "system": "시스템 따르기",
+      "reduce": "줄이기",
+      "allow": "허용",
+      "systemReduce": "지금 시스템이 움직임 줄이기를 요청하고 있어요.",
+      "systemAllow": "지금 시스템이 움직임 줄이기를 요청하지 않아요."
+    },
+    "reset": "대비, 크기, 색상, 움직임 초기화",
+    "language": {
+      "title": "언어",
+      "label": "사이트 언어"
+    },
+    "audio": {
+      "title": "플레이어",
+      "note": "결과 페이지에서 곡과 클릭의 시작 설정. 그곳에서 슬라이더를 움직이면 이 값도 바뀌어요.",
+      "song": "곡 볼륨",
+      "click": "클릭 볼륨",
+      "clicksOn": "결과를 열 때 클릭 켜기"
+    },
+    "latency": {
+      "label": "기기 지연 시간",
+      "none": "측정 안 됨",
+      "value": "{{ms}} ms",
+      "hint": "이 기기의 스피커나 헤드폰이 얼마나 늦게 들리는지. 플레이어는 이 값만큼 클릭만 옮기고, 내보내기는 절대 옮기지 않아요. 귀로 측정하는 곳:",
+      "calibrateLatest": "최근 결과.",
+      "calibrateRecent": "아무 결과 페이지.",
+      "type": "또는 직접 입력",
+      "placeholder": "예: 40",
+      "save": "설정",
+      "reset": "지우기",
+      "invalid": "{{min}}에서 {{max}} 사이의 밀리초 값을 입력하세요."
+    }
+  },
+  "learn": {
+    "footer": {
+      "title": "알아보기",
+      "how": "작동 방식",
+      "faq": "FAQ",
+      "glossary": "용어집",
+      "stats": "통계"
+    },
+    "source": "출처 문서",
+    "term": {
+      "open": "“{{term}}”이란?",
+      "more": "용어집에서 더 보기",
+      "close": "닫기"
+    },
+    "how": {
+      "title": "작동 방식",
+      "description": "업로드부터 red line까지 일어나는 일: 디코딩, 어택, 템포 탐색, 옥타브, 구간, 신뢰도를 단계별로.",
+      "intro": "업로드부터 red line까지 일어나는 일이에요. 아래 모든 단계는 사이트의 워커가 실행하는 v3 엔진(python/overtone.py)이며, 새로 설치한 데스크톱 앱의 기본값을 써요. 각 단계에는 명세된 문서가 적혀 있어서, 이 페이지를 코드와 대조할 수 있어요.",
+      "diagram": {
+        "title": "파이프라인",
+        "desc": "오디오 파일에서 타이밍까지 여섯 단계: 디코딩, 어택, 템포 탐색과 그리드 피팅, Beat This! 투표를 포함한 옥타브, 구간과 red line, 신뢰도 단계."
+      },
+      "steps": [
+        {
+          "id": "decode",
+          "label": "디코딩",
+          "h": "1. 디코딩",
+          "p": [
+            "파일을 44.1 kHz 모노 채널 하나로 디코딩하고 피크를 정규화해요. 2초보다 짧은 파일은 거부되고, 사이트는 길이에도 상한을 둬요(현재 한도는 FAQ 참조).",
+            "오디오는 분석이 끝날 때까지만 이름 없이 분석 id로 서버에서 기다리고, 그 뒤 삭제돼요(ADR-W4)."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.1",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "docs/site.md, How an analysis goes",
+              "path": "docs/site.md"
+            }
+          ]
+        },
+        {
+          "id": "attacks",
+          "label": "어택",
+          "h": "2. 온셋 엔벨로프와 어택",
+          "p": [
+            "멜 스펙트로그램(11 kHz까지 128개 대역, 2.9 ms마다 한 프레임)이 온셋 엔벨로프가 돼요: 각 대역이 한 프레임에서 다음 프레임으로 얼마나 커졌는지를 대역 전체의 중앙값으로 낸 거예요. 그 피크가 어택이에요: 드럼 타격, 현을 뜯는 소리, 노트의 시작.",
+            "그다음 각 어택을 원본 파형에서 샘플 단위로 다시 타이밍해요: 1.5 ms 창의 에너지가 오르기 시작하는 순간이에요. 주변보다 두드러지지 않는 피크는 노이즈에 맞추지 않고 엔벨로프 시간을 유지해요. 합성 벤치마크에서 이 단계가 약 8 ms와 0.16 ms의 차이를 만들어요."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.2-A.4",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "tempo",
+          "label": "템포와 그리드",
+          "h": "3. 템포 탐색과 그리드 피팅",
+          "p": [
+            "55 ms부터 1.35 s(약 44~1090 BPM)까지 모든 비트 주기를 어택이 얼마나 잘 맞아떨어지는지(원형 코히어런스)로 점수를 매겨요. 가장 강한 후보와 그 배수들을 시드로 시도해요.",
+            "시드는 반복 재가중 최소제곱법으로 직선 그리드(비트 k는 오프셋 + k × 주기)에 맞춰져요: 비트 사이에 떨어지는 어택은 제외하고, 반복할수록 허용치를 좁혀요. 시드는 30초 창에서 시작해 그리드가 잡힐 때까지 줄어들고, 그 뒤 그리드는 자신이 설명하는 구간 전체로 넓어져요."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.5-A.7",
+              "path": "docs/05-dsp-pipeline.md"
+            }
+          ]
+        },
+        {
+          "id": "octave",
+          "label": "옥타브 + Beat This!",
+          "h": "4. 옥타브와 Beat This! 투표",
+          "p": [
+            "120 BPM에 맞는 그리드는 60과 240에도 맞아요. 엔진은 각 비트 레벨을 강세 패턴, 커버리지, 템포 사전 분포로 점수 매긴 뒤, osu! 맵이 보통 타이밍되는 옥타브인 120~240 BPM에서 결과를 읽고, 어택이 동의하면 그 옆의 정수 BPM으로 읽어요.",
+            "그다음 신경망 비트 트래커인 Beat This!가 투표해요. 그 비트들이 red line 후보가 되고, 곡 자체의 어택을 확실히 더 잘 설명하는 곳에서만 엔진의 것을 대체해요. 옥타브도 판정해요: 곡의 나머지와 한 옥타브 어긋난 red line은 Beat This!가 곡의 옥타브로 들으면 그 옥타브로 다시 읽혀요. 모델이 없으면 투표는 건너뛰고, 결과 페이지에 “투표 꺼짐”이라고 표시돼요."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.8",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, analyze_audio and _beat_this_vote",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "sections",
+          "label": "구간",
+          "h": "5. 구간과 red line",
+          "p": [
+            "그리드는 새 조각이 계속 맞는 동안 곡을 따라 앞으로 자라요. 맞지 않게 되는 곳에서 새 구간이 자체 템포 탐색으로 시작해요. 템포가 너무 가까운 이웃 구간은 합쳐지고, 경계는 두 그리드가 교차하는 곳에 정해지며, 모든 구간은 자신의 어택으로 다시 피팅돼요.",
+            "각 구간은 red line이 돼요. 첫 red line은 강세가 마디를 증명할 때만 다운비트에 놓이고, 그렇지 않으면 박자는 추측이라 표에 “?”로 표시돼요. 어긋남 추적은 일정한 곡의 템포가 고정 그리드에서 벗어나는 곳에 red line을 추가하는데, 새 라인이 어택에 최소 10 % 더 잘 맞을 때만 그래요."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.9-A.10",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "python/overtone.py, _follow_drift",
+              "path": "python/overtone.py"
+            }
+          ]
+        },
+        {
+          "id": "confidence",
+          "label": "신뢰도",
+          "h": "6. 신뢰도 단계",
+          "p": [
+            "각 구간은 피팅이 얼마나 촘촘한지, 비트 중 몇 개에 어택이 있는지, 얼마나 긴지로 신뢰도를 받아요. 사이트는 이를 세 단계로 보여줘요: 0.90 이상은 높음(그리드 피팅일 때만), 0.75 이상은 보통, 그 미만이거나 피팅 잔차가 30 ms를 넘거나 엔진 자체 점검에서 표시되면 귀로 확인.",
+            "이 단계는 측정된 정확도가 아니라 엔진의 근거를 읽은 값이에요. 0.90은 모든 구간이 0.99 이상을 받는 합성 트랙에서 구간을 다시 볼 필요가 없어지는 지점이에요.",
+            "일정한 그리드가 전혀 맞지 않으면(루바토, 자유 박자, 타악기 없음) 엔진은 비트 트래커로 대체하고, 그 구간은 절대 높음에 도달하지 않아요. 화이트 노이즈에는 BPM이 없어요: 이유와 함께 거부돼요."
+          ],
+          "src": [
+            {
+              "label": "docs/05-dsp-pipeline.md, A.10-A.11",
+              "path": "docs/05-dsp-pipeline.md"
+            },
+            {
+              "label": "worker/timing_result.py, HIGH, MEDIUM and LOOSE_RESIDUAL_MS",
+              "path": "worker/timing_result.py"
+            }
+          ]
+        }
+      ],
+      "ear": {
+        "h": "“귀로 확인”의 의미",
+        "p": [
+          "모든 타이밍은 탄탄한 초안이에요. 귀로 확인한다는 건 매핑하기 전에 곡과 맞춰 들어 본다는 뜻이에요:"
+        ],
+        "li": [
+          "결과 페이지에서 클릭 트랙과 함께 곡을 재생하고, 시작 부분과 모든 red line 주변을 들어 보세요.",
+          "귀로 확인(주황색)으로 표시된 구간부터 시작하고, 어긋남 열을 보세요.",
+          "클릭이 어디서나 이르거나 늦게 들리면 전체 오프셋을, 느껴지는 박자보다 두 배 또는 절반 빈도로 나오면 절반 또는 두 배를 시도하세요.",
+          "그래도 어색하게 들리는 부분은 osu! 에디터에서 고치세요."
+        ],
+        "after": [
+          "높음은 근거가 일관되었다는 뜻이지, 라인이 맞다는 뜻이 아니에요."
+        ]
+      },
+      "time": {
+        "h": "분석에 그만큼 시간이 걸리는 이유",
+        "p": [
+          "60초짜리 곡은 개발 머신에서 투표를 켜고 약 10초가 걸렸고, 여기에 대기열 대기 시간이 더해져요. 대부분은 두 곳에 쓰여요: 어택 감지(스펙트로그램, 그리고 모든 어택 주변의 파형)와, 곡 전체의 스펙트로그램을 CPU에서 초당 50프레임, 30초 단위로 읽는 신경망 Beat This!.",
+          "옥타브 판정은 red line이 한 옥타브 어긋나 보일 때만 Beat This!에 묻고, 그 답을 곡의 나머지에도 써요. 워커가 시작된 뒤 첫 분석은 모델도 불러와서 몇 초 더 걸려요. 통계 페이지에서 이 사이트의 업로드부터 결과까지 중앙값과 90번째 백분위수 시간을 볼 수 있어요."
+        ],
+        "src": [
+          {
+            "label": "docs/site.md, Run it on another machine",
+            "path": "docs/site.md"
+          },
+          {
+            "label": "worker/timing_result.py, STAGES",
+            "path": "worker/timing_result.py"
+          }
+        ]
+      },
+      "bench": {
+        "h": "측정된 것과 아직 측정되지 않은 것",
+        "p": [
+          "합성 벤치마크(bench/benchmark.py)는 정답이 알려진 생성 트랙 24개의 타이밍을 맞춰요: 느린 템포부터 300 BPM까지의 일정한 템포, 템포와 박자 변화, 소수점 BPM, 스윙과 셔플, 지터와 노이즈, 무음 인트로, 드롭, 6분짜리 트랙. 24개 구간 모두 0.05 BPM, 5 ms 이내에 들어오고, 오차 중앙값은 0.0000 BPM, 0.16 ms예요. 그 옆의 게이트들은 벤치마크가 정규화해서 볼 수 없는 옥타브 같은 것을 고정해요.",
+          "이것이 알려주지 않는 건 여러분의 곡에서 엔진이 어떤지예요. 실제 음악은 엔진이 red line을 5 ms 이내로 맞춰야 하는 수작업 타이밍 랭크 맵 20개인 Corpus B와, 운영자 서버의 더 큰 랭크 맵 샘플로 측정해요. 그건 연구 단계예요: 수치가 엔진이 바뀔 때마다 움직이며, 아직 사이트에 공개되지 않았어요."
+        ],
+        "src": [
+          {
+            "label": "CLAUDE.md, Verification",
+            "path": "CLAUDE.md"
+          },
+          {
+            "label": "docs/timeline.md",
+            "path": "docs/timeline.md"
+          }
+        ]
+      }
+    },
+    "faq": {
+      "title": "질문",
+      "description": "BPM이 왜 두 배인지, red line이 왜 두 개인지, 오프셋, 어긋남, 오디오 중 무엇이 보관되는지, 한도, 형식, .osz, 계정.",
+      "intro": "매퍼가 결과에 대해 묻는 질문들이에요. 용어는 용어집을, 단계는 작동 방식을 보세요.",
+      "items": [
+        {
+          "id": "doubled",
+          "q": "BPM이 왜 두 배(또는 절반)인가요?",
+          "a": [
+            "90 BPM에 맞는 펄스는 180과 45에도 맞아요: 어택이 셋 모두와 일치해요. 맵이 어느 것을 쓰는지는 어느 정도 관례예요. Overtone은 어택이나 Beat This!가 확실히 다르게 말하지 않는 한, osu! 맵이 보통 타이밍되는 120~240 BPM에서 결과를 읽어요.",
+            "원하는 게 다른 쪽이라면 결과 페이지의 절반 또는 두 배를 쓰세요: 맵, 클릭, 모든 다운로드가 함께 바뀌고, 엔진 자체의 값은 그대로 남아요."
+          ],
+          "links": [
+            {
+              "label": "옥타브",
+              "to": "/glossary#octave"
+            }
+          ]
+        },
+        {
+          "id": "two-lines",
+          "q": "red line이 왜 두 개(또는 그 이상)인가요?",
+          "a": [
+            "red line은 새 그리드를 시작해요. Overtone은 템포가 바뀌는 곳, 박자가 바뀌는 곳(같은 BPM의 새 red line), 그리고 일정한 곡의 템포가 그리드에서 충분히 벗어나 새로 시작하는 게 어택에 최소 10 % 더 잘 맞는 곳에 red line을 써요.",
+            "라인 하나면 충분하다고 생각되면 두 번째 라인부터 재생해서 들어 보세요: 어긋남과 피팅 열이 각 라인이 그 아래 어택에 얼마나 잘 맞는지 알려줘요."
+          ]
+        },
+        {
+          "id": "offset",
+          "q": "오프셋이 몇 ms 어긋나요. 왜 그런가요?",
+          "a": [
+            "Overtone은 파형에서 측정한, 어택의 에너지가 오르기 시작하는 곳에 비트를 놓아요. 부드러운 어택, 리버브, 복잡한 믹스는 그 순간을 벤치마크의 클릭 트랙보다 덜 선명하게 만들어서, 실제 곡에서는 몇 ms 정도 앞뒤로 어긋날 수 있어요.",
+            "모든 클릭이 같은 만큼 이르거나 늦게 들리면 결과 페이지의 전체 오프셋을 쓰고 다시 귀로 확인하세요. osu! 자체의 유니버설 오프셋은 맵이 아니라 기기의 오디오 지연이에요: 맵에 넣지 마세요."
+          ]
+        },
+        {
+          "id": "drift",
+          "q": "어긋남이란 무엇인가요?",
+          "a": [
+            "red line 아래의 어택이 그 그리드에서 얼마나 떨어져 있는지예요: 가장 가까운 1/1, 1/2, 1/3, 1/4 틱까지 거리의 가중 중앙값, ms 단위. 표에서 5 ms까지는 초록, 5-15 ms는 주황, 그 이상은 빨강이에요. 어긋남이 크면 그곳에서 그리드와 들리는 소리가 맞지 않는다는 뜻이에요: 놓친 템포 변화, 라이브 드러머, 또는 스윙."
+          ],
+          "links": [
+            {
+              "label": "어긋남",
+              "to": "/glossary#drift"
+            }
+          ]
+        },
+        {
+          "id": "audio",
+          "q": "제 오디오가 보관되나요?",
+          "a": [
+            "아니요. 업로드는 결과나 실패가 나올 때까지만 분석 id로 서버에서 기다리고, 그 뒤 삭제돼요. 캐시에서 답한 곡은 즉시 삭제돼요. 이건 설정이 아니라 프로젝트의 규칙(ADR-W4)이에요.",
+            "남는 것은 오디오의 SHA-1(같은 파일을 캐시에서 답하기 위해), 결과, 파일 이름과 태그이며, 분석을 삭제할 때까지 유지돼요. 결과 페이지는 내 브라우저에서 곡을 재생하고, 서버는 오디오를 돌려보내지 않아요."
+          ],
+          "links": [
+            {
+              "label": "개인정보",
+              "to": "/privacy"
+            }
+          ]
+        },
+        {
+          "id": "limits",
+          "q": "한도는 어떻게 되나요?",
+          "a": [
+            "캐시에서 답한 곡(같은 엔진을 거친 같은 파일)은 세지 않아요. 횟수는 00:00 UTC에 초기화돼요."
+          ]
+        },
+        {
+          "id": "formats",
+          "q": "어떤 형식이 되나요?",
+          "a": [
+            "MP3, OGG, WAV, FLAC, M4A, Opus예요. 파일은 도착할 때 확장자로 확인하고 엔진이 디코딩해요. 오디오가 아니거나 디코딩할 수 없는 파일은 메시지와 함께 실패하며, 그 외에는 아무 손해도 없어요."
+          ]
+        },
+        {
+          "id": "osz",
+          "q": ".osz는 어떻게 쓰나요?",
+          "a": [
+            ".osz는 내 파일과 내가 조정한 타이밍으로 브라우저에서 만들어져요: red line만 담긴 난이도 하나짜리 비트맵 세트예요. 더블클릭하면 osu!stable이 가져오고, 에디터에서 열어 매핑하면 돼요.",
+            "서버에는 넣을 오디오가 없으므로, 업로드한 오디오를 결과 페이지에서 다시 선택해야 하고, 지문으로 분석과 대조돼요."
+          ]
+        },
+        {
+          "id": "accounts",
+          "q": "계정이 필요한가요?",
+          "a": [
+            "아니요: 누구나 곡의 타이밍을 맞출 수 있어요(ADR-W6). Discord나 Google을 통한 Mides 계정이 있으면 하루 한도가 늘고, 어느 브라우저에서든 분석을 볼 수 있으며 기록에 남고, 내 이름으로 타이밍을 게시할 수 있어요.",
+            "Overtone은 Mides 사용자 이름, 이름, 아바타를 보관하며, 이메일이나 Mides 토큰은 절대 보관하지 않아요."
+          ]
+        },
+        {
+          "id": "privacy",
+          "q": "개인정보 처리방침은 어디 있나요?",
+          "a": [
+            "별도 페이지에 있어요. 무엇이 얼마나 오래, 왜 저장되는지를 코드에서 읽은 그대로 적어 두었어요."
+          ],
+          "links": [
+            {
+              "label": "개인정보",
+              "to": "/privacy"
+            }
+          ]
+        }
+      ],
+      "limits": {
+        "anon": "계정 없이: 하루 {{daily}}곡, 한 번에 {{pending}}곡 대기.",
+        "user": "Mides 계정으로: 하루 {{daily}}곡, 한 번에 {{pending}}곡 대기.",
+        "size": "곡마다 최대 {{minutes}}분, {{mb}} MB.",
+        "loading": "현재 한도를 읽는 중…",
+        "unreachable": "지금은 한도를 읽을 수 없어요. 상태 페이지에서 API가 작동 중인지 확인할 수 있어요."
+      }
+    },
+    "glossary": {
+      "title": "용어집",
+      "description": "Overtone에서 쓰는 의미의 red line, green line, 오프셋, BPM, 박자, 키아이, 어긋남, 피팅, 온셋, 신뢰도, 옥타브, Beat This!.",
+      "intro": "결과 페이지의 용어를 Overtone에서 쓰는 의미로 설명해요. 각 용어는 결과 페이지에서도 링크예요: 점선 밑줄을 누르면 짧은 설명이 열려요.",
+      "terms": {
+        "redLine": {
+          "term": "Red line",
+          "short": "그 시점부터 다음 red line까지 BPM, 1박의 시작, 박자를 정하는 타이밍 포인트.",
+          "long": "osu!에서 red line은 상속되지 않는 타이밍 포인트예요: 자기 시간에 자기 BPM과 박자로 새 비트 그리드를 시작하고, 매퍼가 스냅하는 모든 것은 그 앞의 red line을 따라요. Overtone은 템포나 박자가 바뀌는 곳, 그리고 일정한 템포가 그리드에서 충분히 벗어나 새로 시작해야 하는 곳에 red line을 써요."
+        },
+        "greenLine": {
+          "term": "Green line (상속 포인트)",
+          "short": "red line의 그리드를 유지하면서 슬라이더 속도, 히트사운드 볼륨과 샘플셋, 키아이만 바꾸는 타이밍 포인트.",
+          "long": "green line은 곡의 타이밍이 아니라 맵의 결정이라서, Overtone의 타이밍에는 없어요. 앞의 red line의 BPM과 오프셋을 상속해요."
+        },
+        "offset": {
+          "term": "오프셋",
+          "short": "오디오 시작부터 ms 단위로 잰, red line 첫 비트의 시간.",
+          "long": "사람들이 “오프셋”이라고 할 때는 첫 red line의 오프셋을 말해요. Overtone은 파형에서 측정한, 어택의 에너지가 오르기 시작하는 곳에 놓고, osu!stable이 읽는 대로 정수 밀리초로 써요."
+        },
+        "bpm": {
+          "term": "BPM",
+          "short": "분당 비트 수: 그리드의 비트가 얼마나 빨리 오는지. 한 비트는 60 000 ÷ BPM ms이며, osu!가 저장하는 값이에요.",
+          "long": "결과 페이지의 대표 BPM은 각 구간의 BPM을 길이로 가중한 중앙값이에요. BPM은 절반과 두 배에도 맞는 펄스를 한 가지로 읽은 값이에요: 옥타브를 보세요."
+        },
+        "meter": {
+          "term": "박자",
+          "short": "한 마디에 비트가 몇 개인지: 4/4, 3/4, 7/4. osu!는 위의 숫자만 저장해요.",
+          "long": "Overtone은 강세가 마디를 증명할 때만 1마디를 다운비트에 놓아요. 그렇지 않으면 박자는 추측이고, 표에 “?”로 표시돼요."
+        },
+        "kiai": {
+          "term": "키아이",
+          "short": "맵에서 강조되는 구간(보통 후렴)으로, green line으로 켜고 꺼요.",
+          "long": "키아이는 곡의 타이밍이 아니라 매퍼의 선택이에요: Overtone의 타이밍은 키아이를 설정하지 않아요."
+        },
+        "drift": {
+          "term": "어긋남",
+          "short": "red line 아래의 어택이 그 그리드에서 얼마나 떨어져 있는지: 가장 가까운 1/1, 1/2, 1/3, 1/4 틱까지 거리의 가중 중앙값, ms 단위.",
+          "long": "어긋남이 작으면 그리드가 들리는 소리 위에 있다는 뜻이에요. 표는 5 ms까지 초록, 5-15 ms 주황, 그 이상 빨강으로 색을 칠하고, 90번째 백분위수와 어택이 기우는 방향(+는 그리드보다 늦음)을 덧붙여요. 라이브로 연주된 곡은 어긋나요. 타이밍이 그것을 따라가려면 red line이 더 필요하고, Overtone은 최소 10 % 더 잘 맞을 때 추가해요."
+        },
+        "fit": {
+          "term": "피팅",
+          "short": "구간의 그리드 피팅에 대한 엔진 자체의 잔차, ms 단위: 남긴 어택이 맞춘 비트에서 얼마나 떨어져 있는지.",
+          "long": "30 ms를 넘으면 나머지 값이 아무리 확신에 차 있어도 그 구간은 귀로 확인으로 표시돼요: 매퍼라면 그렇게 느슨한 그리드는 받아들이지 않을 테니까요."
+        },
+        "onset": {
+          "term": "온셋 (어택)",
+          "short": "소리의 시작: 드럼 타격, 현을 뜯는 소리, 노트. 그리드는 엔진이 감지한 온셋에 맞춰져요.",
+          "long": "온셋 엔벨로프(스펙트럼이 얼마나 빨리 커지는지)의 피크를 파형에서 에너지가 오르기 시작하는 곳으로 다시 타이밍한 거예요. 템포 맵은 이를 파형 아래 눈금으로 그려요."
+        },
+        "confidence": {
+          "term": "신뢰도 단계",
+          "short": "높음, 보통, 귀로 확인: 측정된 정확도가 아니라 구간에 대한 엔진 자체의 근거를 읽은 값.",
+          "long": "피팅이 얼마나 촘촘한지, 비트 중 몇 개에 어택이 있는지, 구간이 얼마나 긴지를 따져요. 0.90 이상은 높음(그리드 피팅일 때만), 0.75 이상은 보통, 그 미만이거나 피팅 잔차가 30 ms를 넘거나 엔진 자체 점검에서 표시되면 귀로 확인."
+        },
+        "octave": {
+          "term": "옥타브",
+          "short": "같은 펄스를 절반 또는 두 배 속도로 읽은 것: 87.5, 175, 350 BPM 모두 같은 곡에 맞아요.",
+          "long": "어느 것이 맞는지는 어느 정도 관례예요. osu! 맵은 보통 120~240 BPM으로 타이밍되고, Overtone은 어택이나 Beat This!가 다르게 말하지 않는 한 거기서 결과를 읽어요. 결과 페이지의 절반 또는 두 배는 맵, 클릭, 다운로드에 대해 이를 바꿔요."
+        },
+        "beatThis": {
+          "term": "Beat This!",
+          "short": "곡의 스펙트로그램에서 비트를 표시하는 신경망. Overtone은 이를 두 번째 의견으로만 쓰고, 단독으로는 절대 쓰지 않아요.",
+          "long": "Beat This!(Foscarin, Schlüter, Widmer, ISMIR 2024, MIT 라이선스)는 곡을 초당 50프레임으로 읽어요. 그 비트는 곡의 어택을 확실히 더 잘 설명하는 곳에서만 엔진의 red line을 대체하고, 한 옥타브 어긋나 보이는 red line을 판정해요. 단독으로는 비트가 20 ms 그리드에 놓여서 10 ms 수준으로 덜 정밀해요."
+        }
+      }
+    }
+  },
+  "siteStats": {
+    "title": "통계",
+    "description": "이 사이트가 타이밍을 맞춘 곡 수, 그 BPM, 템포가 바뀌는 곡 수, 분석에 걸리는 시간, 대기열 길이.",
+    "intro": "이 사이트 자체 데이터베이스의 집계 수치예요: 곡, 이름, 계정은 표시되지 않아요. 최대 1분에 한 번 다시 계산돼요.",
+    "loading": "세는 중…",
+    "error": "지금은 통계를 읽을 수 없어요.",
+    "retry": "다시 시도",
+    "updated": "{{time}}에 집계",
+    "totals": {
+      "title": "합계",
+      "done": "타이밍 완료",
+      "refused": "거부됨",
+      "failed": "실패",
+      "published": "게시됨",
+      "songs": "서로 다른 곡",
+      "cached": "캐시에서 답함",
+      "note": "엔진이 실행한 분석이에요. 거부됨: 엔진이 확신할 만한 펄스가 없어서 BPM 없음. 삭제된 분석은 세지 않아요."
+    },
+    "bpm": {
+      "title": "타이밍된 곡의 BPM",
+      "label": "타이밍된 분석 {{count}}개의 대표 BPM 히스토그램, 20 BPM 단위.",
+      "below": "{{to}} 미만",
+      "range": "{{from}}-{{to}}",
+      "above": "{{from}}+",
+      "axis": "BPM",
+      "count": "분석 수",
+      "empty": "아직 타이밍된 곡이 없어요.",
+      "table": "표로 보기"
+    },
+    "tempo": {
+      "title": "단일 템포 또는 여러 템포",
+      "single": "단일 템포",
+      "variable": "템포 변화",
+      "label": "단일 템포인 타이밍 분석 {{single}}개, 템포 변화가 있는 분석 {{variable}}개.",
+      "note": "템포 변화: 두 개 이상의 BPM을 가진 red line. 박자만 바뀌면 단일 템포로 봐요."
+    },
+    "time": {
+      "title": "결과까지 걸린 시간",
+      "median": "중앙값",
+      "p90": "10개 중 9개가 이내",
+      "seconds": "{{value}}초",
+      "note": "대기열 대기를 포함해 업로드부터 결과까지, 지난 {{days}}일 동안 끝난 분석 {{count}}개 기준.",
+      "notEnough": "지난 {{days}}일 동안 끝난 분석이 {{min}}개 미만이에요: 중앙값을 내기엔 너무 적어요."
+    },
+    "queue": {
+      "title": "현재 대기열",
+      "queued": "대기 중",
+      "running": "분석 중",
+      "link": "대기열 보기"
+    }
+  },
+  "modes": {
+    "names": {
+      "fast": "빠름",
+      "normal": "보통",
+      "strict": "엄격"
+    },
+    "about": {
+      "fast": "Beat This! 신경망 없이 엔진만: red line에 대한 투표와 옥타브 점검을 건너뛰어요. 대기 시간은 일부지만, 실제 음악에서는 옥타브와 red line을 덜 점검해요.",
+      "normal": "일반적인 분석: 엔진, 그다음 Beat This! 투표와 옥타브 점검.",
+      "strict": "지금은 보통과 같은 분석이에요: 도움이 된다고 측정된 추가 기능이 아직 없어요. 앞으로 각 red line을 더 세밀하게 점검하는 기능이 여기 들어가요."
+    },
+    "options": {
+      "title": "옵션 (선택)",
+      "changed": "변경됨",
+      "defaults": "기본값",
+      "mode": "모드",
+      "modeNote": "얼마나 기다릴지로 고르세요. 같은 곡도 다른 모드로 분석하면 다른 결과가 돼요.",
+      "tempo": "템포",
+      "unknown": "모름",
+      "constant": "처음부터 끝까지 하나의 BPM",
+      "changes": "템포가 바뀜",
+      "meter": "마디당 비트 수",
+      "beats_other": "마디당 {{count}}비트",
+      "bpm": "BPM",
+      "about": "대략",
+      "range": "범위",
+      "aboutBpm": "대략적인 BPM",
+      "fromBpm": "최저 BPM",
+      "toBpm": "최고 BPM",
+      "stretch": "일부 구간만 (시작 – 끝)",
+      "from": "시작 (m:ss)",
+      "to": "끝 (m:ss)",
+      "stretchNote": "곡 전체를 분석하려면 둘 다 비워 두세요. 결과의 시간은 곡 자체의 타임라인 기준이에요.",
+      "stretchOne": "구간은 한 번에 한 곡에만 지정할 수 있어요.",
+      "honest": "힌트는 오디오보다 우선하지 않아요. 예상 템포는 엔진이 곡을 읽는 옥타브를 고르고, 박자는 엔진이 증명하지 못한 마디만 채워요. 오디오가 힌트와 다르면 결과에 그렇게 표시돼요.",
+      "reset": "기본값으로 되돌리기"
+    },
+    "errors": {
+      "bpm": "BPM은 30에서 400 사이의 숫자예요.",
+      "range": "범위의 첫 BPM이 더 낮아야 해요.",
+      "meter": "마디당 비트 수는 1에서 16 사이의 정수예요.",
+      "stretch": "구간은 m:ss 또는 초로, 끝을 포함해 쓰세요.",
+      "stretchBatch": "구간은 한 번에 한 곡에만 지정할 수 있어요: 구간을 지우거나 곡 하나만 보내세요.",
+      "stretchPast": "구간이 곡보다 늦게 끝나요.",
+      "stretchShort": "구간은 최소 10초여야 해요.",
+      "server": "서버가 옵션을 거부했어요: {{message}}"
+    },
+    "estimate": {
+      "label": "예상:",
+      "left": "완료까지",
+      "seconds_other": "{{count}}초",
+      "minutes_other": "{{count}}분",
+      "about": "≈ {{value}}",
+      "range": "≈ {{low}} – {{high}}",
+      "atLeast": "최소 {{value}}",
+      "why": "워커 하나 기준, 오디오 1분당 측정된 비용으로 낸 추정치",
+      "queueNote": "완료까지의 시간은 추정치(≈)예요: 워커 하나로 각 모드의 분석 하나가 오디오 1분당 드는 측정 비용이라서, 범위일 뿐 약속이 아니에요. 곡 길이를 모르면 그 뒤의 곡들은 \"최소\"로 표시돼요."
+    },
+    "result": {
+      "title": "분석 방식",
+      "noVote": "(워커에서 Beat This! 모델을 쓸 수 없어서 투표하지 않았어요.)",
+      "stretch": "곡의 {{from}} – {{to}}만 분석했어요. red line과 여기 있는 모든 시간은 곡 자체의 타임라인 기준이며, 그 구간 밖은 측정하지 않았어요.",
+      "hints": "내 힌트:",
+      "aboutBpm": "약 {{bpm}} BPM",
+      "rangeBpm": "{{low}}–{{high}} BPM",
+      "stretchShort": "{{from}}–{{to}}만"
+    },
+    "checks": {
+      "tempo_not_constant_other": "처음부터 끝까지 하나의 BPM이라고 했지만, 엔진은 서로 다른 템포 {{count}}개를 찾았어요. 엔진의 red line은 유지되니, 바뀌는 곳을 들어 보세요.",
+      "tempo_constant": "템포가 바뀐다고 했지만, 엔진은 처음부터 끝까지 하나의 BPM({{bpm}})을 찾았어요.",
+      "bpm_far": "약 {{expected}} BPM을 예상했지만, 엔진은 {{bpm}}으로 읽어요.",
+      "bpm_outside_other": "red line {{count}}개가 지정한 범위 {{low}}–{{high}} BPM을 벗어나요.",
+      "double": "두 배로 하면 맞아요: 조정에서 ×2를 시도하세요.",
+      "half": "절반으로 하면 맞아요: 조정에서 ÷2를 시도하세요.",
+      "octave_window": "입력한 템포가 엔진이 곡을 읽는 옥타브({{low}}–{{high}} BPM)를 정했어요.",
+      "octave_window_moved": "입력한 템포가 엔진이 곡을 읽는 옥타브({{low}}–{{high}} BPM)를 정했어요. 그게 없었다면 엔진은 {{bpm}} BPM으로 읽었을 거예요.",
+      "meter_differs": "마디당 {{meter}}비트라고 했지만, 엔진이 마디를 증명할 수 있었던 곳에서는 {{found}}을(를) 찾았고 자신의 값을 유지했어요.",
+      "meter_applied_other": "red line {{count}}개는 엔진이 증명할 수 있는 마디가 없었어요: 입력한 마디당 {{meter}}비트를 써요."
+    },
+    "reanalyse": {
+      "title": "다시 분석",
+      "note": "같은 힌트로 같은 곡을 다른 모드로. 이 브라우저가 아직 가지고 있는 파일을 보내거나, 다시 선택하게 한 뒤 먼저 같은 오디오인지 확인해요. 이전에 요청한 적이 있으면 저장된 결과로 답해요.",
+      "go": "{{mode}} 모드로 분석",
+      "pick": "보내려면 {{name}}을(를) 다시 선택하세요: 먼저 이 분석과 대조해요.",
+      "mismatchFile": "{{name}}은(는) 이 분석의 오디오가 아니에요.",
+      "mismatch": "그 파일은 다시 분석하려던 분석의 오디오가 아니에요.",
+      "related": "연결된 분석",
+      "from": "원본",
+      "into": "다시 분석한 것",
+      "compare": "비교"
+    }
+  },
+  "links": {
+    "title": "연결된 계정",
+    "loadFailed": "연결된 계정을 불러올 수 없었어요. 페이지를 새로고침해서 다시 시도하세요.",
+    "unlink": "연결 해제",
+    "back": "프로필로 돌아가기",
+    "discord": {
+      "linked": "연결됨. Overtone 봇이 나를 알고, /time-song이 내 계정 기준으로 세져요.",
+      "notLinked": "연결 안 됨. 내 계정과 그 한도로 Overtone 봇을 쓰려면 연결하세요.",
+      "onMides": "Mides에서 연결",
+      "code": "봇으로 연결",
+      "codeHint": "{{minutes}}분 안에 Discord에서 Overtone 봇에게 이것을 입력하세요:",
+      "unavailable": "이 서버에서는 아직 Discord 연결을 쓸 수 없어요.",
+      "notify": "분석이 끝나면 Discord DM 받기",
+      "notifyHint": "이 계정의 곡에 대해 Overtone 봇이 보내요. 여기서 또는 /notify off로 끌 수 있어요.",
+      "botOff": "이 서버에서는 Overtone 봇이 아직 돌아가지 않아요: 돌아가기 전까지는 아무것도 보내지 않아요."
+    },
+    "osu": {
+      "title": "osu! 연결",
+      "link": "osu! 연결",
+      "notLinked": "연결 안 됨.",
+      "unavailable": "이 서버에서는 아직 osu! 연결을 쓸 수 없어요.",
+      "ranked_other": "랭크 맵 {{count}}개",
+      "scope": "Overtone은 osu!에 공개 신원(identify 스코프)만 요청해요: id, 이름, 사진, 랭크 맵 수를 한 번 읽어요. osu! 토큰은 보관하지 않으며 내 계정으로 어떤 동작도 하지 않아요.",
+      "working": "osu! 계정 연결하는 중…",
+      "denied": "osu!가 연결되지 않았어요: osu!에서 요청이 거절되었어요.",
+      "stateMissing": "이 연결은 이 브라우저에서 시작되지 않았거나 너무 오래 걸렸어요. 프로필에서 다시 시작하세요.",
+      "failed": "osu!를 연결할 수 없었어요: {{message}}"
+    }
+  },
+  "social": {
+    "nav": {
+      "timers": "타이머"
+    },
+    "title": "사람들이 이 타이밍으로 한 것",
+    "failed": "실패했어요. 잠시 후 다시 시도하세요.",
+    "cancel": "취소",
+    "more": "더 보기",
+    "stars": {
+      "title": "별점",
+      "count_other": "평가 {{count}}개",
+      "pick_other": "별 {{count}}개",
+      "yours": "내 평가",
+      "yoursHint": "곡에 얼마나 잘 맞는지 평가하세요. 계정당 한 번이며, 바꿀 수 있어요.",
+      "again": "평가를 취소하려면 같은 별을 다시 누르세요.",
+      "own": "내 타이밍이라 평가할 수 없어요.",
+      "signIn": "로그인하고 평가하기",
+      "notRanked_other": "\"최고 평점\"은 평가가 {{count}}개 이상인 타이밍부터 세요."
+    },
+    "uses": {
+      "title": "맵에 사용됨",
+      "count_other": "{{count}}명이 사용함",
+      "short_other": "사용 {{count}}회",
+      "mark": "이걸 사용했어요",
+      "marked": "사용함",
+      "save": "저장",
+      "editLink": "맵 링크 변경",
+      "unmark": "표시 해제",
+      "link": "osu!에 있는 내 맵 (선택)",
+      "linkHint": "osu.ppy.sh 비트맵셋 링크. 내 이름 옆에 입력한 그대로 링크로 표시돼요.",
+      "badLink": "osu.ppy.sh 비트맵셋 링크가 아니에요.",
+      "own": "내 타이밍이에요: 사용 횟수는 다른 사람의 사용만 세요.",
+      "signIn": "로그인하고 사용했다고 알리기",
+      "goneAccount": "삭제된 계정"
+    },
+    "collections": {
+      "title": "컬렉션",
+      "eyebrow": "컬렉션",
+      "description": "누군가 Overtone에서 모은 게시된 타이밍 목록.",
+      "publicTitle": "공개 컬렉션",
+      "public": "공개",
+      "private": "비공개",
+      "count_other": "타이밍 {{count}}개",
+      "none": "아직 컬렉션이 없어요. 아래에서 만들어 보세요.",
+      "noneYet": "아직 컬렉션이 없어요.",
+      "newName": "새 컬렉션 이름",
+      "newPlaceholder": "새 컬렉션, 예: \"내 맵셋\"",
+      "create": "만들기",
+      "privateNote": "새 컬렉션은 비공개예요.",
+      "manage": "컬렉션 관리",
+      "signIn": "로그인하고 컬렉션에 담기",
+      "intro": "게시된 타이밍을 모은 내 목록이에요. 비공개 컬렉션은 나만 열 수 있고, 공개 컬렉션은 자체 페이지가 있으며 프로필에 표시돼요.",
+      "rename": "이름 변경",
+      "save": "저장",
+      "makePublic": "공개로 전환",
+      "makePrivate": "비공개로 전환",
+      "delete": "삭제",
+      "deleteYes": "삭제하기",
+      "full": "컬렉션이 가득 찼어요.",
+      "tooMany": "계정이 가질 수 있는 최대 개수의 컬렉션을 가지고 있어요.",
+      "empty": "아직 아무것도 없거나, 담긴 타이밍을 게시한 사람들이 모두 되돌렸어요.",
+      "notFoundTitle": "컬렉션을 찾을 수 없어요",
+      "notFound": "이 컬렉션은 존재하지 않거나 비공개예요."
+    },
+    "comments": {
+      "title": "댓글",
+      "empty": "아직 댓글이 없어요.",
+      "signIn": "로그인하고 댓글 달기",
+      "body": "내 댓글",
+      "placeholder": "무엇을 발견했나요? 시간과 함께 위치를 알려 주세요.",
+      "at": "시각 (m:ss)",
+      "atHint": "선택: 곡 안의 시간. 누르면 거기서부터 재생돼요.",
+      "here": "플레이어 위치",
+      "post": "댓글 달기",
+      "badTime": "곡 안의 시간(m:ss)이 아니에요.",
+      "seek": "플레이어를 여기로 옮기기",
+      "seekTo": "플레이어를 {{at}}(으)로 옮기기",
+      "delete": "삭제",
+      "deleteConfirm": "댓글을 삭제할까요?",
+      "deleteYes": "삭제",
+      "openTiming": "타이밍 열기"
+    },
+    "errors": {
+      "TOO_LONG": "너무 길어요.",
+      "TOO_SHORT": "먼저 내용을 쓰세요.",
+      "BAD_TIME": "곡 안의 시간이 아니에요.",
+      "RATE_LIMITED": "한 번에 너무 많아요. 잠시 기다리세요."
+    },
+    "sort": {
+      "label": "정렬",
+      "new": "최신순",
+      "rated": "최고 평점",
+      "used": "최다 사용",
+      "ratedNote_other": "평가가 {{count}}개 이상인 타이밍만, 몇 개의 만점보다 많은 좋은 평가가 앞서도록 정렬해요.",
+      "usedNote": "사람들이 맵에 사용했다고 한 타이밍, 가장 많이 사용된 순.",
+      "ratedEmpty": "아직 순위에 들 만큼 평가를 받은 타이밍이 없어요.",
+      "usedEmpty": "아직 사용했다고 한 사람이 없어요."
+    },
+    "timers": {
+      "title": "타이머",
+      "subtitle": "게시한 타이밍을 다른 사람들이 맵에 사용했거나, 가장 높게 평가받은 사람들. 작고 정직하게: 들어가려면 최소 기준이 있어요.",
+      "link": "타이머 순위",
+      "by": {
+        "uses": "사용 기준",
+        "stars": "별점 기준"
+      },
+      "minUses_other": "다른 사람들이 자신의 타이밍을 {{count}}회 사용하면 타이머 순위에 들어가요.",
+      "minStars_other": "평가를 {{count}}개 받으면 타이머 순위에 들어가요.",
+      "published_other": "{{count}}개 게시",
+      "empty": "아직 최소 기준에 도달한 사람이 없어요.",
+      "howOrdered": "별점은 3점 평가 세 개를 더한 평균으로 정렬돼서, 몇 개의 만점이 많은 좋은 평가를 이기지 못해요. 비공개 프로필은 제외돼요."
+    },
+    "profile": {
+      "title": "타이머",
+      "description": "Overtone에서 @{{name}} 님이 게시한 타이밍과 별점, 사용 횟수, 배지.",
+      "edit": "프로필 편집",
+      "publicPage": "내 공개 페이지",
+      "notFoundTitle": "프로필을 찾을 수 없어요",
+      "notFound": "그 이름을 쓰는 사람이 없거나, 프로필이 비공개예요.",
+      "privateNote": "프로필이 비공개예요: 이 페이지는 나만 볼 수 있어요.",
+      "timings": "게시한 타이밍",
+      "badges": "배지",
+      "noBadges": "아직 배지가 없어요: 게시하면 받을 수 있어요.",
+      "noTimings": "아직 게시한 게 없어요.",
+      "noOwnTimings": "아직 타이밍을 게시하지 않았어요. 결과 페이지나 기록에서 게시하세요.",
+      "isPublic": "프로필이 공개 상태예요",
+      "isPrivate": "프로필이 비공개 상태예요",
+      "privateHint": "비공개 프로필은 다른 사람에게 보이지 않고(페이지에 \"찾을 수 없음\"으로 표시) 타이머 순위에서도 빠져요. 게시한 타이밍은 내 이름과 함께 계속 게시돼요.",
+      "makePrivate": "비공개로 전환",
+      "makePublic": "공개로 전환",
+      "tabs": {
+        "timings": "타이밍",
+        "collections": "컬렉션"
+      },
+      "totals": {
+        "published": "게시",
+        "timed": "타이밍한 곡",
+        "uses": "사용",
+        "rating": "별점"
+      }
+    },
+    "badges": {
+      "first-timing": {
+        "name": "첫 타이밍",
+        "why": "타이밍을 게시했어요."
+      },
+      "published-10": {
+        "name": "10개 게시",
+        "why": "타이밍을 10개 게시했어요."
+      },
+      "published-50": {
+        "name": "50개 게시",
+        "why": "타이밍을 50개 게시했어요."
+      },
+      "suggestion-accepted": {
+        "name": "아이디어 채택",
+        "why": "제안한 내용이 계획되거나, 시작되거나, 완료되었어요."
+      },
+      "used-by-others": {
+        "name": "다른 사람이 사용",
+        "why": "다른 사람이 이 사람의 타이밍을 맵에 사용했다고 했어요."
+      },
+      "ranked-match": {
+        "name": "랭크 맵 일치",
+        "why": "타이밍이 해당 곡의 랭크 맵과 일치했어요."
+      }
+    }
+  },
+  "platform": {
+    "tokens": {
+      "eyebrow": "설정",
+      "title": "API 토큰",
+      "intro": "개인 토큰이 있으면 스크립트, 봇, 커뮤니티 도구가 브라우저 없이 나로서 Overtone API를 호출할 수 있어요. 도구마다 필요한 스코프만 가진 토큰을 따로 주고, 더 이상 쓰지 않으면 취소하세요.",
+      "docs": "API 사용 방법",
+      "fromProfile": "개인 API 토큰",
+      "yours": "내 토큰",
+      "count_other": "{{max}}개 중 {{count}}개",
+      "none": "아직 토큰이 없어요.",
+      "loadFailed": "토큰을 불러올 수 없었어요. 잠시 후 다시 시도하세요.",
+      "never": "없음",
+      "created": "{{when}} 생성",
+      "lastUsed": "{{when}} 마지막 사용",
+      "revoke": "취소",
+      "revokeConfirm": "지금 취소",
+      "keep": "유지",
+      "revokeFailed": "취소할 수 없었어요. 다시 시도하세요.",
+      "newTitle": "새 토큰",
+      "name": "이름",
+      "namePlaceholder": "예: 내 Discord 봇",
+      "scopes": "허용할 작업",
+      "scope": {
+        "read_analyses": "내 분석과 그 [TimingPoints], CSV, 버전 읽기.",
+        "upload": "하루 한도 안에서 내 계정으로 곡을 보내 분석하기.",
+        "read_timings": "토큰 자체의 속도 제한으로 게시된 타이밍 읽기."
+      },
+      "make": "토큰 만들기",
+      "making": "만드는 중…",
+      "note": "토큰은 한 번만 표시되고, Overtone은 그 해시만 보관해요. 토큰으로는 토큰 관리, 게시, 삭제, 글 올리기를 할 수 없어요: 그런 일은 웹사이트에서만 해요. 로그아웃해도 토큰은 취소되지 않아요.",
+      "problems": {
+        "name": "나중에 무엇이 쓰는지 알 수 있도록 이름을 지어 주세요.",
+        "long": "이름은 최대 {{max}}자예요.",
+        "scopes": "허용할 작업을 하나 이상 고르세요.",
+        "limit": "계정이 가질 수 있는 최대 개수의 토큰을 가지고 있어요. 먼저 하나를 취소하세요.",
+        "failed": "토큰을 만들 수 없었어요. 잠시 후 다시 시도하세요."
+      },
+      "madeTitle": "“{{name}}” 준비 완료",
+      "madeOnce": "지금 복사하세요: 다시 표시되지 않아요. 토큰을 가진 사람은 누구나 그 스코프 안에서 나로서 행동할 수 있으니, 공개 코드에 넣지 마세요.",
+      "copy": "토큰 복사",
+      "copied": "복사됨",
+      "copyFailed": "복사할 수 없어요: 직접 선택하세요",
+      "done": "복사했어요",
+      "tryIt": "터미널에서 시험해 보세요:",
+      "settingsNote": "개인 토큰으로 내 스크립트와 봇이 나로서 API를 쓸 수 있어요. 위의 설정과 달리 이 브라우저가 아니라 계정에 속하므로 로그인이 필요해요.",
+      "manage": "API 토큰 관리"
+    },
+    "developers": {
+      "eyebrow": "개발자용",
+      "title": "Overtone API",
+      "intro": "웹사이트가 하는 모든 일은 이 API를 거쳐요. 개인 토큰이 있으면 내 스크립트와 봇이 내 분석을 읽고, 곡을 보내고, 게시된 타이밍을 읽을 수 있어요.",
+      "footer": "개발자용 API",
+      "startTitle": "시작하기",
+      "step1": "로그인하고 도구에 필요한 스코프로 개인 토큰을 만드세요.",
+      "step2": "스크립트, 봇 또는 서버에서 Authorization 헤더에 \"Bearer <token>\"으로 보내세요.",
+      "step3": "아래에서 스코프가 표시된 작업을 호출하세요. 나머지는 웹사이트 전용이에요.",
+      "tokensLink": "내 토큰",
+      "ruleScopes": "토큰은 자신의 스코프에 해당하는 작업에만 접근해요. 그 외에는 403으로 응답해요. 취소된 토큰은 401로 응답해요.",
+      "ruleLimit": "토큰마다 자체 속도 제한이 있어요: 분당 120회 요청이며, 업로드와 읽기에는 토큰별로 세는 별도 한도가 있어요. 429 응답은 Retry-After에 얼마나 기다려야 하는지 알려줘요.",
+      "ruleBrowser": "API는 다른 출처의 브라우저 요청에 응답하지 않으므로, 토큰은 다른 웹사이트의 페이지가 아니라 스크립트와 서버용이에요. 절대 공개 코드에 넣지 마세요.",
+      "ruleAudio": "업로드된 오디오는 분석되는 즉시 삭제되며, 다시 제공되지 않아요.",
+      "base": "기본 경로",
+      "englishNote": "API 자체 문서가 영어이므로 레퍼런스도 영어예요.",
+      "filter": "작업 표시",
+      "show": {
+        "all": "전체",
+        "token": "토큰 사용 가능"
+      },
+      "overview": "이 API에 대해",
+      "tokenHint": "이 작업에 필요한 토큰 스코프",
+      "anyToken": "모든 토큰",
+      "browserOnly": "웹사이트 전용: 토큰으로는 접근할 수 없어요.",
+      "params": "매개변수",
+      "required": "필수",
+      "body": "본문",
+      "responses": "응답",
+      "schemas": "스키마"
+    },
+    "versions": {
+      "title": "버전",
+      "note": "같은 오디오로 내가 한 모든 분석과 저장한 조정이에요. 저장된 버전은 ×2 / ÷2와 미세 조정만 보관해요: 타이밍 자체는 엔진의 것이에요.",
+      "engine": "엔진이 읽은 그대로",
+      "thisOne": "현재 버전",
+      "now": "지금 표시된 대로",
+      "open": "열기",
+      "labelPlaceholder": "이 버전에 대한 메모 (선택)",
+      "save": "{{adjustment}}을(를) 버전으로 저장",
+      "saved": "이 조정은 버전으로 저장되었어요.",
+      "howToSave": "위에서 ×2, ÷2 또는 미세 조정을 시도한 뒤, 여기서 저장해 보관하세요.",
+      "saveFailed": "버전을 저장할 수 없었어요. 다시 시도하세요.",
+      "limit": "이 타이밍은 저장할 수 있는 최대 개수의 버전을 가지고 있어요. 먼저 하나를 삭제하세요.",
+      "loadFailed": "버전을 불러올 수 없었어요.",
+      "apply": "적용",
+      "forget": "{{name}} 버전 삭제",
+      "compare": "두 버전 비교",
+      "loading": "다른 버전을 읽는 중…",
+      "otherFailed": "다른 버전을 읽을 수 없었어요.",
+      "same": "두 버전의 red line이 같아요.",
+      "summary": "red line이 최대 {{ms}} ms, {{bpm}} BPM 움직여요. A에만 {{onlyA}}개, B에만 {{onlyB}}개.",
+      "dTime": "B − A ms",
+      "dBpm": "B − A BPM",
+      "none": "없음"
+    },
+    "copy": {
+      "hint": "red line을 체크하면 [TimingPoints] 행으로 복사할 수 있어요(Shift-클릭으로 범위 선택).",
+      "ticked_other": "red line {{count}}개 체크됨",
+      "copyTicked": "행 복사",
+      "clear": "지우기",
+      "all": "모든 red line 체크",
+      "tick": "red line {{n}} 체크",
+      "one": "이 red line을 [TimingPoints] 행으로 복사",
+      "copied": "복사됨: [TimingPoints] 아래에 붙여넣으세요",
+      "failed": "복사할 수 없어요"
+    },
+    "image": {
+      "title": "이미지와 임베드",
+      "png": "템포 맵 PNG",
+      "svg": "템포 맵 SVG",
+      "embed": "임베드 코드 복사",
+      "copied": "임베드 코드 복사됨",
+      "copyFailed": "복사할 수 없어요",
+      "preview": "임베드 보기",
+      "failed": "이 브라우저에서 이미지를 만들 수 없었어요. SVG는 될 수도 있어요.",
+      "note": "PNG는 위의 맵을 곡 전체로 그린 것이고, SVG는 red line과 템포를 더 단순하게 그린 거예요. 임베드는 다른 사이트에 이 타이밍의 카드를 이곳으로 돌아오는 링크와 함께 보여줘요.",
+      "notePrivate": "PNG는 위의 맵을 곡 전체로 그린 것이고, SVG는 red line과 템포를 더 단순하게 그린 거예요. 다른 사이트에 임베드하려면 타이밍을 게시하세요."
+    },
+    "embed": {
+      "title": "타이밍",
+      "loading": "타이밍을 불러오는 중…",
+      "notFound": "이 타이밍은 게시되지 않았어요.",
+      "failed": "타이밍을 불러올 수 없었어요.",
+      "chartAlt": "템포 맵: 곡 위의 red line과 템포",
+      "more_other": "그리고 red line {{count}}개 더",
+      "open": "Overtone에서 열기"
+    },
+    "batch": {
+      "title": "묶음 전체",
+      "adjust": "모든 곡에 한 가지 조정",
+      "adjustNote": "여기서 ×2, ÷2 또는 미세 조정을 하면 두 다운로드 모두에서 묶음의 모든 곡에 적용돼요. 각 곡은 자기 페이지에서 귀로 확인하세요.",
+      "adjusted": "모든 곡이 {{adjustment}}(으)로 기록돼요: 다운로드에는 주석 줄로 표시돼요. 귀로 확인하세요.",
+      "osz_other": "{{count}}곡 모두 .osz로 다운로드 (zip)",
+      "oszBusy": ".osz 만드는 중 {{total}}개 중 {{done}}개…",
+      "oszNote": "각 .osz에는 곡이 들어가며, 선택한 파일로 여기서 하나씩 만들어져요. zip 하나에 오디오 최대 {{max}} MB.",
+      "tooLarge": "이 곡들은 {{mb}} MB로, 여기서 zip 하나에 담을 수 있는 {{max}} MB를 넘어요. 각 페이지에서 .osz를 하나씩 받으세요.",
+      "oszFailed": "이 브라우저에서 .osz 파일을 만들 수 없었어요.",
+      "oszSome": ".osz를 만들 수 없어서 빠진 곡: {{names}}"
+    },
+    "pwa": {
+      "sharedAdded": "공유한 곡이 목록에 추가됐어요. 확인하고 분석을 누르세요.",
+      "sharedNone": "공유로 쓸 수 있는 게 오지 않았어요: MP3, OGG, WAV, FLAC, M4A, Opus 파일을 공유하거나 아래에서 선택하세요."
+    }
+  }
+}

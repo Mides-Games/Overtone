@@ -13,8 +13,8 @@
     "signOut": "Salir",
     "account": "Menú de la cuenta",
     "changeTheme": "Cambiar tema",
-    "changeLanguage": "Switch to English",
-    "otherLanguage": "EN",
+    "changeLanguage": "Cambiar idioma",
+    "language": "Idioma: {{name}}",
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
     "queue": "Cola"
@@ -454,6 +454,7 @@
     "updated": "Última actualización: {{date}}",
     "date": "27 de octubre de 2026",
     "toBeSet": "A definir",
+    "translationNote": "Esta traducción se ofrece por comodidad; prevalece la versión en inglés.",
     "resultLink": "Qué significa “revisar a oído”",
     "terms": {
       "title": "Términos de uso",
@@ -655,7 +656,7 @@
             "Esto queda en el almacenamiento local de tu navegador y nunca se manda al servidor:"
           ],
           "li": [
-            "mides.theme y mides.lang: claro u oscuro, inglés o español.",
+            "mides.theme y mides.lang: claro u oscuro, y el idioma que elegiste.",
             "overtone.player.volumes: el volumen de la canción y del click.",
             "overtone.player.latencyMs: la latencia de tu audio, si la calibraste.",
             "overtone.player.listening: la subdivisión de los clics, su volumen y si los clics se corren por tu latencia.",
@@ -1252,7 +1253,8 @@
       "contrastOn": "Activar alto contraste",
       "contrastOff": "Desactivar alto contraste",
       "settings": "Abrir ajustes",
-      "shortcuts": "Atajos de teclado"
+      "shortcuts": "Atajos de teclado",
+      "language": "Idioma: {{name}}"
     },
     "help": {
       "title": "Atajos de teclado",
@@ -1325,9 +1327,7 @@
     "reset": "Restablecer contraste, tamaño, colores y movimiento",
     "language": {
       "title": "Idioma",
-      "label": "Idioma del sitio",
-      "en": "English",
-      "es": "Español"
+      "label": "Idioma del sitio"
     },
     "audio": {
       "title": "Reproductor",

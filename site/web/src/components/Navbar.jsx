@@ -7,6 +7,7 @@ import { useTheme } from '../context/ThemeContext.jsx'
 import { gutter } from '../lib/gutter.js'
 import Avatar from './Avatar.jsx'
 import { SearchIcon, usePalette } from './CommandPalette.jsx'
+import LanguageSelect from './LanguageSelect.jsx'
 import Mark from './Mark.jsx'
 import { TrayButton } from './Tray.jsx'
 
@@ -63,21 +64,6 @@ function PaletteButton({ className = '' }) {
       className={`${iconButton} ${className}`}
     >
       <SearchIcon />
-    </button>
-  )
-}
-
-function LanguageToggle() {
-  const { t, i18n } = useTranslation()
-  return (
-    <button
-      type="button"
-      onClick={() => i18n.changeLanguage(i18n.language === 'es' ? 'en' : 'es')}
-      aria-label={t('nav.changeLanguage')}
-      title={t('nav.changeLanguage')}
-      className={`${iconButton} font-display text-caption font-semibold tracking-wider`}
-    >
-      {t('nav.otherLanguage')}
     </button>
   )
 }
@@ -193,7 +179,7 @@ export default function Navbar() {
           <div className="hidden md:block">
             <PaletteButton />
           </div>
-          <LanguageToggle />
+          <LanguageSelect />
           <ThemeToggle />
           {account ? (
             <UserMenu account={account} />

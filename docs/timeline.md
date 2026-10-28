@@ -20,6 +20,58 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · W11.2: the oracle study, and no room for a router
+
+### Changed
+
+- `bench/oracle.py`: joins the per-map reports of several server stage runs (one per
+  configuration) and reports each configuration, the per-song oracle, the gap, a
+  bootstrap interval, the best pair and a one- or two-split router fitted on dev and read
+  on held-out. A measurement, not a gate. Report in `docs/18-oracle-study.md`.
+
+### Fixed
+
+- `bench/remote.py` was a SyntaxError on Python 3.14: a literal line break inside the
+  f-string that prints why a run was killed. Every remote command failed before it
+  started.
+
+### Measured
+
+- Server, ranked and loved maps, code `239849c8`. Five configurations on the same first
+  60 songs of each stage: 180 songs, 955 maps, 46 of them held-out songs.
+  - The configurations: `rust`, `app`, `rust --beat-vote`, `python --beat-vote` (v3) and
+    `python` (v3 without the vote).
+  - Held out, best configuration alone against the per-song oracle: tempo ok 59.3 / 59.3,
+    octave x1 92.8 / 92.8, beats within 10 ms 78.4 / 78.5 (gap 95 % interval
+    0.0..0.1), red lines within 5 ms 24.1 / 24.1.
+  - Dev gaps: +0.9, +0.9, +0.7 and +0.0.
+  - In 121 of the 180 songs every configuration scores the same.
+  - Far below the +5 points W11.3 needs.
+- The local-tempo octave variants, the 2026-10-26 runs over whole S1 and S3: none, fold,
+  fold + halve, and fold + halve + judge. Oracle gap held out +0.0 / +0.0 / +0.1 / +0.0;
+  dev at most +0.2.
+- The router fitted on dev ("rust where the voted and unvoted readings agree, else v3",
+  712 rules tried; the depth-2 version tried 126,736) moves dev tempo ok 54.3 -> 55.2 and
+  changes nothing held out.
+- Cost: about 2.4 h of server time across the runs (rust and app over whole stages
+  1305 + 2683 s; the four 60-song configurations 4583 s). Locally only a 7-song pilot.
+
+### Rejected / tried and dropped
+
+- Building the W11.3 router from today's configurations: they share one core (Rust and v3
+  read alike, as `golden.py` pins), so they fail on the same songs. S2 held-out tempo ok
+  is 0 % in all five. Their only real difference is the Beat This! vote, which trades
+  beats for tempo and octave on S3 held out.
+- A local oracle run with Beat This! alone and the forced tracker. One decode, fit and
+  Beat This! pass per song was shared by every configuration; the memo checked out line
+  for line against a plain v3 run on 3 songs. Stopped after 7 songs under the owner's
+  2026-10-28 rule (heavy runs on the server only). Those two configurations need
+  `EXPERIMENTS` entries before the server can measure them. The 7 songs are not reported.
+- Measuring `song-octave` and `piecewise-cg` here. Another session cancelled the queued
+  runs, and #31 changed both afterwards.
+
+---
+
 ## Unreleased — 2026-10-28 · Votes on timings, a mapper's badge, a notification bell and a staff panel
 
 ### Changed

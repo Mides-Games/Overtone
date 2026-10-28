@@ -77,7 +77,7 @@ version is `v0.2.0-alpha`.
 
 ### Measured
 
-- Not measured: nothing here touches the engine. `site/api` 123/123, `site/web` 212/212,
+- Not measured: nothing here touches the engine. `site/api` 173/173, `site/web` 233/233 (after merging experimental),
   `vite build`. The `/developers` chunk is 59 kB (13 kB gzip). A two-song batch's `.osz`
   zip was 10.6 MB; a two-line PNG 2800×748, 90 kB.
 
@@ -88,6 +88,212 @@ version is `v0.2.0-alpha`.
   same-origin guard rests on, for a use (another site's page holding a token) that
   should not exist.
 - A section of `/settings` holding the whole tokens UI (above).
+
+---
+
+## Unreleased — 2026-10-27 · Analysis modes, hints, a stretch, re-analysis and the queue's estimate
+
+### Changed
+
+- **Modes (W11.1).** Each job runs in a mode the person picks by how long they want to
+  wait. `fast`: no Beat This! vote and no octave judges (each judge reads "no answer"
+  as "keep the engine's octave"). `normal`: the call the worker always made, untouched.
+  `strict`: `normal` for now (see Rejected). The worker announces one engine hash per
+  mode, the result says its mode (`timing-result v1.2`), and the API keys every cache
+  lookup by mode and hints: the same audio asked another way is another result.
+- **Hints (W3.21)** touch the engine only where it has a real knob. An expected tempo
+  outside 120-240 moves `MAP_OCTAVE_RANGE`, the engine's own octave preference, for that
+  job (restored after); a meter fills only the bars the engine could not prove, where
+  its fallback was a guess. "One BPM" / "it changes" have no honest knob and only flag
+  the result. Every hint is compared with the result (`hint_checks`): a hint the audio
+  contradicts is said on the page, never folded silently into the timing.
+- **A stretch (W12.19)** is cut by the worker out of the engine's own decode, analysed
+  alone and shifted back into the song's timeline; the page says what it covered.
+- **Re-analysis (W3.24)** from the result page, with the file the browser holds or one
+  picked again and checked by SHA-1; the two results are linked (`reanalysis_of`) and
+  each links to `/compare?a=&b=`.
+- **The queue's estimate (W3.16):** each live row says "done in ≈ a – b", from W2.4's
+  cost per audio minute and mode, one worker assumed, "at least" behind a job of unknown
+  length.
+
+### Hardening
+
+- Options are validated on the API (known keys only, bounds, 512 bytes in the header)
+  before the upload's body is read; a re-analysis of someone else's analysis is the 404
+  of one that does not exist, and of other audio a 400 `NOT_SAME_AUDIO`.
+- A stored result's mode and hints are taken from the result, not from the request: a
+  worker from before modes cannot file a normal result under `fast`.
+
+### Measured
+
+- `long-6min` of the benchmark, one fresh process per run, four threads, on this PC
+  while other sessions loaded it: **fast 7.2 s and 14.3 s, normal 94.5 s and 82.3 s**
+  (engine and model load apart: 5-13 s), the same reading (186 BPM, one red line).
+  In the dev stack, a 60 s click track: fast on a 40 s stretch 5.7 s, normal on the
+  whole 61.4 s.
+- The default path is pinned by construction, not by a local gate run (the owner's
+  rule: no suite or gates on this PC): `DefaultModeTests` checks the exact
+  `analyze_audio` call, the octave window and the judges for the default mode. The
+  suite and the gates run on the server after merging.
+- `strict` candidates: not measured. A first local pass ran without the Beat This!
+  model (the worktree held its Git LFS pointer), so its numbers are void and not
+  recorded.
+
+### Rejected / tried and dropped
+
+- **Trimming in the browser** (W12.19's first idea): the browser's decoder is not the
+  engine's (an MP3's encoder delay would shift every time), a WAV of the stretch changes
+  the SHA-1 the cache and re-analysis rely on, and can pass the upload cap. The worker
+  cuts instead; the whole file is uploaded.
+- **Hints as constraints** (`min_delta` high for "one BPM", `force_subdivision` for a
+  tempo): the first hides a real change behind the hint, the second skips the osu!
+  conventions, the vote and drift following. Left for W11.5, which measures first.
+- **Turning on PIECEWISE_GRID, CONSTANT_GRID or SONG_OCTAVE_BEAT_THIS for strict:**
+  each is "off until measured on the server" and has no held-out number; strict stays
+  normal until W11.3/W11.4.
+
+---
+
+## Unreleased — 2026-10-27 · A front page that answers why
+
+### Changed
+
+- `/` is a landing page (W12.25, the owner's request): what a mapper gains, how it
+  works in three steps, recently timed songs, live numbers from `GET /stats`, who
+  makes Overtone, five questions and a closing call, in EN and ES. Every claim is
+  one the site keeps today (`docs/site.md`, "The front page").
+- The example strip on it has four red lines (174, 186, a passage in 3/4, 160) and
+  plays them: a playhead crosses in real time and the BPM, offset, meter, confidence
+  and `[TimingPoints]` row follow the line under it (the owner's request). The data
+  is osu! timing: whole-ms offsets on downbeats, `beatLength = 60000 / BPM`.
+
+### Hardening
+
+- The strip runs only on screen and in a visible tab, and with reduced motion (the
+  system's or the site setting) steps a line every 4 s instead of sweeping.
+- The live numbers hide on any failure of `/stats`, and while nothing has been
+  analysed: they are colour, never an error.
+
+### Measured
+
+- Not measured: the page's load time and the strip's frame cost. The strip renders
+  React only on a line change (four times a 13 s loop) and moves one SVG transform
+  per frame.
+
+### Rejected / tried and dropped
+
+- Guessing the `/stats` shape before it existed: the first version read several
+  likely field names. Once W12.13 landed it reads exactly `totals.done` and
+  `queue.queued + queue.running`, so a renamed field shows as a hidden block, not a
+  wrong number.
+- Showing "0 analyses done" on a fresh site: dropped, the block waits for the first.
+
+---
+
+## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
+
+### Changed
+
+- An account links Discord (W9.1) and osu! (W9.2) from its profile, and a Discord
+  bot (`bot/`, discord.js 14.27.0) times songs and reads timings through a new
+  `/api/internal/bot` (W9.3-W9.5): `/time-song`, `/timing`, `/queue`, `/compare`,
+  `/recent`, `/link`, `/notify`. DMs when an analysis ends, opt-in (W9.4).
+  Everything is off until its secrets exist, and says so. `docs/bot.md`.
+- Discord through Mides needs two things Mides does not have yet (`discord_id` in
+  the SSO's user, a link page with `return_to`); until then a ten-minute code from
+  the profile, typed to the bot as `/link`, links the Discord user the bot names.
+- **Decided:** an unlinked Discord user gets the anonymous quota of one visitor,
+  counted by an HMAC of their id per day. Refusing them would leave the bot unused
+  until Mides sends Discord ids; a Discord account costs about what a fresh address
+  does, and both the bot and the API limit per Discord user.
+- The API's upload became `acceptUpload`, shared by the browser's route and the
+  bot's, so the bot is held to exactly the site's checks. A new `overtone-bot` egg.
+
+### Hardening
+
+- `BOT_TOKEN` is its own key: refused when equal to `WORKER_TOKEN`, neither opens
+  the other's routes, and overtone-web refuses `/api/internal/bot` in any spelling
+  (a test tries six).
+- The Discord id travels in a header, never a URL, and is stored raw only on the
+  account it is linked to (the DMs need it); quotas and limits count an HMAC of it.
+- osu!: state in a signed cookie bound to the account, a PKCE verifier derived
+  server side (never in the browser), the token dropped after one `/me`, the
+  avatar kept only on `ppy.sh`. Link codes are stored as an HMAC and spent once.
+- The bot checks an attachment before downloading (extension, type, the API's
+  `MAX_UPLOAD_MB`, Discord's CDN hosts) and while downloading (no redirects, type,
+  a byte count cut at the cap); the audio lives in memory until uploaded (ADR-W4).
+  A song name cannot write markdown or mentions into an embed.
+
+### Measured
+
+- Not measured: no performance claim. Tests: `site/api` 123 (23 new), `bot` 29,
+  `site/web` 90; the bot's contract suite runs it against the real API.
+
+### Rejected / tried and dropped
+
+- An image of the tempo chart in the embed: rendering the site's chart server side
+  needs a headless browser or a canvas library for one picture. The embed links
+  the page.
+- Refusing unlinked Discord users (above).
+- Showing the osu! avatar: widening the site's `img-src` to `ppy.sh` for a picture
+  only its owner sees is not worth a third-party request.
+
+---
+
+## Unreleased — 2026-10-27 · Stars, uses, comments, collections and timer profiles
+
+### Changed
+
+- Published timings get the social layer (W5.6, W6, W13.15, W13.18): 1-5 stars (one
+  per account, editable), "I used this" with an optional osu! beatmapset link, comments
+  that can point at a time in the song (its m:ss moves the player there), and
+  collections, private or public, with their own page (`/c/:id`).
+- `/recent` orders by newest, best rated or most used; each row shows its stars and
+  uses. `/u/<username>` is a timer's public profile (published timings, totals, badges,
+  public collections); `/profile` gains Timings and Collections tabs and a private
+  switch. `/timers` ranks timers by uses or by stars. Navbar link to Timers.
+- Decisions taken in the owner's absence:
+  - "Best rated" counts a timing from **3** ratings and orders by a Bayesian average
+    (3 prior ratings at 3 stars), as docs/16 §4 asks: 3 is the least that says more
+    than one person agreed; a higher bar would leave the sort empty while the site is
+    small. The page shows the plain average and states the bar.
+  - The timer ranking needs **3** uses by others or **5** ratings received, again small
+    on purpose, and stated on the page.
+  - The uploader can neither rate nor mark their own timing used.
+  - Uses need an account; the draft's anonymous uses by address hash were dropped (a
+    count anyone could push again from each new address).
+  - Comment moderation reuses the community's (reports, hide with reason,
+    `moderation_log`) with `comment` as a third kind: one place for staff.
+  - A private profile is a 404 and leaves the ranking; its published timings stay
+    published with the name on them.
+- Schema: the drafted social tables pointed at `timings` (W4, not built yet). Each
+  gained `analysis_id` and a check naming exactly one target, so W4 reuses them; the
+  one-per-account primary keys became unique indexes per target. `accounts` gained
+  `profile_private`; `moderation_log` admits `comment`.
+
+### Hardening
+
+- Every new mutating route has the same-origin guard, a per-address rate limit and
+  capped, cleaned input; "not yours" is the same 404 as "not there" for collections,
+  comments and private profiles. Beatmap links are stored only as
+  `https://osu.ppy.sh/beatmapsets/<set>[#<mode>/<map>]` and rendered as their own text
+  with `rel="noopener nofollow ugc"`. A test reads every response the social suite
+  saw and finds no SHA-1, address hash or anonymous hash in any of them.
+
+### Measured
+
+- site/api 121/121 (13 new), site/web 186/186 (3 new), `vite build` ok, after merging
+  `origin/experimental`. Before the merge, the 13 social tests also passed against
+  PostgreSQL 18.6 through PGlite 0.5.12 over HTTP, and `check` applied the schema
+  twice. No performance figure: not measured.
+
+### Rejected / tried and dropped
+
+- New `published_*` tables beside the drafted ones: they would have left two sets of
+  social tables once W4 lands. Amending the drafted ones keeps one.
+- A keyset cursor for "best rated" and "most used": a cursor over a score that moves
+  while someone reads skips or repeats rows just the same, so those orders page by
+  offset (`o<n>`) and say so.
 
 ---
 

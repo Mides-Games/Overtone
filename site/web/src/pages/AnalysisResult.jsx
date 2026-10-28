@@ -9,8 +9,10 @@ import Term from '../components/Term.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
+import HowAsked from '../components/result/HowAsked.jsx'
 import MapImage from '../components/result/MapImage.jsx'
 import MoreDownloads from '../components/result/MoreDownloads.jsx'
+import Reanalyse from '../components/result/Reanalyse.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
@@ -21,6 +23,7 @@ import Versions from '../components/result/Versions.jsx'
 import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
+import { formatRange } from '../lib/analysis-options.js'
 import { checkSpans } from '../lib/check-spans.js'
 import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
@@ -92,8 +95,11 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
+      {analysis.status === 'refused' && <HowAsked analysis={analysis} />}
       {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
+      {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
+      {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
     </div>
   )
 }
@@ -214,6 +220,12 @@ function Waiting({ analysis }) {
       <p className="text-caption text-dim">
         {running && analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.queuedNote')}
       </p>
+      {analysis.estimate && (
+        <p className="readout text-caption text-dim">
+          {t('modes.estimate.label')} {formatRange(t, analysis.estimate.lowS, analysis.estimate.highS)} · {t(`modes.names.${analysis.mode ?? 'normal'}`)}
+          <span className="ml-1 font-sans">({t('modes.estimate.why')})</span>
+        </p>
+      )}
       {!running && <CancelButton id={analysis.id} onCancelled={() => navigate('/analyze')} />}
     </section>
   )
@@ -253,7 +265,7 @@ function Refused({ result }) {
  * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
  * lists and saves versions (W12.21).
  */
-export function Result({ id, analysis, verify = null, csvHref = null, owner = false }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
@@ -263,6 +275,14 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
   const [hovered, setHovered] = useState(null)
   const audio = useSongAudio(id, analysis.sha1, verify)
   const [player] = useState(() => new Player())
+  // A public page's comments (W13.15) move this player to the time they name.
+  useEffect(() => {
+    if (!playerRef) return undefined
+    playerRef.current = player
+    return () => {
+      playerRef.current = null
+    }
+  }, [player, playerRef])
   const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
   const clockRef = useRef(null)
   const checks = useMemo(() => checkSpans(analysis.result), [analysis.result])
@@ -373,6 +393,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
 
   return (
     <div className="space-y-6">
+      {/* W11.1, W3.21, W12.19: the mode, the hints and the stretch this reading covers. */}
+      <HowAsked analysis={analysis} />
+
       <section className="panel overflow-hidden">
         <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
           {readouts.map((r) => (

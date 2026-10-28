@@ -14,6 +14,8 @@ import { audioPath, commit, discard, discardPart, receive, reserve } from '../se
 import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
 import { queueEntry } from '../utils/queue.js';
+import { audioSecondsOf, optionsFromHeader, parseMode, parseOptions } from '../utils/analysis-options.js';
+import { estimateQueue } from '../utils/estimate.js';
 import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timingText } from '../utils/upload.js';
 
 /**
@@ -112,7 +114,7 @@ const answerFromCache = async (req, res, cached, row) => {
   // An upload has set the anonymous cookie already (row.anonHash); a lookup may not have.
   const known = row.accountId ? null : (row.anonHash ?? anonHashOf(req));
   const copy = known || row.accountId
-    ? await store.findCopy({ sha1: row.sha1, accountId: row.accountId, anonHash: known })
+    ? await store.findCopy({ sha1: row.sha1, accountId: row.accountId, anonHash: known, mode: row.mode, optionsKey: row.optionsKey })
     : null;
   if (copy) return { id: copy.publicId, status: copy.status, cached: true };
   const made = await store.create(
@@ -137,9 +139,67 @@ const arrive = (owner, step) => {
   arrivingTotal += step;
 };
 
-router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
+/**
+ * How this analysis is asked for (W11.1, W3.21, W12.19, W3.24): the mode, the
+ * hints and their cache key, the browser's reading of the audio's length,
+ * and the analysis it re-analyses, checked to be the requester's own (the
+ * same 404 as one that does not exist). Throws an HttpError.
+ */
+const askedFor = async (req, { mode, options, duration, reanalysisOf }) => {
+  const parsed = typeof options === 'string' || options === undefined
+    ? optionsFromHeader(options, { maxSeconds: env.maxAudioSeconds })
+    : parseOptions(options, { maxSeconds: env.maxAudioSeconds });
+  let source = null;
+  if (reanalysisOf !== undefined && reanalysisOf !== null && reanalysisOf !== '') {
+    if (typeof reanalysisOf !== 'string' || !ID.test(reanalysisOf)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
+    source = await analyses().get(reanalysisOf, { position: false });
+    if (!source || !isMine(req, source)) throw new HttpError(404, 'No such analysis.', 'NOT_FOUND');
+  }
+  return {
+    mode: parseMode(mode),
+    options: parsed.options,
+    optionsKey: parsed.key,
+    audioSeconds: audioSecondsOf(duration, parsed.options),
+    source,
+  };
+};
+
+/** What a new row stores of `askedFor`'s answer. */
+const rowAsked = (asked) => ({
+  mode: asked.mode,
+  options: asked.options,
+  optionsKey: asked.optionsKey,
+  audioSeconds: asked.audioSeconds,
+  reanalysisOf: asked.source?.publicId ?? null,
+});
+
+const notSameAudio = () => new HttpError(400, 'This is not the audio of the analysis it re-analyses.', 'NOT_SAME_AUDIO');
+
+router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, (req, res) =>
+  acceptUpload(req, res, { ipHash: ipHashOf(req), anonHash: () => ensureAnon(req, res) }));
+
+/**
+ * An upload, from its headers to the queue: the browser's (above) and the
+ * Discord bot's (routes/bot.routes.js, W9.3), which are one path so the bot is
+ * held to exactly the site's limits. `req.account` is the uploader's account
+ * or `null`; `ipHash` is what the anonymous quota and the queue's turns count
+ * by (the address's daily HMAC, or the Discord user's); `anonHash()` gives the
+ * hash an anonymous row is owned by, setting the cookie when the browser has
+ * none.
+ */
+export const acceptUpload = async (req, res, { ipHash, anonHash }) => {
   res.set('Cache-Control', 'no-store');
   const limit = env.maxUploadMb * 1_048_576;
+
+  let asked;
+  try {
+    asked = await askedFor(req, {
+      mode: req.get('X-Mode'), options: req.get('X-Options') ?? '', duration: req.get('X-Duration'),
+      reanalysisOf: req.get('X-Reanalysis-Of'),
+    });
+  } catch (error) {
+    refuseEarly(res, error);
+  }
 
   const type = (req.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
   if (type !== 'application/octet-stream') {
@@ -158,7 +218,6 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   }
 
   const accountId = req.account?.id ?? null;
-  const ipHash = ipHashOf(req);
   const quota = accountId ? env.userDailyLimit : env.anonDailyLimit;
   const used = await analyses().countToday({ accountId, ipHash });
   if (used >= quota) {
@@ -208,16 +267,16 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     } catch (error) {
       refuseEarly(res, error);
     }
-    return await receiveUpload(req, res, { accountId, ipHash, filename, limit });
+    return await receiveUpload(req, res, { accountId, ipHash, anonHash, filename, limit, asked });
   } finally {
     release();
     arrive(owner, -1);
   }
-});
+};
 
 /** The upload's body to the spool and its row into the queue (or an answer from the cache). */
-const receiveUpload = async (req, res, { accountId, ipHash, filename, limit }) => {
-  const anonHash = accountId ? null : ensureAnon(req, res);
+const receiveUpload = async (req, res, { accountId, ipHash, anonHash: anonHashFor, filename, limit, asked }) => {
+  const anonHash = accountId ? null : anonHashFor();
   const id = newPublicId();
 
   let received;
@@ -231,17 +290,23 @@ const receiveUpload = async (req, res, { accountId, ipHash, filename, limit }) =
     await discardPart(id);
     throw new HttpError(400, 'The file is empty.', 'EMPTY_UPLOAD');
   }
+  if (asked.source && asked.source.sha1 !== received.sha1) {
+    await discardPart(id);
+    throw notSameAudio();
+  }
 
   const store = analyses();
   const row = {
     publicId: id, sha1: received.sha1, filename, sizeBytes: received.bytes, accountId, anonHash, ipHash,
     // The public queue's privacy switch: anything but "1" is public, as the form's default is.
     ...shown(req, { hidden: req.get('X-Private') === '1', title: req.get('X-Title'), artist: req.get('X-Artist') }),
+    ...rowAsked(asked),
   };
 
-  // The same audio through the same engine has been analysed before: answer
-  // with that result, and the upload is not needed at all.
-  const cached = await store.findCached(received.sha1, engineHash());
+  // The same audio through the same engine, in the same mode with the same
+  // hints, has been analysed before: answer with that result, and the upload
+  // is not needed at all.
+  const cached = await store.findCached(received.sha1, engineHash(asked.mode), asked.mode, asked.optionsKey);
   if (cached) {
     await discardPart(id);
     return res.status(200).json(await answerFromCache(req, res, cached, row));
@@ -285,13 +350,18 @@ router.post('/analyses/lookup', lookupRateLimit, requireSameOrigin, optionalSess
     throw new HttpError(400, 'Choose an MP3, OGG, WAV, FLAC, M4A or Opus file.', 'UNSUPPORTED_FORMAT');
   }
   const sizeBytes = Number.isSafeInteger(body.size) && body.size > 0 ? body.size : null;
+  const asked = await askedFor(req, {
+    mode: body.mode, options: body.options ?? null, duration: body.duration, reanalysisOf: body.reanalysisOf,
+  });
+  if (asked.source && asked.source.sha1 !== sha1) throw notSameAudio();
 
   const store = analyses();
-  const cached = await store.findCached(sha1, engineHash());
+  const cached = await store.findCached(sha1, engineHash(asked.mode), asked.mode, asked.optionsKey);
   if (!cached) return res.json({ cached: false });
 
   const row = {
     ...shown(req, { hidden: body.private === true, title: body.title, artist: body.artist }),
+    ...rowAsked(asked),
     filename,
     accountId: req.account?.id ?? null,
     publicId: newPublicId(),
@@ -322,6 +392,8 @@ const queueRows = () => {
       .then((data) => ({
         ...data,
         positions: new Map(data.live.filter((r) => r.position).map((r) => [r.publicId, r.position])),
+        // W3.16: how long until each one is done, by the measured cost per audio minute.
+        estimates: estimateQueue(data.live),
       }));
     queueSnapshot = { at: Date.now(), read };
     read.catch(() => {
@@ -338,11 +410,11 @@ const queueRows = () => {
  * every few seconds.
  */
 router.get('/analyses/queue', optionalSession, async (req, res) => {
-  const { live, more, recent } = await queueRows();
+  const { live, more, recent, estimates } = await queueRows();
   const anonHash = anonHashOf(req);
   const now = Date.now();
   const staff = isStaff(req.account);
-  const view = (row) => queueEntry(row, { mine: isMine(req, row, anonHash), staff, now });
+  const view = (row) => queueEntry(row, { mine: isMine(req, row, anonHash), staff, now, estimate: estimates.get(row.publicId) });
   res.set('Cache-Control', 'no-store');
   res.json({
     live: live.map(view), more, recent: recent.map(view), at: new Date(now).toISOString(), ...(staff ? { staff: true } : {}),
@@ -417,11 +489,29 @@ export const readable = async (req) => {
  * the snapshot's LIVE_LIMIT rows the store ranks it on its own, as before.
  */
 const withPosition = async (row) => {
-  if (row.status !== 'queued') return row;
-  const { positions } = await queueRows();
+  if (row.status !== 'queued' && row.status !== 'running') return row;
+  const { positions, estimates } = await queueRows();
+  const estimate = estimates.get(row.publicId) ?? null;
+  if (row.status === 'running') return { ...row, estimate };
   const position = positions.get(row.publicId) ?? (await analyses().get(row.publicId))?.position ?? null;
-  return { ...row, position };
+  return { ...row, position, estimate };
 };
+
+/**
+ * W3.24: the analyses this one was re-analysed into, or from, that this
+ * request may open (each one's own owner check, as `readable`): ids and
+ * modes only.
+ */
+const relatedOf = async (req, row) =>
+  (await analyses().related(row.publicId))
+    .filter((other) => isMine(req, other))
+    .map((other) => ({
+      id: other.publicId,
+      mode: other.mode ?? 'normal',
+      status: other.status,
+      options: other.options ?? {},
+      source: other.publicId === row.reanalysisOf,
+    }));
 
 const publicView = (row) => ({
   id: row.publicId,
@@ -439,6 +529,11 @@ const publicView = (row) => ({
   private: Boolean(row.private),
   published: Boolean(row.publishedAt),
   ...(row.publishedAt ? { publishedAt: new Date(row.publishedAt).toISOString() } : {}),
+  // W11.1, W3.21: how it was asked for; W3.24: what it was re-analysed from.
+  mode: row.mode ?? 'normal',
+  options: row.options ?? {},
+  reanalysisOf: row.reanalysisOf ?? null,
+  ...(row.estimate ? { estimate: row.estimate } : {}),
   ...(row.status === 'queued' && row.position ? { position: row.position } : {}),
   ...(row.status === 'running' ? { progress: row.progress ?? 0, stage: row.stage ?? null } : {}),
   ...(row.status === 'done' || row.status === 'refused' ? { result: row.result } : {}),
@@ -448,7 +543,9 @@ const publicView = (row) => ({
 router.get('/analyses/:id', optionalSession, async (req, res) => {
   const row = await withPosition(await readable(req));
   res.set('Cache-Control', 'no-store');
-  res.json(publicView(row));
+  // Polled every second or so while it waits: the links are read once it has ended.
+  const finished = !['queued', 'running'].includes(row.status);
+  res.json({ ...publicView(row), related: finished ? await relatedOf(req, row) : [] });
 });
 
 /**

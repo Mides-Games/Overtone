@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router'
 
 import { moderate, moderationLog, report } from '../../lib/community.js'
 
@@ -125,6 +126,16 @@ export function StaffPanel({ tick }) {
                   <span className="font-semibold">{t(`community.moderation.kind.${r.kind}`)}</span>{' '}
                   <span className="readout text-dim">{r.ref.slice(0, 8)}</span> ·{' '}
                   {t('community.moderation.reports', { count: r.count })}
+                  {/* A comment (W6) is hidden from its timing's page, where it sits. */}
+                  {r.timing && (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <Link to={`/t/${r.timing}#comment-${r.ref}`} className="text-accent hover:underline">
+                        {t('social.comments.openTiming')}
+                      </Link>
+                    </>
+                  )}
                 </p>
                 <p className="break-words text-muted">{r.reasons.map((reason) => `“${reason}”`).join(' ')}</p>
               </li>

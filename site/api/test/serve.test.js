@@ -314,3 +314,25 @@ test('an API that answers is forwarded as before', async () => {
   assert.equal(status, 200);
   assert.equal(body, '{"ok":true}');
 });
+
+test('the bot\'s routes (/api/internal/bot) are never forwarded, however the path is spelled', async () => {
+  let reached = 0;
+  const api = await upstream((_req, res) => {
+    reached += 1;
+    res.end('{"ok":true}');
+  });
+  const port = await serve(api);
+  const auth = { Authorization: `Bearer ${'b'.repeat(40)}`, 'X-Discord-User': '200000000000000002' };
+  for (const path of [
+    '/api/internal/bot/health',
+    '/api/internal/bot/dms/claim',
+    '/API/Internal/Bot/me',
+    '//api//internal/bot/queue',
+    '/api/%69nternal/bot/health',
+    '/api/internal%2Fbot/health',
+  ]) {
+    const { status } = await get(port, path, auth);
+    assert.equal(status, 404, path);
+  }
+  assert.equal(reached, 0);
+});

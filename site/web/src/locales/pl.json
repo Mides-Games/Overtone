@@ -401,7 +401,27 @@
     "reset": "Resetuj",
     "adjusted": "Te liczby zostały przez ciebie skorygowane: kopia i pobrane pliki zawierają korektę i mówią o tym w linii komentarza. Sprawdź ją na słuch, zanim jej użyjesz.",
     "hint": "Od {{from}} do {{to}} onsety rzedną do co drugiego beatu: silnik odczytuje to jako możliwy half- lub double-time wewnątrz jednej red line (bursztynowy znacznik). To przesłanka, nie red line: posłuchaj.",
-    "swing": "Od {{from}} do {{to}} ósemka na słabej części beatu wypada późno, o około {{late}} ms ({{snap}} beatu): swing. Ustaw te nuty na słuch."
+    "swing": "Od {{from}} do {{to}} ósemka na słabej części beatu wypada późno, o około {{late}} ms ({{snap}} beatu): swing. Ustaw te nuty na słuch.",
+    "bands": {
+      "toggle": "Pasma",
+      "hint": "Ataki niskie, średnie i wysokie pod przebiegiem: które pasmo niesie puls",
+      "legend": "Ataki w pasmach: niskie, średnie, wysokie",
+      "note": "Pasmo to zakres częstotliwości, nie instrument: stopa zwykle siedzi w niskim, trzask werbla w średnim, a talerze w wysokim, ale linia basu czy głos też tam trafiają.",
+      "lowShort": "Nis",
+      "midShort": "Śr",
+      "highShort": "Wys"
+    },
+    "spectrogram": {
+      "toggle": "Spektrogram",
+      "hint": "Częstotliwości utworu w czasie pod przebiegiem, od 40 Hz do 11 kHz, w powiększeniu mapy",
+      "legend": "Spektrogram, 40 Hz–11 kHz (mocniejszy kolor to głośniej)"
+    },
+    "layers": {
+      "needSong": "Pasma i spektrogram są odczytywane z samego utworu: wczytaj go poniżej, żeby je zobaczyć.",
+      "working": "Odczytywanie pasm i spektrogramu utworu w tle… {{percent}}%",
+      "failed": "Ta przeglądarka nie zdołała odczytać pasm i spektrogramu utworu.",
+      "done": "Odczytano w {{seconds}} s w tej przeglądarce; nic nie zostało wysłane."
+    }
   },
   "moderation": {
     "staff": "Zespół",
@@ -2471,5 +2491,59 @@
       "bpm": "BPM",
       "beat": "Jedno uderzenie"
     }
+  },
+  "practice": {
+    "title": "Ćwiczenie",
+    "reps": "Razy",
+    "countIn": "Odliczanie taktu",
+    "start": "Zacznij ćwiczyć",
+    "stop": "Zakończ ćwiczenie",
+    "counting": "Odliczanie…",
+    "status": "Przejście {{rep}} z {{reps}} · {{rate}}×",
+    "noStretch": "Nie ma tu czego ćwiczyć: zaznacz pętlę (Shift i przeciągnij na mapie) albo przesuń głowicę do sekcji red line.",
+    "hint": "Gra zaznaczoną pętlę albo sekcję pod głowicą {{reps}} razy, od {{from}}× do {{to}}×, za każdym razem trochę szybciej. Wysokość dźwięku zmienia się z prędkością; kliki za nią podążają."
+  },
+  "tapMic": {
+    "footer": "BPM z mikrofonu",
+    "eyebrow": "Narzędzie",
+    "title": "BPM z mikrofonu",
+    "description": "Przeglądarka słucha przez kilka sekund i proponuje BPM wraz z pewnością. Nic nie jest wysyłane.",
+    "intro": "Puść utwór blisko urządzenia, naciśnij Słuchaj i pozwól przeglądarce posłuchać go przez kilka sekund. Zaproponuje BPM i powie, jak bardzo jest pewna. Dźwięk nigdy nie opuszcza tej strony: jest odczytywany tutaj i odrzucany.",
+    "length": "Słuchaj przez",
+    "seconds": "{{n}} s",
+    "listen": "Słuchaj",
+    "again": "Słuchaj ponownie",
+    "stop": "Zatrzymaj i odczytaj",
+    "permission": "Przeglądarka poprosi o mikrofon, gdy naciśniesz Słuchaj, nie wcześniej.",
+    "asking": "Czekam na zgodę na mikrofon…",
+    "listening": "Słucham… {{percent}}%",
+    "listeningLabel": "Słuchanie",
+    "level": "Poziom wejścia",
+    "quiet": "Bardzo cicho: podgłośnij utwór albo podejdź bliżej.",
+    "reading": "Odczytywanie pulsu…",
+    "errors": {
+      "unsupported": "Ta przeglądarka nie może tu nagrywać z mikrofonu.",
+      "denied": "Mikrofon nie został dopuszczony. Możesz na to zezwolić w ustawieniach witryny w przeglądarce i spróbować ponownie.",
+      "noMic": "Nie znaleziono mikrofonu albo używa go inna aplikacja.",
+      "failed": "Coś poszło nie tak podczas słuchania. Spróbuj ponownie."
+    },
+    "result": {
+      "short": "Za krótko, żeby odczytać tempo: posłuchaj kilka sekund dłużej.",
+      "silent": "Nic nie słychać: mikrofon zarejestrował tylko ciszę.",
+      "noPulse": "Nie słychać równego pulsu. Utwór z wyraźnym beatem, głośniej albo bliżej, czyta się lepiej; szum i mowa go nie mają."
+    },
+    "confidence": "Pewność {{percent}}%",
+    "alternatives": "Może to być też {{list}}: mikrofon słyszy puls, a nie to, w której oktawie liczy się utwór.",
+    "heard": "Z {{seconds}} s dźwięku, odczytane w tej przeglądarce.",
+    "limitsTitle": "Co potrafi, a czego nie",
+    "limits": {
+      "private": "Nic nie jest wysyłane ani zapisywane: nagranie zostaje na tej stronie i znika po odczytaniu.",
+      "precision": "Kilka sekund daje tempo z dokładnością do około jednego BPM w najlepszym razie; dłuższe słuchanie jest stabilniejsze. To szybkie sprawdzenie, nie timing.",
+      "octave": "Może odczytać połowę lub dwukrotność tempa, które wybrałby mapper; pozostałe oktawy są pokazane obok.",
+      "changes": "Zakłada równe tempo: utwór, który przyspiesza, zwalnia albo zmienia metrum, odczyta się jako średnia albo wcale.",
+      "room": "Echo, szum, rozmowy i cienki bas głośnika telefonu rozmywają ataki, których słucha.",
+      "offset": "Nie podaje offsetu ani red lines: do tego plik utworu przechodzi przez silnik."
+    },
+    "forTiming": "Po pełny timing z red lines i offsetem przeanalizuj sam plik."
   }
 }

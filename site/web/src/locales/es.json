@@ -389,7 +389,27 @@
     "reset": "Restablecer",
     "adjusted": "Estos números los ajustaste vos: la copia y las descargas llevan el ajuste y lo dicen en una línea de comentario. Revisalo de oído antes de usarlo.",
     "hint": "De {{from}} a {{to}} los ataques se espacian a uno cada dos tiempos: el motor lo lee como un posible medio tiempo o doble tiempo dentro de una red line (la marca ámbar). Es evidencia, no una red line: escuchalo.",
-    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído."
+    "swing": "De {{from}} a {{to}} la corchea a contratiempo cae tarde, unos {{late}} ms ({{snap}} del tiempo): swing. Ubicá esas notas de oído.",
+    "bands": {
+      "toggle": "Bandas",
+      "hint": "Ataques graves, medios y agudos bajo la forma de onda: qué banda marca el pulso",
+      "legend": "Ataques por banda: graves, medios, agudos",
+      "note": "Una banda es un rango de frecuencias, no un instrumento: el bombo suele caer en los graves, el golpe de la caja en los medios y los platillos en los agudos, pero un bajo o una voz también caen ahí.",
+      "lowShort": "Grav",
+      "midShort": "Med",
+      "highShort": "Agu"
+    },
+    "spectrogram": {
+      "toggle": "Espectrograma",
+      "hint": "Las frecuencias de la canción en el tiempo bajo la forma de onda, de 40 Hz a 11 kHz, con el zoom del mapa",
+      "legend": "Espectrograma, 40 Hz–11 kHz (más tinta, más fuerte)"
+    },
+    "layers": {
+      "needSong": "Las bandas y el espectrograma se leen de la canción misma: cargala abajo para verlos.",
+      "working": "Leyendo las bandas y el espectrograma de la canción en segundo plano… {{percent}} %",
+      "failed": "Este navegador no pudo leer las bandas y el espectrograma de la canción.",
+      "done": "Leído en {{seconds}} s en este navegador; no se envió nada."
+    }
   },
   "moderation": {
     "staff": "Staff",
@@ -2357,5 +2377,59 @@
       "bpm": "BPM",
       "beat": "Un tiempo"
     }
+  },
+  "practice": {
+    "title": "Práctica",
+    "reps": "Veces",
+    "countIn": "Contar un compás antes",
+    "start": "Empezar a practicar",
+    "stop": "Parar la práctica",
+    "counting": "Contando…",
+    "status": "Vez {{rep}} de {{reps}} · {{rate}}×",
+    "noStretch": "No hay nada para practicar acá: marcá un loop (Shift y arrastrar en el mapa) o llevá el cabezal a la sección de una red line.",
+    "hint": "Toca el loop que marcaste, o la sección bajo el cabezal, {{reps}} veces de {{from}}× a {{to}}×, un poco más rápido cada vez. La altura cambia con la velocidad; los clics la siguen."
+  },
+  "tapMic": {
+    "footer": "BPM con el micrófono",
+    "eyebrow": "Herramienta",
+    "title": "BPM con el micrófono",
+    "description": "El navegador escucha unos segundos y propone un BPM con su confianza. No se sube nada.",
+    "intro": "Poné la canción cerca del dispositivo, tocá Escuchar y dejá que el navegador la oiga unos segundos. Propone un BPM y dice cuán seguro está. El sonido nunca sale de esta página: se lee acá y se descarta.",
+    "length": "Escuchar",
+    "seconds": "{{n}} s",
+    "listen": "Escuchar",
+    "again": "Escuchar de nuevo",
+    "stop": "Parar y leer",
+    "permission": "El navegador pide el micrófono cuando tocás Escuchar, no antes.",
+    "asking": "Esperando el permiso del micrófono…",
+    "listening": "Escuchando… {{percent}} %",
+    "listeningLabel": "Escuchando",
+    "level": "Nivel de entrada",
+    "quiet": "Muy bajo: subí la canción o acercate.",
+    "reading": "Leyendo el pulso…",
+    "errors": {
+      "unsupported": "Este navegador no puede grabar con un micrófono acá.",
+      "denied": "No se permitió el micrófono. Podés permitirlo en los ajustes del sitio del navegador y probar de nuevo.",
+      "noMic": "No se encontró un micrófono, o lo está usando otra app.",
+      "failed": "Algo salió mal mientras escuchaba. Probá de nuevo."
+    },
+    "result": {
+      "short": "Muy poco para leer un tempo: escuchá unos segundos más.",
+      "silent": "No se oyó nada: el micrófono solo captó silencio.",
+      "noPulse": "No se oyó un pulso estable. Una canción con un beat claro, más fuerte o más cerca, se lee mejor; el ruido y la voz hablada no tienen."
+    },
+    "confidence": "{{percent}} % de confianza",
+    "alternatives": "También podría ser {{list}}: un micrófono oye el pulso, no en qué octava se cuenta la canción.",
+    "heard": "Con {{seconds}} s de sonido, leídos en este navegador.",
+    "limitsTitle": "Qué puede y qué no",
+    "limits": {
+      "private": "No se sube ni se guarda nada: la grabación queda en esta página y desaparece una vez leída.",
+      "precision": "Unos segundos dan un tempo a un BPM, en el mejor caso; escuchar más lo vuelve más estable. Es un chequeo rápido, no un timing.",
+      "octave": "Puede leer la mitad o el doble del tempo que elegiría un mapper; las otras octavas se muestran al lado.",
+      "changes": "Supone un tempo estable: una canción que acelera, frena o cambia de compás se lee como un promedio, o no se lee.",
+      "room": "El eco, el ruido, la gente hablando y los graves flacos del parlante de un teléfono desdibujan los ataques que escucha.",
+      "offset": "No da offset ni red lines: para eso, el archivo de la canción pasa por el engine."
+    },
+    "forTiming": "Para un timing completo con red lines y offset, analizá el archivo."
   }
 }

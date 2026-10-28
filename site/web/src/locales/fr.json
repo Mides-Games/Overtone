@@ -395,7 +395,27 @@
     "reset": "Réinitialiser",
     "adjusted": "Ces valeurs ont été ajustées par vous : la copie et les téléchargements reprennent l'ajustement et le signalent dans une ligne de commentaire. Vérifiez-le à l'oreille avant de l'utiliser.",
     "hint": "De {{from}} à {{to}}, les attaques se raréfient à un temps sur deux : le moteur y voit un possible half-time ou double-time à l'intérieur d'une même red line (la marque orange). Un indice, pas une red line : écoutez-le.",
-    "swing": "De {{from}} à {{to}}, la croche à contretemps tombe en retard, d'environ {{late}} ms ({{snap}} du temps) : du swing. Placez ces notes à l'oreille."
+    "swing": "De {{from}} à {{to}}, la croche à contretemps tombe en retard, d'environ {{late}} ms ({{snap}} du temps) : du swing. Placez ces notes à l'oreille.",
+    "bands": {
+      "toggle": "Bandes",
+      "hint": "Attaques graves, médiums et aiguës sous la forme d'onde : quelle bande porte la pulsation",
+      "legend": "Attaques par bande : graves, médiums, aiguës",
+      "note": "Une bande est une plage de fréquences, pas un instrument : la grosse caisse tombe d'ordinaire dans les graves, le claquement de la caisse claire dans les médiums et les cymbales dans les aigus, mais une ligne de basse ou une voix y tombent aussi.",
+      "lowShort": "Bas",
+      "midShort": "Méd",
+      "highShort": "Aigu"
+    },
+    "spectrogram": {
+      "toggle": "Spectrogramme",
+      "hint": "Les fréquences de la chanson dans le temps sous la forme d'onde, de 40 Hz à 11 kHz, au zoom de la carte",
+      "legend": "Spectrogramme, 40 Hz–11 kHz (encre plus forte, son plus fort)"
+    },
+    "layers": {
+      "needSong": "Les bandes et le spectrogramme se lisent dans la chanson elle-même : chargez-la ci-dessous pour les voir.",
+      "working": "Lecture des bandes et du spectrogramme de la chanson en arrière-plan… {{percent}} %",
+      "failed": "Ce navigateur n'a pas pu lire les bandes et le spectrogramme de la chanson.",
+      "done": "Lu en {{seconds}} s dans ce navigateur ; rien n'a été envoyé."
+    }
   },
   "moderation": {
     "staff": "Équipe",
@@ -2414,5 +2434,59 @@
       "bpm": "BPM",
       "beat": "Un temps"
     }
+  },
+  "practice": {
+    "title": "Entraînement",
+    "reps": "Fois",
+    "countIn": "Décompte d'une mesure",
+    "start": "Lancer l'entraînement",
+    "stop": "Arrêter l'entraînement",
+    "counting": "Décompte…",
+    "status": "Passage {{rep}} sur {{reps}} · {{rate}}×",
+    "noStretch": "Rien à travailler ici : tracez une boucle (Maj-glisser sur la carte) ou placez la tête de lecture dans la section d'une red line.",
+    "hint": "Joue la boucle tracée, ou la section sous la tête de lecture, {{reps}} fois de {{from}}× à {{to}}×, un peu plus vite à chaque passage. La hauteur suit la vitesse ; les clics aussi."
+  },
+  "tapMic": {
+    "footer": "BPM au micro",
+    "eyebrow": "Outil",
+    "title": "BPM au micro",
+    "description": "Le navigateur écoute quelques secondes et propose un BPM avec sa confiance. Rien n'est envoyé.",
+    "intro": "Jouez la chanson près de votre appareil, appuyez sur Écouter et laissez le navigateur l'entendre quelques secondes. Il propose un BPM et dit à quel point il en est sûr. Le son ne quitte jamais cette page : il est lu ici puis jeté.",
+    "length": "Écouter pendant",
+    "seconds": "{{n}} s",
+    "listen": "Écouter",
+    "again": "Réécouter",
+    "stop": "Arrêter et lire",
+    "permission": "Le navigateur demande le micro quand vous appuyez sur Écouter, pas avant.",
+    "asking": "En attente de l'autorisation du micro…",
+    "listening": "Écoute… {{percent}} %",
+    "listeningLabel": "Écoute",
+    "level": "Niveau d'entrée",
+    "quiet": "Très faible : montez le son ou rapprochez-vous.",
+    "reading": "Lecture de la pulsation…",
+    "errors": {
+      "unsupported": "Ce navigateur ne peut pas enregistrer depuis un micro ici.",
+      "denied": "Le micro n'a pas été autorisé. Vous pouvez l'autoriser dans les réglages du site du navigateur et réessayer.",
+      "noMic": "Aucun micro trouvé, ou une autre application l'utilise.",
+      "failed": "Un problème est survenu pendant l'écoute. Réessayez."
+    },
+    "result": {
+      "short": "Trop court pour lire un tempo : écoutez quelques secondes de plus.",
+      "silent": "Rien entendu : le micro n'a capté que du silence.",
+      "noPulse": "Aucune pulsation régulière entendue. Une chanson au rythme net, plus forte ou plus proche, se lit mieux ; le bruit et la parole n'en ont pas."
+    },
+    "confidence": "Confiance : {{percent}} %",
+    "alternatives": "Ce pourrait aussi être {{list}} : un micro entend la pulsation, pas à quelle octave la chanson se compte.",
+    "heard": "Sur {{seconds}} s de son, lu dans ce navigateur.",
+    "limitsTitle": "Ce qu'il peut faire, et ce qu'il ne peut pas",
+    "limits": {
+      "private": "Rien n'est envoyé ni enregistré : l'enregistrement reste dans cette page et disparaît une fois lu.",
+      "precision": "Quelques secondes donnent un tempo à un BPM près au mieux ; une écoute plus longue est plus stable. C'est une vérification rapide, pas un timing.",
+      "octave": "Il peut lire la moitié ou le double du tempo qu'un mappeur choisirait ; les autres octaves sont affichées avec.",
+      "changes": "Il suppose un tempo stable : une chanson qui accélère, ralentit ou change de mesure se lit comme une moyenne, ou pas du tout.",
+      "room": "L'écho, le bruit, les conversations et les basses maigres d'un haut-parleur de téléphone brouillent les attaques qu'il écoute.",
+      "offset": "Il ne donne ni offset ni red lines : pour cela, le fichier de la chanson passe par le moteur."
+    },
+    "forTiming": "Pour un timing complet avec red lines et offset, analysez le fichier lui-même."
   }
 }

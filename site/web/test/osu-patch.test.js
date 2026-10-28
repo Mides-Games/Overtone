@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { binaryToBytes, bytesToBinary, countHitObjects, parsePoint, patchOsu, patchOsuFile } from '../src/lib/osu-patch.js'
+import { binaryToBytes, bytesToBinary, countHitObjects, parsePoint, patchOsu, patchOsuFile, snapHitObjects } from '../src/lib/osu-patch.js'
 import { adjustLines } from '../src/lib/timing.js'
 
 const result = {
@@ -141,4 +141,60 @@ test('the patched file from a File keeps its name and counts the hit objects', a
   const back = bytesToBinary(out.bytes)
   assert.ok(back.includes('TitleUnicode:S\xc3\xb3ng'))
   assert.equal(countHitObjects('osu file format v14\r\n[HitObjects]\r\n'), 0)
+})
+
+/** A map whose objects sit a few ms off a 500 ms grid from 1000 ms, LF, with a slider, a spinner and a hold. */
+const offGrid = [
+  'osu file format v14',
+  '',
+  '[TimingPoints]',
+  '1003,500,4,2,0,80,1,0',
+  '',
+  '[HitObjects]',
+  '256,192,1003,5,4,0:0:0:0:',
+  '// a comment row stays',
+  '100,100,1253,2,0,B|200:200,1,140,2|0,0:0|0:0,0:0:0:0:',
+  '256,192,1500,1,0,0:0:0:0:',
+  '256,192,2004,12,0,3497,0:0:0:0:',
+  '64,192,4128,128,0,4870:0:0:0:0:',
+  '',
+].join('\n')
+const grid = [{ timeMs: 1000, beatMs: 500, meter: 4 }]
+
+test('snapping moves each object to the nearest tick and touches only its times', () => {
+  const { text, report } = patchOsu(offGrid, grid, { snap: 4 })
+  const objects = text.slice(text.indexOf('[HitObjects]'))
+  assert.equal(
+    objects,
+    [
+      '[HitObjects]',
+      '256,192,1000,5,4,0:0:0:0:',
+      '// a comment row stays',
+      '100,100,1250,2,0,B|200:200,1,140,2|0,0:0|0:0,0:0:0:0:',
+      '256,192,1500,1,0,0:0:0:0:',
+      '256,192,2000,12,0,3500,0:0:0:0:',
+      '64,192,4125,128,0,4875:0:0:0:0:',
+      '',
+    ].join('\n'),
+  )
+  // 1003 -> 1000 (3), 1253 -> 1250 (3), 2004/3497 -> 2000/3500 (4), 4128/4870 -> 4125/4875 (5); 1500 stays.
+  assert.deepEqual(report.snap, { divisor: 4, total: 5, moved: 4, maxMs: 5, medianMs: 3.5, shared: 0 })
+  assert.equal(report.hitObjects, 5)
+  // Everything before [HitObjects] is what the timing patch alone gives, and without a snap no object moves.
+  const alone = patchOsu(offGrid, grid).text
+  assert.equal(text.slice(0, text.indexOf('[HitObjects]')), alone.slice(0, alone.indexOf('[HitObjects]')))
+  assert.equal(alone.slice(alone.indexOf('[HitObjects]')), offGrid.slice(offGrid.indexOf('[HitObjects]')))
+})
+
+test('a coarse snap counts the objects it lands on one tick, and keeps an end after its start', () => {
+  const { report } = patchOsu(offGrid, grid, { snap: 1 })
+  // At 1/1, 1253 goes to 1500, where the next circle already was.
+  assert.equal(report.snap.shared, 1)
+  const spun = snapHitObjects('[HitObjects]\r\n0,0,1010,8,0,1150,0:0:0:0:\r\n', [{ time: 1000, beatLength: 500 }], 1)
+  assert.equal(spun.text, '[HitObjects]\r\n0,0,1000,8,0,1140,0:0:0:0:\r\n', 'its end would snap onto its start: it keeps its length')
+  assert.equal(snapHitObjects('osu file format v14\n', [{ time: 0, beatLength: 500 }], 4).report.total, 0)
+})
+
+test('a divisor osu! does not offer is no snap at all', () => {
+  assert.equal(patchOsu(offGrid, grid, { snap: 5 }).report.snap, undefined)
 })

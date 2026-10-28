@@ -830,11 +830,11 @@ miden; ninguna mueve la línea base sin pasar las puertas.
 
 | # | Tarea |
 |---|---|
-| W13.1 | **Mapa de prueba jugable:** un `.osz` con un círculo en cada tiempo (o en cada 1/2) y hitsound en el primer tiempo del compás, para jugar el timing en osu! y sentir si está corrido |
-| W13.2 | **Ajustar los objetos al timing nuevo:** al parchear un `.osu` propio, mover opcionalmente cada hit object al tick más cercano de la grilla nueva (1/1 a 1/16), con un informe de cuántos se movieron y cuánto |
-| W13.3 | **Divisor sugerido:** un histograma de a qué divisor caen los ataques (1/2, 1/3, 1/4, 1/6, 1/8) para elegir `BeatDivisor`, que se escribe en el `.osu` |
-| W13.4 | **Pausas sugeridas:** los silencios largos como `Break` en `[Events]`, opcionales |
-| W13.5 | **Modo y dificultades:** elegir osu!, taiko, catch o mania en el `.osz`, y crear varias dificultades vacías (Easy a Expert) con el mismo timing |
+| W13.1 | **Mapa de prueba jugable:** un `.osz` con un círculo en cada tiempo (o en cada 1/2) y hitsound en el primer tiempo del compás, para jugar el timing en osu! y sentir si está corrido (hecho en parte, 2026-10-28: una dificultad más, "Overtone test (1/1)" o "(1/2)", con combo nuevo y finish en el primer tiempo del compás y whistle en los medios tiempos, en el modo elegido; falta jugarla en osu!, que nadie hizo todavía) |
+| W13.2 | **Ajustar los objetos al timing nuevo:** al parchear un `.osu` propio, mover opcionalmente cada hit object al tick más cercano de la grilla nueva (1/1 a 1/16), con un informe de cuántos se movieron y cuánto (hecho, 2026-10-28: 1/1 a 1/16 con 1/3, 1/6 y 1/12; solo cambian el tiempo del objeto y el final de spinners y holds; los sliders conservan su largo en tiempos; informa movidos, máximo, mediana y los que quedaron en el mismo tick) |
+| W13.3 | **Divisor sugerido:** un histograma de a qué divisor caen los ataques (1/2, 1/3, 1/4, 1/6, 1/8) para elegir `BeatDivisor`, que se escribe en el `.osu` (hecho, 2026-10-28: por red line y para toda la canción en el resultado; el divisor más grueso que junta el 90 % de los ataques en la grilla va como `BeatDivisor` del `.osz`, con 16 ataques como mínimo; no se escribe en el `.osu` parcheado, que solo cambia lo que se pide) |
+| W13.4 | **Pausas sugeridas:** los silencios largos como `Break` en `[Events]`, opcionales (hecho, 2026-10-28: silencios de 5 s o más en la envolvente de onsets entre el primer y el último ataque, con los márgenes de osu! de 200 y 450 ms y 650 ms de mínimo; apagado por defecto; falta verlo en una canción real con un silencio) |
+| W13.5 | **Modo y dificultades:** elegir osu!, taiko, catch o mania en el `.osz`, y crear varias dificultades vacías (Easy a Expert) con el mismo timing (hecho, 2026-10-28: `Mode` en cada dificultad, mania con 4K a 10K como `CircleSize`; Easy a Expert como `.osu` vacíos con HP, CS, OD y AR de partida; falta abrir el set en osu!) |
 | W13.6 | **Bandas en el mapa:** graves, medios y agudos (bombo, caja, platillos) como carriles de ataques, para ver qué instrumento marca el pulso |
 | W13.7 | **Espectrograma** opcional bajo la forma de onda, con el mismo zoom |
 | W13.8 | **Modo práctica:** repetir un tramo cada vez más rápido (0,5 → 1,0) con conteo previo, para practicar el ritmo |

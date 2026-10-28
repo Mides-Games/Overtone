@@ -806,7 +806,13 @@
     "filesTitle": "Arquivos",
     "json": "Resultado (JSON)",
     "summary": "Resumo (TXT)",
-    "filesNote": "O CSV e o resumo seguem os seus ajustes; o JSON é o resultado do motor como o servidor o enviou."
+    "filesNote": "O CSV e o resumo seguem os seus ajustes; o JSON é o resultado do motor como o servidor o enviou.",
+    "snapLabel": "Encaixar os hit objects no timing novo",
+    "snapOff": "Não",
+    "snapNote": "Cada objeto vai para o tick mais próximo da grade nova com este divisor; só o tempo dele muda (e o fim de um spinner ou de um hold). Os sliders mantêm o comprimento em tempos. Sem encaixe, os objetos ficam onde estão.",
+    "snapped": "Encaixado em {{divisor}}: {{moved}} de {{total}} objetos movidos, no máximo {{max}} ms (mediana {{median}} ms).",
+    "snappedNone": "Encaixado em {{divisor}}: nenhum dos {{total}} objetos precisou se mover.",
+    "snapShared": "Objetos agora no mesmo tick que o anterior: {{n}}. Confira no editor."
   },
   "community": {
     "nav": "Comunidade",
@@ -1085,7 +1091,13 @@
     "openTipFirefox": "No Firefox, abra Configurações → Geral → Arquivos e aplicativos, encontre o tipo .osz e defina para abrir com o osu!. O próximo .osz vai direto para o osu!.",
     "openTipOsu": "Isso exige o osu! instalado com os arquivos .osz abrindo nele, o que o instalador já configura. O site não pode abrir o arquivo por você: uma página web nunca executa o que baixa.",
     "openTipClose": "Entendi",
-    "openTipNever": "Não mostrar de novo"
+    "openTipNever": "Não mostrar de novo",
+    "divisor": "Divisor de snap",
+    "divisorAt": "{{divisor}}: o divisor em que caem os ataques, escrito como BeatDivisor do editor.",
+    "divisorNone": "Poucos ataques na grade: o editor fica com o 1/4 dele.",
+    "breaks": "Breaks",
+    "breaksAt": "Silêncios longos entre os ataques, dentro das margens de um break do osu!: {{spans}}.",
+    "breaksNone": "Nenhum silêncio de 5 s ou mais entre os ataques."
   },
   "listening": {
     "subdivision": "Entre batidas",
@@ -2227,5 +2239,35 @@
       "sharedAdded": "A música que você compartilhou está na lista. Confira e clique em Analisar.",
       "sharedNone": "Nada utilizável chegou pelo compartilhamento: compartilhe um arquivo MP3, OGG, WAV, FLAC, M4A ou Opus, ou escolha-o abaixo."
     }
+  },
+  "mapSet": {
+    "title": "O set do mapa",
+    "mode": "Modo de jogo",
+    "modeNote": "Escrito como Mode em cada dificuldade; no mania, o número de teclas vai em CircleSize.",
+    "keys": "Teclas",
+    "test": "Mapa de teste",
+    "off": "Não",
+    "testNote": "Uma dificuldade jogável, \"Overtone test\", com um círculo em cada tempo ou meio tempo: o primeiro tempo do compasso abre um combo com finish e os meios tempos tocam whistle. Jogue no osu! e sinta se o timing está deslocado. É para conferir, não para rankear.",
+    "testBreaks": "Breaks que ele deixa vazios: {{n}}.",
+    "difficulties": "Dificuldades vazias",
+    "difficultiesNote": "Cada uma é um .osu próprio no set, com o mesmo timing e sem objetos. HP, CS, OD e AR são um ponto de partida para mudar no editor.",
+    "count": "Dificuldades no .osz: {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Onde caem os ataques",
+    "all": "A música toda",
+    "perLine": "Sob cada red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "sugerido {{divisor}}",
+    "none": "poucos ataques para dizer",
+    "other": "nenhum",
+    "aria": "{{divisor}}: {{pct}}%",
+    "note": "Cada ataque que o engine ouviu, pelo divisor mais simples do tempo em que cai (a menos de 1/48 de tempo, no máximo 15 ms); ataques fracos contam menos. Sugere o divisor de snap do editor; não mede o timing."
   }
 }

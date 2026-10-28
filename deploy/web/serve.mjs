@@ -11,7 +11,8 @@
  * Static files are read from WEB_ROOT. A path that is not a file falls back
  * to index.html (the app routes on the client). Vite's hashed /assets/* are
  * cached for a year; index.html is never cached, so a release is visible on
- * the next load.
+ * the next load. Text files are sent brotli or gzip compressed when the
+ * browser asks (W10.1), compressed once per file version and kept in memory.
  *
  * TRUSTED_PROXY_ADDRS is the comma-separated addresses or CIDR ranges of the
  * TLS proxy in front (Cloudflare's published ranges, docs/deploy.md). The API
@@ -54,6 +55,11 @@ import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
+
+const brotli = promisify(zlib.brotliCompress);
+const gzip = promisify(zlib.gzip);
 
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
@@ -442,14 +448,67 @@ async function serve(req, res) {
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
-  res.writeHead(200, {
-    'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
-    'content-length': s.size,
+  const ext = path.extname(target).toLowerCase();
+  const headers = {
+    'content-type': TYPES[ext] || 'application/octet-stream',
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
     ...(await securityHeaders()),
-  });
+  };
+  const encoding = COMPRESSIBLE.has(ext) && s.size >= COMPRESS_MIN_BYTES ? pickEncoding(req.headers['accept-encoding']) : null;
+  if (COMPRESSIBLE.has(ext)) headers.vary = 'Accept-Encoding';
+  if (encoding) {
+    const body = await compressed(target, s, encoding);
+    res.writeHead(200, { ...headers, 'content-encoding': encoding, 'content-length': body.length });
+    return res.end(req.method === 'HEAD' ? undefined : body);
+  }
+  res.writeHead(200, { ...headers, 'content-length': s.size });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
+}
+
+// ── Compression (W10.1) ─────────────────────────────────────────────────────
+//
+// Text files go out as brotli, else gzip, when the browser takes either: the
+// built JS is about a third of its size compressed. Each file is compressed
+// once per version (path, size and mtime) and kept in memory, so a busy page
+// costs no CPU after its first visitor; a release brings new hashed names and
+// the old entries age out of the small LRU. A TLS proxy in front (Cloudflare)
+// passes an encoded body through as it is. Below 1 kB it is not worth it.
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.map', '.svg', '.txt', '.xml', '.webmanifest']);
+const COMPRESS_MIN_BYTES = 1024;
+const COMPRESS_CACHE_MAX = 128;
+const compressCache = new Map();
+
+/** `br` or `gzip` from an Accept-Encoding header, honouring q=0; null for neither. */
+function pickEncoding(header) {
+  const accepted = new Set();
+  for (const part of String(header ?? '').toLowerCase().split(',')) {
+    const [name, ...params] = part.trim().split(';');
+    const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
+    if (q && !(Number(q.slice(2)) > 0)) continue;
+    accepted.add(name.trim());
+  }
+  if (accepted.has('br')) return 'br';
+  if (accepted.has('gzip')) return 'gzip';
+  return null;
+}
+
+async function compressed(target, s, encoding) {
+  const key = `${encoding}:${target}:${s.size}:${s.mtimeMs}`;
+  const hit = compressCache.get(key);
+  if (hit) {
+    compressCache.delete(key);
+    compressCache.set(key, hit);
+    return hit;
+  }
+  const raw = await readFile(target);
+  const body =
+    encoding === 'br'
+      ? await brotli(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length } })
+      : await gzip(raw, { level: 9 });
+  compressCache.set(key, body);
+  if (compressCache.size > COMPRESS_CACHE_MAX) compressCache.delete(compressCache.keys().next().value);
+  return body;
 }
 
 const server = http.createServer((req, res) => {

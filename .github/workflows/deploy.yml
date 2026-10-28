@@ -11,7 +11,7 @@ name: deploy
 
 on:
   push:
-    branches: [experimental]
+    branches: [master]
   workflow_dispatch:
 
 permissions:

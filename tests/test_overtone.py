@@ -6156,11 +6156,14 @@ class DeployScriptTests(unittest.TestCase):
         for reach in ("dirname", "/opt/overtone", "cp "):
             self.assertNotIn(reach, code, reach)
 
-    def _update(self, api_state, active: bool = True) -> tuple[bool, str]:
+    def _update(self, api_state, active: bool = True, cloned: str = "master") -> tuple[bool, str]:
         """Run overtone-update.sh against a checkout one commit behind its
-        origin, with systemctl and sudo stubbed and the runs API answering
-        ``api_state`` (a queue, or None for no answer). Whether the checkout
-        moved, and what the script said."""
+        origin's master, with systemctl and sudo stubbed, the runs API
+        answering ``api_state`` (a queue, or None for no answer) and the
+        script's own default branch. ``cloned`` is the branch the checkout is
+        on: "experimental" is a server from before master was the only branch
+        (its origin keeps an experimental at the first commit). Whether the
+        checkout moved, and what the script said."""
         import shutil
         import subprocess
         import threading
@@ -6179,11 +6182,12 @@ class DeployScriptTests(unittest.TestCase):
             subprocess.run(["git", *args], cwd=cwd, env=env, check=True, capture_output=True)
 
         upstream, checkout = tmp / "upstream", tmp / "checkout"
-        git("init", "-q", "-b", "experimental", str(upstream))
+        git("init", "-q", "-b", "master", str(upstream))
         (upstream / "a.txt").write_text("one\n", encoding="utf-8")
         git("add", "a.txt", cwd=upstream)
         git("commit", "-q", "-m", "one", cwd=upstream)
-        git("clone", "-q", "-b", "experimental", str(upstream), str(checkout))
+        git("branch", "experimental", cwd=upstream)
+        git("clone", "-q", "-b", cloned, str(upstream), str(checkout))
         (upstream / "a.txt").write_text("two\n", encoding="utf-8")
         git("commit", "-q", "-am", "two", cwd=upstream)
 
@@ -6222,7 +6226,7 @@ class DeployScriptTests(unittest.TestCase):
         before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, env=env,
                                 capture_output=True, text=True, check=True).stdout
         env.update(PATH=str(stubs) + os.pathsep + env.get("PATH", ""),
-                   OVERTONE_REPO=str(checkout), OVERTONE_BRANCH="experimental",
+                   OVERTONE_REPO=str(checkout),
                    OVERTONE_TOKEN_FILE=str(tmp / "token"), OVERTONE_API=f"http://127.0.0.1:{port}",
                    OVERTONE_CARGO="false")
         done = subprocess.run(["sh", str(self.DEPLOY / "overtone-update.sh")], env=env,
@@ -6245,6 +6249,13 @@ class DeployScriptTests(unittest.TestCase):
         moved, said = self._update(None)
         self.assertFalse(moved, said)
         self.assertIn("did not say whether a run is going", said)
+
+    def test_a_server_still_on_experimental_moves_to_master_once(self):
+        # 2026-10-28: master became the only branch. A clean checkout on
+        # experimental that master contains switches over and is deployed.
+        moved, said = self._update({"running": None, "queued": []}, cloned="experimental")
+        self.assertTrue(moved, said)
+        self.assertIn("moved", said)
 
     def test_the_updater_deploys_to_a_server_that_is_not_running(self):
         # A stopped service runs nothing, and may be waiting for this very fix.

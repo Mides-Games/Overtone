@@ -12,11 +12,10 @@ This page is the short version.
 
 | Branch | Role |
 |---|---|
-| `master` | production: what releases are built from; always green |
-| `experimental` | staging: features land here first and are tried together |
-| `feat/<topic>`, `fix/<topic>`, … | one piece of work, branched from `experimental` (or `master` for a hotfix) |
+| `master` | the only long-lived branch: what the servers run and releases are built from; always green |
+| `feat/<topic>`, `fix/<topic>`, … | one piece of work, branched from `master`, deleted once merged |
 
-Never commit work in progress on `master` or `experimental`; branch first. A
+Never commit work in progress on `master`; branch first. A
 branch is named like its commits' subject without the description:
 `feat/click-gain`, `fix/octave-hint`, `chore/repo-layout`.
 
@@ -79,7 +78,7 @@ missing and skip. See [`bench/local_data.py`](bench/local_data.py).
 
 ## Pull requests
 
-Open them with `gh` against `experimental` (or `master` for a hotfix). The
+Open them with `gh` against `master`; a PR is required for everyone. The
 template asks three things: what changed, why, and which gates were run with
 what result. Paste the gate output; numbers, not impressions.
 

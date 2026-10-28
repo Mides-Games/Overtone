@@ -20,7 +20,7 @@ set -u
 
 main() {
     REPO=${OVERTONE_REPO:-/opt/overtone}
-    BRANCH=${OVERTONE_BRANCH:-experimental}
+    BRANCH=${OVERTONE_BRANCH:-master}
     SERVICE=${OVERTONE_SERVICE:-overtone-api}
     TOKEN_FILE=${OVERTONE_TOKEN_FILE:-/var/lib/overtone/Overtone/api-token}
     API=${OVERTONE_API:-http://127.0.0.1:8765}
@@ -34,6 +34,20 @@ main() {
     old=$(git rev-parse HEAD)
     new=$(git rev-parse "origin/$BRANCH")
     [ "$old" = "$new" ] && return 0
+
+    # One-time move (2026-10-28): the deployed branch was experimental until
+    # the owner made master the only branch. A checkout still on experimental,
+    # clean, and wholly contained in master is moved onto a local master at
+    # the same commit; the fast-forward below then takes it the rest of the
+    # way, after the busy check like any other update. Anything else (local
+    # changes, a commit master does not have) is left for a person.
+    if [ "$(git rev-parse --abbrev-ref HEAD)" = experimental ] && [ "$BRANCH" = master ] &&
+       git diff --quiet && git diff --cached --quiet &&
+       git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
+        git branch -f master HEAD && git checkout --quiet master &&
+            git branch --quiet --set-upstream-to="origin/master" master &&
+            echo "overtone-update: moved $REPO from experimental to master at $(git rev-parse --short HEAD)"
+    fi
 
     if [ "$(git rev-parse --abbrev-ref HEAD)" != "$BRANCH" ]; then
         echo "overtone-update: $REPO is on $(git rev-parse --abbrev-ref HEAD), not $BRANCH; left alone"

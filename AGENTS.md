@@ -25,6 +25,11 @@ commit messages are English; only the website's own UI strings stay bilingual
   accuracy claim names its measurement; a gate change names the gates run
   and their result.
 - One logical change per commit. A DSP change and a UI change are two commits.
+- **`master` is the only long-lived branch** (owner's decision, 2026-10-28: `experimental`
+  and the `parked/` branches were merged and deleted; the parked desktop app lives on as
+  the tags `v3-desktop-app` and `v3-desktop-full`). Work happens on a short branch, lands
+  in `master` through a PR (required for everyone, admins included) and the branch is
+  deleted.
 - Never commit on the default branch when the change is in progress; branch first.
   Branch names share the subject's shape without the description:
   `type/short-topic`, e.g. `chore/repo-layout`, `fix/octave-hint`.
@@ -35,7 +40,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## CI
 
 - **GitHub Actions deploys, and only deploys** (owner's decision, 2026-10-26). One
-  workflow, `.github/workflows/deploy.yml`: a push to `experimental` asks the
+  workflow, `.github/workflows/deploy.yml`: a push to `master` asks the
   owner's server to update, signing in as `overtone-deploy`, whose key can start
   `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
   pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
@@ -50,7 +55,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (537 on 2026-10-27)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (538 on 2026-10-28)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage

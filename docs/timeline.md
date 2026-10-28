@@ -16,11 +16,11 @@ later costs more than writing it down now.
 
 Work that has landed but is not in a published version is headed
 **Unreleased**, in the same order as everything else. The newest published
-version is `v0.2.0-alpha`.
+version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
-## Unreleased — 2026-10-28 · The studio look: community and account pages
+## v1.0.0-stable — 2026-10-28 · The studio look: community and account pages
 
 ### Changed
 
@@ -48,7 +48,7 @@ version is `v0.2.0-alpha`.
 - Not measured beyond the checks: no engine change. The bundle stays inside its budget
   (`scripts/budget.mjs`: ok).
 
-## Unreleased — 2026-10-28 · The studio look: Analyze, the queue and the result pages
+## v1.0.0-stable — 2026-10-28 · The studio look: Analyze, the queue and the result pages
 
 ### Changed
 
@@ -82,7 +82,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · The studio look: content and tool pages
+## v1.0.0-stable — 2026-10-28 · The studio look: content and tool pages
 
 ### Changed
 
@@ -120,7 +120,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · Clients for the API, a stream overlay, and a fingerprint study
+## v1.0.0-stable — 2026-10-28 · Clients for the API, a stream overlay, and a fingerprint study
 
 ### Changed
 
@@ -173,7 +173,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · W11.2: the oracle study, and no room for a router
+## v1.0.0-stable — 2026-10-28 · W11.2: the oracle study, and no room for a router
 
 ### Changed
 
@@ -225,7 +225,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · Votes on timings, a mapper's badge, a notification bell and a staff panel
+## v1.0.0-stable — 2026-10-28 · Votes on timings, a mapper's badge, a notification bell and a staff panel
 
 ### Changed
 
@@ -265,7 +265,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · The studio look: foundation and front page
+## v1.0.0-stable — 2026-10-28 · The studio look: foundation and front page
 
 ### Changed
 
@@ -329,7 +329,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · The timing editor in the browser
+## v1.0.0-stable — 2026-10-28 · The timing editor in the browser
 
 ### Changed
 
@@ -373,7 +373,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
+## v1.0.0-stable — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
 
 ### Changed
 
@@ -421,7 +421,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
+## v1.0.0-stable — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
 
 ### Changed
 
@@ -453,7 +453,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · Mapping helpers on the result page
+## v1.0.0-stable — 2026-10-28 · Mapping helpers on the result page
 
 ### Changed
 
@@ -499,7 +499,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
+## v1.0.0-stable — 2026-10-28 · Long songs no longer fail for memory they did not use
 
 ### Fixed
 
@@ -522,7 +522,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · The site in ten languages, chosen by flag
+## v1.0.0-stable — 2026-10-28 · The site in ten languages, chosen by flag
 
 ### Changed
 
@@ -564,7 +564,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-28 · One branch: master
+## v1.0.0-stable — 2026-10-28 · One branch: master
 
 ### Changed
 
@@ -583,7 +583,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · W10: budgets, accessibility, end-to-end tests and the review routine
+## v1.0.0-stable — 2026-10-27 · W10: budgets, accessibility, end-to-end tests and the review routine
 
 ### Changed
 
@@ -650,7 +650,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Releases carry executables, built in one line
+## v1.0.0-stable — 2026-10-27 · Releases carry executables, built in one line
 
 ### Changed
 
@@ -708,7 +708,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · API tokens, versions, whole batches, images, the app and copied rows
+## v1.0.0-stable — 2026-10-27 · API tokens, versions, whole batches, images, the app and copied rows
 
 ### Changed
 
@@ -779,7 +779,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Analysis modes, hints, a stretch, re-analysis and the queue's estimate
+## v1.0.0-stable — 2026-10-27 · Analysis modes, hints, a stretch, re-analysis and the queue's estimate
 
 ### Changed
 
@@ -842,7 +842,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · A front page that answers why
+## v1.0.0-stable — 2026-10-27 · A front page that answers why
 
 ### Changed
 
@@ -878,7 +878,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Linked accounts and the Discord bot (W9)
+## v1.0.0-stable — 2026-10-27 · Linked accounts and the Discord bot (W9)
 
 ### Changed
 
@@ -928,7 +928,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Stars, uses, comments, collections and timer profiles
+## v1.0.0-stable — 2026-10-27 · Stars, uses, comments, collections and timer profiles
 
 ### Changed
 
@@ -985,7 +985,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Other games' formats and export options
+## v1.0.0-stable — 2026-10-27 · Other games' formats and export options
 
 ### Changed
 
@@ -1025,7 +1025,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · A fuller .osz
+## v1.0.0-stable — 2026-10-27 · A fuller .osz
 
 ### Changed
 
@@ -1067,7 +1067,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Listening tools: latency, taps, A/B, subdivisions
+## v1.0.0-stable — 2026-10-27 · Listening tools: latency, taps, A/B, subdivisions
 
 ### Changed
 
@@ -1113,7 +1113,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Comparing timings
+## v1.0.0-stable — 2026-10-27 · Comparing timings
 
 ### Changed
 
@@ -1164,7 +1164,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · Command palette and settings
+## v1.0.0-stable — 2026-10-27 · Command palette and settings
 
 ### Changed
 
@@ -1228,7 +1228,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · How it works, a glossary, and the site's statistics
+## v1.0.0-stable — 2026-10-27 · How it works, a glossary, and the site's statistics
 
 ### Changed
 
@@ -1275,7 +1275,7 @@ version is `v0.2.0-alpha`.
 
 ---
 
-## Unreleased — 2026-10-27 · One grid where the tracker drifts, and two ideas dropped
+## v1.0.0-stable — 2026-10-27 · One grid where the tracker drifts, and two ideas dropped
 
 ### Changed
 
@@ -1323,7 +1323,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · A cleaner logo for the web
+## v1.0.0-stable — 2026-10-27 · A cleaner logo for the web
 
 ### Changed
 
@@ -1340,7 +1340,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · The site shows Overtone's own logo
+## v1.0.0-stable — 2026-10-27 · The site shows Overtone's own logo
 
 ### Fixed
 
@@ -1359,7 +1359,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
+## v1.0.0-stable — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed
 
@@ -1377,7 +1377,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · The analysis tray and its notices
+## v1.0.0-stable — 2026-10-27 · The analysis tray and its notices
 
 ### Changed
 
@@ -1432,7 +1432,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · Terms, privacy, disclaimer, credits and a status page
+## v1.0.0-stable — 2026-10-27 · Terms, privacy, disclaimer, credits and a status page
 
 ### Changed
 
@@ -1487,7 +1487,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · More downloads and "Check here"
+## v1.0.0-stable — 2026-10-27 · More downloads and "Check here"
 
 ### Changed
 
@@ -1538,7 +1538,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · W5.2-W5.5: a Community page
+## v1.0.0-stable — 2026-10-27 · W5.2-W5.5: a Community page
 
 ### Changed
 
@@ -1591,7 +1591,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · Published timings, recent ones and a history
+## v1.0.0-stable — 2026-10-27 · Published timings, recent ones and a history
 
 ### Changed
 
@@ -1653,7 +1653,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · The result page hands over an .osz
+## v1.0.0-stable — 2026-10-27 · The result page hands over an .osz
 
 ### Changed
 
@@ -1686,7 +1686,7 @@ numbers come with the next round on the server. Gates 15 of 15 on 1a2441f and 23
 
 ---
 
-## Unreleased — 2026-10-27 · The measurement server, hardened
+## v1.0.0-stable — 2026-10-27 · The measurement server, hardened
 
 A security review of the measurement server (`python/overtone_server.py`, the library
 behind it) and its updater (`deploy/`) found four problems. All four are fixed here.
@@ -1752,7 +1752,7 @@ behind it) and its updater (`deploy/`) found four problems. All four are fixed h
 
 ---
 
-## Unreleased — 2026-10-27 · Security hardening of the site and its servers
+## v1.0.0-stable — 2026-10-27 · Security hardening of the site and its servers
 
 A security review of the site once every Reviactyl allocation port turned out to be
 public (overtone-web on a public port, soon behind Cloudflare; the API and Postgres
@@ -1847,7 +1847,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · Timing a song on the site
+## v1.0.0-stable — 2026-10-27 · Timing a song on the site
 
 ### Changed
 
@@ -1903,7 +1903,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
+## v1.0.0-stable — 2026-10-27 · overtone-cli writes timing-result v1
 
 ### Changed
 
@@ -1928,7 +1928,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · W2.4: what one worker job costs
+## v1.0.0-stable — 2026-10-27 · W2.4: what one worker job costs
 
 ### Changed
 
@@ -1977,7 +1977,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.19: the site's checks in the verification list
+## v1.0.0-stable — 2026-10-27 · W3.19: the site's checks in the verification list
 
 ### Changed
 
@@ -1995,7 +1995,7 @@ each on `fix/security-hardening`.
   `node --test` reports. With the stated count set to 30 it named the mismatch;
   with one `site/web` test added and no line for it, it said so.
 - `node --test` in `site/api`: 31/31. `vite build` passes.
-## Unreleased — 2026-10-27 · W3.5–W3.7 checked against the code
+## v1.0.0-stable — 2026-10-27 · W3.5–W3.7 checked against the code
 
 ### Changed
 
@@ -2027,7 +2027,7 @@ each on `fix/security-hardening`.
 - `node --test` in `site/web`: 4/4; with one Spanish placeholder removed on
   purpose it failed on that key, as it should. `site/api` 31/31, untouched.
   `vite build` passes.
-## Unreleased — 2026-10-27 · W3.18: the queue, moderated
+## v1.0.0-stable — 2026-10-27 · W3.18: the queue, moderated
 
 ### Changed
 
@@ -2074,7 +2074,7 @@ each on `fix/security-hardening`.
   position 1, a queued one was removed, and the log listed both with the reason.
 
 ---
-## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
+## v1.0.0-stable — 2026-10-27 · W2.3: the worker against the pinned BPMs
 
 ### Changed
 
@@ -2118,7 +2118,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
+## v1.0.0-stable — 2026-10-27 · W3.17: one rate limit for every API process
 
 ### Changed
 
@@ -2151,7 +2151,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.15: a batch in one ZIP
+## v1.0.0-stable — 2026-10-27 · W3.15: a batch in one ZIP
 
 ### Changed
 
@@ -2189,7 +2189,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.14: a batch says when it is done
+## v1.0.0-stable — 2026-10-27 · W3.14: a batch says when it is done
 
 ### Changed
 
@@ -2222,7 +2222,7 @@ each on `fix/security-hardening`.
   stubbed).
 
 ---
-## Unreleased — 2026-10-27 · W3.12: cancel your own queued song
+## v1.0.0-stable — 2026-10-27 · W3.12: cancel your own queued song
 
 ### Changed
 
@@ -2263,7 +2263,7 @@ each on `fix/security-hardening`.
   each one gone.
 
 ---
-## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+## v1.0.0-stable — 2026-10-27 · W3.13: M4A and WAV tags
 
 ### Changed
 
@@ -2287,7 +2287,7 @@ each on `fix/security-hardening`.
   editor; the fixtures follow the specs, not any one tool's output.
 
 ---
-## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+## v1.0.0-stable — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
 
 ### Changed
 
@@ -2315,7 +2315,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
+## v1.0.0-stable — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed
 
@@ -2347,7 +2347,7 @@ each on `fix/security-hardening`.
 
 ---
 
-## Unreleased — 2026-10-27 · The queue under concurrency
+## v1.0.0-stable — 2026-10-27 · The queue under concurrency
 
 A security and performance review of the site (API, worker, web, deploy) found
 five problems that show up only with parallel requests or a second worker. All
@@ -2409,7 +2409,7 @@ five are fixed here.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.11: ask before uploading
+## v1.0.0-stable — 2026-10-27 · W3.11: ask before uploading
 
 ### Changed
 
@@ -2441,7 +2441,7 @@ five are fixed here.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.9: many songs at once, in fair turns
+## v1.0.0-stable — 2026-10-27 · W3.9: many songs at once, in fair turns
 
 ### Changed
 
@@ -2490,7 +2490,7 @@ five are fixed here.
 
 ---
 
-## Unreleased — 2026-10-27 · W3.8: the queue in sight
+## v1.0.0-stable — 2026-10-27 · W3.8: the queue in sight
 
 ### Changed
 
@@ -2536,7 +2536,7 @@ five are fixed here.
 
 ---
 
-## Unreleased — 2026-10-26 · W2 + W3.4: the site analyses a song
+## v1.0.0-stable — 2026-10-26 · W2 + W3.4: the site analyses a song
 
 ### Changed
 
@@ -2608,7 +2608,7 @@ five are fixed here.
 
 ---
 
-## Unreleased — 2026-10-26 · W1: the unfinished desktop extras parked
+## v1.0.0-stable — 2026-10-26 · W1: the unfinished desktop extras parked
 
 ### Changed
 
@@ -2695,7 +2695,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · red lines read at their song's octave
+## v1.0.0-stable — 2026-10-26 · red lines read at their song's octave
 
 ### Changed
 
@@ -2715,7 +2715,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · local-tempo octave experiments, off by default
+## v1.0.0-stable — 2026-10-26 · local-tempo octave experiments, off by default
 
 ### Changed
 
@@ -2750,7 +2750,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
+## v1.0.0-stable — 2026-10-26 · the suite and the gates as a server runs them
 
 ### Fixed
 
@@ -2789,7 +2789,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · a push updates the server
+## v1.0.0-stable — 2026-10-26 · a push updates the server
 
 ### Changed
 
@@ -2819,7 +2819,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · gates and the suite on the server
+## v1.0.0-stable — 2026-10-26 · gates and the suite on the server
 
 ### Changed
 
@@ -2844,7 +2844,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · measuring what the app runs
+## v1.0.0-stable — 2026-10-26 · measuring what the app runs
 
 ### Changed
 
@@ -2866,7 +2866,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-26 · clean BPMs in what is written for osu!
+## v1.0.0-stable — 2026-10-26 · clean BPMs in what is written for osu!
 
 ### Changed
 
@@ -2894,7 +2894,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · BPMs shown to the tenth
+## v1.0.0-stable — 2026-10-25 · BPMs shown to the tenth
 
 ### Changed
 
@@ -2914,7 +2914,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
+## v1.0.0-stable — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
 
 ### Rejected / tried and dropped
 
@@ -2940,7 +2940,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · exports from the web page land on the person's computer
+## v1.0.0-stable — 2026-10-25 · exports from the web page land on the person's computer
 
 ### Changed
 
@@ -2962,7 +2962,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · stages scored on ranked and loved maps only
+## v1.0.0-stable — 2026-10-25 · stages scored on ranked and loved maps only
 
 ### Changed
 
@@ -2991,7 +2991,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · measurement runs on the server
+## v1.0.0-stable — 2026-10-25 · measurement runs on the server
 
 ### Changed
 
@@ -3034,7 +3034,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · the app as a web page
+## v1.0.0-stable — 2026-10-25 · the app as a web page
 
 ### Changed
 
@@ -3079,7 +3079,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · the library API and its BPM cache
+## v1.0.0-stable — 2026-10-25 · the library API and its BPM cache
 
 ### Changed
 
@@ -3122,7 +3122,7 @@ tool, and none of these had reached the bar it was built against.
   took over 10 s on a busy machine and timed the endpoint out; status now
   reads whether the runtime and the model are present, and only an
   analysis loads it.
-## Unreleased — 2026-10-25 · notes pinned to the song
+## v1.0.0-stable — 2026-10-25 · notes pinned to the song
 
 ### Changed
 
@@ -3153,7 +3153,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · the single-key shortcuts move
+## v1.0.0-stable — 2026-10-25 · the single-key shortcuts move
 
 ### Changed
 
@@ -3184,7 +3184,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · Ctrl+K finds any action
+## v1.0.0-stable — 2026-10-25 · Ctrl+K finds any action
 
 ### Changed
 
@@ -3211,7 +3211,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · settings carried to another PC
+## v1.0.0-stable — 2026-10-25 · settings carried to another PC
 
 ### Changed
 
@@ -3238,7 +3238,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · the command line watches a file
+## v1.0.0-stable — 2026-10-25 · the command line watches a file
 
 ### Changed
 
@@ -3263,7 +3263,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · every finished red line at the whole BPM
+## v1.0.0-stable — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed
 
@@ -3309,7 +3309,7 @@ tool, and none of these had reached the bar it was built against.
 ### Rejected / tried and dropped
 
 - The snap on Beat This!'s lines alone: no held-out S1 map changed.
-## Unreleased — 2026-10-25 · a config saved by Notepad is read, not reset
+## v1.0.0-stable — 2026-10-25 · a config saved by Notepad is read, not reset
 
 ### Changed
 
@@ -3336,7 +3336,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · score Corpus B as osu! exports it
+## v1.0.0-stable — 2026-10-24 · score Corpus B as osu! exports it
 
 ### Changed
 
@@ -3370,7 +3370,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-25 · the full stages with Beat This! voting
+## v1.0.0-stable — 2026-10-25 · the full stages with Beat This! voting
 
 ### Changed
 
@@ -3415,7 +3415,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · the installer with Beat This! inside
+## v1.0.0-stable — 2026-10-24 · the installer with Beat This! inside
 
 ### Changed
 
@@ -3450,7 +3450,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · Beat This! votes (owner decision)
+## v1.0.0-stable — 2026-10-24 · Beat This! votes (owner decision)
 
 ### Changed
 
@@ -3505,7 +3505,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · Beat This! through ONNX, without PyTorch
+## v1.0.0-stable — 2026-10-24 · Beat This! through ONNX, without PyTorch
 
 ### Changed
 
@@ -3551,7 +3551,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · Beat This! as an extra voter (10.3)
+## v1.0.0-stable — 2026-10-24 · Beat This! as an extra voter (10.3)
 
 ### Changed
 
@@ -3595,7 +3595,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-24 · drums alone, the 3:4 readings and the refusals
+## v1.0.0-stable — 2026-10-24 · drums alone, the 3:4 readings and the refusals
 
 ### Changed
 
@@ -3638,7 +3638,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · choosing between the two grids per song
+## v1.0.0-stable — 2026-10-23 · choosing between the two grids per song
 
 ### Changed
 
@@ -3681,7 +3681,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · osu!'s red-line lead at export (owner decision)
+## v1.0.0-stable — 2026-10-23 · osu!'s red-line lead at export (owner decision)
 
 ### Changed
 
@@ -3722,7 +3722,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · the Rust path and the song-level octave
+## v1.0.0-stable — 2026-10-23 · the Rust path and the song-level octave
 
 ### Changed
 
@@ -3763,7 +3763,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · where S1 still misses, and the first-edge phase
+## v1.0.0-stable — 2026-10-23 · where S1 still misses, and the first-edge phase
 
 ### Changed
 
@@ -3802,7 +3802,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · full-stage measurement after the day's changes
+## v1.0.0-stable — 2026-10-23 · full-stage measurement after the day's changes
 
 ### Changed
 
@@ -3845,7 +3845,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · local-tempo tracker for the songs v3 refuses
+## v1.0.0-stable — 2026-10-23 · local-tempo tracker for the songs v3 refuses
 
 ### Changed
 
@@ -3904,7 +3904,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · drift following on, with a 10 % guard
+## v1.0.0-stable — 2026-10-23 · drift following on, with a 10 % guard
 
 ### Changed
 
@@ -3940,7 +3940,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · S2/S3 baselines and drift following
+## v1.0.0-stable — 2026-10-23 · S2/S3 baselines and drift following
 
 ### Changed
 
@@ -4017,7 +4017,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-23 · S1: the whole BPM mappers use
+## v1.0.0-stable — 2026-10-23 · S1: the whole BPM mappers use
 
 ### Changed
 
@@ -4058,7 +4058,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-22 · S1: the beat octave osu! maps use
+## v1.0.0-stable — 2026-10-22 · S1: the beat octave osu! maps use
 
 ### Changed
 
@@ -4114,7 +4114,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-22 · Phase 10 stage plan and the anime baseline
+## v1.0.0-stable — 2026-10-22 · Phase 10 stage plan and the anime baseline
 
 ### Changed
 
@@ -4150,7 +4150,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-16 · T6 resumable independent-sample audit
+## v1.0.0-stable — 2026-10-16 · T6 resumable independent-sample audit
 
 ### Changed
 
@@ -4197,7 +4197,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-16 · H6/H7 measured disposition for T7
+## v1.0.0-stable — 2026-10-16 · H6/H7 measured disposition for T7
 
 ### Changed
 
@@ -4234,7 +4234,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-16 · Graphify project status map
+## v1.0.0-stable — 2026-10-16 · Graphify project status map
 
 ### Changed
 
@@ -4266,7 +4266,7 @@ tool, and none of these had reached the bar it was built against.
   analysis benchmarks were run; this change updates project documentation.
 
 ---
-## Unreleased — 2026-10-15 · Repository map and Graphify workflow
+## v1.0.0-stable — 2026-10-15 · Repository map and Graphify workflow
 
 ### Changed
 
@@ -4298,7 +4298,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
+## v1.0.0-stable — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
 
@@ -4349,7 +4349,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-15 · Single-BPM accuracy target and work plan
+## v1.0.0-stable — 2026-10-15 · Single-BPM accuracy target and work plan
 
 ### Changed
 
@@ -4389,7 +4389,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-15 · Hitsounds roadmap reconciled
+## v1.0.0-stable — 2026-10-15 · Hitsounds roadmap reconciled
 
 ### Changed
 
@@ -4417,7 +4417,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
+## v1.0.0-stable — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
 
 ### Changed
 
@@ -4458,7 +4458,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
+## v1.0.0-stable — 2026-10-14 · Single-BPM bulk truth: full slice measured
 
 ### Changed
 
@@ -4485,7 +4485,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
+## v1.0.0-stable — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed
 
@@ -4512,7 +4512,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
+## v1.0.0-stable — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
 
@@ -4530,7 +4530,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
+## v1.0.0-stable — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
 
@@ -4544,7 +4544,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Train harness passes by owner hand
+## v1.0.0-stable — 2026-10-07 · Train harness passes by owner hand
 
 ### Changed
 
@@ -4557,7 +4557,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
+## v1.0.0-stable — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
 
 ### Measured
 
@@ -4572,7 +4572,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Templates on real audio, re-measured: still blocked
+## v1.0.0-stable — 2026-10-07 · Templates on real audio, re-measured: still blocked
 
 ### Measured
 
@@ -4588,7 +4588,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Audio-only evidence for the Propose card
+## v1.0.0-stable — 2026-10-07 · Audio-only evidence for the Propose card
 
 ### Changed
 
@@ -4611,7 +4611,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Labels measured against kiai: a miss, recorded
+## v1.0.0-stable — 2026-10-07 · Labels measured against kiai: a miss, recorded
 
 ### Changed
 
@@ -4640,7 +4640,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Setup choices without bespoke XML
+## v1.0.0-stable — 2026-10-07 · Setup choices without bespoke XML
 
 ### Changed
 
@@ -4671,7 +4671,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Dropping spinners, allowed and named
+## v1.0.0-stable — 2026-10-07 · Dropping spinners, allowed and named
 
 ### Changed
 
@@ -4689,7 +4689,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · One hotkey, no hook
+## v1.0.0-stable — 2026-10-07 · One hotkey, no hook
 
 ### Changed
 
@@ -4711,7 +4711,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Picking the map, opening .osz, refusing pitch-keeping
+## v1.0.0-stable — 2026-10-07 · Picking the map, opening .osz, refusing pitch-keeping
 
 ### Changed
 
@@ -4741,7 +4741,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Phase 26: feel, mods, copies, presets
+## v1.0.0-stable — 2026-10-07 · Phase 26: feel, mods, copies, presets
 
 ### Changed
 
@@ -4765,7 +4765,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · Phase 26: rate ladders, one run one mapset
+## v1.0.0-stable — 2026-10-07 · Phase 26: rate ladders, one run one mapset
 
 ### Changed
 
@@ -4794,7 +4794,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-07 · The way out of alpha: 0.3.0 scoped, 1.0.0 pathed
+## v1.0.0-stable — 2026-10-07 · The way out of alpha: 0.3.0 scoped, 1.0.0 pathed
 
 ### Changed
 
@@ -4818,7 +4818,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-06 · The 0.2.0-alpha checklist, run end to end
+## v1.0.0-stable — 2026-10-06 · The 0.2.0-alpha checklist, run end to end
 
 ### Changed
 
@@ -4864,7 +4864,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
+## v1.0.0-stable — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
 
 ### Changed
 
@@ -4883,7 +4883,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-06 · Phase 26 step 3: the Train section
+## v1.0.0-stable — 2026-10-06 · Phase 26 step 3: the Train section
 
 ### Changed
 
@@ -4911,7 +4911,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
+## v1.0.0-stable — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
 
 ### Changed
 
@@ -4953,7 +4953,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
+## v1.0.0-stable — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
 
 ### Changed
 
@@ -5000,7 +5000,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
+## v1.0.0-stable — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
 
 ### Fixed
 
@@ -5027,7 +5027,7 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
-## Unreleased — 2026-10-03 · What 0.2.0-alpha has to hold
+## v1.0.0-stable — 2026-10-03 · What 0.2.0-alpha has to hold
 
 ### Changed
 
@@ -5074,7 +5074,7 @@ state still match the source.
 
 ---
 
-## Unreleased — 2026-10-03 · The octave stage's cost: a block eight times too wide
+## v1.0.0-stable — 2026-10-03 · The octave stage's cost: a block eight times too wide
 
 The one red gate the alpha shipped with, settled. It was not a regression: no
 commit grew this cost, and the previous entry's suspect is wrong.
@@ -5157,7 +5157,7 @@ commit grew this cost, and the previous entry's suspect is wrong.
 
 ---
 
-## Unreleased — 2026-10-03 · A rate trainer, specified
+## v1.0.0-stable — 2026-10-03 · A rate trainer, specified
 
 ### Changed
 

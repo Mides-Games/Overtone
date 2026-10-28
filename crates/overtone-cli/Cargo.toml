@@ -14,8 +14,8 @@ name = "overtone-cli"
 path = "src/main.rs"
 
 [dependencies]
-overtone-audio = { version = "0.2.0-alpha", path = "../overtone-audio" }
-overtone-core = { version = "0.2.0-alpha", path = "../overtone-core" }
-overtone-dsp = { version = "0.2.0-alpha", path = "../overtone-dsp" }
-overtone-tempo = { version = "0.2.0-alpha", path = "../overtone-tempo" }
+overtone-audio = { version = "1.0.0-stable", path = "../overtone-audio" }
+overtone-core = { version = "1.0.0-stable", path = "../overtone-core" }
+overtone-dsp = { version = "1.0.0-stable", path = "../overtone-dsp" }
+overtone-tempo = { version = "1.0.0-stable", path = "../overtone-tempo" }
 serde_json = "1.0.151"

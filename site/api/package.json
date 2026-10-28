@@ -1,7 +1,7 @@
 {
   "name": "overtone-api",
   "private": true,
-  "version": "0.2.0-alpha",
+  "version": "1.0.0-stable",
   "description": "The Overtone website's API: Mides sign-in, sessions and (later) the analysis queue.",
   "type": "module",
   "main": "src/index.js",

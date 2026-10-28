@@ -32,9 +32,19 @@ import Timers from './pages/Timers.jsx'
 import TimingPage from './pages/TimingPage.jsx'
 import UserProfile from './pages/UserProfile.jsx'
 
+// W12.20: the API's reference carries the whole OpenAPI document, and the
+// tokens page is for the few who script: both loaded when opened.
+const Developers = lazy(() => import('./pages/Developers.jsx'))
+const Tokens = lazy(() => import('./pages/Tokens.jsx'))
+const Embed = lazy(() => import('./pages/Embed.jsx'))
+
+const later = (page) => <Suspense fallback={<BrandLoader className="py-16" />}>{page}</Suspense>
+
 export default function App() {
   return (
     <Routes>
+      {/* W12.18: a published timing's card for other sites to frame; outside the layout, and the one framable path. */}
+      <Route path="embed/:id" element={later(<Embed />)} />
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="analyze" element={<Analyze />} />
@@ -58,6 +68,9 @@ export default function App() {
         {/* osu!'s OAuth redirect_uri (W9.2): SITE_URL + /link/osu, registered with the osu! app. */}
         <Route path="link/osu" element={<OsuLink />} />
         <Route path="status" element={<Status />} />
+        <Route path="developers" element={later(<Developers />)} />
+        {/* Self-contained, so the settings page (W12.15) can link to it as it is. */}
+        <Route path="settings/tokens" element={later(<Tokens />)} />
         <Route path="settings" element={<Settings />} />
         <Route path="stats" element={<Stats />} />
         <Route path="how-it-works" element={<HowItWorks />} />

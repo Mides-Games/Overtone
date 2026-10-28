@@ -9,6 +9,7 @@ import { optionalSession, requireSameOrigin, requireSession } from '../middlewar
 import { isStaff } from '../services/account.service.js';
 import { analyses, engineHash, newPublicId, REMOVED } from '../services/analysis.service.js';
 import { ANON_COOKIE, anonCookieHeader, cookiesOf } from '../services/session.service.js';
+import { versions } from '../services/version.service.js';
 import { audioPath, commit, discard, discardPart, receive, reserve } from '../services/spool.service.js';
 import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
@@ -566,6 +567,8 @@ router.delete('/analyses/:id', deleteRateLimit, requireSameOrigin, optionalSessi
     throw new HttpError(409, 'A song that is being analysed cannot be cancelled or deleted until it ends.', 'NOT_QUEUED');
   }
   await discard(row.publicId);
+  // Its saved versions (W12.21) go with it, even while the erased row waits out the day.
+  await versions().removeAll(row.publicId);
   // The queue page shows it gone on its next poll, not a second later.
   queueSnapshot = { at: 0, read: null };
   res.status(204).end();

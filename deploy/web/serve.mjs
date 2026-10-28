@@ -42,6 +42,14 @@
  * the song, its BPM and who timed it. Without a card in 1.5 s, or for a
  * timing that is not published, it is the plain index.html.
  *
+ * /embed/<id> (W12.18) is the one page another site may frame: its CSP says
+ * frame-ancestors * and it has no X-Frame-Options. Every other response keeps
+ * frame-ancestors 'none' and X-Frame-Options: DENY.
+ *
+ * /sw.js, the service worker (W12.23), is served no-cache with
+ * Service-Worker-Allowed: /, and a POST to /share-target that no worker
+ * answered is a 303 to /analyze, its body never read.
+ *
  * PROXY_SECRET is the same value as the API's: every request forwarded to the
  * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
  * without it, because on the panel the API's own port is public too. A
@@ -259,11 +267,17 @@ function proxy(req, res) {
 // the policy follows the build and nothing else inline runs.
 let policy = { mtime: -1, value: '' };
 
-async function contentSecurityPolicy() {
+async function contentSecurityPolicy(framable = false) {
   const index = path.join(ROOT, 'index.html');
   const s = await file(index);
   const mtime = s ? s.mtimeMs : 0;
-  if (mtime === policy.mtime) return policy.value;
+  if (mtime !== policy.mtime) policy = { mtime, value: await basePolicy(s, index) };
+  // W12.18: an embed card (/embed/<id>) may be framed by any site; every
+  // other page by none.
+  return policy.value.replace("frame-ancestors 'none'", framable ? 'frame-ancestors *' : "frame-ancestors 'none'");
+}
+
+async function basePolicy(s, index) {
   const html = s ? await readFile(index, 'utf8') : '';
   const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
     .filter((m) => m[1].length)
@@ -282,17 +296,20 @@ async function contentSecurityPolicy() {
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
-  policy = { mtime, value };
   return value;
 }
 
-async function securityHeaders() {
+// The embed card's path, and nothing else, may be framed (W12.18).
+const EMBED_PAGE = /^\/embed\/[0-9a-f]{32}\/?$/;
+
+async function securityHeaders(framable = false) {
   const headers = {
-    'content-security-policy': await contentSecurityPolicy(),
+    'content-security-policy': await contentSecurityPolicy(framable),
     'x-content-type-options': 'nosniff',
-    'x-frame-options': 'DENY',
     'referrer-policy': 'strict-origin-when-cross-origin',
   };
+  // X-Frame-Options has no "anyone": it is left out where frame-ancestors allows framing.
+  if (!framable) headers['x-frame-options'] = 'DENY';
   if (HSTS) headers['strict-transport-security'] = 'max-age=31536000';
   return headers;
 }
@@ -442,18 +459,35 @@ async function serve(req, res) {
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
+  // W12.23: the service worker is checked on every visit, never kept stale by
+  // an HTTP cache, and its scope is the whole site (it sits at the root, so
+  // the header only says so outright).
+  const worker = rel === '/sw.js';
   res.writeHead(200, {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
-    'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
-    ...(await securityHeaders()),
+    'cache-control': immutable ? 'public, max-age=31536000, immutable' : worker ? 'no-cache, max-age=0' : 'no-cache',
+    ...(worker ? { 'service-worker-allowed': '/' } : {}),
+    ...(await securityHeaders(EMBED_PAGE.test(rel))),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
 }
 
+// W12.23: the installed app's share target posts the shared audio to
+// /share-target, and the service worker answers it in the browser. When no
+// worker does (it was cleared, or not installed yet), the post reaches here:
+// the file is not read, and the visitor lands on the Analyze page, told to
+// pick it there.
+function shareWithoutWorker(req, res) {
+  req.resume();
+  res.writeHead(303, { location: '/analyze?shared=unavailable', connection: 'close', 'cache-control': 'no-store', 'content-length': 0 });
+  res.end();
+}
+
 const server = http.createServer((req, res) => {
   if (req.url === '/api' || req.url.startsWith('/api/')) return proxy(req, res);
+  if (req.method === 'POST' && /^\/share-target\/?(\?.*)?$/.test(req.url)) return shareWithoutWorker(req, res);
   serve(req, res).catch((err) => {
     console.error(`overtone-web: ${req.url}: ${err.message}`);
     if (!res.headersSent) res.writeHead(500);

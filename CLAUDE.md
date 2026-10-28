@@ -104,8 +104,8 @@ Every mode reads the golden vectors, so a new golden fixture must pass all five.
 And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (158 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (204 on 2026-10-27)
+pnpm --dir site/api test                               # all pass (173 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (233 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
 pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
 ```

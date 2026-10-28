@@ -11,5 +11,7 @@ Disallow: /link/
 Disallow: /compare
 # This browser's own settings (W12.15): nothing on it is worth a search result.
 Disallow: /settings
+Disallow: /embed/
+Disallow: /share-target
 
 Sitemap: https://overtone.midesprojects.com/sitemap.xml

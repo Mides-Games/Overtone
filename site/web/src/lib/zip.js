@@ -29,6 +29,84 @@ const dosTime = (date) => ({
   date: ((Math.max(1980, date.getFullYear()) - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
 })
 
+/** `name` made unique among `taken` (lower-cased), " (2)", " (3)" before its extension. */
+const uniqueName = (name, taken) => {
+  let unique = name
+  for (let n = 2; taken.has(unique.toLowerCase()); n++) unique = name.replace(/(\.[^.]*)?$/, ` (${n})$1`)
+  taken.add(unique.toLowerCase())
+  return unique
+}
+
+/**
+ * The same stored archive, built one entry at a time into a Blob (W12.22, a
+ * whole batch's .osz files): each entry's bytes become a Blob part as soon as
+ * they are added, so the caller can let them go before building the next,
+ * and the browser may keep large parts on disk. Nothing is held twice but the
+ * entry being added. The bytes are identical to `zipStore`'s for the same
+ * files and date.
+ */
+export class ZipWriter {
+  constructor(date = new Date()) {
+    this.stamp = dosTime(date)
+    this.parts = []
+    this.entries = []
+    this.offset = 0
+    this.taken = new Set()
+    this.encoder = new TextEncoder()
+  }
+
+  /** Adds `data` (bytes) or `text` under `name`; returns the name it got. */
+  add(name, { data = null, text = null } = {}) {
+    const unique = uniqueName(name, this.taken)
+    const bytes = data ?? this.encoder.encode(text ?? '')
+    const e = { name: this.encoder.encode(unique), size: bytes.length, crc: crc32(bytes), offset: this.offset }
+    const head = new Uint8Array(30 + e.name.length)
+    const view = new DataView(head.buffer)
+    view.setUint32(0, 0x04034b50, true)
+    this.common(view, 4, e)
+    head.set(e.name, 30)
+    this.parts.push(head, new Blob([bytes]))
+    this.entries.push(e)
+    this.offset += head.length + e.size
+    if (this.offset > 0xffffffff || this.entries.length > 0xffff) throw new Error('too large for a zip without zip64')
+    return unique
+  }
+
+  /** The fields a local header and a central entry share, from "version needed" on, at `at`. */
+  common(view, at, e) {
+    const { time, date } = this.stamp
+    const fields = [[2, 20], [2, 0x0800], [2, 0], [2, time], [2, date], [4, e.crc], [4, e.size], [4, e.size], [2, e.name.length], [2, 0]]
+    for (const [width, value] of fields) {
+      if (width === 2) view.setUint16(at, value, true)
+      else view.setUint32(at, value, true)
+      at += width
+    }
+  }
+
+  /** The archive: every entry, then the central directory. */
+  blob(type = 'application/zip') {
+    const size = this.entries.reduce((sum, e) => sum + 46 + e.name.length, 22)
+    const tail = new Uint8Array(size)
+    const view = new DataView(tail.buffer)
+    let at = 0
+    for (const e of this.entries) {
+      view.setUint32(at, 0x02014b50, true)
+      view.setUint16(at + 4, 20, true)
+      this.common(view, at + 6, e)
+      // comment length, disk, internal and external attributes: zero; then the offset.
+      view.setUint32(at + 42, e.offset, true)
+      tail.set(e.name, at + 46)
+      at += 46 + e.name.length
+    }
+    view.setUint32(at, 0x06054b50, true)
+    view.setUint16(at + 8, this.entries.length, true)
+    view.setUint16(at + 10, this.entries.length, true)
+    view.setUint32(at + 12, at, true)
+    view.setUint32(at + 16, this.offset, true)
+    return new Blob([...this.parts, tail], { type })
+  }
+}
+
 /**
  * `files` is `[{ name, text }]` or `[{ name, data }]` (bytes); returns the archive's bytes. Names repeated
  * within the batch get " (2)", " (3)" before their extension, so no entry

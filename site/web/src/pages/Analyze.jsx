@@ -12,8 +12,8 @@ import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.js'
 import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
-import { batchFiles } from '../lib/timing.js'
-import { zipStore } from '../lib/zip.js'
+import BatchTools from '../components/BatchTools.jsx'
+import { sharedState, takeSharedAudio } from '../lib/pwa.js'
 
 /**
  * The upload form: `POST /api/v1/analyses` with the audio as the raw body,
@@ -86,6 +86,21 @@ export default function Analyze() {
       Promise.all([durationOf(item.file), readTags(item.file)]).then(([seconds, tags]) => update(item.key, { seconds, tags }))
     }
   }
+
+  // W12.23: an audio file shared to the installed app arrives here through
+  // the service worker (?shared=1): it goes on the list like a picked one,
+  // and the query goes, so a reload does not look for it again.
+  const [shared, setShared] = useState(null) // null | 'added' | 'none'
+  useEffect(() => {
+    const kind = sharedState(window.location.search)
+    if (!kind) return
+    navigate('/analyze', { replace: true })
+    if (kind === 'none') return setShared('none')
+    takeSharedAudio().then((file) => {
+      if (file) pickAudio([file])
+      setShared(file ? 'added' : 'none')
+    })
+  }, [])
 
   function problemWith({ file, seconds }) {
     if (!EXTENSIONS.includes(extensionOf(file))) return t('analyze.errors.UNSUPPORTED_FORMAT')
@@ -161,22 +176,14 @@ export default function Analyze() {
   // every page: this checkbox is the same setting as the tray's switch.
   const canNotify = typeof Notification !== 'undefined' && Notification.permission !== 'denied'
 
-  // W3.15: every timing of the batch in one ZIP, from the readings the cards
-  // already hold (the tracker's). Built here, so the server sends nothing new.
-  const timings = batchFiles(
-    items.map((item) => {
-      const data = item.upload.kind === 'sent' ? live[item.upload.id]?.data : null
-      return { ...item, status: data?.status, result: data?.result ?? null }
-    }),
-  )
-  function downloadAll() {
-    const url = URL.createObjectURL(new Blob([zipStore(timings)], { type: 'application/zip' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'overtone-timings.zip'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
+  // W3.15 and W12.22: the batch's songs as the cards already hold them (the
+  // tracker's readings and the picked files), for its downloads. Built here,
+  // so the server sends nothing new.
+  const batchItems = items.map((item) => {
+    const data = item.upload.kind === 'sent' ? live[item.upload.id]?.data : null
+    return { file: item.file, status: data?.status, result: data?.result ?? null, analysis: data }
+  })
+  const finished = batchItems.filter((item) => item.status === 'done' && item.result).length
 
   const perDay = account ? limits?.userDailyLimit : limits?.anonDailyLimit
   const atOnce = account ? limits?.userMaxPending : limits?.anonMaxPending
@@ -193,6 +200,11 @@ export default function Analyze() {
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="min-w-0 space-y-6">
           <form onSubmit={submit} className="panel min-w-0 space-y-5 p-5 sm:p-6">
+            {shared && (
+              <p role="status" className={`rounded-control border px-3 py-2 text-label ${shared === 'added' ? 'border-accent/40 bg-accent/5' : 'border-amber/40 bg-amber/10'}`}>
+                {shared === 'added' ? t('platform.pwa.sharedAdded') : t('platform.pwa.sharedNone')}
+              </p>
+            )}
             <label
               htmlFor="audio"
               onDragOver={(e) => {
@@ -274,11 +286,7 @@ export default function Analyze() {
               </span>
             </label>
 
-            {items.length > 1 && timings.length > 0 && (
-              <button type="button" onClick={downloadAll} className="btn-ghost w-full">
-                {t('analyze.batch.download', { count: timings.length })}
-              </button>
-            )}
+            {items.length > 1 && finished > 0 && <BatchTools items={batchItems} creator={account?.username} />}
 
             {items.length > 1 && canNotify && (
               <label className="flex cursor-pointer items-center gap-3 px-1 text-label">

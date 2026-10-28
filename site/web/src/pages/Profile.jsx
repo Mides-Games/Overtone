@@ -155,6 +155,9 @@ export default function Profile() {
       <Connections />
 
       <p className="readout text-caption text-dim">{t('profile.since', { date: since })}</p>
+      <Link to="/settings/tokens" className="inline-block text-caption text-accent hover:underline">
+        {t('platform.tokens.fromProfile')} →
+      </Link>
     </div>
   )
 }

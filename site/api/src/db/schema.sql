@@ -377,6 +377,39 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (account_id, created_at DESC) WHERE read_at IS NULL;
 
+-- ── Personal API tokens and versions of a timing (W12.20, W12.21) ──────────
+
+-- A personal API token (services/token.service.js): only the SHA-256 of the
+-- secret, which is shown once and never stored. Revoking deletes the row; an
+-- account's tokens go with it. `scopes` is a subset of the three the API
+-- knows, never empty.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id       char(32) NOT NULL UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$'),
+  account_id      uuid NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+  name            text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 60),
+  token_hash      char(64) NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+  scopes          text[] NOT NULL
+                    CHECK (cardinality(scopes) >= 1 AND scopes <@ ARRAY['read:analyses', 'upload', 'read:timings']::text[]),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  last_used_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS api_tokens_account_idx ON api_tokens (account_id, created_at DESC);
+
+-- A saved adjustment of a timing (services/version.service.js): the owner's
+-- x2 / /2 and nudge, never a copy of the result. The other kind of version, a
+-- re-analysis of the same audio, is just another `analyses` row.
+CREATE TABLE IF NOT EXISTS analysis_versions (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id       char(32) NOT NULL UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$'),
+  analysis_id     bigint NOT NULL REFERENCES analyses (id) ON DELETE CASCADE,
+  factor          real NOT NULL CHECK (factor IN (0.5, 1, 2)),
+  nudge_ms        smallint NOT NULL CHECK (nudge_ms BETWEEN -500 AND 500),
+  label           text CHECK (char_length(label) <= 60),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (factor <> 1 OR nudge_ms <> 0),
+  UNIQUE (analysis_id, factor, nudge_ms)
+);
 -- ── Social v2 on published timings (W5.6, W6, W13.15, W13.18) ───────────────
 
 -- The social tables above were drafted for `timings`, the rows people edit

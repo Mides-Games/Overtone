@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 
 import { api } from '../lib/api.js'
+import { forgetOfflineResults } from '../lib/pwa.js'
 import { leaveForSignIn } from '../lib/sso-guard.js'
 
 /**
@@ -35,6 +36,8 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => {})
+    // W12.23: the offline copies of this account's results go with the session.
+    await forgetOfflineResults()
     setAccount(null)
   }, [])
 

@@ -10,6 +10,7 @@ import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
 import HowAsked from '../components/result/HowAsked.jsx'
+import MapImage from '../components/result/MapImage.jsx'
 import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import Reanalyse from '../components/result/Reanalyse.jsx'
 import { tempoRange } from '../components/result/draw.js'
@@ -17,6 +18,9 @@ import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Listening from '../components/result/Listening.jsx'
 import Transport from '../components/result/Transport.jsx'
+import { useExportOptions } from '../components/result/ExportOptions.jsx'
+import Versions from '../components/result/Versions.jsx'
+import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { formatRange } from '../lib/analysis-options.js'
@@ -93,7 +97,7 @@ export default function AnalysisResult() {
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
       {analysis.status === 'refused' && <HowAsked analysis={analysis} />}
       {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
-      {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
+      {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
       {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
       {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
     </div>
@@ -258,12 +262,15 @@ function Refused({ result }) {
  *
  * A published timing's page (W3.27) shows the same view to anyone: it has no
  * `sha1` to check a file against, so it passes `verify`, which asks the
- * server, and `csvHref`, the public CSV.
+ * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
+ * lists and saves versions (W12.21).
  */
-export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
+  // W12.24: a copied row is written as the whole block is (W12.8's options).
+  const exportOptions = useExportOptions()
   const [selected, setSelected] = useState(null)
   const [hovered, setHovered] = useState(null)
   const audio = useSongAudio(id, analysis.sha1, verify)
@@ -495,7 +502,11 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
           checks={checks}
           csvHref={csvHref}
         />
+        {/* W12.18: a published timing's page (verify) is public by definition. */}
+        <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
       </AdjustExport>
+
+      {owner && <Versions analysis={analysis} adjustment={adjustment} onApply={setAdjustment} />}
 
       <RedLinesTable
         lines={lines}
@@ -508,6 +519,7 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         canPlay={snapshot.ready}
         onPlayFrom={playFrom}
         onLoop={loopLine}
+        copyRows={(positions) => timingRows(result, lines, adjustment, positions, exportOptions)}
       />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">

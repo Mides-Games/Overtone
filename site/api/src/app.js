@@ -5,6 +5,7 @@ import { errorHandler, notFound } from './middlewares/error-handler.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { securityHeaders } from './middlewares/security-headers.js';
 import { INTERNAL_PREFIX, proxyGuard } from './middlewares/shared-secret.js';
+import { bearerToken } from './middlewares/token.js';
 import bot from './routes/bot.routes.js';
 import v1 from './routes/index.js';
 import internal from './routes/internal.routes.js';
@@ -36,6 +37,9 @@ app.use(INTERNAL_PREFIX, internal);
 // raw body that analyses.routes.js streams to disk itself.
 app.use(express.json({ limit: '16kb' }));
 
+// A personal API token (W12.20) is read before the rate limit, which then
+// counts that token instead of the address; a request without one is untouched.
+app.use('/api/v1', bearerToken);
 app.use('/api', rateLimit);
 app.use('/api/v1', v1);
 

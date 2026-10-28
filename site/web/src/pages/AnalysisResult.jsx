@@ -17,11 +17,13 @@ import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
 import Listening from '../components/result/Listening.jsx'
+import Practice from '../components/result/Practice.jsx'
 import Transport from '../components/result/Transport.jsx'
 import { useExportOptions } from '../components/result/ExportOptions.jsx'
 import Versions from '../components/result/Versions.jsx'
 import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { useCoverAccent } from '../hooks/useCoverAccent.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { formatRange } from '../lib/analysis-options.js'
 import { checkSpans } from '../lib/check-spans.js'
@@ -47,6 +49,8 @@ export default function AnalysisResult() {
   const reading = useAnalysis(id)
   const analysis = reading?.data ?? null
   const error = reading?.error ?? null
+  // W13.24: the cover's colour, once the result has read the song's tags.
+  const [accent, setAccent] = useState(null)
   // The file's name names the tab: it never leaves this browser that way.
   usePageMeta(analysis?.filename || t('result.eyebrow'))
 
@@ -76,9 +80,11 @@ export default function AnalysisResult() {
 
   return (
     <div className="space-y-8">
-      <header className="rise flex flex-wrap items-end justify-between gap-4">
+      <header className={`rise flex flex-wrap items-end justify-between gap-4 ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
         <div className="min-w-0 space-y-1">
-          <p className="label text-accent">{t('result.eyebrow')}</p>
+          <p className="label text-accent" style={accent ? { color: accent.ink } : undefined}>
+            {t('result.eyebrow')}
+          </p>
           <h1 className="truncate font-display text-[clamp(1.5rem,1.2rem+1.2vw,2.1rem)] font-bold">{analysis.filename}</h1>
         </div>
         <Link to="/analyze" className="btn-ghost shrink-0">
@@ -97,12 +103,20 @@ export default function AnalysisResult() {
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
       {analysis.status === 'refused' && <HowAsked analysis={analysis} />}
       {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
-      {analysis.status === 'done' && <Result id={id} analysis={analysis} owner />}
+      {analysis.status === 'done' && <Result id={id} analysis={analysis} owner onAccent={setAccent} />}
       {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
       {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
     </div>
   )
 }
+
+/**
+ * The header's tint from the cover (W13.24): a wash of its colour fading to
+ * the page, laid out so the text does not move when it arrives.
+ * hooks/useCoverAccent.js has already checked every text on it for AA.
+ */
+export const ACCENT_HEADER = '-mx-3 rounded-panel px-3 py-3 -my-3 sm:-mx-4 sm:px-4'
+export const accentWash = (accent) => (accent ? { backgroundImage: `linear-gradient(100deg, ${accent.wash}, transparent 85%)` } : undefined)
 
 /**
  * Sharing the timing (W3.27): off until its uploader presses Publish, and
@@ -273,7 +287,7 @@ function Refused({ result }) {
  * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
  * lists and saves versions (W12.21).
  */
-export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false, onAccent = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
@@ -282,6 +296,12 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
   const [selected, setSelected] = useState(null)
   const [hovered, setHovered] = useState(null)
   const audio = useSongAudio(id, analysis.sha1, verify)
+  // W13.24: the cover of the song the reader holds (checked to be this analysis's audio) tints the page's header.
+  const accent = useCoverAccent(audio.kind === 'ready' ? heldAudio(id) : null)
+  useEffect(() => {
+    onAccent?.(accent)
+  }, [accent, onAccent])
+  useEffect(() => () => onAccent?.(null), [onAccent])
   const [player] = useState(() => new Player())
   // A public page's comments (W13.15) move this player to the time they name.
   useEffect(() => {
@@ -365,6 +385,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
     [lines, sections, grid, clicks, subdivision, result, attacks, audio.kind, audio.song, adjustment.factor, durationS, map, t],
   )
 
+  // The decoded song for the map's bands and spectrogram (W13.6, W13.7), cached per analysis.
+  const songLanes = useMemo(() => (audio.kind === 'ready' ? { id, buffer: audio.song.buffer } : null), [id, audio.kind, audio.song])
+
   const playFrom = (i) => {
     const line = lines[i]
     setSelected(i)
@@ -444,9 +467,11 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         onHover={setHovered}
         clockRef={clockRef}
         focus={focus}
+        song={songLanes}
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+        <Practice player={player} snapshot={snapshot} />
         <Listening
           player={player}
           snapshot={snapshot}

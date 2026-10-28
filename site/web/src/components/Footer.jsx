@@ -60,6 +60,7 @@ export default function Footer() {
             { label: t('learn.footer.faq'), to: '/faq' },
             { label: t('learn.footer.glossary'), to: '/glossary' },
             { label: t('learn.footer.stats'), to: '/stats' },
+            { label: t('tapMic.footer'), to: '/tools/tap-mic' },
           ]}
         />
         <Column

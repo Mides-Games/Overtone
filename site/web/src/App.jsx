@@ -37,6 +37,8 @@ const Recent = lazy(() => import('./pages/Recent.jsx'))
 const Settings = lazy(() => import('./pages/Settings.jsx'))
 const Stats = lazy(() => import('./pages/Stats.jsx'))
 const Status = lazy(() => import('./pages/Status.jsx'))
+// W13.12: the microphone tool; its worklet and the spectral worker load with it.
+const TapMic = lazy(() => import('./pages/TapMic.jsx'))
 const Timers = lazy(() => import('./pages/Timers.jsx'))
 const TimingPage = lazy(() => import('./pages/TimingPage.jsx'))
 const Tokens = lazy(() => import('./pages/Tokens.jsx'))
@@ -89,6 +91,7 @@ export default function App() {
         <Route path="how-it-works" element={page(HowItWorks)} />
         <Route path="faq" element={page(Faq)} />
         <Route path="glossary" element={page(Glossary)} />
+        <Route path="tools/tap-mic" element={page(TapMic)} />
         <Route path="terms" element={page(Terms)} />
         <Route path="privacy" element={page(Privacy)} />
         <Route path="disclaimer" element={page(Disclaimer)} />

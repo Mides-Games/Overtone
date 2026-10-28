@@ -1112,7 +1112,23 @@
     "chartFitted_few": "{{count}} zmiany tempa wypadają między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
     "chartFitted_many": "{{count}} zmian tempa wypada między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
     "chartFitted_other": "{{count}} zmiany tempa wypada między tickami Clone Hero: BPM przed każdą jest minimalnie poprawione, żeby trafiły w czas (z dokładnością do {{ms}} ms).",
-    "failed": "Nie udało się zbudować tego pliku z tych red lines."
+    "failed": "Nie udało się zbudować tego pliku z tych red lines.",
+    "beatSaber": "Beat Saber: poziom trudności v3, ExpertStandard.dat, tylko ze zdarzeniami BPM. Wpisz go w swoim Info.dat i ustaw w Info.dat BPM na {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: prosta ścieżka, jedno pole na uderzenie, z SetSpeed tam, gdzie zmienia się tempo. Połóż piosenkę obok.",
+    "fnf": "Friday Night Funkin’: JSON charta, który czytają gra sprzed 0.3 i Psych Engine, w sekcjach po 16 kroków z changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: plik .rdlevel z PlaySong (BPM i offset), SetBeatsPerMinute i SetCrotchetsPerBar. Połóż piosenkę obok.",
+    "adofaiOdd_one": "{{count}} zmiana tempa wypada między polami A Dance of Fire and Ice: pole przed nią dostaje własną prędkość, żeby zmiana trafiła w czas.",
+    "adofaiOdd_few": "{{count}} zmiany tempa wypadają między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "adofaiOdd_many": "{{count}} zmian tempa wypada między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "adofaiOdd_other": "{{count}} zmiany tempa wypada między polami A Dance of Fire and Ice: pole przed każdą dostaje własną prędkość, żeby trafiły w czas.",
+    "fnfOdd_one": "{{count}} zmiana tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed nią, z własną prędkością, sprawia, że trafia w czas.",
+    "fnfOdd_few": "{{count}} zmiany tempa wypadają między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "fnfOdd_many": "{{count}} zmian tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "fnfOdd_other": "{{count}} zmiany tempa wypada między sekcjami Friday Night Funkin’: krótsza sekcja przed każdą, z własną prędkością, sprawia, że trafiają w czas.",
+    "rdMeter_one": "{{count}} zmiana metrum wypada w środku taktu Rhythm Doctor, gdzie nie może zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_few": "{{count}} zmiany metrum wypadają w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_many": "{{count}} zmian metrum wypada w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum.",
+    "rdMeter_other": "{{count}} zmiany metrum wypada w środku taktu Rhythm Doctor, gdzie nie mogą zacząć nowego: te takty zachowują wcześniejsze metrum."
   },
   "oszPlus": {
     "title": "Opcje .osz",
@@ -2377,5 +2393,83 @@
     "other": "żaden",
     "aria": "{{divisor}}: {{pct}}%",
     "note": "Każde uderzenie, które usłyszał silnik, według najprostszego dzielnika beatu, na który pada (w granicach 1/48 beatu, najwyżej 15 ms); słabe uderzenia liczą się mniej. To propozycja dzielnika snapu w edytorze, nie pomiar timingu."
+  },
+  "daw": {
+    "title": "Programy muzyczne (mapa tempa)",
+    "midi": "Mapa tempa MIDI",
+    "midiNote": "Plik MIDI typu 1 z 960 tickami na uderzenie: tempo i metrum przy każdej red line, każda zmiana najwyżej {{ms}} ms od swojego momentu.",
+    "leadIn": "Takt 1 to takt wstępny, który kończy się na pierwszej mocnej części pierwszej red line, żeby kolejne takty pokrywały się z piosenką.",
+    "reaperNote": "Reaper: projekt z tempem, znacznikiem na każdej red line i piosenką na ścieżce. Zapisz go w folderze, w którym jest {{file}}.",
+    "reaperNoAudio": "Reaper: projekt z tempem i znacznikiem na każdej red line. Piosenkę połóż na ścieżce sam.",
+    "ableton": "Ableton Live nie potrafi wczytać mapy tempa z tekstu, więc nie ma tu pliku dla Live. Użyj pliku MIDI: przeciągnij go do Arrangement, a Live może przejąć jego zmiany tempa i metrum (zależnie od wersji pyta o to albo włącza to opcja importu)."
+  },
+  "calculator": {
+    "title": "Kalkulator timingu",
+    "description": "BPM i ms na uderzenie, ticki, odstęp między dwiema red lines, dryf i BPM z dwóch znaczników czasu: rachunki timingu mapy, liczone w twojej przeglądarce.",
+    "intro": "Rachunki timingu mapy, liczone na bieżąco, gdy piszesz. Nic nie opuszcza tej strony.",
+    "keys": "Klawiatura: Tab przechodzi między polami; ↑ i ↓ zmieniają bieżące pole o 1, z Shift o 10, z Alt o 0,1. Wybierz wynik, żeby skopiować jego liczbę.",
+    "copy": "Kopiuj {{label}}: {{value}}",
+    "copied": "Skopiowano",
+    "fromResult": "Kalkulator timingu",
+    "bpmMs": {
+      "title": "BPM ↔ ms na uderzenie",
+      "bpm": "BPM",
+      "ms": "ms na uderzenie",
+      "beat": "Jedno uderzenie",
+      "exactBpm": "BPM",
+      "bar": "Jeden takt 4/4",
+      "quarter": "Jeden tick 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticki",
+      "bpm": "BPM",
+      "divisor": "Dzielnik uderzenia",
+      "span": "Odcinek",
+      "count": "Ticki",
+      "tick": "Jeden tick",
+      "ticks": "Odcinek w tickach",
+      "nearest": "Najbliższy pełny tick",
+      "off": "Odcinek wychodzi {{ms}} ms za niego.",
+      "toMs": "Te ticki w ms"
+    },
+    "lines": {
+      "title": "Między dwiema red lines",
+      "intro": "Gdzie druga linia wypada na siatce pierwszej.",
+      "from": "Pierwsza red line",
+      "bpm": "Jej BPM",
+      "to": "Druga red line",
+      "meter": "Uderzenia na takt",
+      "span": "Odstęp",
+      "beats": "Odstęp w uderzeniach",
+      "bars": "Odstęp w taktach",
+      "nearest": "Najbliższe uderzenie pierwszej siatki",
+      "off": "Druga linia względem tego uderzenia",
+      "offNote": "Dodatnie: jest spóźniona.",
+      "earliest": "Najwcześniejszy offset pierwszej siatki"
+    },
+    "drift": {
+      "title": "Dryf",
+      "intro": "Jak daleko siatka przy jednym BPM odjeżdża od innej przez kilka taktów, i BPM, które mieszczą się w dryfie, jaki akceptujesz.",
+      "right": "Właściwe BPM",
+      "mapped": "BPM w mapie",
+      "bars": "Takty",
+      "meter": "Uderzenia na takt",
+      "total": "Dryf do ostatniego taktu",
+      "sign": "Dodatni: siatka mapy jest spóźniona.",
+      "perBar": "Dryf na takt",
+      "allowed": "Akceptowany dryf",
+      "slower": "Najwolniejsze BPM w tym zakresie",
+      "faster": "Najszybsze BPM w tym zakresie",
+      "precision": "Potrzebna dokładność BPM"
+    },
+    "span": {
+      "title": "BPM z dwóch znaczników czasu",
+      "intro": "Dwa momenty piosenki i liczba uderzeń między nimi.",
+      "start": "Pierwszy znacznik",
+      "end": "Drugi znacznik",
+      "beats": "Uderzenia pomiędzy",
+      "bpm": "BPM",
+      "beat": "Jedno uderzenie"
+    }
   }
 }

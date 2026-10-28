@@ -1064,7 +1064,17 @@
     "quaMeter_other": "Quaver knows 4/4 and 3/4 only: {{count}} red lines in another meter are written as 4/4.",
     "chartFitted_one": "{{count}} tempo change falls between Clone Hero’s ticks: the BPM before it is adjusted by a hair so it lands on time (within {{ms}} ms).",
     "chartFitted_other": "{{count}} tempo changes fall between Clone Hero’s ticks: the BPM before each is adjusted by a hair so they land on time (within {{ms}} ms).",
-    "failed": "That file could not be built from these red lines."
+    "failed": "That file could not be built from these red lines.",
+    "beatSaber": "Beat Saber: a v3 difficulty, ExpertStandard.dat, with the BPM events only. Name it in your Info.dat and give Info.dat a BPM of {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: a straight path, one tile a beat, with SetSpeed where the tempo changes. Put the song beside it.",
+    "fnf": "Friday Night Funkin’: the chart JSON that the game before 0.3 and Psych Engine read, in sections of 16 steps with changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: an .rdlevel with PlaySong (BPM and offset), SetBeatsPerMinute and SetCrotchetsPerBar. Put the song beside it.",
+    "adofaiOdd_one": "{{count}} tempo change falls between A Dance of Fire and Ice’s tiles: the tile before it gets a speed of its own, so the change lands on time.",
+    "adofaiOdd_other": "{{count}} tempo changes fall between A Dance of Fire and Ice’s tiles: the tile before each gets a speed of its own, so they land on time.",
+    "fnfOdd_one": "{{count}} tempo change falls between Friday Night Funkin’s sections: a shorter section before it, at a speed of its own, lands it on time.",
+    "fnfOdd_other": "{{count}} tempo changes fall between Friday Night Funkin’s sections: a shorter section before each, at a speed of its own, lands them on time.",
+    "rdMeter_one": "{{count}} meter change falls in the middle of a Rhythm Doctor bar, where it cannot start one: the bars there keep the meter before it.",
+    "rdMeter_other": "{{count}} meter changes fall in the middle of a Rhythm Doctor bar, where they cannot start one: the bars there keep the meter before them."
   },
   "oszPlus": {
     "title": ".osz options",
@@ -2269,5 +2279,83 @@
     "other": "none",
     "aria": "{{divisor}}: {{pct}}%",
     "note": "Each attack the engine heard, by the simplest divisor of the beat it sits on (within a 48th of a beat, at most 15 ms); faint attacks count less. It suggests the editor's beat snap divisor; it does not measure the timing."
+  },
+  "daw": {
+    "title": "Music software (tempo map)",
+    "midi": "MIDI tempo map",
+    "midiNote": "A type 1 MIDI file at 960 ticks a beat: a tempo and a time signature at each red line, every change within {{ms}} ms of its time.",
+    "leadIn": "Bar 1 is a lead-in bar that ends on the first red line’s downbeat, so the bars after it line up with the song.",
+    "reaperNote": "Reaper: a project with the tempo, a marker on each red line and the song on a track. Save it in the folder that holds {{file}}.",
+    "reaperNoAudio": "Reaper: a project with the tempo and a marker on each red line. Put the song on a track yourself.",
+    "ableton": "Ableton Live cannot read a tempo map from text, so there is no Live file here. Use the MIDI file: drag it into the Arrangement and Live can take its tempo and time signature changes (depending on the version, it asks, or an import option turns it on)."
+  },
+  "calculator": {
+    "title": "Timing calculator",
+    "description": "BPM and ms per beat, ticks, the gap between two red lines, drift and the BPM from two timestamps: the arithmetic of timing a map, worked in your browser.",
+    "intro": "The arithmetic of timing a map, worked as you type. Nothing leaves this page.",
+    "keys": "Keyboard: Tab moves between the fields; ↑ and ↓ step the field you are in by 1, with Shift by 10, with Alt by 0.1. Select a result to copy its number.",
+    "copy": "Copy {{label}}: {{value}}",
+    "copied": "Copied",
+    "fromResult": "Timing calculator",
+    "bpmMs": {
+      "title": "BPM ↔ ms per beat",
+      "bpm": "BPM",
+      "ms": "ms per beat",
+      "beat": "One beat",
+      "exactBpm": "BPM",
+      "bar": "One bar of 4/4",
+      "quarter": "One 1/4 tick"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Beat divisor",
+      "span": "Span",
+      "count": "Ticks",
+      "tick": "One tick",
+      "ticks": "The span in ticks",
+      "nearest": "Nearest whole tick",
+      "off": "The span is {{ms}} ms past it.",
+      "toMs": "The ticks in ms"
+    },
+    "lines": {
+      "title": "Between two red lines",
+      "intro": "Where the second line falls on the first one’s grid.",
+      "from": "First red line",
+      "bpm": "Its BPM",
+      "to": "Second red line",
+      "meter": "Beats per bar",
+      "span": "Gap",
+      "beats": "Gap in beats",
+      "bars": "Gap in bars",
+      "nearest": "Nearest beat of the first grid",
+      "off": "Second line off that beat",
+      "offNote": "Positive: it is late.",
+      "earliest": "The first grid’s earliest offset"
+    },
+    "drift": {
+      "title": "Drift",
+      "intro": "How far a grid at one BPM runs from another over some bars, and the BPMs that stay within a drift you accept.",
+      "right": "The right BPM",
+      "mapped": "The mapped BPM",
+      "bars": "Bars",
+      "meter": "Beats per bar",
+      "total": "Drift by the last bar",
+      "sign": "Positive: the mapped grid is late.",
+      "perBar": "Drift per bar",
+      "allowed": "Drift you accept",
+      "slower": "Slowest BPM within it",
+      "faster": "Fastest BPM within it",
+      "precision": "BPM precision that needs"
+    },
+    "span": {
+      "title": "BPM from two timestamps",
+      "intro": "Two moments in the song and the number of beats between them.",
+      "start": "First timestamp",
+      "end": "Second timestamp",
+      "beats": "Beats between",
+      "bpm": "BPM",
+      "beat": "One beat"
+    }
   }
 }

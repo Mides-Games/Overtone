@@ -1040,7 +1040,14 @@
     "smMeter": ".sm에는 박자표가 없어서 마디가 4/4로 읽혀요. .ssc는 박자표를 유지해요.",
     "quaMeter_other": "Quaver는 4/4와 3/4만 알아요: 다른 박자의 red line {{count}}개는 4/4로 기록돼요.",
     "chartFitted_other": "템포 변화 {{count}}개가 Clone Hero의 틱 사이에 떨어져요: 제때 맞도록 각 변화 직전의 BPM을 아주 조금 조정해요({{ms}} ms 이내).",
-    "failed": "이 red line들로는 그 파일을 만들 수 없었어요."
+    "failed": "이 red line들로는 그 파일을 만들 수 없었어요.",
+    "beatSaber": "Beat Saber: BPM 이벤트만 담은 v3 난이도 파일 ExpertStandard.dat이에요. Info.dat에서 이 파일을 지정하고 Info.dat의 BPM을 {{bpm}}(으)로 하세요.",
+    "adofai": "A Dance of Fire and Ice: 한 박에 타일 하나인 곧은 길이고, 템포가 바뀌는 곳에 SetSpeed가 있어요. 곡을 옆에 두세요.",
+    "fnf": "Friday Night Funkin’: 0.3 이전 게임과 Psych Engine이 읽는 차트 JSON이에요. 16스텝 섹션과 changeBPM으로 되어 있어요.",
+    "rhythmDoctor": "Rhythm Doctor: PlaySong(BPM과 오프셋), SetBeatsPerMinute, SetCrotchetsPerBar가 든 .rdlevel이에요. 곡을 옆에 두세요.",
+    "adofaiOdd_other": "템포 변화 {{count}}개가 A Dance of Fire and Ice의 타일 사이에 떨어져요. 제때 오도록 그 앞 타일에 따로 속도를 줬어요.",
+    "fnfOdd_other": "템포 변화 {{count}}개가 Friday Night Funkin’의 섹션 사이에 떨어져요. 제때 오도록 그 앞에 따로 속도를 준 짧은 섹션을 넣었어요.",
+    "rdMeter_other": "박자 변화 {{count}}개가 Rhythm Doctor 마디 중간에 떨어져 거기서 마디를 시작할 수 없어요. 그 마디들은 앞의 박자를 유지해요."
   },
   "oszPlus": {
     "title": ".osz 옵션",
@@ -2215,5 +2222,83 @@
     "other": "없음",
     "aria": "{{divisor}}: {{pct}}%",
     "note": "엔진이 들은 각 어택을, 그것이 놓인 박의 가장 단순한 분할로 셌어요(박의 1/48 이내, 최대 15 ms). 약한 어택은 덜 셉니다. 에디터의 비트 스냅 분할을 제안할 뿐, 타이밍을 측정하지는 않아요."
+  },
+  "daw": {
+    "title": "음악 소프트웨어 (템포 맵)",
+    "midi": "MIDI 템포 맵",
+    "midiNote": "한 박에 960틱인 타입 1 MIDI 파일이에요. red line마다 템포와 박자가 있고, 모든 변화가 제 시각에서 {{ms}} ms 안에 있어요.",
+    "leadIn": "1마디는 첫 red line의 강박에서 끝나는 도입 마디라서, 그 뒤의 마디가 곡과 맞아요.",
+    "reaperNote": "Reaper: 템포, red line마다 마커, 트랙 위의 곡이 든 프로젝트예요. {{file}}이(가) 있는 폴더에 저장하세요.",
+    "reaperNoAudio": "Reaper: 템포와 red line마다 마커가 든 프로젝트예요. 곡은 직접 트랙에 올리세요.",
+    "ableton": "Ableton Live는 텍스트에서 템포 맵을 읽지 못해서 여기엔 Live용 파일이 없어요. MIDI 파일을 쓰세요: 어레인지먼트로 끌어다 놓으면 Live가 템포와 박자 변화를 가져올 수 있어요(버전에 따라 물어보거나, 가져오기 옵션으로 켜져요)."
+  },
+  "calculator": {
+    "title": "타이밍 계산기",
+    "description": "BPM과 한 박의 ms, 틱, 두 red line 사이의 간격, 어긋남, 두 시점으로 구하는 BPM: 맵 타이밍에 필요한 계산을 브라우저에서 해요.",
+    "intro": "맵 타이밍에 필요한 계산을 입력하는 대로 해요. 이 페이지에서 아무것도 나가지 않아요.",
+    "keys": "키보드: Tab으로 필드를 옮기고, ↑와 ↓로 지금 필드를 1씩, Shift와 함께 10씩, Alt와 함께 0.1씩 바꿔요. 결과를 고르면 그 숫자가 복사돼요.",
+    "copy": "{{label}} 복사: {{value}}",
+    "copied": "복사됨",
+    "fromResult": "타이밍 계산기",
+    "bpmMs": {
+      "title": "BPM ↔ 한 박의 ms",
+      "bpm": "BPM",
+      "ms": "한 박의 ms",
+      "beat": "한 박",
+      "exactBpm": "BPM",
+      "bar": "4/4 한 마디",
+      "quarter": "1/4 틱 하나"
+    },
+    "ticks": {
+      "title": "ms ↔ 틱",
+      "bpm": "BPM",
+      "divisor": "비트 분할",
+      "span": "구간",
+      "count": "틱 수",
+      "tick": "틱 하나",
+      "ticks": "구간을 틱으로",
+      "nearest": "가장 가까운 정수 틱",
+      "off": "구간이 그보다 {{ms}} ms 더 길어요.",
+      "toMs": "틱 수를 ms로"
+    },
+    "lines": {
+      "title": "두 red line 사이",
+      "intro": "두 번째 선이 첫 번째 선의 그리드 어디에 떨어지는지.",
+      "from": "첫 번째 red line",
+      "bpm": "그 BPM",
+      "to": "두 번째 red line",
+      "meter": "한 마디의 박 수",
+      "span": "간격",
+      "beats": "간격 (박)",
+      "bars": "간격 (마디)",
+      "nearest": "첫 그리드에서 가장 가까운 박",
+      "off": "그 박에 대한 두 번째 선",
+      "offNote": "양수: 늦어요.",
+      "earliest": "첫 그리드의 가장 이른 오프셋"
+    },
+    "drift": {
+      "title": "어긋남",
+      "intro": "한 BPM의 그리드가 다른 BPM에서 몇 마디 동안 얼마나 어긋나는지, 그리고 받아들일 수 있는 어긋남 안에 드는 BPM.",
+      "right": "맞는 BPM",
+      "mapped": "맵의 BPM",
+      "bars": "마디 수",
+      "meter": "한 마디의 박 수",
+      "total": "마지막 마디까지의 어긋남",
+      "sign": "양수: 맵의 그리드가 늦어요.",
+      "perBar": "마디당 어긋남",
+      "allowed": "받아들일 어긋남",
+      "slower": "그 안에서 가장 느린 BPM",
+      "faster": "그 안에서 가장 빠른 BPM",
+      "precision": "필요한 BPM 정밀도"
+    },
+    "span": {
+      "title": "두 시점으로 구하는 BPM",
+      "intro": "곡의 두 순간과 그 사이의 박 수.",
+      "start": "첫 번째 시점",
+      "end": "두 번째 시점",
+      "beats": "사이의 박 수",
+      "bpm": "BPM",
+      "beat": "한 박"
+    }
   }
 }

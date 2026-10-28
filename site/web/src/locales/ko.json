@@ -1034,7 +1034,14 @@
     "smMeter": ".sm에는 박자표가 없어서 마디가 4/4로 읽혀요. .ssc는 박자표를 유지해요.",
     "quaMeter_other": "Quaver는 4/4와 3/4만 알아요: 다른 박자의 red line {{count}}개는 4/4로 기록돼요.",
     "chartFitted_other": "템포 변화 {{count}}개가 Clone Hero의 틱 사이에 떨어져요: 제때 맞도록 각 변화 직전의 BPM을 아주 조금 조정해요({{ms}} ms 이내).",
-    "failed": "이 red line들로는 그 파일을 만들 수 없었어요."
+    "failed": "이 red line들로는 그 파일을 만들 수 없었어요.",
+    "beatSaber": "Beat Saber: BPM 이벤트만 담은 v3 난이도 파일 ExpertStandard.dat이에요. Info.dat에서 이 파일을 지정하고 Info.dat의 BPM을 {{bpm}}(으)로 하세요.",
+    "adofai": "A Dance of Fire and Ice: 한 박에 타일 하나인 곧은 길이고, 템포가 바뀌는 곳에 SetSpeed가 있어요. 곡을 옆에 두세요.",
+    "fnf": "Friday Night Funkin’: 0.3 이전 게임과 Psych Engine이 읽는 차트 JSON이에요. 16스텝 섹션과 changeBPM으로 되어 있어요.",
+    "rhythmDoctor": "Rhythm Doctor: PlaySong(BPM과 오프셋), SetBeatsPerMinute, SetCrotchetsPerBar가 든 .rdlevel이에요. 곡을 옆에 두세요.",
+    "adofaiOdd_other": "템포 변화 {{count}}개가 A Dance of Fire and Ice의 타일 사이에 떨어져요. 제때 오도록 그 앞 타일에 따로 속도를 줬어요.",
+    "fnfOdd_other": "템포 변화 {{count}}개가 Friday Night Funkin’의 섹션 사이에 떨어져요. 제때 오도록 그 앞에 따로 속도를 준 짧은 섹션을 넣었어요.",
+    "rdMeter_other": "박자 변화 {{count}}개가 Rhythm Doctor 마디 중간에 떨어져 거기서 마디를 시작할 수 없어요. 그 마디들은 앞의 박자를 유지해요."
   },
   "oszPlus": {
     "title": ".osz 옵션",

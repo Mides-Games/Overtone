@@ -1034,7 +1034,14 @@
     "smMeter": ".sm には拍子がないため、小節は 4/4 として読まれます。.ssc では拍子が保たれます。",
     "quaMeter_other": "Quaver が扱えるのは 4/4 と 3/4 だけです。ほかの拍子の red line {{count}} 本は 4/4 として書き出します。",
     "chartFitted_other": "{{count}} か所のテンポ変化が Clone Hero の tick の間に落ちます。時間どおりに来るよう、その直前の BPM をごくわずかに調整しています（{{ms}} ms 以内）。",
-    "failed": "これらの red line からはそのファイルを作れませんでした。"
+    "failed": "これらの red line からはそのファイルを作れませんでした。",
+    "beatSaber": "Beat Saber：v3 の難易度ファイル ExpertStandard.dat で、BPM イベントだけを含みます。Info.dat でこのファイルを指定し、Info.dat の BPM を {{bpm}} にしてください。",
+    "adofai": "A Dance of Fire and Ice：1 拍 1 タイルのまっすぐな道で、テンポが変わる所に SetSpeed があります。曲を同じ場所に置いてください。",
+    "fnf": "Friday Night Funkin’：0.3 より前のゲームと Psych Engine が読む譜面 JSON で、16 ステップのセクションと changeBPM でできています。",
+    "rhythmDoctor": "Rhythm Doctor：PlaySong（BPM とオフセット）、SetBeatsPerMinute、SetCrotchetsPerBar を含む .rdlevel です。曲を同じ場所に置いてください。",
+    "adofaiOdd_other": "{{count}} か所のテンポ変化が A Dance of Fire and Ice のタイルの間に落ちます。時間どおりに来るよう、その直前のタイルに専用の速度を付けています。",
+    "fnfOdd_other": "{{count}} か所のテンポ変化が Friday Night Funkin’ のセクションの間に落ちます。時間どおりに来るよう、その直前に専用の速度の短いセクションを入れています。",
+    "rdMeter_other": "{{count}} か所の拍子の変化が Rhythm Doctor の小節の途中に落ち、そこから小節を始められません。その小節は前の拍子のままです。"
   },
   "oszPlus": {
     "title": ".osz の設定",

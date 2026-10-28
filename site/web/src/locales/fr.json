@@ -1082,7 +1082,20 @@
     "chartFitted_one": "{{count}} changement de tempo tombe entre les ticks de Clone Hero : le BPM qui le précède est ajusté d'un cheveu pour qu'il tombe à l'heure (à {{ms}} ms près).",
     "chartFitted_many": "{{count}} changements de tempo tombent entre les ticks de Clone Hero : le BPM qui précède chacun est ajusté d'un cheveu pour qu'ils tombent à l'heure (à {{ms}} ms près).",
     "chartFitted_other": "{{count}} changements de tempo tombent entre les ticks de Clone Hero : le BPM qui précède chacun est ajusté d'un cheveu pour qu'ils tombent à l'heure (à {{ms}} ms près).",
-    "failed": "Ce fichier n'a pas pu être créé à partir de ces red lines."
+    "failed": "Ce fichier n'a pas pu être créé à partir de ces red lines.",
+    "beatSaber": "Beat Saber : une difficulté v3, ExpertStandard.dat, avec seulement les événements de BPM. Référencez-la dans votre Info.dat et donnez à Info.dat un BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice : un chemin droit, une case par temps, avec SetSpeed là où le tempo change. Placez la chanson à côté.",
+    "fnf": "Friday Night Funkin’ : le JSON de chart que lisent le jeu d’avant la 0.3 et Psych Engine, en sections de 16 pas avec changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor : un .rdlevel avec PlaySong (BPM et offset), SetBeatsPerMinute et SetCrotchetsPerBar. Placez la chanson à côté.",
+    "adofaiOdd_one": "{{count}} changement de tempo tombe entre les cases de A Dance of Fire and Ice : la case d’avant reçoit sa propre vitesse, pour que le changement tombe à l’heure.",
+    "adofaiOdd_many": "{{count}} changements de tempo tombent entre les cases de A Dance of Fire and Ice : la case d’avant chacun reçoit sa propre vitesse, pour qu’ils tombent à l’heure.",
+    "adofaiOdd_other": "{{count}} changements de tempo tombent entre les cases de A Dance of Fire and Ice : la case d’avant chacun reçoit sa propre vitesse, pour qu’ils tombent à l’heure.",
+    "fnfOdd_one": "{{count}} changement de tempo tombe entre les sections de Friday Night Funkin’ : une section plus courte avant lui, à sa propre vitesse, le fait tomber à l’heure.",
+    "fnfOdd_many": "{{count}} changements de tempo tombent entre les sections de Friday Night Funkin’ : une section plus courte avant chacun, à sa propre vitesse, les fait tomber à l’heure.",
+    "fnfOdd_other": "{{count}} changements de tempo tombent entre les sections de Friday Night Funkin’ : une section plus courte avant chacun, à sa propre vitesse, les fait tomber à l’heure.",
+    "rdMeter_one": "{{count}} changement de mesure tombe au milieu d’une mesure de Rhythm Doctor, où il ne peut pas en commencer une : ces mesures gardent la métrique d’avant.",
+    "rdMeter_many": "{{count}} changements de mesure tombent au milieu d’une mesure de Rhythm Doctor, où ils ne peuvent pas en commencer une : ces mesures gardent la métrique d’avant.",
+    "rdMeter_other": "{{count}} changements de mesure tombent au milieu d’une mesure de Rhythm Doctor, où ils ne peuvent pas en commencer une : ces mesures gardent la métrique d’avant."
   },
   "oszPlus": {
     "title": "Options du .osz",

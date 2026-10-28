@@ -1058,7 +1058,17 @@
     "quaMeter_other": "Quaver solo conoce 4/4 y 3/4: {{count}} red lines en otro compás se escriben como 4/4.",
     "chartFitted_one": "{{count}} cambio de tempo cae entre los ticks de Clone Hero: el BPM anterior se ajusta apenas para que caiga a tiempo (a menos de {{ms}} ms).",
     "chartFitted_other": "{{count}} cambios de tempo caen entre los ticks de Clone Hero: el BPM anterior a cada uno se ajusta apenas para que caigan a tiempo (a menos de {{ms}} ms).",
-    "failed": "No se pudo armar ese archivo con estas red lines."
+    "failed": "No se pudo armar ese archivo con estas red lines.",
+    "beatSaber": "Beat Saber: una dificultad v3, ExpertStandard.dat, solo con los eventos de BPM. Nombrala en tu Info.dat y poné en Info.dat un BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: un camino recto, una baldosa por tiempo, con SetSpeed donde cambia el tempo. Poné la canción al lado.",
+    "fnf": "Friday Night Funkin’: el JSON de chart que leen el juego anterior a 0.3 y Psych Engine, en secciones de 16 pasos con changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: un .rdlevel con PlaySong (BPM y offset), SetBeatsPerMinute y SetCrotchetsPerBar. Poné la canción al lado.",
+    "adofaiOdd_one": "{{count}} cambio de tempo cae entre las baldosas de A Dance of Fire and Ice: la baldosa anterior lleva una velocidad propia, así el cambio llega a tiempo.",
+    "adofaiOdd_other": "{{count}} cambios de tempo caen entre las baldosas de A Dance of Fire and Ice: la baldosa anterior a cada uno lleva una velocidad propia, así llegan a tiempo.",
+    "fnfOdd_one": "{{count}} cambio de tempo cae entre secciones de Friday Night Funkin’: una sección más corta antes, con velocidad propia, lo hace llegar a tiempo.",
+    "fnfOdd_other": "{{count}} cambios de tempo caen entre secciones de Friday Night Funkin’: una sección más corta antes de cada uno, con velocidad propia, los hace llegar a tiempo.",
+    "rdMeter_one": "{{count}} cambio de compás cae en medio de un compás de Rhythm Doctor, donde no puede empezar uno: esos compases conservan el compás anterior.",
+    "rdMeter_other": "{{count}} cambios de compás caen en medio de un compás de Rhythm Doctor, donde no pueden empezar uno: esos compases conservan el compás anterior."
   },
   "oszPlus": {
     "title": "Opciones del .osz",

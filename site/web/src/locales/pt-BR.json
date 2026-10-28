@@ -1058,7 +1058,17 @@
     "quaMeter_other": "O Quaver só conhece 4/4 e 3/4: {{count}} red lines em outra fórmula de compasso são escritas como 4/4.",
     "chartFitted_one": "{{count}} mudança de tempo cai entre os ticks do Clone Hero: o BPM anterior é ajustado de leve para que ela caia no tempo certo (com até {{ms}} ms).",
     "chartFitted_other": "{{count}} mudanças de tempo caem entre os ticks do Clone Hero: o BPM anterior a cada uma é ajustado de leve para que caiam no tempo certo (com até {{ms}} ms).",
-    "failed": "Não foi possível gerar esse arquivo com estas red lines."
+    "failed": "Não foi possível gerar esse arquivo com estas red lines.",
+    "beatSaber": "Beat Saber: uma dificuldade v3, ExpertStandard.dat, só com os eventos de BPM. Aponte para ela no seu Info.dat e dê ao Info.dat um BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: um caminho reto, um bloco por batida, com SetSpeed onde o tempo muda. Coloque a música ao lado.",
+    "fnf": "Friday Night Funkin’: o JSON de chart que o jogo antes da 0.3 e o Psych Engine leem, em seções de 16 steps com changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: um .rdlevel com PlaySong (BPM e offset), SetBeatsPerMinute e SetCrotchetsPerBar. Coloque a música ao lado.",
+    "adofaiOdd_one": "{{count}} mudança de tempo cai entre os blocos de A Dance of Fire and Ice: o bloco antes dela ganha uma velocidade própria, para a mudança cair no tempo certo.",
+    "adofaiOdd_other": "{{count}} mudanças de tempo caem entre os blocos de A Dance of Fire and Ice: o bloco antes de cada uma ganha uma velocidade própria, para elas caírem no tempo certo.",
+    "fnfOdd_one": "{{count}} mudança de tempo cai entre as seções de Friday Night Funkin’: uma seção mais curta antes dela, com velocidade própria, faz ela cair no tempo certo.",
+    "fnfOdd_other": "{{count}} mudanças de tempo caem entre as seções de Friday Night Funkin’: uma seção mais curta antes de cada uma, com velocidade própria, faz elas caírem no tempo certo.",
+    "rdMeter_one": "{{count}} mudança de compasso cai no meio de um compasso do Rhythm Doctor, onde não pode começar um: esses compassos mantêm a fórmula anterior.",
+    "rdMeter_other": "{{count}} mudanças de compasso caem no meio de um compasso do Rhythm Doctor, onde não podem começar um: esses compassos mantêm a fórmula anterior."
   },
   "oszPlus": {
     "title": "Opções do .osz",

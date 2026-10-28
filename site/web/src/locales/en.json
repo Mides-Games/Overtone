@@ -1058,7 +1058,17 @@
     "quaMeter_other": "Quaver knows 4/4 and 3/4 only: {{count}} red lines in another meter are written as 4/4.",
     "chartFitted_one": "{{count}} tempo change falls between Clone Hero’s ticks: the BPM before it is adjusted by a hair so it lands on time (within {{ms}} ms).",
     "chartFitted_other": "{{count}} tempo changes fall between Clone Hero’s ticks: the BPM before each is adjusted by a hair so they land on time (within {{ms}} ms).",
-    "failed": "That file could not be built from these red lines."
+    "failed": "That file could not be built from these red lines.",
+    "beatSaber": "Beat Saber: a v3 difficulty, ExpertStandard.dat, with the BPM events only. Name it in your Info.dat and give Info.dat a BPM of {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: a straight path, one tile a beat, with SetSpeed where the tempo changes. Put the song beside it.",
+    "fnf": "Friday Night Funkin’: the chart JSON that the game before 0.3 and Psych Engine read, in sections of 16 steps with changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: an .rdlevel with PlaySong (BPM and offset), SetBeatsPerMinute and SetCrotchetsPerBar. Put the song beside it.",
+    "adofaiOdd_one": "{{count}} tempo change falls between A Dance of Fire and Ice’s tiles: the tile before it gets a speed of its own, so the change lands on time.",
+    "adofaiOdd_other": "{{count}} tempo changes fall between A Dance of Fire and Ice’s tiles: the tile before each gets a speed of its own, so they land on time.",
+    "fnfOdd_one": "{{count}} tempo change falls between Friday Night Funkin’s sections: a shorter section before it, at a speed of its own, lands it on time.",
+    "fnfOdd_other": "{{count}} tempo changes fall between Friday Night Funkin’s sections: a shorter section before each, at a speed of its own, lands them on time.",
+    "rdMeter_one": "{{count}} meter change falls in the middle of a Rhythm Doctor bar, where it cannot start one: the bars there keep the meter before it.",
+    "rdMeter_other": "{{count}} meter changes fall in the middle of a Rhythm Doctor bar, where they cannot start one: the bars there keep the meter before them."
   },
   "oszPlus": {
     "title": ".osz options",

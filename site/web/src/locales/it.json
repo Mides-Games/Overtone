@@ -1058,7 +1058,17 @@
     "quaMeter_other": "Quaver conosce solo 4/4 e 3/4: {{count}} red line in un'altra metrica vengono scritte come 4/4.",
     "chartFitted_one": "{{count}} cambio di tempo cade tra i tick di Clone Hero: il BPM precedente viene ritoccato di pochissimo perché cada a tempo (entro {{ms}} ms).",
     "chartFitted_other": "{{count}} cambi di tempo cadono tra i tick di Clone Hero: il BPM prima di ciascuno viene ritoccato di pochissimo perché cadano a tempo (entro {{ms}} ms).",
-    "failed": "Impossibile creare quel file da queste red line."
+    "failed": "Impossibile creare quel file da queste red line.",
+    "beatSaber": "Beat Saber: una difficoltà v3, ExpertStandard.dat, con i soli eventi di BPM. Indicala nel tuo Info.dat e dai a Info.dat un BPM di {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: un percorso dritto, una casella per battito, con SetSpeed dove cambia il tempo. Metti la canzone accanto.",
+    "fnf": "Friday Night Funkin’: il JSON del chart che leggono il gioco prima della 0.3 e Psych Engine, in sezioni da 16 step con changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: un .rdlevel con PlaySong (BPM e offset), SetBeatsPerMinute e SetCrotchetsPerBar. Metti la canzone accanto.",
+    "adofaiOdd_one": "{{count}} cambio di tempo cade tra le caselle di A Dance of Fire and Ice: la casella prima ha una velocità propria, così il cambio arriva in tempo.",
+    "adofaiOdd_other": "{{count}} cambi di tempo cadono tra le caselle di A Dance of Fire and Ice: la casella prima di ognuno ha una velocità propria, così arrivano in tempo.",
+    "fnfOdd_one": "{{count}} cambio di tempo cade tra le sezioni di Friday Night Funkin’: una sezione più corta prima, con una velocità propria, lo fa arrivare in tempo.",
+    "fnfOdd_other": "{{count}} cambi di tempo cadono tra le sezioni di Friday Night Funkin’: una sezione più corta prima di ognuno, con una velocità propria, li fa arrivare in tempo.",
+    "rdMeter_one": "{{count}} cambio di metro cade a metà di una battuta di Rhythm Doctor, dove non può iniziarne una: quelle battute tengono il metro precedente.",
+    "rdMeter_other": "{{count}} cambi di metro cadono a metà di una battuta di Rhythm Doctor, dove non possono iniziarne una: quelle battute tengono il metro precedente."
   },
   "oszPlus": {
     "title": "Opzioni dell'.osz",

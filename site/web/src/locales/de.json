@@ -1058,7 +1058,17 @@
     "quaMeter_other": "Quaver kennt nur 4/4 und 3/4: {{count}} red lines in einer anderen Taktart werden als 4/4 geschrieben.",
     "chartFitted_one": "{{count}} Tempowechsel fällt zwischen die Ticks von Clone Hero: Das BPM davor wird minimal angepasst, damit er pünktlich landet (innerhalb von {{ms}} ms).",
     "chartFitted_other": "{{count}} Tempowechsel fallen zwischen die Ticks von Clone Hero: Das BPM vor jedem wird minimal angepasst, damit sie pünktlich landen (innerhalb von {{ms}} ms).",
-    "failed": "Aus diesen red lines ließ sich diese Datei nicht erstellen."
+    "failed": "Aus diesen red lines ließ sich diese Datei nicht erstellen.",
+    "beatSaber": "Beat Saber: eine v3-Schwierigkeit, ExpertStandard.dat, nur mit den BPM-Events. Trag sie in deiner Info.dat ein und gib der Info.dat ein BPM von {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice: ein gerader Pfad, ein Feld pro Schlag, mit SetSpeed, wo sich das Tempo ändert. Leg den Song daneben.",
+    "fnf": "Friday Night Funkin’: das Chart-JSON, das das Spiel vor 0.3 und Psych Engine lesen, in Abschnitten von 16 Steps mit changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor: ein .rdlevel mit PlaySong (BPM und Offset), SetBeatsPerMinute und SetCrotchetsPerBar. Leg den Song daneben.",
+    "adofaiOdd_one": "{{count}} Tempowechsel fällt zwischen die Felder von A Dance of Fire and Ice: Das Feld davor bekommt ein eigenes Tempo, damit der Wechsel pünktlich kommt.",
+    "adofaiOdd_other": "{{count}} Tempowechsel fallen zwischen die Felder von A Dance of Fire and Ice: Das Feld vor jedem bekommt ein eigenes Tempo, damit sie pünktlich kommen.",
+    "fnfOdd_one": "{{count}} Tempowechsel fällt zwischen die Abschnitte von Friday Night Funkin’: Ein kürzerer Abschnitt davor, mit eigenem Tempo, bringt ihn pünktlich.",
+    "fnfOdd_other": "{{count}} Tempowechsel fallen zwischen die Abschnitte von Friday Night Funkin’: Ein kürzerer Abschnitt vor jedem, mit eigenem Tempo, bringt sie pünktlich.",
+    "rdMeter_one": "{{count}} Taktartwechsel fällt mitten in einen Takt von Rhythm Doctor, wo er keinen beginnen kann: Die Takte dort behalten die Taktart davor.",
+    "rdMeter_other": "{{count}} Taktartwechsel fallen mitten in einen Takt von Rhythm Doctor, wo sie keinen beginnen können: Die Takte dort behalten die Taktart davor."
   },
   "oszPlus": {
     "title": ".osz-Optionen",

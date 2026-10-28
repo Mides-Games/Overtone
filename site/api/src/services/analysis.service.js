@@ -28,11 +28,15 @@ export const MAX_ATTEMPTS = 2;
 
 export const newPublicId = () => randomBytes(16).toString('hex');
 
-/** The engine hash the worker last announced: what a cached result must match. */
-let currentEngineHash = null;
-export const engineHash = () => currentEngineHash;
-export const setEngineHash = (hash) => {
-  currentEngineHash = hash;
+/**
+ * The engine hashes the worker last announced, one per mode (W11.1): what a
+ * cached result of that mode must match. A worker from before modes names
+ * only the normal one, and then no other mode is ever answered from the cache.
+ */
+let currentEngineHashes = {};
+export const engineHash = (mode = 'normal') => currentEngineHashes[mode] ?? null;
+export const setEngineHash = (hash, hashes = null) => {
+  currentEngineHashes = { ...(hashes && typeof hashes === 'object' ? hashes : {}), normal: hash };
 };
 
 const startOfUtcDay = () => {
@@ -97,6 +101,8 @@ export const RECENT_MINUTES = 60;
 export const RECENT_LIMIT = 20;
 /** The most unfinished rows the queue page lists; past it, it says how many more. */
 export const LIVE_LIMIT = 100;
+/** The most re-analyses (W3.24) a result page links to. */
+export const RELATED_LIMIT = 20;
 
 /**
  * Delete-own (W3.26) takes only a finished analysis: a queued one is
@@ -186,27 +192,43 @@ const memoryStore = {
     return memoryCounts(who).today;
   },
 
-  async findCopy({ sha1, accountId, anonHash }) {
+  // Mode and hints are part of every cache key (W11.1, W3.21): the same audio
+  // asked for another way is another result, and another copy.
+  async findCopy({ sha1, accountId, anonHash, mode = 'normal', optionsKey = '' }) {
     const since = startOfUtcDay();
     for (const a of memory.analyses.values()) {
       if (!a.cachedFrom || a.deletedAt || a.sha1 !== sha1 || a.createdAt < since) continue;
+      if (a.mode !== mode || a.optionsKey !== optionsKey) continue;
       if (accountId ? a.accountId === accountId : !a.accountId && a.anonHash === anonHash) return a;
     }
     return null;
   },
 
-  async findCached(sha1, hash) {
+  async findCached(sha1, hash, mode = 'normal', optionsKey = '') {
     if (!hash) return null;
     let best = null;
     for (const a of memory.analyses.values()) {
-      if (a.sha1 === sha1 && a.engineHash === hash && a.result && !a.cachedFrom) best = a;
+      if (a.sha1 === sha1 && a.engineHash === hash && a.mode === mode && a.optionsKey === optionsKey &&
+          a.result && !a.cachedFrom) best = a;
     }
     return best;
+  },
+
+  /** The analyses linked to `publicId` by a re-analysis (W3.24), either way, oldest first. */
+  async related(publicId) {
+    const a = memory.analyses.get(publicId);
+    if (!a) return [];
+    return [...memory.analyses.values()]
+      .filter((b) => !b.deletedAt && b.publicId !== publicId && (b.reanalysisOf === publicId || a.reanalysisOf === b.publicId))
+      .sort((x, y) => x.createdAt - y.createdAt)
+      .slice(0, RELATED_LIMIT)
+      .map((b) => ({ ...b }));
   },
 
   async create({
     publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
     private: hidden = false, tagTitle = null, tagArtist = null, uploader = null,
+    mode = 'normal', options = null, optionsKey = '', audioSeconds = null, reanalysisOf = null,
   }, { limits = null } = {}) {
     if (limits) {
       const error = refusal(memoryCounts({ accountId, ipHash }), limits, Boolean(cachedFrom));
@@ -215,9 +237,11 @@ const memoryStore = {
     const row = {
       publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash,
       private: hidden, tagTitle, tagArtist, uploader,
+      mode, options: options && Object.keys(options).length ? options : null, optionsKey, audioSeconds,
+      reanalysisOf: reanalysisOf && memory.analyses.has(reanalysisOf) ? reanalysisOf : null,
       createdAt: new Date(), finishedAt: null, publishedAt: null, deletedAt: null,
       status: 'queued', stage: null, progress: 0, error: null,
-      result: null, engineHash: currentEngineHash, cachedFrom: null,
+      result: null, engineHash: engineHash(mode), cachedFrom: null,
       job: { seq: ++memory.seq, state: 'queued', attempts: 0, lockedAt: null },
     };
     if (cachedFrom) {
@@ -266,7 +290,10 @@ const memoryStore = {
     const now = new Date();
     Object.assign(next.job, { state: 'running', attempts: next.job.attempts + 1, lockedAt: now, claimedAt: now });
     Object.assign(next, { status: 'running', stage: null, progress: 0 });
-    return { publicId: next.publicId, filename: next.filename, attempt: next.job.attempts };
+    return {
+      publicId: next.publicId, filename: next.filename, attempt: next.job.attempts,
+      mode: next.mode ?? 'normal', options: next.options ?? {},
+    };
   },
 
   running(publicId, attempt) {
@@ -287,13 +314,15 @@ const memoryStore = {
     return true;
   },
 
-  async finish(publicId, attempt, result) {
+  /** `asked` is the mode and hints the result was made with (internal.routes.js `askedOf`), which the row takes on. */
+  async finish(publicId, attempt, result, asked = null) {
     const a = this.running(publicId, attempt);
     if (!a) return false;
     a.job.state = 'done';
     a.job.lockedAt = null;
     Object.assign(a, {
       status: statusOf(result), result, engineHash: result.engine_hash, progress: 1, stage: null, finishedAt: new Date(),
+      ...(asked ? { mode: asked.mode, options: Object.keys(asked.options).length ? asked.options : null, optionsKey: asked.key } : {}),
     });
     return true;
   },
@@ -467,11 +496,13 @@ const SELECT = `
   SELECT a.public_id, a.account_id, a.anon_hash, a.ip_hash, a.filename, a.size_bytes, a.status, a.stage,
          a.progress, a.error, a.result, a.engine_hash, a.created_at, a.finished_at,
          a.private, a.tag_title, a.tag_artist, a.published_at, a.deleted_at,
+         a.mode, a.options, a.options_key, a.audio_seconds, r.public_id AS reanalysis_of,
          c.public_id AS cached_from, s.audio_sha1, j.id AS job_id, j.state AS job_state
     FROM analyses a
     JOIN songs s ON s.id = a.song_id
     LEFT JOIN jobs j ON j.analysis_id = a.id
-    LEFT JOIN analyses c ON c.id = a.cached_from`;
+    LEFT JOIN analyses c ON c.id = a.cached_from
+    LEFT JOIN analyses r ON r.id = a.reanalysis_of`;
 
 const fromRow = (r) =>
   r && {
@@ -498,6 +529,11 @@ const fromRow = (r) =>
     tagArtist: r.tag_artist,
     publishedAt: r.published_at ?? null,
     deletedAt: r.deleted_at ?? null,
+    mode: r.mode ?? 'normal',
+    options: r.options ?? null,
+    optionsKey: r.options_key ?? '',
+    audioSeconds: r.audio_seconds ?? null,
+    reanalysisOf: r.reanalysis_of?.trim() ?? null,
   };
 
 /** The audit record of a moderation (W3.18), written in the same transaction as the change. */
@@ -581,32 +617,48 @@ const pgStore = {
     return (await pgCounts(query, who)).today;
   },
 
-  async findCopy({ sha1, accountId, anonHash }) {
+  async findCopy({ sha1, accountId, anonHash, mode = 'normal', optionsKey = '' }) {
     const { rows } = await query(
       `${SELECT}
         WHERE s.audio_sha1 = $1 AND a.cached_from IS NOT NULL AND a.created_at >= $3 AND a.deleted_at IS NULL
+          AND a.mode = $4 AND a.options_key = $5
           AND ${accountId ? 'a.account_id = $2' : 'a.account_id IS NULL AND a.anon_hash = $2'}
         ORDER BY a.id DESC LIMIT 1`,
-      [sha1, accountId ?? anonHash, startOfUtcDay()],
+      [sha1, accountId ?? anonHash, startOfUtcDay(), mode, optionsKey],
     );
     return fromRow(rows[0]);
   },
 
-  async findCached(sha1, hash) {
+  async findCached(sha1, hash, mode = 'normal', optionsKey = '') {
     if (!hash) return null;
     const { rows } = await query(
       `${SELECT}
-        WHERE s.audio_sha1 = $1 AND a.engine_hash = $2 AND a.result IS NOT NULL AND a.cached_from IS NULL
+        WHERE s.audio_sha1 = $1 AND a.engine_hash = $2 AND a.mode = $3 AND a.options_key = $4
+          AND a.result IS NOT NULL AND a.cached_from IS NULL
         ORDER BY a.id DESC LIMIT 1`,
-      [sha1, hash],
+      [sha1, hash, mode, optionsKey],
     );
     return fromRow(rows[0]);
+  },
+
+  async related(publicId) {
+    const { rows } = await query(
+      `${SELECT}
+        WHERE a.deleted_at IS NULL AND a.public_id <> $1
+          AND (a.reanalysis_of = (SELECT id FROM analyses WHERE public_id = $1)
+               OR a.id = (SELECT reanalysis_of FROM analyses WHERE public_id = $1))
+        ORDER BY a.id LIMIT $2`,
+      [publicId, RELATED_LIMIT],
+    );
+    return rows.map(fromRow);
   },
 
   async create({
     publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
     private: hidden = false, tagTitle = null, tagArtist = null,
+    mode = 'normal', options = null, optionsKey = '', audioSeconds = null, reanalysisOf = null,
   }, { limits = null } = {}) {
+    const hints = options && Object.keys(options).length ? options : null;
     await transaction(async (client) => {
       if (limits) {
         await client.query('SELECT pg_advisory_xact_lock($1)', [INSERT_LOCK]);
@@ -619,24 +671,29 @@ const pgStore = {
          RETURNING id`,
         [sha1],
       );
+      // W3.24: a re-analysis names the one it was made from; the route
+      // checked it is the same person's and the same audio.
+      const linked = '(SELECT id FROM analyses WHERE public_id = $16)';
       if (cachedFrom) {
         await client.query(
           `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine,
                                  engine_hash, result, confidence, status, progress, finished_at, cached_from,
-                                 private, tag_title, tag_artist)
+                                 private, tag_title, tag_artist, mode, options, options_key, audio_seconds, reanalysis_of)
            SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id,
-                  $9, $10, $11
+                  $9, $10, $11, $12, $13, $14, $15, ${linked}
              FROM analyses c WHERE c.public_id = $8`,
-          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId, hidden, tagTitle, tagArtist],
+          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId, hidden, tagTitle, tagArtist,
+            mode, hints, optionsKey, audioSeconds, reanalysisOf],
         );
         return;
       }
       const { rows: [analysis] } = await client.query(
         `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine, engine_hash,
-                               private, tag_title, tag_artist)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8, $9, $10, $11)
+                               private, tag_title, tag_artist, mode, options, options_key, audio_seconds, reanalysis_of)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8, $9, $10, $11, $12, $13, $14, $15, ${linked})
            RETURNING id`,
-        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, currentEngineHash ?? 'pending', hidden, tagTitle, tagArtist],
+        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, engineHash(mode) ?? 'pending', hidden, tagTitle, tagArtist,
+          mode, hints, optionsKey, audioSeconds, reanalysisOf],
       );
       await client.query('INSERT INTO jobs (analysis_id) VALUES ($1)', [analysis.id]);
     });
@@ -659,7 +716,7 @@ const pgStore = {
   async queue() {
     const COLS = `a.public_id, a.account_id, a.anon_hash, a.filename, a.status, a.stage, a.progress,
                   a.created_at, a.finished_at, a.private, a.tag_title, a.tag_artist,
-                  a.cached_from IS NOT NULL AS cached,
+                  a.cached_from IS NOT NULL AS cached, a.mode, a.audio_seconds,
                   u.username, u.display_name, u.avatar_url`;
     // Running first, then queued in the order the claim takes them.
     const { rows: live } = await query(
@@ -696,6 +753,8 @@ const pgStore = {
       tagTitle: r.tag_title,
       tagArtist: r.tag_artist,
       cachedFrom: r.cached || null,
+      mode: r.mode ?? 'normal',
+      audioSeconds: r.audio_seconds ?? null,
       position: r.position == null ? null : Number(r.position),
       uploader: r.username ? { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url } : null,
     });
@@ -730,10 +789,12 @@ const pgStore = {
        )
        UPDATE analyses a SET status = 'running', stage = NULL, progress = 0
          FROM claimed WHERE a.id = claimed.analysis_id
-       RETURNING a.public_id, a.filename, claimed.attempts`,
+       RETURNING a.public_id, a.filename, claimed.attempts, a.mode, a.options`,
     );
     const row = rows[0];
-    return row ? { publicId: row.public_id, filename: row.filename, attempt: row.attempts } : null;
+    return row
+      ? { publicId: row.public_id, filename: row.filename, attempt: row.attempts, mode: row.mode ?? 'normal', options: row.options ?? {} }
+      : null;
   },
 
   async isRunning(publicId, attempt) {
@@ -761,16 +822,19 @@ const pgStore = {
     return rowCount > 0;
   },
 
-  async finish(publicId, attempt, result) {
+  async finish(publicId, attempt, result, asked = null) {
     return transaction(async (client) => {
       const held = await lockRunning(client, publicId, attempt);
       if (!held) return false;
       await client.query("UPDATE jobs SET state = 'done', locked_at = NULL WHERE id = $1", [held.job_id]);
       await client.query(
         `UPDATE analyses SET status = $2, result = $3, engine_hash = $4, confidence = $5, progress = 1,
-                             stage = NULL, finished_at = now()
+                             stage = NULL, finished_at = now(),
+                             mode = coalesce($6, mode), options = CASE WHEN $6::text IS NULL THEN options ELSE $7::jsonb END,
+                             options_key = coalesce($8, options_key)
           WHERE id = $1`,
-        [held.analysis_id, statusOf(result), result, result.engine_hash, confidenceOf(result)],
+        [held.analysis_id, statusOf(result), result, result.engine_hash, confidenceOf(result),
+          asked?.mode ?? null, asked && Object.keys(asked.options).length ? asked.options : null, asked?.key ?? null],
       );
       if (Number.isFinite(result.duration_s)) {
         await client.query(

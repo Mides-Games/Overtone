@@ -9,7 +9,9 @@ import Term from '../components/Term.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
+import HowAsked from '../components/result/HowAsked.jsx'
 import MoreDownloads from '../components/result/MoreDownloads.jsx'
+import Reanalyse from '../components/result/Reanalyse.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
@@ -17,6 +19,7 @@ import Listening from '../components/result/Listening.jsx'
 import Transport from '../components/result/Transport.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
+import { formatRange } from '../lib/analysis-options.js'
 import { checkSpans } from '../lib/check-spans.js'
 import { comparePath } from '../lib/compare.js'
 import { Player } from '../lib/player.js'
@@ -88,8 +91,11 @@ export default function AnalysisResult() {
       {(analysis.status === 'queued' || analysis.status === 'running') && <Waiting analysis={analysis} />}
       {analysis.status === 'failed' && <Failed analysis={analysis} />}
       {analysis.status === 'refused' && <Refused result={analysis.result} />}
+      {analysis.status === 'refused' && <HowAsked analysis={analysis} />}
       {analysis.status === 'done' && <Publish analysis={analysis} onChange={(next) => tracker.patch(id, next)} />}
       {analysis.status === 'done' && <Result id={id} analysis={analysis} />}
+      {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
+      {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
     </div>
   )
 }
@@ -210,6 +216,12 @@ function Waiting({ analysis }) {
       <p className="text-caption text-dim">
         {running && analysis.stage ? t(`result.stages.${analysis.stage}`, { defaultValue: t('result.running') }) : t('result.queuedNote')}
       </p>
+      {analysis.estimate && (
+        <p className="readout text-caption text-dim">
+          {t('modes.estimate.label')} {formatRange(t, analysis.estimate.lowS, analysis.estimate.highS)} · {t(`modes.names.${analysis.mode ?? 'normal'}`)}
+          <span className="ml-1 font-sans">({t('modes.estimate.why')})</span>
+        </p>
+      )}
       {!running && <CancelButton id={analysis.id} onCancelled={() => navigate('/analyze')} />}
     </section>
   )
@@ -374,6 +386,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
 
   return (
     <div className="space-y-6">
+      {/* W11.1, W3.21, W12.19: the mode, the hints and the stretch this reading covers. */}
+      <HowAsked analysis={analysis} />
+
       <section className="panel overflow-hidden">
         <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
           {readouts.map((r) => (

@@ -110,6 +110,41 @@ components:
         createdAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
         elapsedS: { type: integer, description: Seconds from upload to finish, or to now. }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        estimate: { $ref: '#/components/schemas/Estimate' }
+    Estimate:
+      type: object
+      description: |
+        W3.16, while waiting or running: seconds until it is done, by the
+        cost per audio minute measured in W2.4 (utils/estimate.js), assuming
+        one worker. Always a range and always an estimate: `highS` is null
+        ("at least lowS") when a job ahead, or this one, has no known length.
+      required: [lowS, highS]
+      properties:
+        lowS: { type: integer, minimum: 0 }
+        highS: { type: [integer, 'null'], minimum: 0 }
+    AnalysisMode:
+      type: string
+      enum: [fast, normal, strict]
+      default: normal
+    AnalysisOptions:
+      type: object
+      additionalProperties: false
+      description: |
+        W3.21 and W12.19: hints, every one optional. `bpm` and the range
+        exclude each other. An expected tempo outside 120-240 moves the
+        octave the engine reads the song at; a meter fills the bars the
+        engine could not prove; a stretch is analysed alone and its times put
+        back in the song's timeline. The result's `hint_checks` say where the
+        audio disagrees with a hint.
+      properties:
+        tempo: { type: string, enum: [constant, changes] }
+        bpm: { type: number, minimum: 30, maximum: 400 }
+        bpm_min: { type: number, minimum: 30, maximum: 400 }
+        bpm_max: { type: number, minimum: 30, maximum: 400 }
+        meter: { type: integer, minimum: 1, maximum: 16 }
+        start_s: { type: number, minimum: 0 }
+        end_s: { type: number, description: At most MAX_AUDIO_SECONDS, and at least 10 s after start_s. }
     Queue:
       type: object
       required: [live, more, recent, at]
@@ -153,6 +188,23 @@ components:
         private: { type: boolean, description: Kept off the public queue's song and uploader (W3.8). }
         published: { type: boolean, description: "Its uploader published it: /timings/{id} shows it to anyone (W3.27)." }
         publishedAt: { type: string, format: date-time, description: While published. }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        options: { $ref: '#/components/schemas/AnalysisOptions' }
+        estimate: { $ref: '#/components/schemas/Estimate' }
+        reanalysisOf: { type: [string, 'null'], description: "W3.24: the analysis this one re-analyses, when it does." }
+        related:
+          type: array
+          description: |
+            W3.24, once finished: the analyses linked to this one by a
+            re-analysis, either way, that the caller may open.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              mode: { $ref: '#/components/schemas/AnalysisMode' }
+              status: { type: string }
+              options: { $ref: '#/components/schemas/AnalysisOptions' }
+              source: { type: boolean, description: This one was re-analysed from it. }
     TimingResult:
       type: object
       description: |
@@ -162,12 +214,34 @@ components:
         1 adds the read-only evidence the result page draws (`beats`,
         `downbeats_ms`, `onsets`, `onset_envelope`, the drift fields of
         `sections`, `swing`, `pulse_hints`). A v1.0 result, stored before, has
-        none of them, and a refusal has none either.
+        none of them, and a refusal has none either. `minor` 2 (v1.2) adds how
+        it was asked for: `mode`, `options`, `hint_checks` and `stretch`.
       required: [format, version, engine, engine_hash, refused, red_lines, sections, osu_timing]
       properties:
         format: { const: timing-result }
         version: { const: 1 }
-        minor: { type: integer, description: 1 for v1.1; absent on v1.0 results. }
+        minor: { type: integer, description: 1 for v1.1, 2 for v1.2; absent on v1.0 results. }
+        mode: { $ref: '#/components/schemas/AnalysisMode' }
+        options: { $ref: '#/components/schemas/AnalysisOptions' }
+        hint_checks:
+          type: array
+          description: |
+            v1.2. What the result says about each hint: `warn` where the audio
+            contradicts it (tempo_not_constant, tempo_constant, bpm_far,
+            bpm_outside, meter_differs), `info` where the hint decided
+            something (octave_window, meter_applied). `values` carries the numbers.
+          items:
+            type: object
+            properties:
+              level: { type: string, enum: [info, warn] }
+              key: { type: string }
+              values: { type: object }
+        stretch:
+          type: [object, 'null']
+          description: v1.2. The stretch analysed, in the song's own timeline; every time in the result is in that timeline too.
+          properties:
+            start_ms: { type: number }
+            end_ms: { type: number }
         engine: { type: string, const: v3 }
         engine_mode: { type: [string, 'null'], enum: [precision, legacy, null] }
         engine_hash: { type: string }
@@ -179,7 +253,7 @@ components:
         refusal:
           type: [object, 'null']
           properties:
-            code: { type: string, enum: [no_pulse, too_short, too_long, refused] }
+            code: { type: string, enum: [no_pulse, too_short, too_long, too_heavy, bad_stretch, refused] }
             message: { type: string }
         global_bpm: { type: [number, 'null'] }
         offset_ms: { type: [number, 'null'] }
@@ -238,6 +312,7 @@ components:
           description: v1.1. The onset envelope, max-pooled to at most 4000 values of 0-100 over span_ms.
           properties:
             span_ms: { type: integer }
+            start_ms: { type: integer, description: 'v1.2, a stretch only: where the envelope starts in the song.' }
             v: { type: array, items: { type: integer } }
         swing:
           type: [object, 'null']
@@ -678,6 +753,36 @@ paths:
           required: false
           description: The artist tag, as X-Title.
           schema: { type: string, maxLength: 1024 }
+        - name: X-Mode
+          in: header
+          required: false
+          description: |
+            How long the person is willing to wait (W11.1): `fast` (no Beat
+            This! vote and no octave judges), `normal` (the default, the
+            analysis as it always was) or `strict` (today the same as normal;
+            W11.4 is what will fill it). Part of the cache key.
+          schema: { $ref: '#/components/schemas/AnalysisMode' }
+        - name: X-Options
+          in: header
+          required: false
+          description: |
+            The hints (W3.21, W12.19) as percent-encoded JSON, at most 512
+            bytes decoded: `AnalysisOptions`. Part of the cache key. A bad one
+            is a 400 `BAD_OPTIONS` before the body is read.
+          schema: { type: string, maxLength: 1536 }
+        - name: X-Duration
+          in: header
+          required: false
+          description: The audio's length in seconds as the browser read it; used only for the queue's estimate (W3.16).
+          schema: { type: string }
+        - name: X-Reanalysis-Of
+          in: header
+          required: false
+          description: |
+            W3.24: the id of the caller's own analysis this one re-analyses
+            (in another mode, say). It must be the same audio (400
+            `NOT_SAME_AUDIO`); someone else's is the 404 of one that does not exist.
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
       requestBody:
         required: true
         content:
@@ -697,11 +802,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AnalysisCreated' }
         '400':
-          description: '`UNSUPPORTED_FORMAT` or `EMPTY_UPLOAD`.'
+          description: '`UNSUPPORTED_FORMAT`, `EMPTY_UPLOAD`, `BAD_MODE`, `BAD_OPTIONS` or `NOT_SAME_AUDIO`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '413':
           description: '`TOO_LARGE`; `details.maxUploadMb` says the limit.'
           content:
@@ -728,9 +834,10 @@ paths:
       summary: Answer from the stored result without uploading
       description: |
         The audio's SHA-1, computed by the browser. When the current engine
-        has analysed that audio, a new analysis is made from the stored
-        result (as a cached upload would be) and returned; nothing counts
-        against the quota or the queue. Otherwise `{ cached: false }`.
+        has analysed that audio in the same mode with the same hints, a new
+        analysis is made from the stored result (as a cached upload would be)
+        and returned; nothing counts against the quota or the queue.
+        Otherwise `{ cached: false }`.
       parameters:
         - $ref: '#/components/parameters/sameOrigin'
       requestBody:
@@ -747,6 +854,10 @@ paths:
                 private: { type: boolean }
                 title: { type: [string, 'null'] }
                 artist: { type: [string, 'null'] }
+                mode: { $ref: '#/components/schemas/AnalysisMode' }
+                options: { $ref: '#/components/schemas/AnalysisOptions' }
+                duration: { type: number, description: As X-Duration on upload. }
+                reanalysisOf: { type: string, pattern: '^[0-9a-f]{32}$', description: As X-Reanalysis-Of on upload. }
       responses:
         '200':
           description: "A hit (`AnalysisCreated` with `cached: true`) or `{ cached: false }`."
@@ -757,7 +868,7 @@ paths:
                   - { $ref: '#/components/schemas/AnalysisCreated' }
                   - { type: object, required: [cached], properties: { cached: { const: false } } }
         '400':
-          description: '`BAD_SHA1` or `UNSUPPORTED_FORMAT`.'
+          description: '`BAD_SHA1`, `UNSUPPORTED_FORMAT`, `BAD_MODE`, `BAD_OPTIONS` or `NOT_SAME_AUDIO`.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

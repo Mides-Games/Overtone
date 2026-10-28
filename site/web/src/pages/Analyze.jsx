@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
+import AnalysisOptions from '../components/AnalysisOptions.jsx'
 import CancelButton from '../components/CancelButton.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
+import { buildRequest, EMPTY_FORM } from '../lib/analysis-options.js'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { askToNotify, tracker, useAnalysis, useTracker } from '../lib/tracking.js'
@@ -49,12 +51,21 @@ export default function Analyze() {
   const [state, setState] = useState({ kind: 'idle' })
   const [recent] = useState(recentAnalyses)
   const { live, settings } = useTracker()
+  // W3.21: the options, folded away; W3.16/W11.1: what each mode costs.
+  const [asking, setAsking] = useState(EMPTY_FORM)
+  const [costs, setCosts] = useState(null)
 
   useEffect(() => {
     api('/health')
-      .then((data) => setLimits(data.limits))
+      .then((data) => {
+        setLimits(data.limits)
+        setCosts(data.costs ?? null)
+      })
       .catch(() => setLimits(null))
   }, [])
+
+  const single = items.length === 1 ? items[0] : null
+  const request = buildRequest(asking, { durationS: single?.seconds ?? null, allowStretch: items.length <= 1 })
 
   const update = (key, patch) => setItems((list) => list.map((item) => (item.key === key ? { ...item, ...patch } : item)))
 
@@ -95,6 +106,7 @@ export default function Analyze() {
     event.preventDefault()
     const waiting = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error')
     if (!waiting.length) return setState({ kind: 'error', message: t('analyze.pickAudio') })
+    if (request.error) return setState({ kind: 'error', message: t(`modes.errors.${request.error}`) })
     const alone = items.length === 1
     if (alone) {
       const problem = problemWith(waiting[0])
@@ -123,7 +135,8 @@ export default function Analyze() {
       }
       update(item.key, { upload: { kind: 'sending', sent: 0 } })
       try {
-        const options = { private: hidden, ...item.tags }
+        // The mode and hints (W11.1, W3.21) and the length, for the queue's estimate (W3.16).
+        const options = { private: hidden, ...item.tags, mode: request.mode, hints: request.options, duration: item.seconds }
         // A song analysed before is answered from its stored result, and not uploaded at all.
         const created =
           (await lookupAudio(item.file, options)) ??
@@ -243,6 +256,15 @@ export default function Analyze() {
                 ))}
               </ul>
             )}
+
+            <AnalysisOptions
+              form={asking}
+              onChange={setAsking}
+              costs={costs}
+              durationS={single?.seconds ?? null}
+              allowStretch={items.length <= 1}
+              error={request.error}
+            />
 
             <label className="flex cursor-pointer items-start gap-3 rounded-control border border-line bg-surface-2 px-3 py-2.5">
               <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
@@ -367,6 +389,11 @@ export function messageFor(t, error, limits) {
       return t('analyze.errors.CACHE_LIMIT', { count: error.details?.limit ?? '' })
     case 'NETWORK':
       return t('analyze.errors.NETWORK')
+    case 'BAD_OPTIONS':
+    case 'BAD_MODE':
+      return t('modes.errors.server', { message: error.message })
+    case 'NOT_SAME_AUDIO':
+      return t('modes.reanalyse.mismatch')
     default:
       return t('analyze.failed', { message: error.message })
   }

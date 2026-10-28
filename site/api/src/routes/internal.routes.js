@@ -8,13 +8,15 @@ import { bearerGuard } from '../middlewares/shared-secret.js';
 import { analyses, setEngineHash } from '../services/analysis.service.js';
 import { enqueueDm } from '../services/links.service.js';
 import { audioPath, discard } from '../services/spool.service.js';
+import { DEFAULT_MODE, MODES, parseOptions } from '../utils/analysis-options.js';
 import { HttpError } from '../utils/http-error.js';
 import { workerSeen } from '../utils/worker-status.js';
 
 /**
  * The worker's side of the queue, under /api/internal (worker/main.py).
  *
- *   POST /jobs/claim          { engine_hash } -> 204, or { id, attempt, filename, max_seconds }
+ *   POST /jobs/claim          { engine_hash, engine_hashes? } -> 204, or
+ *                             { id, attempt, filename, max_seconds, mode, options }
  *   GET  /jobs/:id/audio      the spooled audio of a running job
  *   POST /jobs/:id/progress   { attempt, stage, progress }
  *   POST /jobs/:id/result     { attempt, result }   -> the audio is deleted
@@ -74,7 +76,23 @@ router.post('/jobs/claim', async (req, res) => {
   if (typeof hash !== 'string' || !HASH.test(hash)) {
     throw new HttpError(400, 'engine_hash is required.', 'BAD_ENGINE_HASH');
   }
-  setEngineHash(hash);
+  // W11.1: each mode's hash, so each mode's cached results are keyed by the
+  // code that made them. Optional: a worker from before modes sends none.
+  const named = req.body.engine_hashes;
+  const hashes = {};
+  if (named !== undefined) {
+    if (!named || typeof named !== 'object' || Array.isArray(named)) {
+      throw new HttpError(400, 'engine_hashes maps each mode to its hash.', 'BAD_ENGINE_HASH');
+    }
+    for (const mode of MODES) {
+      if (named[mode] === undefined) continue;
+      if (typeof named[mode] !== 'string' || !HASH.test(named[mode])) {
+        throw new HttpError(400, 'engine_hashes maps each mode to its hash.', 'BAD_ENGINE_HASH');
+      }
+      hashes[mode] = named[mode];
+    }
+  }
+  setEngineHash(hash, hashes);
   await sweepStaleJobs();
   const job = await analyses().claim();
   if (!job) return res.status(204).end();
@@ -83,6 +101,8 @@ router.post('/jobs/claim', async (req, res) => {
     attempt: job.attempt,
     filename: job.filename,
     max_seconds: env.maxAudioSeconds,
+    mode: job.mode ?? 'normal',
+    options: job.options ?? {},
   });
 });
 
@@ -172,7 +192,28 @@ export const validResult = (result) =>
   nullOr((v) => text(v, 32))(result.engine_mode) &&
   (result.findings === undefined || (Array.isArray(result.findings) && result.findings.length <= MAX_LINES)) &&
   nullOr((r) => typeof r === 'object' && REFUSAL_CODE.test(r.code) && text(r.message, 1000))(result.refusal) &&
+  // v1.2 (W11.1, W3.21, W12.19): absent from older workers' results.
+  nullOr((m) => MODES.includes(m))(result.mode) &&
+  nullOr((s) => typeof s === 'object' && time(s.start_ms) && time(s.end_ms) && s.end_ms > s.start_ms)(result.stretch) &&
+  (result.hint_checks === undefined || (Array.isArray(result.hint_checks) && result.hint_checks.length <= 16 &&
+    result.hint_checks.every((c) => c && typeof c === 'object' && REFUSAL_CODE.test(c.key) && ['info', 'warn'].includes(c.level)))) &&
   (result.refused ? result.red_lines.length === 0 && result.global_bpm === null : result.red_lines.length > 0);
+
+/**
+ * The mode and hints a result was really made with, which the row takes on
+ * when it is stored: the cache then keys it by what ran, not by what was
+ * asked. A worker from before modes ran every job normal with no hints, and
+ * its result says nothing of either.
+ */
+export const askedOf = (result) => {
+  const mode = MODES.includes(result.mode) ? result.mode : DEFAULT_MODE;
+  try {
+    const { options, key } = parseOptions(result.options ?? null, { maxSeconds: 4 * 3600 });
+    return { mode, options, key };
+  } catch {
+    return { mode, options: {}, key: '' };
+  }
+};
 
 /**
  * W9.4: an ended analysis of an account that asked for Discord DMs goes into
@@ -193,7 +234,7 @@ router.post('/jobs/:id/result', async (req, res) => {
   const attempt = attemptOf(req);
   const { result } = req.body;
   if (!validResult(result)) throw new HttpError(400, 'Not a timing-result v1.', 'BAD_RESULT');
-  if (!(await analyses().finish(id, attempt, result))) throw stale();
+  if (!(await analyses().finish(id, attempt, result, askedOf(result)))) throw stale();
   await discard(id);
   await noticeEnd(id);
   res.status(204).end();

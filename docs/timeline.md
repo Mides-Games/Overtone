@@ -20,6 +20,69 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Analysis modes, hints, a stretch, re-analysis and the queue's estimate
+
+### Changed
+
+- **Modes (W11.1).** Each job runs in a mode the person picks by how long they want to
+  wait. `fast`: no Beat This! vote and no octave judges (each judge reads "no answer"
+  as "keep the engine's octave"). `normal`: the call the worker always made, untouched.
+  `strict`: `normal` for now (see Rejected). The worker announces one engine hash per
+  mode, the result says its mode (`timing-result v1.2`), and the API keys every cache
+  lookup by mode and hints: the same audio asked another way is another result.
+- **Hints (W3.21)** touch the engine only where it has a real knob. An expected tempo
+  outside 120-240 moves `MAP_OCTAVE_RANGE`, the engine's own octave preference, for that
+  job (restored after); a meter fills only the bars the engine could not prove, where
+  its fallback was a guess. "One BPM" / "it changes" have no honest knob and only flag
+  the result. Every hint is compared with the result (`hint_checks`): a hint the audio
+  contradicts is said on the page, never folded silently into the timing.
+- **A stretch (W12.19)** is cut by the worker out of the engine's own decode, analysed
+  alone and shifted back into the song's timeline; the page says what it covered.
+- **Re-analysis (W3.24)** from the result page, with the file the browser holds or one
+  picked again and checked by SHA-1; the two results are linked (`reanalysis_of`) and
+  each links to `/compare?a=&b=`.
+- **The queue's estimate (W3.16):** each live row says "done in ≈ a – b", from W2.4's
+  cost per audio minute and mode, one worker assumed, "at least" behind a job of unknown
+  length.
+
+### Hardening
+
+- Options are validated on the API (known keys only, bounds, 512 bytes in the header)
+  before the upload's body is read; a re-analysis of someone else's analysis is the 404
+  of one that does not exist, and of other audio a 400 `NOT_SAME_AUDIO`.
+- A stored result's mode and hints are taken from the result, not from the request: a
+  worker from before modes cannot file a normal result under `fast`.
+
+### Measured
+
+- `long-6min` of the benchmark, one fresh process per run, four threads, on this PC
+  while other sessions loaded it: **fast 7.2 s and 14.3 s, normal 94.5 s and 82.3 s**
+  (engine and model load apart: 5-13 s), the same reading (186 BPM, one red line).
+  In the dev stack, a 60 s click track: fast on a 40 s stretch 5.7 s, normal on the
+  whole 61.4 s.
+- The default path is pinned by construction, not by a local gate run (the owner's
+  rule: no suite or gates on this PC): `DefaultModeTests` checks the exact
+  `analyze_audio` call, the octave window and the judges for the default mode. The
+  suite and the gates run on the server after merging.
+- `strict` candidates: not measured. A first local pass ran without the Beat This!
+  model (the worktree held its Git LFS pointer), so its numbers are void and not
+  recorded.
+
+### Rejected / tried and dropped
+
+- **Trimming in the browser** (W12.19's first idea): the browser's decoder is not the
+  engine's (an MP3's encoder delay would shift every time), a WAV of the stretch changes
+  the SHA-1 the cache and re-analysis rely on, and can pass the upload cap. The worker
+  cuts instead; the whole file is uploaded.
+- **Hints as constraints** (`min_delta` high for "one BPM", `force_subdivision` for a
+  tempo): the first hides a real change behind the hint, the second skips the osu!
+  conventions, the vote and drift following. Left for W11.5, which measures first.
+- **Turning on PIECEWISE_GRID, CONSTANT_GRID or SONG_OCTAVE_BEAT_THIS for strict:**
+  each is "off until measured on the server" and has no held-out number; strict stays
+  normal until W11.3/W11.4.
+
+---
+
 ## Unreleased — 2026-10-27 · A front page that answers why
 
 ### Changed

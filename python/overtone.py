@@ -3903,6 +3903,14 @@ def _song_tempo(points: list, duration_ms: float) -> float | None:
     return max(spans, key=spans.get) if spans else None
 
 
+#: A line an octave off its song is folded back even when Beat This! does not
+#: confirm it (SECTION_OCTAVE_JUDGE alone asks it to). On 2026-10-28 runs, 255
+#: of 1629 anime-variable and 115 of 636 bands maps mixed octaves inside one
+#: song -- a run of tempo changes read at double, or a start at double that
+#: settles -- where the mapper kept one. Off until measured.
+OCTAVE_CONTINUITY = False
+
+
 def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
     """Lines an octave off their song read back at its octave, when Beat This!
     agrees (SECTION_OCTAVE_JUDGE). ``heard()`` gives Beat This!'s beats (s),
@@ -3929,14 +3937,16 @@ def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
             found = heard()
             beats = np.asarray(found, dtype=float) * 1000.0 if found is not None else np.zeros(0)
         inside = beats[(beats >= point.offset_ms) & (beats <= end)]
-        if inside.size < 8:
-            out.append(point)
-            continue
-        tempo = 60000.0 / float(np.median(np.diff(inside)))
         target = point.bpm * factor
-        if abs(np.log2(tempo / target)) >= abs(np.log2(tempo / point.bpm)):
-            out.append(point)
-            continue
+        if inside.size < 8:
+            if not OCTAVE_CONTINUITY:
+                out.append(point)
+                continue
+        elif not OCTAVE_CONTINUITY:
+            tempo = 60000.0 / float(np.median(np.diff(inside)))
+            if abs(np.log2(tempo / target)) >= abs(np.log2(tempo / point.bpm)):
+                out.append(point)
+                continue
         offset = point.offset_ms
         if factor < 1.0:
             # Of the two beats a halved line could start on, the one whose
@@ -3949,7 +3959,8 @@ def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
                 return float(np.median(np.minimum(np.abs(inside[i - 1] - grid),
                                                   np.abs(inside[i] - grid))))
 
-            offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
+            if inside.size >= 8:
+                offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
         out.append(replace(point, bpm=target, offset_ms=offset))
         changed = True
     if not changed:

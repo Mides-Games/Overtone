@@ -87,6 +87,7 @@ EXPERIMENTS = {
     "piecewise-strict": {"PIECEWISE_GRID": True, "PIECEWISE_PENALTY": 120.0},
     "piecewise-cg": {"PIECEWISE_GRID": True, "CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
                      "CONSTANT_GRID_SHARE": 0.8},
+    "octave-continuity": {"OCTAVE_CONTINUITY": True},
     "tidy-bpm": {"TIDY_BPM": True},
     "drift-48": {"DRIFT_WINDOW_BEATS": 48},
     "drift-32": {"DRIFT_WINDOW_BEATS": 32},

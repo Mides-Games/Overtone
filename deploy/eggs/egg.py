@@ -199,7 +199,7 @@ def api():
             var("Anonymous daily limit", "ANON_DAILY_LIMIT", "Analyses per day without an account (default 5)."),
             var("User daily limit", "USER_DAILY_LIMIT", "Analyses per day with a Mides account (default 50)."),
             var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted (default 600)."),
-            var("Max upload MB", "MAX_UPLOAD_MB", "Largest upload, checked before the body is read (default 40)."),
+            var("Max upload MB", "MAX_UPLOAD_MB", "Largest upload, checked before the body is read (default 95, under Cloudflare's 100 MB per request)."),
             var("Job timeout", "JOB_TIMEOUT_S",
                 "Seconds a job may run before it goes back to the queue; two attempts in all (default 900)."),
             var("Spool folder", "SPOOL_DIR",
@@ -209,7 +209,7 @@ def api():
             var("Spool budget MB", "SPOOL_MAX_MB",
                 "The most the spool holds, waiting audio and uploads still arriving together; past it an "
                 "upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk "
-                "(default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it."),
+                "(default 1280 of 2 GB). Each upload reserves its own size, so it should hold a few of MAX_UPLOAD_MB."),
             var("Queue max", "QUEUE_MAX", "Songs waiting or running at once, everyone's together (default 30)."),
             secret("Bot token", "BOT_TOKEN",
                    "32+ characters, the same value as this environment's overtone-bot BOT_TOKEN, and not "

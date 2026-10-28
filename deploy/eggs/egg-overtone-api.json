@@ -230,7 +230,7 @@
         },
         {
             "name": "Max upload MB",
-            "description": "Largest upload, checked before the body is read (default 40).",
+            "description": "Largest upload, checked before the body is read (default 95, under Cloudflare's 100 MB per request).",
             "env_variable": "MAX_UPLOAD_MB",
             "default_value": "",
             "user_viewable": true,
@@ -260,7 +260,7 @@
         },
         {
             "name": "Spool budget MB",
-            "description": "The most the spool holds, waiting audio and uploads still arriving together; past it an upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk (default 1280 of 2 GB). QUEUE_MAX x MAX_UPLOAD_MB should fit in it.",
+            "description": "The most the spool holds, waiting audio and uploads still arriving together; past it an upload is refused (503 SPOOL_FULL) before it is read. Below the server's disk (default 1280 of 2 GB). Each upload reserves its own size, so it should hold a few of MAX_UPLOAD_MB.",
             "env_variable": "SPOOL_MAX_MB",
             "default_value": "",
             "user_viewable": true,

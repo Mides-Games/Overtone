@@ -156,11 +156,11 @@ is missing.
 | `ANON_DAILY_LIMIT` | `5` | Analyses a UTC day per client address without an account. |
 | `USER_DAILY_LIMIT` | `50` | Analyses a UTC day with a Mides account. |
 | `MAX_AUDIO_SECONDS` | `600` | Longest song: checked in the browser, then by the worker from the file's header (or the decoded length) before it is timed. |
-| `MAX_UPLOAD_MB` | `40` | Largest upload: refused on `Content-Length` before a byte is read, and cut off while the body streams. |
+| `MAX_UPLOAD_MB` | `95` | Largest upload: refused on `Content-Length` before a byte is read, and cut off while the body streams. Kept under the 100 MB a request may carry through Cloudflare. |
 | `SPOOL_DIR` | `<OS temp>/overtone-spool` | Where uploads wait for the worker (mode 0700). Without a database it is emptied at start, since the queue died with the process. |
 | `SPOOL_MAX_MB` | `1280` | The spool's budget: waiting audio plus the uploads still arriving, each of which reserves its `Content-Length` (or `MAX_UPLOAD_MB`) before a byte is read. Past it, 503 `SPOOL_FULL`. Counted by the API process, since a panel's disk limit is not visible to `statfs`. |
 | `SPOOL_MIN_FREE_MB` | `256` | Free space an upload must leave on the spool's filesystem, checked too (503 `SPOOL_FULL`). |
-| `QUEUE_MAX` | `30` | Songs waiting, running or still arriving, everyone's together (503 `QUEUE_FULL`). The default keeps `QUEUE_MAX × MAX_UPLOAD_MB` inside `SPOOL_MAX_MB`; the API warns at start when it does not. |
+| `QUEUE_MAX` | `30` | Songs waiting, running or still arriving, everyone's together (503 `QUEUE_FULL`). Each holds its own size in the spool, so most queues fit `SPOOL_MAX_MB`; one of only the largest files meets `SPOOL_FULL` first. The API warns at start when the spool holds fewer than four uploads of `MAX_UPLOAD_MB`. |
 | `WORKER_TOKEN` | random per process | The bearer of `/api/internal`. 32+ characters. **Required in production.** `pnpm dev` generates one and hands it to the worker it starts. |
 | `JOB_TIMEOUT_S` | `900` | A job running longer goes back to the queue; two attempts in all. |
 | `BOT_TOKEN` | none (bot off) | The Discord bot's bearer for `/api/internal/bot` (W9.3, `docs/bot.md`). 32+ characters, never `WORKER_TOKEN`. Unset, those routes answer 503 `BOT_OFF` and the profile offers no bot code. |

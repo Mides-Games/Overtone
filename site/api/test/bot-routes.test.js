@@ -103,7 +103,7 @@ test('the bot\'s door takes BOT_TOKEN and nothing else, the worker\'s token incl
   assert.equal((await bot('/health', { token: WORKER_TOKEN })).status, 401);
   const health = await bot('/health');
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).maxUploadMb, 40);
+  assert.equal((await health.json()).maxUploadMb, 95);
   // And the bot's token opens nothing of the worker's.
   const claim = await fetch(`${root}/api/internal/jobs/claim`, {
     method: 'POST', headers: { Authorization: `Bearer ${BOT_TOKEN}`, 'Content-Type': 'application/json' }, body: '{"engine_hash":"abcdef01"}',

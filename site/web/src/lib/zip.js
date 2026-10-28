@@ -3,7 +3,7 @@
  * .osz. The entries are stored, not compressed: a `[TimingPoints]` block is a
  * few kilobytes and the audio is compressed already, and storing them keeps
  * this to a CRC and three headers instead of a deflate dependency. Names are
- * UTF-8 (flag bit 11). No ZIP64: the largest archive is one upload (40 MB)
+ * UTF-8 (flag bit 11). No ZIP64: the largest archive is one upload (MAX_UPLOAD_MB, 95 by default)
  * and its .osu.
  */
 

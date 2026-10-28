@@ -2,14 +2,16 @@ import { useTranslation } from 'react-i18next'
 
 import { DRIFT_P90_MS } from '../../lib/check-spans.js'
 import { formatClock } from '../../lib/timing.js'
+import EmptyState from '../ui/EmptyState.jsx'
+import Icon from '../ui/Icon.jsx'
 
 /** Each reason's tone, as the map and the table draw the same thing. */
 const TONES = {
-  check: 'border-amber/40 bg-amber/10 text-amber',
-  medium: 'border-tempo/40 bg-tempo/10 text-tempo',
-  drift: 'border-amber/40 bg-amber/10 text-amber',
-  hint: 'border-amber/40 bg-amber/10 text-amber',
-  swing: 'border-tempo/40 bg-tempo/10 text-tempo',
+  check: 'chip-amber',
+  medium: 'chip-tempo',
+  drift: 'chip-amber',
+  hint: 'chip-amber',
+  swing: 'chip-tempo',
 }
 
 /**
@@ -21,30 +23,30 @@ const TONES = {
 export default function CheckHere({ spans, active, canPlay, onShow, onPlay }) {
   const { t } = useTranslation()
   return (
-    <section className="panel overflow-hidden" aria-labelledby="check-here">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-3">
-        <h2 id="check-here" className="label text-text">
+    <section className="space-y-3" aria-labelledby="check-here">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="check-here" className="heading-title">
           {t('check.title')}
-          {spans.length > 0 && <span className="readout ml-2 text-dim">{spans.length}</span>}
-        </h2>
+          {spans.length > 0 && <span className="readout ml-2 text-label font-normal text-dim">{spans.length}</span>}
+        </h3>
         <p className="text-caption text-dim">{spans.length ? t('check.note') : ''}</p>
       </div>
       {spans.length === 0 ? (
-        <p className="px-4 py-3 text-label text-muted">{t('check.empty')}</p>
+        <EmptyState title={t('check.empty')} className="border-y border-line py-6" />
       ) : (
-        <ul className="max-h-80 divide-y divide-line overflow-auto">
+        <ul className="max-h-80 divide-y divide-line overflow-auto border-y border-line">
           {spans.map((span) => (
             <li
               key={span.key}
               // A phone puts the time and the buttons on one row and the reasons under them.
-              className={`grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 px-4 py-2 sm:flex ${active === span.key ? 'bg-accent/10' : ''}`}
+              className={`grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 px-2 py-2 transition-colors duration-150 ease-out sm:flex ${active === span.key ? 'bg-accent/10' : ''}`}
             >
               <span className="readout text-label text-text sm:min-w-[11.5rem]">
                 {formatClock(span.startMs)} – {formatClock(span.endMs)}
               </span>
               <span className="order-last col-span-2 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:order-none">
                 {span.reasons.map((reason) => (
-                  <span key={reason} className={`chip ${TONES[reason]}`} title={t(`check.why.${reason}`, { ms: DRIFT_P90_MS })}>
+                  <span key={reason} className={TONES[reason]} title={t(`check.why.${reason}`, { ms: DRIFT_P90_MS })}>
                     {t(`check.reason.${reason}`)}
                   </span>
                 ))}
@@ -54,15 +56,15 @@ export default function CheckHere({ spans, active, canPlay, onShow, onPlay }) {
                 <button type="button" className="tool-btn px-2.5" aria-pressed={active === span.key} onClick={() => onShow(span)}>
                   {t('check.show')}
                 </button>
-                <button type="button" className="tool-btn px-2" disabled={!canPlay} onClick={() => onPlay(span)} title={t('check.play')}>
-                  ⟲<span className="sr-only">{t('check.play')}</span>
+                <button type="button" className="tool-btn" disabled={!canPlay} onClick={() => onPlay(span)} title={t('check.play')} aria-label={t('check.play')}>
+                  <Icon name="loop" size={15} />
                 </button>
               </span>
             </li>
           ))}
         </ul>
       )}
-      <p className="border-t border-line px-4 py-2 text-caption text-dim">{canPlay ? t('check.how') : t('check.needsAudio')}</p>
+      <p className="text-caption text-dim">{canPlay ? t('check.how') : t('check.needsAudio')}</p>
     </section>
   )
 }

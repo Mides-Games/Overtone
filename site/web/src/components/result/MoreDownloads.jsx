@@ -8,6 +8,7 @@ import { patchOsuFile } from '../../lib/osu-patch.js'
 import { downloadName, isAdjusted, resultJson, saveText, summaryText, timingCsv } from '../../lib/timing.js'
 import ExportOptions, { useExportOptions } from './ExportOptions.jsx'
 import DawExports from './DawExports.jsx'
+import Icon from '../ui/Icon.jsx'
 import GameFormats from './GameFormats.jsx'
 
 /**
@@ -73,11 +74,9 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
   const minutes = MAX_TRACK_SECONDS / 60
 
   return (
-    <details className="group border-t border-line">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-label font-semibold text-text hover:bg-surface-2">
-        <span aria-hidden className="text-dim transition group-open:rotate-90">
-          ▸
-        </span>
+    <details className="group/more border-t border-line">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-2.5 text-label font-semibold text-text transition-colors duration-150 ease-out hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+        <Icon name="chevron-right" size={16} className="text-dim transition-transform duration-150 ease-out group-open/more:rotate-90" />
         {t('exports.more')}
       </summary>
 
@@ -98,7 +97,7 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
               e.target.value = ''
             }}
           />
-          <button type="button" className="btn-ghost" disabled={patch === 'busy'} onClick={() => osuInput.current?.click()}>
+          <button type="button" className="btn-ghost btn-sm" disabled={patch === 'busy'} onClick={() => osuInput.current?.click()}>
             {t('exports.patchPick')}
           </button>
           <p className="text-caption text-dim">{t('exports.patchNote')}</p>
@@ -127,10 +126,10 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
         <div className="space-y-2 bg-surface px-4 py-3">
           <h3 className="label">{t('exports.clickTitle')}</h3>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-ghost" disabled={Boolean(track?.busy)} onClick={() => clickTrack(false)}>
+            <button type="button" className="btn-ghost btn-sm" disabled={Boolean(track?.busy)} onClick={() => clickTrack(false)}>
               {track?.busy === 'clicks' ? t('exports.rendering') : t('exports.clicksOnly')}
             </button>
-            <button type="button" className="btn-ghost" disabled={Boolean(track?.busy) || !songBuffer} onClick={() => clickTrack(true)}>
+            <button type="button" className="btn-ghost btn-sm" disabled={Boolean(track?.busy) || !songBuffer} onClick={() => clickTrack(true)}>
               {track?.busy === 'mix' ? t('exports.rendering') : t('exports.clicksMix')}
             </button>
           </div>
@@ -172,20 +171,20 @@ export default function MoreDownloads({ id, analysis, lines, adjustment, grid, c
         <h3 className="label">{t('exports.filesTitle')}</h3>
         <div className="flex flex-wrap gap-2">
           {adjusted ? (
-            <button type="button" className="btn-ghost" onClick={() => saveText(timingCsv(result, lines), downloadName(analysis.filename, 'timing.csv'), 'text/csv;charset=utf-8')}>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => saveText(timingCsv(result, lines), downloadName(analysis.filename, 'timing.csv'), 'text/csv;charset=utf-8')}>
               {t('result.downloadCsv')}
             </button>
           ) : (
-            <a className="btn-ghost" href={csvHref ?? `/api/v1/analyses/${id}/timing.csv`} download>
+            <a className="btn-ghost btn-sm" href={csvHref ?? `/api/v1/analyses/${id}/timing.csv`} download>
               {t('result.downloadCsv')}
             </a>
           )}
-          <button type="button" className="btn-ghost" onClick={() => saveText(resultJson(result), downloadName(analysis.filename, 'timing.json'), 'application/json')}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => saveText(resultJson(result), downloadName(analysis.filename, 'timing.json'), 'application/json')}>
             {t('exports.json')}
           </button>
           <button
             type="button"
-            className="btn-ghost"
+            className="btn-ghost btn-sm"
             onClick={() =>
               saveText(summaryText({ filename: analysis.filename, result, lines, adjustment, checks }), downloadName(analysis.filename, 'summary.txt'), 'text/plain;charset=utf-8')
             }

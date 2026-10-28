@@ -7,6 +7,7 @@ import { forgetProgress, readLayers, songSpectra, writeLayers } from '../../lib/
 import { formatBpm, formatClock, governing, lowerBound } from '../../lib/timing.js'
 import { layout, MONO, paintMap, paintOverview, readPalette } from './draw.js'
 import { RED_LINES_TABLE_ID } from './RedLinesTable.jsx'
+import Icon from '../ui/Icon.jsx'
 
 /** The closest zoom, seconds across the whole map. */
 const MIN_SPAN_S = 0.5
@@ -589,8 +590,9 @@ export default function TempoMap({
 
   return (
     <section className="panel overflow-hidden" aria-label={t('tempo.mapLabel')}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
-        <h2 className="label">{t('tempo.mapTitle')}</h2>
+      {/* The map's toolbar: view (zoom, fit, follow), layers, then the editor's switch, each group apart. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-3 py-2">
+        <h3 className="label text-text">{t('tempo.mapTitle')}</h3>
         <div className="flex flex-wrap items-center gap-1.5">
           {viewLabel && (
             <span className="readout mr-1 text-caption text-dim">
@@ -598,10 +600,10 @@ export default function TempoMap({
             </span>
           )}
           <button type="button" className="tool-btn" onClick={() => zoomBy(1 / 0.6)} aria-label={t('tempo.zoomOut')} title={t('tempo.zoomOut')}>
-            −
+            <Icon name="minus" size={16} />
           </button>
           <button type="button" className="tool-btn" onClick={() => zoomBy(0.6)} aria-label={t('tempo.zoomIn')} title={t('tempo.zoomIn')}>
-            +
+            <Icon name="plus" size={16} />
           </button>
           <button type="button" className="tool-btn px-2.5" onClick={fit} disabled={!viewLabel}>
             {t('tempo.fit')}
@@ -617,9 +619,13 @@ export default function TempoMap({
             {t('tempo.spectrogram.toggle')}
           </button>
           {onToggleEdit && (
-            <button type="button" className="tool-btn px-2.5" aria-pressed={editing} onClick={() => onToggleEdit()} aria-keyshortcuts="E" title={t('editor.toggleHint')}>
-              ✎ {t('editor.edit')}
-            </button>
+            <>
+              <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
+              <button type="button" className="tool-btn gap-1.5 px-2.5" aria-pressed={editing} onClick={() => onToggleEdit()} aria-keyshortcuts="E" title={t('editor.toggleHint')}>
+                <Icon name="edit" size={15} />
+                {t('editor.edit')}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -651,7 +657,7 @@ export default function TempoMap({
         />
         {tip && L && (
           <div
-            className="pointer-events-none absolute z-10 min-w-36 rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-caption shadow-lg"
+            className="pointer-events-none absolute z-10 min-w-36 rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-caption shadow-[var(--shadow-pop)]"
             style={{ left: Math.min(tip.x + 12, L.width - 160), top: L.tempoTop + 4 }}
           >
             <Row k={t('tempo.tipTime')} v={formatClock(tip.s * 1000)} />

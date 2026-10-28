@@ -20,6 +20,40 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The studio look: Analyze, the queue and the result pages
+
+### Changed
+
+- `/analyze`, `/queue`, the result page, `/t/:id` and `/compare` follow `docs/design.md`:
+  sentence-case headlines, section headers, panels only for what is operated (the upload
+  form, the tempo map, the tables, the export panel, Compare's two sides), hairlines
+  elsewhere, readouts with units, skeletons and empty states instead of spinners.
+- The result page is grouped into listen, check and export zones with jump links. The
+  .osz is the page's one primary action; practice and the by-ear tools, and the .osz
+  options with the beat-snap chart, are folded under one line each. Every feature, key
+  and shortcut is where it was or one click away; the red lines table moved into Check.
+- Controls drawn with characters (▶, ⟲, ✎, ⧉, ×, →, ↗, ▸, ▾, ★) use the icon set.
+
+### Fixed
+
+- Two e2e language tests still looked for the EN/ES toggle the ten-language selector
+  replaced; they use the selector now.
+- The progress bars on Analyze, the queue and a running result animated their width;
+  they move by `scaleX`.
+
+### Hardening
+
+- axe also audits the result page with every fold open, a published timing page and a
+  comparison, in both themes.
+
+### Measured
+
+- `site/web` 326/326; build and budget ok, the result chunk 30.1 kB gzip (its budget
+  raised from 30 to 32 kB); e2e 82/82 in Chromium. No engine change, so no engine
+  measurement.
+
+---
+
 ## Unreleased — 2026-10-28 · The studio look: content and tool pages
 
 ### Changed

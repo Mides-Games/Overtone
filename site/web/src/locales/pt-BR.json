@@ -264,7 +264,30 @@
     "voteOn": "ligado",
     "voteOff": "desligado",
     "cached": "mesmo áudio analisado antes: resultado guardado",
-    "removed": "Um moderador tirou esta música da fila, então ela não foi analisada. O arquivo foi apagado."
+    "removed": "Um moderador tirou esta música da fila, então ela não foi analisada. O arquivo foi apagado.",
+    "zones": {
+      "nav": "Nesta página",
+      "listen": {
+        "eyebrow": "Ouvir",
+        "title": "Ouça as linhas vermelhas sobre a música"
+      },
+      "check": {
+        "eyebrow": "Conferir",
+        "title": "O que conferir, linha por linha"
+      },
+      "export": {
+        "eyebrow": "Exportar",
+        "title": "Leve para o osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Mais ferramentas de escuta",
+      "hint": "Prática, cliques entre batidas, A/B, tap tempo e latência"
+    },
+    "oszMore": {
+      "title": "Opções do .osz e beat snap",
+      "hint": "Onde caem os ataques, a capa, a prévia, o lead-in e o conjunto de mapas"
+    }
   },
   "login": {
     "title": "Entrar",

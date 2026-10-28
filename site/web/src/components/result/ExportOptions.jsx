@@ -115,7 +115,7 @@ function OffsetInput({ value, onCommit }) {
         if (/^-?\d+$/.test(text)) onCommit(Number(text))
       }}
       onBlur={() => setDraft(null)}
-      className="readout h-8 w-16 rounded-control border border-line-strong bg-surface-2 px-2 text-right text-label text-text outline-none focus:border-accent"
+      className="field readout h-8 min-h-8 w-16 px-2 py-0 text-right text-label"
     />
   )
 }

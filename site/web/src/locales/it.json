@@ -264,7 +264,30 @@
     "voteOn": "attivo",
     "voteOff": "disattivo",
     "cached": "stesso audio già analizzato: risultato salvato",
-    "removed": "Un moderatore ha tolto questa canzone dalla coda, quindi non è stata analizzata. Il suo file è stato eliminato."
+    "removed": "Un moderatore ha tolto questa canzone dalla coda, quindi non è stata analizzata. Il suo file è stato eliminato.",
+    "zones": {
+      "nav": "In questa pagina",
+      "listen": {
+        "eyebrow": "Ascolta",
+        "title": "Ascolta le linee rosse sulla canzone"
+      },
+      "check": {
+        "eyebrow": "Verifica",
+        "title": "Cosa verificare, linea per linea"
+      },
+      "export": {
+        "eyebrow": "Esporta",
+        "title": "Portalo in osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Altri strumenti di ascolto",
+      "hint": "Pratica, clic tra i battiti, A/B, tap tempo e latenza"
+    },
+    "oszMore": {
+      "title": "Opzioni del .osz e beat snap",
+      "hint": "Dove cadono gli attacchi, la copertina, l'anteprima, il lead-in e il set di mappe"
+    }
   },
   "login": {
     "title": "Accedi",

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router'
 
-import BrandLoader from '../components/BrandLoader.jsx'
 import Comments from '../components/social/Comments.jsx'
 import TimingSocial, { UploaderLink, useTimingSocial } from '../components/social/TimingSocial.jsx'
 import Votes, { useTimingVotes, VerifiedBadge } from '../components/social/Votes.jsx'
@@ -11,7 +10,9 @@ import { useDocumentMeta } from '../hooks/useDocumentMeta.js'
 import { commentMarks, ratingLabel } from '../lib/social.js'
 import { comparePath } from '../lib/compare.js'
 import { bpmLabel, checkTimingAudio, publicTiming, songLine } from '../lib/timings.js'
-import { ACCENT_HEADER, accentWash, Result } from './AnalysisResult.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import { ACCENT_HEADER, accentWash, Result, ResultSkeleton } from './AnalysisResult.jsx'
 
 /**
  * A published timing's own page (W3.27), for anyone: the song, who timed it
@@ -70,17 +71,27 @@ export default function TimingPage() {
 
   if (error === 'notFound') {
     return (
-      <div className="panel space-y-3 p-6">
-        <h1 className="font-display text-title font-bold uppercase">{t('timings.page.notFoundTitle')}</h1>
-        <p className="text-label text-muted">{t('timings.page.notFound')}</p>
-        <Link to="/recent" className="btn-ghost">
-          {t('timings.page.toRecent')}
-        </Link>
+      <div className="space-y-6">
+        <header className="rise space-y-4">
+          <p className="eyebrow">{t('timings.page.eyebrow')}</p>
+          <h1 className="heading-headline">{t('timings.page.notFoundTitle')}</h1>
+        </header>
+        <div className="border-t border-line">
+          <EmptyState
+            title={t('timings.page.notFound')}
+            action={
+              <Link to="/recent" className="btn-ghost">
+                {t('timings.page.toRecent')}
+                <Icon name="arrow-right" size={16} />
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
   if (!timing) {
-    return error === 'network' ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <BrandLoader className="py-16" />
+    return error === 'network' ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <ResultSkeleton />
   }
 
   // What the result view and the .osz read: the names stand in for the tags.
@@ -97,13 +108,13 @@ export default function TimingPage() {
 
   return (
     <div className="space-y-8">
-      <header className={`rise flex flex-wrap items-end justify-between gap-4 ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
-        <div className="min-w-0 space-y-2">
-          <p className="label text-accent" style={accent ? { color: accent.ink } : undefined}>
+      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="eyebrow" style={accent ? { color: accent.ink } : undefined}>
             {t('timings.page.eyebrow')}
           </p>
-          <h1 className="font-display text-[clamp(1.5rem,1.2rem+1.2vw,2.1rem)] font-bold break-words">{timing.title ?? t('timings.untitled')}</h1>
-          {timing.artist && <p className="text-body text-muted">{timing.artist}</p>}
+          <h1 className="heading-headline break-words hyphens-auto">{timing.title ?? t('timings.untitled')}</h1>
+          {timing.artist && <p className="lede">{timing.artist}</p>}
           <div className="flex flex-wrap items-center gap-2 text-caption text-dim">
             <UploaderMark uploader={timing.uploader} size={24} />
             <span>
@@ -111,9 +122,10 @@ export default function TimingPage() {
               {t('timings.page.published', { date: shortDate(timing.publishedAt, i18n.language) })}
             </span>
             {social && (
-              <span className="readout">
-                · <span className="text-amber">★</span> {ratingLabel(social.rating.average)} ({social.rating.count}) ·{' '}
-                {t('social.uses.short', { count: social.uses.count })}
+              <span className="readout inline-flex flex-wrap items-center gap-1">
+                ·
+                <Icon name="star" size={14} className="text-amber" />
+                {ratingLabel(social.rating.average)} ({social.rating.count}) · {t('social.uses.short', { count: social.uses.count })}
               </span>
             )}
           </div>
@@ -122,9 +134,11 @@ export default function TimingPage() {
         <div className="flex shrink-0 flex-wrap gap-2">
           {/* W12.11: this timing against one of the visitor's own, or another published one. */}
           <Link to={comparePath({ id })} className="btn-ghost">
+            <Icon name="red-lines" size={16} />
             {t('compare.action')}
           </Link>
           <Link to="/analyze" className="btn-ghost">
+            <Icon name="upload" size={16} />
             {t('timings.page.yourOwn')}
           </Link>
         </div>

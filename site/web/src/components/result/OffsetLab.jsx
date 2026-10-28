@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import Icon from '../ui/Icon.jsx'
 import { LAB_WINDOW_S, labReport, labTrials, mp3GaplessInfo, presented, readHead, vote } from '../../lib/offset-lab.js'
 
 const NUDGE_LIMIT = 500
@@ -79,8 +80,11 @@ export default function OffsetLab({ player, snapshot, lines, nudgeMs, onAdjust, 
   const proposed = report?.best ? Math.max(-NUDGE_LIMIT, Math.min(NUDGE_LIMIT, nudgeMs + report.best.shift)) : null
 
   return (
-    <details className="rounded-control border border-line bg-surface">
-      <summary className="cursor-pointer px-3 py-2 text-label font-semibold">{t('lab.title')}</summary>
+    <details className="group/lab panel-well">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-label font-semibold [&::-webkit-details-marker]:hidden">
+        <Icon name="chevron-right" size={14} className="text-dim transition-transform duration-150 ease-out group-open/lab:rotate-90" />
+        {t('lab.title')}
+      </summary>
       <div className="space-y-3 border-t border-line px-3 py-3">
         <p className="text-caption text-dim">{t('lab.sub')}</p>
         <p className="readout text-caption text-text">

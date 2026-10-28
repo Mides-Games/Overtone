@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 
 import { api } from '../../lib/api.js'
 import { formatBpm, formatClock } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
 import {
   adjustmentKey,
   adjustmentLabel,
@@ -131,9 +132,9 @@ export default function Versions({ analysis, adjustment, onApply }) {
   return (
     <section className="panel overflow-hidden" aria-labelledby="versions-title">
       <div className="space-y-1 border-b border-line px-4 py-3">
-        <h2 id="versions-title" className="label">
+        <h3 id="versions-title" className="heading-title">
           {t('platform.versions.title')}
-        </h2>
+        </h3>
         <p className="text-caption text-dim">{t('platform.versions.note')}</p>
       </div>
 
@@ -149,7 +150,7 @@ export default function Versions({ analysis, adjustment, onApply }) {
               aria-label={t('platform.versions.labelPlaceholder')}
               className="field min-w-0 flex-1"
             />
-            <button type="button" className="btn-primary shrink-0" disabled={saving === 'busy'} onClick={save}>
+            <button type="button" className="btn-ghost shrink-0" disabled={saving === 'busy'} onClick={save}>
               {t('platform.versions.save', { adjustment: adjustmentLabel(adjustment) })}
             </button>
           </>
@@ -183,8 +184,9 @@ export default function Versions({ analysis, adjustment, onApply }) {
                   {r.current ? (
                     <span className="chip-accent">{t('platform.versions.thisOne')}</span>
                   ) : (
-                    <Link to={`/analyze/${r.id}`} className="text-caption text-accent hover:underline">
-                      {t('platform.versions.open')} →
+                    <Link to={`/analyze/${r.id}`} className="btn-quiet btn-sm">
+                      {t('platform.versions.open')}
+                      <Icon name="arrow-right" size={14} />
                     </Link>
                   )}
                 </div>
@@ -206,11 +208,11 @@ export default function Versions({ analysis, adjustment, onApply }) {
                         )}
                         <button
                           type="button"
-                          className="px-1 text-dim hover:text-text"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-dim transition-colors duration-150 ease-out hover:bg-surface-3 hover:text-text"
                           aria-label={t('platform.versions.forget', { name: adjustmentLabel(v) })}
                           onClick={() => forget(v)}
                         >
-                          ×
+                          <Icon name="close" size={13} />
                         </button>
                       </li>
                     ))}

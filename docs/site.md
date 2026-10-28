@@ -1978,7 +1978,56 @@ phone; the reveal's entrance while the pane was hidden (a hidden pane runs no
 bar; the recent-timings list on Home (no timings were published on the dev API).
 `site/e2e/tests/site.spec.js` has two language tests that still look for the EN/ES
 toggle's "Switch to English" button, which the ten-language selector replaced before
-this branch; master's bar has no such button either, so they fail there too (read, not\nrun), and were left to the selector's owner.
+this branch; master's bar has no such button either, so they fail there too (read, not
+run), and were left to the selector's owner. They use the selector now (next section).
+
+### The studio rework: Analyze, the queue and the result pages (2026-10-28)
+
+The core pages take the direction of `docs/design.md`, following its section 11. Visual
+and interaction only: the routes, the data, every feature and every existing i18n key
+are unchanged, and nothing is sent that was not before.
+
+- **`/analyze`:** a sentence-case headline and lede; the form is the one panel (the drop
+  zone a dashed well with the upload icon, the files as hairline rows with an icon
+  button to remove one, the options folded between hairlines, the batch tools in a
+  well); the limits are a `dl` of readouts with units, the outputs a hairline list with
+  chips, both on the page's ground. The limits wait as skeletons and read "–" if
+  `/health` fails.
+- **`/queue`:** section headers, hairline rows that rise in, skeleton rows while the
+  first reading is out, an empty state with one action, the progress by `scaleX`.
+- **The result page** (`/analyze/:id`, and `/t/:id` through the same `Result`) is grouped
+  into three zones, each under a `SectionHeader`, reachable from an "On this page" row
+  of jump links: **Listen** (the map, its toolbar, the transport and the editor),
+  **Check** (check here, the red lines table, compare with a map), **Export** (the .osz
+  as the page's one primary action, ×2/÷2 and the offset, more downloads, the image,
+  versions). Above them the readouts sit between hairlines with the confidence legend and
+  how it was analysed; sharing is a strip between hairlines with ghost buttons. Two
+  groups are folded with `components/result/Disclosure.jsx` (a native `details`, still
+  mounted, so the keyboard shortcuts work folded): practice and the by-ear tools (A/B,
+  subdivisions, tap, latency) under "More listening tools", and the beat-snap chart with
+  the .osz options under ".osz options and beat snap". The red lines table moved up into
+  Check, beside what it is checked with.
+- **Characters to icons:** ▶, ⟲, ✎, ⧉, ×, →, ↗, ▸, ▾ and ★ on controls became
+  `components/ui/Icon.jsx` icons (new: `play`, `pause`, `loop`, `edit`, `copy`,
+  `download`, `star`, `arrow-left`, `link`, `sliders`, `minus`), every icon-only button
+  with an `aria-label`. ×2 and → inside data (a factor, "120 → 150") stay text.
+- **`/t/:id` and `/compare`:** the same header, skeleton and empty state; on Compare the
+  two sides are the panels, the difference and the map have section headers.
+- **New strings** (ten languages): `result.zones.*`, `result.moreTools.*`,
+  `result.oszMore.*`. **Budget:** the result chunk is 30.1 kB gzip; its budget is 32
+  (`scripts/budget.mjs`, which says why).
+- **e2e:** the two language tests use the selector; axe now also audits the result page
+  with every fold open, a published timing page and a comparison, in both themes.
+
+Checked: `site/web` 326/326 (after rebuilding on the new master), the build and the budget, e2e 82/82 after rebasing on the content pages (axe included). With
+`site/e2e/serve-api.mjs`'s fake worker on ports 3081/5251, screenshots of Analyze (empty
+and with two files), the result page (running and done), the queue, Compare and a
+published timing page at 1440, 1024 and 375 px, dark and light, in en, de, ja and ru: no
+page scrolls sideways and none logged an error.
+
+Not checked: a screen reader over the folds; Safari, Firefox and a real phone; a
+signed-in result page with saved versions and related readings; the staff rows of the
+queue.
 
 ### Bands, spectrogram, practice, the microphone and the cover's accent (W13.6, W13.7, W13.8, W13.12, W13.24, 2026-10-28)
 

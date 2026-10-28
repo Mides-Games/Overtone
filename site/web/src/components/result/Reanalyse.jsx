@@ -74,10 +74,10 @@ export default function Reanalyse({ analysis }) {
   const busy = state.kind === 'checking' || state.kind === 'sending'
 
   return (
-    <section className="panel space-y-4 p-4" aria-labelledby="reanalyse">
-      <div className="space-y-1">
-        <h2 id="reanalyse" className="label">{t('modes.reanalyse.title')}</h2>
-        <p className="text-caption text-muted">{t('modes.reanalyse.note')}</p>
+    <section className="space-y-4 border-t border-line pt-6" aria-labelledby="reanalyse">
+      <div className="space-y-1.5">
+        <h2 id="reanalyse" className="heading-title">{t('modes.reanalyse.title')}</h2>
+        <p className="max-w-[72ch] text-label text-muted">{t('modes.reanalyse.note')}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -88,7 +88,7 @@ export default function Reanalyse({ analysis }) {
             </button>
           ))}
         </div>
-        <button type="button" className="btn-primary" onClick={start} disabled={busy || !analysis.sha1}>
+        <button type="button" className="btn-ghost" onClick={start} disabled={busy || !analysis.sha1}>
           {state.kind === 'sending'
             ? t('analyze.sending', { percent: Math.round((state.sent ?? 0) * 100) })
             : t('modes.reanalyse.go', { mode: t(`modes.names.${mode}`) })}
@@ -107,7 +107,7 @@ export default function Reanalyse({ analysis }) {
                 : t('modes.reanalyse.pick', { name: analysis.filename })}
           </p>
           {state.kind !== 'checking' && (
-            <label className="btn-ghost h-8 shrink-0 cursor-pointer px-3 text-caption">
+            <label className="btn-ghost btn-sm shrink-0 cursor-pointer">
               {t('tempo.audio.pick')}
               <input
                 type="file"
@@ -132,16 +132,16 @@ export default function Reanalyse({ analysis }) {
       {related.length > 0 && (
         <div className="space-y-2">
           <h3 className="label">{t('modes.reanalyse.related')}</h3>
-          <ul className="divide-y divide-line rounded-control border border-line">
+          <ul className="divide-y divide-line border-y border-line">
             {related.map((other) => (
-              <li key={other.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <li key={other.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <Link to={`/analyze/${other.id}`} className="flex min-w-0 items-center gap-2 text-label text-accent hover:underline">
                   <span className="chip-accent">{t(`modes.names.${other.mode}`)}</span>
                   <span className="truncate">{other.source ? t('modes.reanalyse.from') : t('modes.reanalyse.into')}</span>
                   <span className="text-caption text-dim">{t(`queue.status.${other.status}`, { defaultValue: other.status })}</span>
                 </Link>
                 {other.status === 'done' && analysis.status === 'done' && (
-                  <Link to={compareHref(analysis.id, other.id)} className="btn-ghost h-8 px-3 text-caption">
+                  <Link to={compareHref(analysis.id, other.id)} className="btn-ghost btn-sm">
                     {t('modes.reanalyse.compare')}
                   </Link>
                 )}

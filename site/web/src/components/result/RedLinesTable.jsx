@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { toggleSelection } from '../../lib/osu-copy.js'
 import { formatBpm, formatClock, formatMs } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
 import Term from '../Term.jsx'
 
 export const LEVELS = {
@@ -62,9 +63,10 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={`${RED_LINES_TABLE_ID}-title`} className="label">
+        <h3 id={`${RED_LINES_TABLE_ID}-title`} className="heading-title">
           <Term id="redLine">{t('result.redLines')}</Term>
-        </h2>
+          <span className="readout ml-2 text-label font-normal text-dim">{lines.length}</span>
+        </h3>
         {copyRows && (
           <div className="flex flex-wrap items-center gap-2 text-caption">
             <span className="text-dim" role="status">
@@ -85,9 +87,9 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
           </div>
         )}
       </div>
-      <div ref={box} className="relative max-h-[28rem] overflow-auto rounded-panel border border-line">
+      <div ref={box} className="panel relative max-h-[28rem] overflow-auto">
         <table id={RED_LINES_TABLE_ID} aria-labelledby={`${RED_LINES_TABLE_ID}-title`} className="w-full min-w-[46rem] text-left text-label">
-          <thead className="sticky top-0 z-[1] bg-surface-2">
+          <thead className="sticky top-0 z-[1] border-b border-line bg-surface-2">
             <tr className="label">
               {copyRows && (
                 <th className="w-8 px-2 py-2 font-semibold">
@@ -160,17 +162,21 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
                       />
                     </td>
                   )}
-                  <td className="px-3 py-2 text-dim">
+                  <td className="whitespace-nowrap px-3 py-2 text-dim">
                     <span className="inline-block h-3 w-0.5 bg-red align-middle" aria-hidden="true" /> {i + 1}
                     {line.edited && (
-                      <span className="ml-1.5 rounded-sm bg-amber/15 px-1 text-caption text-amber" title={t(line.added ? 'editor.addedLine' : 'editor.editedLine')}>
-                        ✎<span className="sr-only"> {t(line.added ? 'editor.addedLine' : 'editor.editedLine')}</span>
+                      <span className="ml-1.5 inline-flex rounded-sm bg-amber/15 p-0.5 align-middle text-amber" title={t(line.added ? 'editor.addedLine' : 'editor.editedLine')}>
+                        <Icon name="edit" size={12} />
+                        <span className="sr-only"> {t(line.added ? 'editor.addedLine' : 'editor.editedLine')}</span>
                       </span>
                     )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {formatClock(line.timeMs)}
-                    <span className="ml-2 text-caption text-dim">{formatMs(line.timeMs)} ms</span>
+                    <span className="ml-2 text-caption text-dim">
+                      {formatMs(line.timeMs)}
+                      <span className="unit">ms</span>
+                    </span>
                   </td>
                   <td className="px-3 py-2">{formatBpm(line.bpm)}</td>
                   <td className="px-3 py-2">
@@ -205,39 +211,41 @@ export default function RedLinesTable({ lines, sections, drift, selected, hovere
                   <td className="px-2 py-1.5 whitespace-nowrap text-right">
                     <button
                       type="button"
-                      className="tool-btn px-2"
+                      className="tool-btn"
                       disabled={!canPlay}
                       onClick={(e) => {
                         e.stopPropagation()
                         onPlayFrom(i)
                       }}
                       title={t('tempo.playFrom')}
+                      aria-label={t('tempo.playFrom')}
                     >
-                      ▶<span className="sr-only">{t('tempo.playFrom')}</span>
+                      <Icon name="play" size={14} />
                     </button>
                     <button
                       type="button"
-                      className="tool-btn ml-1 px-2"
+                      className="tool-btn ml-1"
                       disabled={!canPlay}
                       onClick={(e) => {
                         e.stopPropagation()
                         onLoop(i)
                       }}
                       title={t('tempo.loopLine')}
+                      aria-label={t('tempo.loopLine')}
                     >
-                      ⟲<span className="sr-only">{t('tempo.loopLine')}</span>
+                      <Icon name="loop" size={14} />
                     </button>
                     {copyRows && (
                       <button
                         type="button"
-                        className="tool-btn ml-1 px-2"
+                        className="tool-btn ml-1"
                         onClick={(e) => {
                           e.stopPropagation()
                           copy([i], `one:${i}`)
                         }}
                         title={t('platform.copy.one')}
                       >
-                        {copied === `one:${i}` ? '✓' : '⧉'}
+                        <Icon name={copied === `one:${i}` ? 'check' : 'copy'} size={14} />
                         <span className="sr-only">{copied === `one:${i}` ? t('platform.copy.copied') : t('platform.copy.one')}</span>
                       </button>
                     )}

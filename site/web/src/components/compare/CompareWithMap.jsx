@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { compareTimings, readOsuFile } from '../../lib/compare.js'
+import Icon from '../ui/Icon.jsx'
 import CompareReport from './CompareReport.jsx'
 
 /**
@@ -46,12 +47,13 @@ export default function CompareWithMap({ lines, durationS, adjusted, filename, m
   const song = map ? [map.artist, map.title].filter(Boolean).join(' - ') : ''
 
   return (
-    <section className="panel space-y-4 p-4 sm:p-5" aria-labelledby="compare-map-title">
+    // Between hairlines, not a panel: one file button and, once a map is read, its report.
+    <section className="space-y-4 border-t border-line pt-6" aria-labelledby="compare-map-title">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <h2 id="compare-map-title" className="label">
+        <div className="min-w-0 space-y-1.5">
+          <h3 id="compare-map-title" className="heading-title">
             {t('compare.withMap.title')}
-          </h2>
+          </h3>
           {map ? (
             <p className="break-words text-label text-text">
               {song || map.name}
@@ -64,7 +66,8 @@ export default function CompareWithMap({ lines, durationS, adjusted, filename, m
           <p className="text-caption text-dim">{t('compare.withMap.privacy')}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <label className={`${map ? 'btn-ghost' : 'btn-primary'} cursor-pointer`}>
+          <label className="btn-ghost cursor-pointer">
+            <Icon name="upload" size={16} />
             {busy ? t('common.loading') : map ? t('compare.withMap.pickAgain') : t('compare.withMap.pick')}
             <input
               type="file"

@@ -38,10 +38,10 @@ export default function DawExports({ analysis, lines, durationS }) {
     <div className="space-y-2 border-t border-line px-4 py-3">
       <h3 className="label">{t('daw.title')}</h3>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-ghost" disabled={!files} onClick={() => save('midi')}>
+        <button type="button" className="btn-ghost btn-sm" disabled={!files} onClick={() => save('midi')}>
           {t('daw.midi')} <span className="text-dim">.mid</span>
         </button>
-        <button type="button" className="btn-ghost" disabled={!files} onClick={() => save('reaper')}>
+        <button type="button" className="btn-ghost btn-sm" disabled={!files} onClick={() => save('reaper')}>
           Reaper <span className="text-dim">.rpp</span>
         </button>
       </div>

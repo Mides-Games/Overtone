@@ -51,7 +51,7 @@ export default function BatchTools({ items, creator }) {
 
   const mb = (bytes) => Math.round(bytes / 1_048_576)
   return (
-    <section className="space-y-3 rounded-control border border-line bg-surface-2 p-3" aria-labelledby="batch-tools">
+    <section className="panel-well space-y-3 p-3 sm:p-4" aria-labelledby="batch-tools">
       <h3 id="batch-tools" className="label">
         {t('platform.batch.title')}
       </h3>

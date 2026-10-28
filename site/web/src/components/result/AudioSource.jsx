@@ -29,7 +29,7 @@ export default function AudioSource({ audio, filename, visitor = false }) {
         <p className="text-caption text-dim">{visitor ? t('timings.audio.privacy') : t('tempo.audio.privacy')}</p>
       </div>
       {!busy && audio.kind !== 'unverifiable' && (
-        <label className="btn-ghost shrink-0 cursor-pointer">
+        <label className="btn-ghost btn-sm shrink-0 cursor-pointer">
           {audio.kind === 'none' ? t('tempo.audio.pick') : t('tempo.audio.pickAgain')}
           <input
             type="file"

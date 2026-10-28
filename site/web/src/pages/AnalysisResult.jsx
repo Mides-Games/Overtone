@@ -9,6 +9,7 @@ import Term from '../components/Term.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
+import Disclosure from '../components/result/Disclosure.jsx'
 import HowAsked from '../components/result/HowAsked.jsx'
 import MapImage from '../components/result/MapImage.jsx'
 import MoreDownloads from '../components/result/MoreDownloads.jsx'
@@ -21,6 +22,10 @@ import Practice from '../components/result/Practice.jsx'
 import Transport from '../components/result/Transport.jsx'
 import { useExportOptions } from '../components/result/ExportOptions.jsx'
 import Versions from '../components/result/Versions.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
+import SectionHeader from '../components/ui/SectionHeader.jsx'
+import Skeleton from '../components/ui/Skeleton.jsx'
 import { timingRows } from '../lib/osu-copy.js'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { useCoverAccent } from '../hooks/useCoverAccent.js'
@@ -69,31 +74,43 @@ export default function AnalysisResult() {
 
   if (error === 'notFound') {
     return (
-      <div className="panel space-y-3 p-6">
-        <h1 className="font-display text-title font-bold uppercase">{t('result.notFoundTitle')}</h1>
-        <p className="text-label text-muted">{t('result.notFound')}</p>
-        <Link to="/analyze" className="btn-ghost">
-          {t('result.another')}
-        </Link>
+      <div className="space-y-6">
+        <header className="rise space-y-4">
+          <p className="eyebrow">{t('result.eyebrow')}</p>
+          <h1 className="heading-headline">{t('result.notFoundTitle')}</h1>
+        </header>
+        <div className="border-t border-line">
+          <EmptyState
+            title={t('result.notFound')}
+            action={
+              <Link to="/analyze" className="btn-primary">
+                {t('result.another')}
+                <Icon name="arrow-right" size={16} />
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
 
   if (!analysis) {
-    return error === 'network' ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <BrandLoader className="py-16" />
-
+    return error === 'network' ? <p className="text-label text-dim">{t('result.reconnecting')}</p> : <ResultSkeleton />
   }
 
   return (
     <div className="space-y-8">
-      <header className={`rise flex flex-wrap items-end justify-between gap-4 ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
-        <div className="min-w-0 space-y-1">
-          <p className="label text-accent" style={accent ? { color: accent.ink } : undefined}>
+      <header className={`rise flex flex-col gap-x-6 gap-y-4 sm:flex-row sm:items-end sm:justify-between ${accent ? ACCENT_HEADER : ''}`} style={accentWash(accent)}>
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="eyebrow" style={accent ? { color: accent.ink } : undefined}>
             {t('result.eyebrow')}
           </p>
-          <h1 className="truncate font-display text-[clamp(1.5rem,1.2rem+1.2vw,2.1rem)] font-bold">{analysis.filename}</h1>
+          <h1 className="heading-headline break-words sm:truncate" title={analysis.filename ?? undefined}>
+            {analysis.filename}
+          </h1>
         </div>
-        <Link to="/analyze" className="btn-ghost shrink-0">
+        <Link to="/analyze" className="btn-ghost shrink-0 self-start sm:self-auto">
+          <Icon name="upload" size={16} />
           {t('result.another')}
         </Link>
       </header>
@@ -112,6 +129,31 @@ export default function AnalysisResult() {
       {analysis.status === 'done' && <Result id={id} analysis={analysis} owner onAccent={setAccent} />}
       {/* W3.24: the same song in another mode, from here; and the results it is linked to. */}
       {(analysis.status === 'done' || analysis.status === 'refused') && <Reanalyse analysis={analysis} />}
+    </div>
+  )
+}
+
+/**
+ * The page before its first reading: shaped like the header, the readouts
+ * and the map, so nothing jumps when they land (docs/design.md, section 6).
+ */
+export function ResultSkeleton() {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-8" role="status" aria-label={t('common.loading')}>
+      <div className="space-y-4" aria-hidden="true">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-9 w-3/5" />
+      </div>
+      <div className="grid grid-cols-2 gap-6 border-y border-line py-5 sm:grid-cols-4" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className="space-y-2">
+            <Skeleton className="h-2.5 w-16" />
+            <Skeleton className="h-6 w-20" />
+          </span>
+        ))}
+      </div>
+      <Skeleton className="h-80 w-full rounded-panel" />
     </div>
   )
 }
@@ -170,46 +212,57 @@ function Publish({ analysis, onChange }) {
 
   const busy = state.kind === 'busy'
   return (
-    <section className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h2 className="label">{t('timings.publish.title')}</h2>
-        {analysis.published ? (
-          <p className="text-label text-text">
-            {t('timings.publish.isPublic')}{' '}
-            <Link to={timingPath(analysis.id)} className="readout break-all text-accent hover:underline">
-              {timingPath(analysis.id)}
-            </Link>
-          </p>
-        ) : (
-          <p className="text-label text-muted">{state.kind === 'confirm' ? t('timings.publish.privateWarning') : t('timings.publish.note')}</p>
-        )}
-        {state.kind === 'error' && (
-          <p role="alert" className="text-caption text-red">
-            {t('timings.publish.failed')}
-          </p>
-        )}
+    // A strip between hairlines, not a panel: sharing is one press, and the
+    // page's one primary action is the .osz further down.
+    <section className="flex flex-col gap-3 border-y border-line py-4 sm:flex-row sm:items-center sm:justify-between" aria-labelledby="share-title">
+      <div className="flex min-w-0 items-start gap-3">
+        <Icon name={analysis.published ? 'globe' : 'unlock'} size={20} className="mt-0.5 text-dim" />
+        <div className="min-w-0 space-y-1">
+          <h2 id="share-title" className="label">
+            {t('timings.publish.title')}
+          </h2>
+          {analysis.published ? (
+            <p className="text-label text-text">
+              {t('timings.publish.isPublic')}{' '}
+              <Link to={timingPath(analysis.id)} className="link readout break-all">
+                {timingPath(analysis.id)}
+              </Link>
+            </p>
+          ) : (
+            <p className={`max-w-[72ch] text-label ${state.kind === 'confirm' ? 'text-amber' : 'text-muted'}`}>
+              {state.kind === 'confirm' ? t('timings.publish.privateWarning') : t('timings.publish.note')}
+            </p>
+          )}
+          {state.kind === 'error' && (
+            <p role="alert" className="text-caption text-red">
+              {t('timings.publish.failed')}
+            </p>
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         {analysis.published ? (
           <>
-            <button type="button" className="btn-ghost" onClick={copy} disabled={busy}>
+            <button type="button" className="btn-ghost btn-sm" onClick={copy} disabled={busy}>
+              <Icon name={state.kind === 'copied' ? 'check' : 'link'} size={16} />
               {state.kind === 'copied' ? t('timings.publish.copied') : t('timings.publish.copyLink')}
             </button>
-            <button type="button" className="btn-ghost" onClick={unpublish} disabled={busy}>
+            <button type="button" className="btn-ghost btn-sm" onClick={unpublish} disabled={busy}>
               {t('timings.publish.unpublish')}
             </button>
           </>
         ) : state.kind === 'confirm' ? (
           <>
-            <button type="button" className="btn-primary" onClick={() => publish(true)}>
+            <button type="button" className="btn-ghost btn-sm border-amber/60 text-amber" onClick={() => publish(true)}>
               {t('timings.publish.makePublic')}
             </button>
-            <button type="button" className="btn-ghost" onClick={() => setState({ kind: 'idle' })}>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setState({ kind: 'idle' })}>
               {t('timings.publish.keepPrivate')}
             </button>
           </>
         ) : (
-          <button type="button" className="btn-primary" onClick={() => publish(false)} disabled={busy}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => publish(false)} disabled={busy}>
+            <Icon name="globe" size={16} />
             {busy ? t('timings.publish.busy') : t('timings.publish.publish')}
           </button>
         )}
@@ -226,15 +279,24 @@ function Waiting({ analysis }) {
   return (
     <section className="panel space-y-4 p-5 sm:p-6" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="flex items-center gap-3 font-display text-[17px] font-semibold">
+        <h2 className="heading-title flex items-center gap-3">
           <BrandLoader />
           {running ? t('result.running') : t('result.queued', { position: analysis.position ?? 1 })}
-        </span>
-        {running && <span className="readout text-label text-dim">{percent}%</span>}
+        </h2>
+        {running && (
+          <span className="readout text-title text-text">
+            {percent}
+            <span className="unit">%</span>
+          </span>
+        )}
       </div>
       {running && (
         <div className="h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label={t('result.running')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-          <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${Math.max(3, percent)}%` }} />
+          {/* scaleX, not width: the bar moves without a layout (docs/design.md, section 5). */}
+          <div
+            className="h-full origin-left bg-accent transition-transform duration-[var(--dur-panel)] ease-out"
+            style={{ transform: `scaleX(${Math.max(3, percent) / 100})` }}
+          />
         </div>
       )}
       <p className="text-caption text-dim">
@@ -263,7 +325,7 @@ function Failed({ analysis }) {
   const { t } = useTranslation()
   return (
     <section role="alert" className="space-y-2 rounded-panel border border-red/40 bg-red/10 p-5">
-      <h2 className="font-display text-[17px] font-semibold">{t('result.failedTitle')}</h2>
+      <h2 className="heading-title">{t('result.failedTitle')}</h2>
       <p className="text-label text-text">{analysis.removed ? t('result.removed') : t(failureKey(analysis.error))}</p>
       {analysis.error && <p className="readout text-caption text-dim">{analysis.error}</p>}
     </section>
@@ -455,26 +517,28 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
   ]
 
   return (
-    <div className="space-y-6">
-      {/* W11.1, W3.21, W12.19: the mode, the hints and the stretch this reading covers. */}
-      <HowAsked analysis={analysis} />
-
-      <section className="panel overflow-hidden">
-        <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
-          {readouts.map((r) => (
-            <div key={r.label} className="space-y-1 bg-surface px-4 py-3">
+    <div className="space-y-[calc(var(--space-section)*0.4)]">
+      {/* The reading at a glance: a row of readouts between hairlines, not cards (docs/design.md, section 11.4). */}
+      <section aria-label={t('result.eyebrow')} className="space-y-5">
+        <dl className="grid grid-cols-2 border-y border-line sm:grid-cols-4">
+          {readouts.map((r, i) => (
+            <div
+              key={r.label}
+              // Two by two on a phone, one row from 640 px: a hairline between neighbours, none at the edge.
+              className={`min-w-0 space-y-1.5 border-line py-4 pr-3 ${i > 0 ? 'sm:border-l sm:pl-5' : ''} ${i % 2 ? 'max-sm:border-l max-sm:pl-4' : ''} ${i >= 2 ? 'max-sm:border-t' : ''}`}
+            >
               <dt className="label">
                 <Term id={r.term}>{r.label}</Term>
               </dt>
-              <dd className="readout text-title text-text">
+              <dd className="readout truncate text-heading font-medium leading-none text-text">
                 {r.value}
-                {r.unit && <span className="ml-1 text-label text-dim">{r.unit}</span>}
+                {r.unit && <span className="unit">{r.unit}</span>}
               </dd>
             </div>
           ))}
         </dl>
-        <div className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
+        <div className="flex flex-col gap-x-6 gap-y-2 lg:flex-row lg:items-center lg:justify-between">
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-dim">
             <li className="label">
               <Term id="confidence">{t('strip.confidence')}</Term>
             </li>
@@ -487,157 +551,179 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
           </ul>
           <p className="text-caption text-dim">{t('tempo.confidenceNote')}</p>
         </div>
+        {/* W11.1, W3.21, W12.19: the mode, the hints and the stretch this reading covers. */}
+        <HowAsked analysis={analysis} />
       </section>
 
-      <TempoMap
-        data={data}
-        player={player}
-        snapshot={snapshot}
-        selected={selected}
-        hovered={hovered}
-        onSelect={setSelected}
-        onHover={setHovered}
-        clockRef={clockRef}
-        focus={focus}
-        song={songLanes}
-        editing={editing}
-        onToggleEdit={lines.length ? () => setEditing((on) => !on) : null}
-        onMoveLine={moveLine}
-        onAddAt={addAt}
-        marks={marks}
-        onMark={onMark}
-      >
-        <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
-        <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
-        <Practice player={player} snapshot={snapshot} />
-        <Listening
+      <ZoneNav />
+
+      <section id="listen" aria-labelledby="listen-title" className="scroll-mt-24 space-y-6">
+        <SectionHeader id="listen-title" eyebrow={t('result.zones.listen.eyebrow')} title={t('result.zones.listen.title')} />
+        <TempoMap
+          data={data}
           player={player}
           snapshot={snapshot}
-          lines={lines}
-          grid={grid}
-          adjusted={adjusted}
-          nudgeMs={adjustment.nudgeMs}
-          onAdjust={setFrame}
+          selected={selected}
+          hovered={hovered}
+          onSelect={setSelected}
+          onHover={setHovered}
+          clockRef={clockRef}
+          focus={focus}
+          song={songLanes}
+          editing={editing}
+          onToggleEdit={lines.length ? () => setEditing((on) => !on) : null}
+          onMoveLine={moveLine}
+          onAddAt={addAt}
+          marks={marks}
+          onMark={onMark}
+        >
+          <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
+          <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+          {/* The editor (W7) opens from the map's toolbar, right under the transport it plays with. */}
+          {lines.length > 0 && (
+            <Suspense fallback={null}>
+              <TimingEditor
+                editor={editor}
+                editing={editing}
+                onEditing={setEditing}
+                lines={lines}
+                selected={selected}
+                onSelect={setSelected}
+                player={player}
+                snapshot={snapshot}
+                result={result}
+                durationS={durationS}
+                owner={owner}
+                nudgeMs={adjustment.nudgeMs}
+                onAdjust={setFrame}
+                audioFile={audioFile}
+              />
+            </Suspense>
+          )}
+          {/* Practice and the by-ear tools (W13.8, W12.2-W12.6) fold under one line: still mounted, so their keys work folded. */}
+          <Disclosure title={t('result.moreTools.title')} hint={t('result.moreTools.hint')} inset="px-3" className="border-t border-line">
+            <Practice player={player} snapshot={snapshot} />
+            <Listening
+              player={player}
+              snapshot={snapshot}
+              lines={lines}
+              grid={grid}
+              adjusted={adjusted}
+              nudgeMs={adjustment.nudgeMs}
+              onAdjust={setFrame}
+            />
+          </Disclosure>
+        </TempoMap>
+      </section>
+
+      <section id="check" aria-labelledby="check-title" className="scroll-mt-24 space-y-8 border-t border-line pt-[calc(var(--space-section)*0.4)]">
+        <SectionHeader id="check-title" eyebrow={t('result.zones.check.eyebrow')} title={t('result.zones.check.title')} />
+
+        <CheckHere
+          spans={checks}
+          // Lit while its band is the map's loop: drawing another loop unlights it.
+          active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
+          canPlay={snapshot.ready}
+          onShow={showSpan}
+          onPlay={playSpan}
         />
-        {lines.length > 0 && (
-          <Suspense fallback={null}>
-          <TimingEditor
-            editor={editor}
-            editing={editing}
-            onEditing={setEditing}
-            lines={lines}
-            selected={selected}
-            onSelect={setSelected}
-            player={player}
-            snapshot={snapshot}
-            result={result}
-            durationS={durationS}
-            owner={owner}
-            nudgeMs={adjustment.nudgeMs}
-            onAdjust={setFrame}
-            audioFile={audioFile}
-          />
-          </Suspense>
-        )}
-      </TempoMap>
 
-      <CheckHere
-        spans={checks}
-        // Lit while its band is the map's loop: drawing another loop unlights it.
-        active={snapshot.range && checks.some((c) => c.key === checking && Math.abs(c.startMs / 1000 - snapshot.range.a) < 1e-6) ? checking : null}
-        canPlay={snapshot.ready} onShow={showSpan} onPlay={playSpan} />
-
-      <CompareWithMap
-        lines={lines}
-        durationS={durationS}
-        adjusted={adjusted}
-        filename={analysis.filename}
-        map={map}
-        onMap={(next) => {
-          setMap(next)
-          if (!next) setClickSource('a')
-        }}
-        clicks={clickSource}
-        onClicks={setClickSource}
-        // A second early, so the line is heard coming in.
-        onPlayAt={snapshot.ready ? (ms) => player.play(Math.max(0, ms / 1000 - 1), { range: null, loopOn: false }) : null}
-      >
-        <Link to={comparePath({ id })} className="btn-ghost h-8 px-3 text-caption">
-          {t('compare.withAnother')}
-        </Link>
-        {/* An edited timing's lines do not fit in a link: the comparison takes the ×2 and the nudge only. */}
-        {adjusted && !adjustment.edits && (
-          <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost h-8 px-3 text-caption">
-            {t('compare.withAdjusted')}
-          </Link>
-        )}
-        {/* The first red line's BPM and offset, as the page has them, filled in. */}
-        <Link to={calculatorPath(lines[0])} className="btn-ghost h-8 px-3 text-caption">
-          {t('calculator.fromResult')}
-        </Link>
-      </CompareWithMap>
-
-      <AdjustExport
-        analysis={analysis}
-        lines={lines}
-        adjustment={adjustment}
-        onAdjust={setFrame}
-        audioFile={audioFile}
-        songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
-      >
-        <MoreDownloads
-          id={id}
-          analysis={analysis}
+        <RedLinesTable
           lines={lines}
-          adjustment={adjustment}
-          grid={grid}
-          clicks={clicks}
+          sections={sections}
+          drift={drift}
+          selected={selected}
+          hovered={hovered}
+          onSelect={setSelected}
+          onHover={setHovered}
+          canPlay={snapshot.ready}
+          onPlayFrom={playFrom}
+          onLoop={loopLine}
+          copyRows={(positions) => timingRows(result, lines, adjustment, positions, exportOptions)}
+        />
+
+        <CompareWithMap
+          lines={lines}
           durationS={durationS}
-          songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
-          player={player}
-          checks={checks}
-          csvHref={csvHref}
-        />
-        {/* W12.18: a published timing's page (verify) is public by definition. */}
-        <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
-      </AdjustExport>
-
-      {owner && (
-        <Versions
-          analysis={analysis}
-          adjustment={adjustment}
-          onApply={(next) => {
-            setFrame({ factor: next.factor, nudgeMs: next.nudgeMs })
-            // A version's edits, or none: one step of the editor's history, so it undoes.
-            if ((next.edits ?? null) !== (editor.edits ?? null)) editor.replace(next.edits ?? null, { key: 'version' })
+          adjusted={adjusted}
+          filename={analysis.filename}
+          map={map}
+          onMap={(next) => {
+            setMap(next)
+            if (!next) setClickSource('a')
           }}
-        />
-      )}
+          clicks={clickSource}
+          onClicks={setClickSource}
+          // A second early, so the line is heard coming in.
+          onPlayAt={snapshot.ready ? (ms) => player.play(Math.max(0, ms / 1000 - 1), { range: null, loopOn: false }) : null}
+        >
+          <Link to={comparePath({ id })} className="btn-ghost btn-sm">
+            {t('compare.withAnother')}
+          </Link>
+          {/* An edited timing's lines do not fit in a link: the comparison takes the ×2 and the nudge only. */}
+          {adjusted && !adjustment.edits && (
+            <Link to={comparePath({ id }, { id, ...adjustment })} className="btn-ghost btn-sm">
+              {t('compare.withAdjusted')}
+            </Link>
+          )}
+          {/* The first red line's BPM and offset, as the page has them, filled in. */}
+          <Link to={calculatorPath(lines[0])} className="btn-ghost btn-sm">
+            {t('calculator.fromResult')}
+          </Link>
+        </CompareWithMap>
+      </section>
 
-      <RedLinesTable
-        lines={lines}
-        sections={sections}
-        drift={drift}
-        selected={selected}
-        hovered={hovered}
-        onSelect={setSelected}
-        onHover={setHovered}
-        canPlay={snapshot.ready}
-        onPlayFrom={playFrom}
-        onLoop={loopLine}
-        copyRows={(positions) => timingRows(result, lines, adjustment, positions, exportOptions)}
-      />
+      <section id="export" aria-labelledby="export-title" className="scroll-mt-24 space-y-8 border-t border-line pt-[calc(var(--space-section)*0.4)]">
+        <SectionHeader id="export-title" eyebrow={t('result.zones.export.eyebrow')} title={t('result.zones.export.title')} />
+        <AdjustExport
+          analysis={analysis}
+          lines={lines}
+          adjustment={adjustment}
+          onAdjust={setFrame}
+          audioFile={audioFile}
+          songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+        >
+          <MoreDownloads
+            id={id}
+            analysis={analysis}
+            lines={lines}
+            adjustment={adjustment}
+            grid={grid}
+            clicks={clicks}
+            durationS={durationS}
+            songBuffer={audio.kind === 'ready' ? audio.song.buffer : null}
+            player={player}
+            checks={checks}
+            csvHref={csvHref}
+          />
+          {/* W12.18: a published timing's page (verify) is public by definition. */}
+          <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
+        </AdjustExport>
 
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
+        {owner && (
+          <Versions
+            analysis={analysis}
+            adjustment={adjustment}
+            onApply={(next) => {
+              setFrame({ factor: next.factor, nudgeMs: next.nudgeMs })
+              // A version's edits, or none: one step of the editor's history, so it undoes.
+              if ((next.edits ?? null) !== (editor.edits ?? null)) editor.replace(next.edits ?? null, { key: 'version' })
+            }}
+          />
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3 border-t border-line pt-6 sm:flex-row sm:items-start sm:gap-5">
         {/* W4.6: the short version here, the whole disclaimer on its own page. */}
-        <Link to="/disclaimer" className="chip-amber shrink-0 self-start transition hover:bg-amber/20">
+        <Link to="/disclaimer" className="chip-amber shrink-0 self-start transition-colors duration-150 ease-out hover:bg-amber/20">
           {t('home.checkByEar')}
         </Link>
         <div className="space-y-1">
           <p className="max-w-[72ch] text-label leading-relaxed text-muted">
             {t('result.honest')}{' '}
-            <Link to="/disclaimer" className="whitespace-nowrap text-accent hover:underline">
-              {t('legal.resultLink')} →
+            <Link to="/disclaimer" className="link inline-flex items-center gap-1 whitespace-nowrap">
+              {t('legal.resultLink')}
+              <Icon name="arrow-right" size={14} />
             </Link>
           </p>
           <p className="readout text-caption text-dim">
@@ -647,5 +733,31 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         </div>
       </section>
     </div>
+  )
+}
+
+/**
+ * The result's three zones as jump links (docs/design.md, section 11): the
+ * page is long, and a reader who came for the .osz should not scroll past
+ * the map to find it. Plain anchors: the browser scrolls, `scroll-mt` keeps
+ * the zone's heading clear of the sticky bar.
+ */
+function ZoneNav() {
+  const { t } = useTranslation()
+  const zones = [
+    { id: 'listen', icon: 'headphones' },
+    { id: 'check', icon: 'red-lines' },
+    { id: 'export', icon: 'package' },
+  ]
+  return (
+    <nav aria-label={t('result.zones.nav')} className="-mt-2 flex flex-wrap items-center gap-2">
+      <span className="label mr-1">{t('result.zones.nav')}</span>
+      {zones.map((zone) => (
+        <a key={zone.id} href={`#${zone.id}`} className="btn-ghost btn-sm">
+          <Icon name={zone.icon} size={16} />
+          {t(`result.zones.${zone.id}.eyebrow`)}
+        </a>
+      ))}
+    </nav>
   )
 }

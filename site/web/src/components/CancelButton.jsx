@@ -32,7 +32,7 @@ export default function CancelButton({ id, onCancelled, className = '' }) {
 
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
-      <button type="button" onClick={cancel} disabled={state.kind === 'busy'} className="btn-ghost h-7 px-2.5 text-caption">
+      <button type="button" onClick={cancel} disabled={state.kind === 'busy'} className="btn-ghost btn-sm">
         {state.kind === 'busy' ? t('cancel.busy') : t('cancel.button')}
       </button>
       {state.kind === 'error' && (

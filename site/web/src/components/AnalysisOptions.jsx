@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import Icon from './ui/Icon.jsx'
 import { EMPTY_FORM, formatRange, jobCost, METERS, MODES } from '../lib/analysis-options.js'
 
 /**
@@ -21,19 +22,23 @@ export default function AnalysisOptions({ form, onChange, costs = null, duration
   const changed = Object.keys(EMPTY_FORM).some((key) => form[key] !== EMPTY_FORM[key])
 
   return (
-    <details className="group rounded-control border border-line bg-surface-2">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5">
+    // Folded between hairlines inside the form, not a box in the panel (docs/design.md, section 11.1).
+    <details className="group/options border-y border-line">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 py-2.5 transition-colors duration-150 ease-out hover:text-accent [&::-webkit-details-marker]:hidden">
         <span className="space-y-0.5">
-          <span className="block text-label">{t('modes.options.title')}</span>
-          <span className="block text-caption text-dim">
+          <span className="flex items-center gap-2 text-label font-semibold text-text">
+            <Icon name="sliders" size={16} className="text-dim" />
+            {t('modes.options.title')}
+          </span>
+          <span className="block pl-6 text-caption text-dim">
             {t(`modes.names.${form.mode}`)}
             {changed ? ` · ${t('modes.options.changed')}` : ` · ${t('modes.options.defaults')}`}
           </span>
         </span>
-        <span aria-hidden="true" className="text-dim transition group-open:rotate-180">▾</span>
+        <Icon name="chevron-down" size={16} className="text-dim transition-transform duration-150 ease-out group-open/options:rotate-180" />
       </summary>
 
-      <div className="space-y-5 border-t border-line px-3 py-4">
+      <div className="space-y-5 border-t border-line py-4">
         <fieldset className="space-y-2">
           <legend className="label">{t('modes.options.mode')}</legend>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -55,7 +60,7 @@ export default function AnalysisOptions({ form, onChange, costs = null, duration
                       onChange={set('mode')}
                       className="accent-[var(--accent)]"
                     />
-                    <span className="font-display text-[15px] font-semibold">{t(`modes.names.${mode}`)}</span>
+                    <span className="heading-title text-body">{t(`modes.names.${mode}`)}</span>
                   </span>
                   <span className="text-caption text-muted">{t(`modes.about.${mode}`)}</span>
                   {cost && (
@@ -151,7 +156,7 @@ export default function AnalysisOptions({ form, onChange, costs = null, duration
         <p className="text-caption leading-relaxed text-dim">{t('modes.options.honest')}</p>
 
         {changed && (
-          <button type="button" className="btn-ghost h-8 px-3 text-caption" onClick={() => onChange(EMPTY_FORM)}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(EMPTY_FORM)}>
             {t('modes.options.reset')}
           </button>
         )}

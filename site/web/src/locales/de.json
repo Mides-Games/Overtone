@@ -264,7 +264,30 @@
     "voteOn": "an",
     "voteOff": "aus",
     "cached": "dasselbe Audio wurde schon analysiert: gespeichertes Ergebnis",
-    "removed": "Ein Moderator hat diesen Song aus der Warteschlange genommen, daher wurde er nicht analysiert. Seine Datei wurde gelöscht."
+    "removed": "Ein Moderator hat diesen Song aus der Warteschlange genommen, daher wurde er nicht analysiert. Seine Datei wurde gelöscht.",
+    "zones": {
+      "nav": "Auf dieser Seite",
+      "listen": {
+        "eyebrow": "Anhören",
+        "title": "Die roten Linien zum Song hören"
+      },
+      "check": {
+        "eyebrow": "Prüfen",
+        "title": "Was zu prüfen ist, Linie für Linie"
+      },
+      "export": {
+        "eyebrow": "Exportieren",
+        "title": "Ab damit in osu!"
+      }
+    },
+    "moreTools": {
+      "title": "Weitere Hörwerkzeuge",
+      "hint": "Üben, Klicks zwischen den Schlägen, A/B, Tap-Tempo und Latenz"
+    },
+    "oszMore": {
+      "title": ".osz-Optionen und Beat-Snap",
+      "hint": "Wo die Anschläge liegen, Cover, Vorschau, Lead-in und das Map-Set"
+    }
   },
   "login": {
     "title": "Anmelden",

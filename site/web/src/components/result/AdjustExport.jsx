@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { changesLines, exportLines } from '../../lib/export-options.js'
 import { buildOsz } from '../../lib/osz.js'
 import { isAdjusted, saveText, timingText } from '../../lib/timing.js'
+import Icon from '../ui/Icon.jsx'
+import Disclosure from './Disclosure.jsx'
 import DivisorChart from './DivisorChart.jsx'
 import { useExportOptions } from './ExportOptions.jsx'
 import OszOptions, { DEFAULT_OPTIONS, oszExtras, useCover, useSuggestions } from './OszOptions.jsx'
@@ -75,10 +77,45 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
     }
   }
 
+  // The export zone's one panel (docs/design.md, section 11): the .osz first, as
+  // the page's main action; then the two adjustments it is written with; then
+  // what most readers never change, folded under one line.
   return (
-    <section className="panel overflow-hidden">
-      <div className="grid gap-px bg-line md:grid-cols-2">
-        <div className="space-y-2 bg-surface px-4 py-3">
+    <section className="panel overflow-hidden" aria-label={t('result.zones.export.eyebrow')}>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-4">
+        {showCover && (
+          <img
+            src={cover.url}
+            alt={t('oszPlus.coverAlt')}
+            width={48}
+            height={48}
+            className={`h-12 w-12 shrink-0 rounded-control border border-line object-cover transition-opacity duration-150 ease-out ${oszOptions.cover ? '' : 'opacity-30'}`}
+          />
+        )}
+        <button type="button" className="btn-primary btn-lg" disabled={!audioFile || osz === 'busy'} onClick={downloadOsz}>
+          <Icon name="download" size={18} />
+          {osz === 'busy' ? t('result.oszBusy') : t('result.downloadOsz')}
+        </button>
+        <button type="button" className="btn-ghost btn-lg" onClick={copy}>
+          <Icon name={copied === 'ok' ? 'check' : 'copy'} size={18} />
+          {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
+        </button>
+        <p className="w-full max-w-[72ch] text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
+          {osz === 'failed' ? <span className="text-red">{t('result.oszFailed')}</span> : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
+        </p>
+        {changesLines(options) && <OptionsInForce options={options} />}
+      </div>
+      {openTip && (
+        <OpenTip
+          onClose={(forever) => {
+            if (forever) dismissOpenTip()
+            setOpenTip(false)
+          }}
+        />
+      )}
+
+      <div className="grid border-t border-line md:grid-cols-2">
+        <div className="space-y-2 px-4 py-3">
           <h3 className="label">{t('tempo.factorTitle')}</h3>
           <div className="flex items-center gap-1.5" role="group" aria-label={t('tempo.factorTitle')}>
             {FACTORS.map((f) => (
@@ -96,7 +133,7 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
           <p className="text-caption text-dim">{t('tempo.factorNote')}</p>
         </div>
 
-        <div className="space-y-2 bg-surface px-4 py-3">
+        <div className="space-y-2 border-line px-4 py-3 max-md:border-t md:border-l">
           <h3 className="label">{t('tempo.nudgeTitle')}</h3>
           <div className="flex flex-wrap items-center gap-1.5">
             {[-5, -1].map((step) => (
@@ -107,7 +144,7 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
             <label className="flex items-center gap-1">
               <span className="sr-only">{t('tempo.nudgeTitle')}</span>
               <NudgeInput value={adjustment.nudgeMs} onCommit={setNudge} />
-              <span className="text-caption text-dim">ms</span>
+              <span className="unit">ms</span>
             </label>
             {[1, 5].map((step) => (
               <button key={step} type="button" className="tool-btn px-2" onClick={() => setNudge((n) => n + step)}>
@@ -128,35 +165,10 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
-        {showCover && (
-          <img
-            src={cover.url}
-            alt={t('oszPlus.coverAlt')}
-            className={`h-12 w-12 shrink-0 rounded-control border border-line object-cover transition-opacity ${oszOptions.cover ? '' : 'opacity-30'}`}
-          />
-        )}
-        <button type="button" className="btn-primary" disabled={!audioFile || osz === 'busy'} onClick={downloadOsz}>
-          {osz === 'busy' ? t('result.oszBusy') : t('result.downloadOsz')}
-        </button>
-        <button type="button" className="btn-ghost" onClick={copy}>
-          {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
-        </button>
-        <p className="w-full text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
-          {osz === 'failed' ? t('result.oszFailed') : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
-        </p>
-        {changesLines(options) && <OptionsInForce options={options} />}
-      </div>
-      {openTip && (
-        <OpenTip
-          onClose={(forever) => {
-            if (forever) dismissOpenTip()
-            setOpenTip(false)
-          }}
-        />
-      )}
-      <DivisorChart histogram={suggestions.histogram} lines={written} />
-      {audioFile && <OszOptions options={oszOptions} onChange={setOszOptions} cover={cover} suggestions={suggestions} decoded={Boolean(songBuffer)} />}
+      <Disclosure title={t('result.oszMore.title')} hint={t('result.oszMore.hint')} className="border-t border-line">
+        <DivisorChart histogram={suggestions.histogram} lines={written} />
+        {audioFile && <OszOptions options={oszOptions} onChange={setOszOptions} cover={cover} suggestions={suggestions} decoded={Boolean(songBuffer)} />}
+      </Disclosure>
       {children}
     </section>
   )
@@ -238,7 +250,7 @@ function NudgeInput({ value, onCommit }) {
         if (/^-?\d+$/.test(text)) onCommit(text)
       }}
       onBlur={() => setDraft(null)}
-      className="readout h-8 w-16 rounded-control border border-line-strong bg-surface-2 px-2 text-right text-label text-text outline-none focus:border-accent"
+      className="field readout min-h-8 h-8 w-16 px-2 py-0 text-right text-label"
     />
   )
 }

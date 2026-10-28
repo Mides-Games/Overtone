@@ -103,11 +103,13 @@ test('an unknown path is the 404 page', async ({ page }) => {
 test('the language switch turns the page Spanish and is remembered', async ({ page }) => {
   await page.goto('/')
   await ready(page)
-  await page.getByRole('button', { name: 'Cambiar a español' }).click()
+  // The language selector (components/LanguageSelect.jsx): a button named for the current language, then a listbox.
+  await page.getByRole('button', { name: 'Language: English' }).first().click()
+  await page.getByRole('option', { name: /Español/ }).click()
   await expect(page.locator('html')).toHaveAttribute('lang', 'es')
   await expect(page.getByRole('link', { name: 'Analizar' }).first()).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Switch to English' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Idioma: Español' }).first()).toBeVisible()
 })
 
 test('a Spanish visitor gets Spanish from the first frame, its strings loaded on demand', async ({ browser }) => {
@@ -115,7 +117,7 @@ test('a Spanish visitor gets Spanish from the first frame, its strings loaded on
   await prefer(page, { lang: 'es' })
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('lang', 'es')
-  await expect(page.getByRole('button', { name: 'Switch to English' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Idioma: Español' }).first()).toBeVisible()
   await page.close()
 })
 

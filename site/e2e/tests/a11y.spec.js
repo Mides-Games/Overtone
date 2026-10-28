@@ -60,6 +60,24 @@ for (const theme of ['dark', 'light']) {
       await audit(page)
       await expect(page.getByRole('button', { name: 'Download .osz' })).toBeVisible({ timeout: 20_000 })
       await audit(page)
+      // The folded tools (the listening tools, the .osz options, more downloads), open.
+      for (const summary of await page.locator('main details > summary').all()) await summary.click()
+      await audit(page)
+    })
+
+    test('a published timing page, and two timings compared', async ({ page }) => {
+      const id = await uploadSong(page, `Axe ${theme} - Published Song.wav`)
+      await expect(page.getByRole('button', { name: 'Download .osz' })).toBeVisible({ timeout: 20_000 })
+      await page.getByRole('button', { name: 'Publish', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Unpublish', exact: true })).toBeVisible()
+      await page.goto(`/t/${id}`)
+      await ready(page)
+      await page.waitForLoadState('networkidle')
+      await audit(page)
+      await page.goto(`/compare?a=${id}&b=${id}&bx=2`)
+      await ready(page)
+      await page.waitForLoadState('networkidle')
+      await audit(page)
     })
 
     test('profile and history, signed in as staff', async ({ page }) => {

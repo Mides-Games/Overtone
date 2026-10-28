@@ -5,6 +5,7 @@ import { attacksOf, bpmOf, deleteLine, addLine, mergeSections, METERS, nudgeLine
 import { pageKeyIgnored } from '../../lib/keys.js'
 import { formatBpm, formatClock, governing } from '../../lib/timing.js'
 import { stepText } from '../../hooks/useTimingEdits.js'
+import Icon from '../ui/Icon.jsx'
 import OffsetLab from './OffsetLab.jsx'
 
 /**
@@ -89,7 +90,10 @@ export default function TimingEditor({ editor, editing, onEditing, lines, select
         {live}
         {edited ? (
           <div role="status" className="flex flex-wrap items-center gap-2 text-caption text-text">
-            <span className="rounded-sm bg-amber/15 px-1.5 py-0.5 text-amber">✎ {t('editor.inForce', { count: lines.length })}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-sm bg-amber/15 px-1.5 py-0.5 text-amber">
+              <Icon name="edit" size={13} />
+              {t('editor.inForce', { count: lines.length })}
+            </span>
             <button type="button" className="tool-btn h-7 px-2" onClick={() => onEditing(true)} aria-keyshortcuts="E">
               {t('editor.open')}
             </button>
@@ -112,7 +116,8 @@ export default function TimingEditor({ editor, editing, onEditing, lines, select
       {live}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0 space-y-0.5">
-          <h3 id="editor-title" className="label text-accent">
+          <h3 id="editor-title" className="label flex items-center gap-1.5 text-accent">
+            <Icon name="edit" size={14} />
             {t('editor.title')}
           </h3>
           <p className="text-caption text-dim">{t('editor.note')}</p>

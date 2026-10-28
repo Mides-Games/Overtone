@@ -106,7 +106,7 @@ export default function LatencyCalibration({ player, onClose }) {
       }}
     >
       <div className="space-y-4 px-5 py-4">
-        <h2 id="latency-title" className="text-title font-semibold">
+        <h2 id="latency-title" className="heading-title">
           {t('listening.calTitle')}
         </h2>
         <p className="text-label leading-relaxed text-muted">{t('listening.calIntro', { count: CLICKS })}</p>

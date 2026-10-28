@@ -22,12 +22,13 @@ export default function HowAsked({ analysis }) {
   const hints = hintList(t, options)
 
   return (
-    <section className="panel space-y-3 p-4" aria-labelledby="how-asked">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+    // Not a panel: a fact about the reading, set on the page under its readouts.
+    <section className="space-y-2.5" aria-labelledby="how-asked">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <h2 id="how-asked" className="label">{t('modes.result.title')}</h2>
         <span className="chip-accent">{t(`modes.names.${mode}`)}</span>
       </div>
-      <p className="text-caption text-muted">
+      <p className="max-w-[80ch] text-caption text-muted">
         {t(`modes.about.${mode}`)} {result.beat_vote === false && mode !== 'fast' ? t('modes.result.noVote') : ''}
       </p>
       {stretch && (

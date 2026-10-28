@@ -60,6 +60,10 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "stages.json"
 OUT_DIR = HERE / ".cache" / "stages"
 BPM_BAR = 0.05
+#: The owner's ear (2026-10-28): a line within half a BPM of the map's,
+#: 199 for 198.89, is a tidy reading of the same tempo, not a wrong one.
+#: Reported beside tempo_ok, which keeps the 0.05 bar the baseline names.
+BPM_EAR = 0.5
 
 
 def load_manifest() -> dict:
@@ -183,6 +187,11 @@ def tempo_ok(m: dict) -> bool:
                for r in m["rows"])
 
 
+def tempo_near(m: dict) -> bool:
+    return all(r["octave"] == 1 and r["bpm_error"] is not None and r["bpm_error"] <= BPM_EAR
+               for r in m["rows"])
+
+
 def joint(m: dict, tol_ms: float, shift_ms: float = 0.0) -> bool:
     return tempo_ok(m) and all(r["error_ms"] is not None and abs(r["error_ms"] - shift_ms) <= tol_ms
                                for r in m["rows"])
@@ -227,6 +236,7 @@ def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> 
         "maps": n, "songs": len(songs),
         "answered": sum(m["path"] not in ("refused", "error") for m in maps),
         "tempo_ok": share(tempo_ok),
+        "tempo_near": share(tempo_near),
         "octave_x1": share(lambda m: m["rows"][0]["octave"] == 1),
         "joint_5": share(lambda m: joint(m, 5)),
         "conv_5": share(lambda m: joint(m, 5, shift_ms)),
@@ -258,6 +268,7 @@ def print_summary(title: str, s: dict, base: dict | None = None) -> None:
     err = s["signed_error_ms"]
     signed = "-" if err is None else f"{err['median']:+.1f} [{err['q1']:+.1f}..{err['q3']:+.1f}]"
     print(f"  {title:<9} {s['maps']:>5} maps {s['songs']:>4} songs | tempo ok {cell('tempo_ok')} %"
+          f" (within 0.5 BPM {cell('tempo_near')} %)"
           f" | octave x1 {cell('octave_x1')} % | joint 5 ms {cell('joint_5')} %"
           f" | conv 5 {cell('conv_5')} % | conv 10 {cell('conv_10')} %"
           f" | lines match {cell('line_count_match')} % | signed {signed} ms")

@@ -20,6 +20,54 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · Bands, a spectrogram, practice mode, a microphone BPM and the cover's colour
+
+### Changed
+
+- The tempo map has two optional lanes under the waveform, both read from the reader's
+  own decoded song in a Web Worker: the attacks of three frequency bands (low, mid,
+  high; on by default) and a spectrogram at the map's zoom (off by default) (W13.6,
+  W13.7). Chosen once per browser.
+- Practice mode under the transport: the drawn loop or the section under the playhead,
+  3 to 8 times from 0.5× to 1×, after a bar counted in (W13.8).
+- `/tools/tap-mic`: the browser listens for 6 to 15 seconds and proposes a BPM with its
+  confidence and its octave neighbours, or says it heard no pulse (W13.12). Nothing is
+  uploaded; the microphone is asked for only on the button.
+- The cover in the song's tags tints the header of the result and public timing pages,
+  kept at AA, and not under high contrast (W13.24).
+
+### Hardening
+
+- The microphone's worklet is emitted as its own file (`?url&no-inline`): Vite would
+  have inlined it as a data: URL, which the site's `script-src 'self'` refuses.
+- The cover is decoded with `createImageBitmap`, not loaded from a blob: URL that
+  `img-src` does not allow.
+
+### Measured
+
+- Six minutes of stereo 44.1 kHz (`node site/web/scripts/spectral-cost.mjs`): bands and
+  spectrogram 1.30 s in one pass (2.6 s before two-frame FFTs, `sqrt` for `hypot` and
+  compressing only the bins a band reads), downmix 135-218 ms in slices. In the browser
+  (dev build): 2.42 s in the worker, 2.65 s end to end, the page's longest stall 27 ms.
+- Node tests: site/web 258/258 (18 new, on synthetic drums, clicks, noise, silence and
+  covers); the budget passes; `bench/facts.py` ok. Not measured: a real microphone, a
+  phone, Safari and Firefox; no screenshot (the shared browser pane was hidden).
+
+### Rejected / tried and dropped
+
+- A filter bank in an OfflineAudioContext for the bands: three renders of the song
+  where one STFT gives the bands and the spectrogram together.
+- Log compression of raw FFT magnitudes: a kick's spectral splatter lit the high band at
+  20 % of a hat. Magnitudes are now scaled by 2/N first, and the picker's floor is a
+  fifth of the band's loud end, not a tenth: each band then reports only its own
+  instrument on the synthetic drums.
+- The plain autocorrelation peak for the microphone: a click train at 128 BPM read as
+  64, its period falling between two frames. The envelope is smoothed, each candidate
+  refined to a twentieth of a frame, and the faster octave wins when it scores 80 % of
+  the slower.
+
+---
+
 ## Unreleased — 2026-10-28 · Long songs no longer fail for memory they did not use
 
 ### Fixed

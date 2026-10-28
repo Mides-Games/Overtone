@@ -139,14 +139,16 @@
   "strip": {
     "title": "Analysis",
     "example": "Example",
-    "caption": "An example analysis: four bars of 4/4 at 174 BPM with red lines on bars 1 and 3.",
+    "caption": "An example analysis played in real time: four red lines at 174, 186 and 160 BPM, with one passage in 3/4. The readouts follow the red line under the playhead.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Meter",
     "confidence": "Confidence",
     "high": "High confidence",
     "medium": "Medium",
-    "check": "Check by ear"
+    "check": "Check by ear",
+    "line": "red line {{n}} of {{count}}",
+    "osuRow": "This red line as osu! writes it in [TimingPoints]"
   },
   "analyze": {
     "title": "Analyze a song",

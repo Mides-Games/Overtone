@@ -139,14 +139,16 @@
   "strip": {
     "title": "Análisis",
     "example": "Ejemplo",
-    "caption": "Un análisis de ejemplo: cuatro compases de 4/4 a 174 BPM con red lines en los compases 1 y 3.",
+    "caption": "Un análisis de ejemplo reproducido en tiempo real: cuatro red lines a 174, 186 y 160 BPM, con un tramo en 3/4. Las lecturas siguen a la red line que está bajo el cursor.",
     "bpm": "BPM",
     "offset": "Offset",
     "meter": "Compás",
     "confidence": "Confianza",
     "high": "Confianza alta",
     "medium": "Media",
-    "check": "Revisar de oído"
+    "check": "Revisar de oído",
+    "line": "red line {{n}} de {{count}}",
+    "osuRow": "Esta red line como la escribe osu! en [TimingPoints]"
   },
   "analyze": {
     "title": "Analizar una canción",

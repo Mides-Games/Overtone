@@ -818,7 +818,13 @@
     "filesTitle": "Fichiers",
     "json": "Résultat (JSON)",
     "summary": "Résumé (TXT)",
-    "filesNote": "Le CSV et le résumé suivent vos ajustements ; le JSON est le résultat du moteur tel que le serveur l'a envoyé."
+    "filesNote": "Le CSV et le résumé suivent vos ajustements ; le JSON est le résultat du moteur tel que le serveur l'a envoyé.",
+    "snapLabel": "Caler les hit objects sur le nouveau timing",
+    "snapOff": "Non",
+    "snapNote": "Chaque objet va au tick le plus proche de la nouvelle grille avec ce diviseur ; seul son temps change (et la fin d'un spinner ou d'un hold). Les sliders gardent leur longueur en temps. Sans calage, les objets restent où ils sont.",
+    "snapped": "Calé sur {{divisor}} : {{moved}} objets sur {{total}} déplacés, de {{max}} ms au plus (médiane {{median}} ms).",
+    "snappedNone": "Calé sur {{divisor}} : aucun des {{total}} objets n'a dû bouger.",
+    "snapShared": "Objets désormais sur le même tick que le précédent : {{n}}. Vérifiez-les dans l'éditeur."
   },
   "community": {
     "nav": "Communauté",
@@ -1082,7 +1088,20 @@
     "chartFitted_one": "{{count}} changement de tempo tombe entre les ticks de Clone Hero : le BPM qui le précède est ajusté d'un cheveu pour qu'il tombe à l'heure (à {{ms}} ms près).",
     "chartFitted_many": "{{count}} changements de tempo tombent entre les ticks de Clone Hero : le BPM qui précède chacun est ajusté d'un cheveu pour qu'ils tombent à l'heure (à {{ms}} ms près).",
     "chartFitted_other": "{{count}} changements de tempo tombent entre les ticks de Clone Hero : le BPM qui précède chacun est ajusté d'un cheveu pour qu'ils tombent à l'heure (à {{ms}} ms près).",
-    "failed": "Ce fichier n'a pas pu être créé à partir de ces red lines."
+    "failed": "Ce fichier n'a pas pu être créé à partir de ces red lines.",
+    "beatSaber": "Beat Saber : une difficulté v3, ExpertStandard.dat, avec seulement les événements de BPM. Référencez-la dans votre Info.dat et donnez à Info.dat un BPM de {{bpm}}.",
+    "adofai": "A Dance of Fire and Ice : un chemin droit, une case par temps, avec SetSpeed là où le tempo change. Placez la chanson à côté.",
+    "fnf": "Friday Night Funkin’ : le JSON de chart que lisent le jeu d’avant la 0.3 et Psych Engine, en sections de 16 pas avec changeBPM.",
+    "rhythmDoctor": "Rhythm Doctor : un .rdlevel avec PlaySong (BPM et offset), SetBeatsPerMinute et SetCrotchetsPerBar. Placez la chanson à côté.",
+    "adofaiOdd_one": "{{count}} changement de tempo tombe entre les cases de A Dance of Fire and Ice : la case d’avant reçoit sa propre vitesse, pour que le changement tombe à l’heure.",
+    "adofaiOdd_many": "{{count}} changements de tempo tombent entre les cases de A Dance of Fire and Ice : la case d’avant chacun reçoit sa propre vitesse, pour qu’ils tombent à l’heure.",
+    "adofaiOdd_other": "{{count}} changements de tempo tombent entre les cases de A Dance of Fire and Ice : la case d’avant chacun reçoit sa propre vitesse, pour qu’ils tombent à l’heure.",
+    "fnfOdd_one": "{{count}} changement de tempo tombe entre les sections de Friday Night Funkin’ : une section plus courte avant lui, à sa propre vitesse, le fait tomber à l’heure.",
+    "fnfOdd_many": "{{count}} changements de tempo tombent entre les sections de Friday Night Funkin’ : une section plus courte avant chacun, à sa propre vitesse, les fait tomber à l’heure.",
+    "fnfOdd_other": "{{count}} changements de tempo tombent entre les sections de Friday Night Funkin’ : une section plus courte avant chacun, à sa propre vitesse, les fait tomber à l’heure.",
+    "rdMeter_one": "{{count}} changement de mesure tombe au milieu d’une mesure de Rhythm Doctor, où il ne peut pas en commencer une : ces mesures gardent la métrique d’avant.",
+    "rdMeter_many": "{{count}} changements de mesure tombent au milieu d’une mesure de Rhythm Doctor, où ils ne peuvent pas en commencer une : ces mesures gardent la métrique d’avant.",
+    "rdMeter_other": "{{count}} changements de mesure tombent au milieu d’une mesure de Rhythm Doctor, où ils ne peuvent pas en commencer une : ces mesures gardent la métrique d’avant."
   },
   "oszPlus": {
     "title": "Options du .osz",
@@ -1109,7 +1128,13 @@
     "openTipFirefox": "Dans Firefox, ouvrez Paramètres → Général → Fichiers et applications, trouvez le type .osz et choisissez de l'ouvrir avec osu!. Le prochain .osz ira directement dans osu!.",
     "openTipOsu": "Il faut qu'osu! soit installé et que les fichiers .osz s'ouvrent avec lui, ce que son installateur configure. Le site ne peut pas ouvrir le fichier à votre place : une page web n'exécute jamais ce qu'elle télécharge.",
     "openTipClose": "Compris",
-    "openTipNever": "Ne plus afficher"
+    "openTipNever": "Ne plus afficher",
+    "divisor": "Diviseur de snap",
+    "divisorAt": "{{divisor}} : le diviseur sur lequel tombent les attaques, écrit comme BeatDivisor de l'éditeur.",
+    "divisorNone": "Trop peu d'attaques sur la grille : l'éditeur garde son 1/4.",
+    "breaks": "Breaks",
+    "breaksAt": "Longs silences entre les attaques, dans les marges d'un break d'osu! : {{spans}}.",
+    "breaksNone": "Aucun silence de 5 s ou plus entre les attaques."
   },
   "listening": {
     "subdivision": "Entre les temps",
@@ -2290,6 +2315,114 @@
     "pwa": {
       "sharedAdded": "La chanson que vous avez partagée est dans la liste. Vérifiez-la et appuyez sur Analyser.",
       "sharedNone": "Rien d'utilisable n'est arrivé du partage : partagez un fichier MP3, OGG, WAV, FLAC, M4A ou Opus, ou choisissez-le ci-dessous."
+    }
+  },
+  "mapSet": {
+    "title": "Le set de la map",
+    "mode": "Mode de jeu",
+    "modeNote": "Écrit comme Mode dans chaque difficulté ; pour mania, le nombre de touches va dans CircleSize.",
+    "keys": "Touches",
+    "test": "Map de test",
+    "off": "Non",
+    "testNote": "Une difficulté jouable, « Overtone test », avec un cercle sur chaque temps ou demi-temps : le premier temps de la mesure ouvre un combo avec un finish, les demi-temps sonnent en whistle. Jouez-la dans osu! pour sentir si le timing est décalé. Elle sert à vérifier, pas à ranker.",
+    "testBreaks": "Breaks qu'elle laisse vides : {{n}}.",
+    "difficulties": "Difficultés vides",
+    "difficultiesNote": "Chacune est son propre .osu dans le set, avec le même timing et sans objets. Leurs HP, CS, OD et AR sont un point de départ à modifier dans l'éditeur.",
+    "count": "Difficultés dans le .osz : {{n}}.",
+    "modes": {
+      "osu": "osu!",
+      "taiko": "osu!taiko",
+      "catch": "osu!catch",
+      "mania": "osu!mania"
+    }
+  },
+  "divisors": {
+    "title": "Où tombent les attaques",
+    "all": "Tout le morceau",
+    "perLine": "Sous chaque red line",
+    "line": "Red line {{n}} · {{time}}",
+    "suggested": "suggéré : {{divisor}}",
+    "none": "trop peu d'attaques pour le dire",
+    "other": "aucun",
+    "aria": "{{divisor}} : {{pct}} %",
+    "note": "Chaque attaque entendue par le moteur, selon le diviseur le plus simple du temps sur lequel elle tombe (à moins d'1/48 de temps, 15 ms au plus) ; les attaques faibles comptent moins. Cela suggère le diviseur de snap de l'éditeur ; cela ne mesure pas le timing."
+  },
+  "daw": {
+    "title": "Logiciels de musique (carte de tempo)",
+    "midi": "Carte de tempo MIDI",
+    "midiNote": "Un fichier MIDI de type 1 à 960 ticks par temps : un tempo et une signature rythmique à chaque red line, chaque changement à moins de {{ms}} ms de son moment.",
+    "leadIn": "La mesure 1 est une mesure d’amorce qui finit sur le premier temps fort de la première red line, pour que les mesures suivantes s’alignent sur la chanson.",
+    "reaperNote": "Reaper : un projet avec le tempo, un marqueur sur chaque red line et la chanson sur une piste. Enregistrez-le dans le dossier qui contient {{file}}.",
+    "reaperNoAudio": "Reaper : un projet avec le tempo et un marqueur sur chaque red line. Placez vous-même la chanson sur une piste.",
+    "ableton": "Ableton Live ne sait pas lire une carte de tempo depuis du texte, il n’y a donc pas de fichier Live ici. Utilisez le fichier MIDI : glissez-le dans l’Arrangement et Live peut reprendre ses changements de tempo et de signature (selon la version, il le demande, ou une option d’import l’active)."
+  },
+  "calculator": {
+    "title": "Calculatrice de timing",
+    "description": "BPM et ms par temps, ticks, l’écart entre deux red lines, la dérive et le BPM à partir de deux instants : l’arithmétique du timing d’une map, calculée dans votre navigateur.",
+    "intro": "L’arithmétique du timing d’une map, calculée pendant que vous tapez. Rien ne quitte cette page.",
+    "keys": "Clavier : Tab passe d’un champ à l’autre ; ↑ et ↓ font varier le champ actif de 1, de 10 avec Maj, de 0,1 avec Alt. Choisissez un résultat pour copier son nombre.",
+    "copy": "Copier {{label}} : {{value}}",
+    "copied": "Copié",
+    "fromResult": "Calculatrice de timing",
+    "bpmMs": {
+      "title": "BPM ↔ ms par temps",
+      "bpm": "BPM",
+      "ms": "ms par temps",
+      "beat": "Un temps",
+      "exactBpm": "BPM",
+      "bar": "Une mesure de 4/4",
+      "quarter": "Un tick de 1/4"
+    },
+    "ticks": {
+      "title": "ms ↔ ticks",
+      "bpm": "BPM",
+      "divisor": "Diviseur de temps",
+      "span": "Durée",
+      "count": "Ticks",
+      "tick": "Un tick",
+      "ticks": "La durée en ticks",
+      "nearest": "Tick entier le plus proche",
+      "off": "La durée le dépasse de {{ms}} ms.",
+      "toMs": "Les ticks en ms"
+    },
+    "lines": {
+      "title": "Entre deux red lines",
+      "intro": "Où la seconde ligne tombe sur la grille de la première.",
+      "from": "Première red line",
+      "bpm": "Son BPM",
+      "to": "Seconde red line",
+      "meter": "Temps par mesure",
+      "span": "Écart",
+      "beats": "Écart en temps",
+      "bars": "Écart en mesures",
+      "nearest": "Temps le plus proche de la première grille",
+      "off": "Seconde ligne par rapport à ce temps",
+      "offNote": "Positif : elle est en retard.",
+      "earliest": "L’offset le plus tôt de la première grille"
+    },
+    "drift": {
+      "title": "Dérive",
+      "intro": "De combien une grille à un BPM s’écarte d’une autre sur un nombre de mesures, et les BPM qui restent dans une dérive que vous acceptez.",
+      "right": "Le bon BPM",
+      "mapped": "Le BPM de la map",
+      "bars": "Mesures",
+      "meter": "Temps par mesure",
+      "total": "Dérive à la dernière mesure",
+      "sign": "Positif : la grille de la map est en retard.",
+      "perBar": "Dérive par mesure",
+      "allowed": "Dérive acceptée",
+      "slower": "BPM le plus lent qui y reste",
+      "faster": "BPM le plus rapide qui y reste",
+      "precision": "Précision de BPM nécessaire"
+    },
+    "span": {
+      "title": "BPM à partir de deux instants",
+      "intro": "Deux moments de la chanson et le nombre de temps entre eux.",
+      "start": "Premier instant",
+      "end": "Second instant",
+      "beats": "Temps entre les deux",
+      "bpm": "BPM",
+      "beat": "Un temps"
     }
   },
   "editor": {

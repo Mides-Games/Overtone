@@ -1,0 +1,22 @@
+{
+  "version": "3.3.0",
+  "bpmEvents": [
+    { "b": 0, "m": 138.248848 },
+    { "b": 1, "m": 150 },
+    { "b": 13.25, "m": 140 }
+  ],
+  "rotationEvents": [],
+  "colorNotes": [],
+  "bombNotes": [],
+  "obstacles": [],
+  "sliders": [],
+  "burstSliders": [],
+  "waypoints": [],
+  "basicBeatmapEvents": [],
+  "colorBoostBeatmapEvents": [],
+  "lightColorEventBoxGroups": [],
+  "lightRotationEventBoxGroups": [],
+  "lightTranslationEventBoxGroups": [],
+  "basicEventTypesWithKeywords": { "d": [] },
+  "useNormalEventsAsCompatibleEvents": false
+}

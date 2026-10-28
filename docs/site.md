@@ -536,6 +536,67 @@ but FLAC in the browser (the others by node:test on built bytes), the archive op
 osu! itself, Firefox's and Safari's own download behaviour, and whether the suggestions
 are any good for mapping: they are loudness heuristics, and the page says so.
 
+### Mapping helpers (W13.1-W13.5, 2026-10-28)
+
+All of it is built in the browser from the red lines as the reader exports them (after
+the export options) and from what the engine already sent (`onsets`, `onset_envelope`);
+nothing is uploaded and the engine is not touched. The logic is `lib/mapping.js`, pure
+and under node:test; the page is `components/result/DivisorChart.jsx`, `MapSet.jsx`,
+two rows more in `OszOptions.jsx` and the snap in `MoreDownloads.jsx`.
+
+- **Where the attacks fall** (W13.3). Each attack is put under the red line it falls in
+  (one before the first line, under the first) and sorted into the *simplest* divisor
+  of the beat it sits on: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, or none. "Sits on" means within
+  a 48th of the beat, at most 15 ms: the tick sets of 1/6 and 1/8, the closest pair, are
+  a 24th of a beat apart, so no attack can be claimed by both. Each attack counts its
+  weight (0-100), so a faint one counts less. The result page shows the bars for the
+  whole song, and per red line (up to twelve) folded under them.
+- **The suggested `BeatDivisor`**: the coarsest of 1/2, 1/3, 1/4, 1/6 and 1/8 whose ticks
+  hold at least 90 % of the attacks on a tick (1/6 holds 1/1, 1/2, 1/3 and 1/6; 1/8 holds
+  1/1, 1/2, 1/4 and 1/8), else the one that holds most, the coarser on a tie. With fewer
+  than 16 attacks on a tick there is no suggestion and the `.osz` keeps osu!'s 4. It is
+  on by default under ".osz options": it only sets the editor's snapping. It is not
+  written into a patched `.osu`, which changes only what the reader asks for.
+- **Breaks** (W13.4), off by default. A stretch of the onset envelope at or under 5 (of
+  the song's 100) with no attack of weight 20 or more, between the first and the last
+  such attack (osu! has no break before the first object or after the last), at least
+  **5 s** long, is shrunk by osu!'s gaps (a break starts 200 ms after the object before
+  it and ends 450 ms before the next one, as osu!(lazer)'s `BreakPeriod` states them as
+  far as we know) and kept when it is still **650 ms** or longer, osu!'s minimum. The
+  5 s is our choice: osu! would take a 1.3 s pause, which a mapper maps around. Written
+  as `2,start,end` under `//Break Periods`, in every difficulty.
+- **The map set** (W13.5). The mode (osu!, taiko, catch, mania) is written as `Mode` in
+  every difficulty, and mania's key count (4K-10K) as `CircleSize`. Easy, Normal, Hard,
+  Insane and Expert are each their own `.osu` in the `.osz`, same timing and no objects,
+  with HP/CS/OD/AR rising from 2/3/2/3 to 6/4.2/9/9.4: a starting point, our choice. The
+  Timing difficulty stays in the set either way.
+- **A test map** (W13.1): "Overtone test (1/1)" or "(1/2)", a circle on every beat or
+  half beat from the first red line to the song's end (each line's ticks stop where the
+  next one starts, and a red line restarts the bar). The bar's first beat starts a combo
+  and plays a finish (a big don in taiko), a half beat a whistle (a kat). In osu! and
+  catch the bar draws a ring of radius 120 around the playfield's centre, its first beat
+  at the top; mania walks the columns. Nothing is placed inside a break or its gaps. The
+  file name writes "1/2" as "1-2"; the `Version` keeps the slash.
+- **Snapping a patched `.osu`** (W13.2), off by default: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8,
+  1/12 or 1/16. After the red lines are put in, each hit object's time goes to the
+  nearest tick of the **new** grid (the red line in force, counted from its own offset,
+  in whole ms rounded half to even like the red lines); a spinner's end and a mania
+  hold's end go to their own nearest tick, kept after the start. Only those numbers are
+  rewritten; every other byte of the row and of the file is untouched. A slider's end is
+  not in the file: osu! works it out from its length, the slider velocity and the beat,
+  so it keeps its length in beats and ends on the grid when it starts on it. The report
+  says how many moved, the largest and the median move, and how many now share a tick
+  with the object before them.
+
+Checked with Playwright in Chromium on 2026-10-28 against the e2e fake worker, at 375 px,
+EN and ES, dark and light, nothing past the edge: the chart (the fixture's attacks are
+all on the beat, so 1/1 at 100 % and 1/2 suggested), the set with mania 7K, the 1/2 test
+map, Easy and Expert, downloaded and read back (five entries; the test map `Mode: 3`,
+`CircleSize:7`, `BeatDivisor: 2`, columns walking and a finish on the bar), and a small
+`.osu` patched with a 1/4 snap (3 of 3 moved, the report shown). Not checked: any of it
+opened in osu! itself, a real song's breaks, and whether the suggested divisor matches
+what mappers pick on ranked maps (Corpus B could measure that; nobody has yet).
+
 ### The queue, moderated (W3.18, 2026-10-27)
 
 Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`
@@ -1703,6 +1764,64 @@ page's demo, which clips in every language. Spot checks of ja and ru at 375 px. 
 all ten fit after shorter French labels (Attente, Connexion), German's "Queue" and a
 little less space between places below 1280 px. Not seen: a result page (no worker
 ran), a screen reader on the listbox, Safari and Firefox.
+
+### The timing calculator, DAW tempo maps and four more games (W13.9-W13.11, 2026-10-28)
+
+**The calculator** (`/tools/calculator`, `pages/Calculator.jsx`, the arithmetic in
+`lib/calc.js`): BPM ↔ ms per beat (two linked fields), ms ↔ ticks of a beat divisor
+(1/1 to 1/16, with the nearest whole tick and how far past it), where a second red line
+falls on the first one's grid (gap in ms, beats and bars, nearest beat, how far off,
+and the first grid's earliest offset), drift between two BPMs over some bars and the
+BPMs that stay within a drift you accept (so "how precise must this BPM be"), and the
+BPM from two timestamps and a beat count. Every result is live, fixed decimals (3 for
+ms, 6 for BPM) and a button that copies its number. Keyboard first: the first field
+has the focus, the arrows step the field in hand (Shift ×10, Alt ×0.1), a comma is a
+decimal point. The result page links to it with the first red line's BPM and offset
+filled in (`?bpm=&offset=`, timing only, never the file name); the palette and the
+footer's Learn column list it; it is in the sitemap. Nothing is sent or kept.
+
+**DAW tempo maps** (`lib/daw-exports.js`, `components/result/DawExports.jsx`), in
+"More downloads" after the games, built from the lines as exported:
+
+- A Standard MIDI File, format 1 with one conductor track, 960 PPQ: Set Tempo
+  (whole µs per quarter) and Time Signature (n/4) at each red line. Tick 0 is the
+  audio's start, so a lead-in bar reaches the first line's first downbeat (the Clone
+  Hero rule). A change between ticks gets the nearest tick, and the tempo before it is
+  fitted only when keeping it would land the change more than 0.25 ms off; each span
+  starts where the file put the last change, so nothing accumulates. The tests parse
+  the file back by the spec and time every line through its tempo map: under 0.5 ms
+  on 40 changes off the grid; the page prints the worst.
+- Reaper: a small `.rpp` project rather than a list, chosen because it is the one text
+  route that carries tempo (the region/marker manager's CSV import has no tempo): the
+  master tempo envelope (`PT`, square, time signatures packed as num + 65536 × den), a
+  marker per red line, and the song as an item on a track when its type is one Reaper
+  names (mp3, ogg, wav, flac, opus).
+- Ableton Live: no file. Live has no tempo-map text format, so the page sends its users
+  to the MIDI file and says how, rather than inventing one.
+
+**Four more games** (`lib/game-formats.js`; its comment holds each format's rules and
+where we are least sure): Beat Saber v3 `bpmEvents` in `ExpertStandard.dat` (beats
+accumulated; beat 0 the audio's start, so a lead-in beat; the page names the BPM for
+Info.dat; v3 chosen because v2 has no official BPM event of its own), A Dance of Fire
+and Ice `.adofai` (a straight path, a tile a beat, `SetSpeed` by BPM; a span that is not
+whole beats ends on one odd tile at its own speed, rather than an angled tile whose
+direction we could get backwards untested), Friday Night Funkin' legacy chart JSON
+(sections of 16 steps with `changeBPM`, `lengthInSteps` and Psych's `sectionBeats`; a
+lead-in and odd sections of whole steps), Rhythm Doctor `.rdlevel` (`PlaySong` with BPM
+and offset, `SetBeatsPerMinute`, `SetCrotchetsPerBar` where a meter starts a bar). Every
+position is worked from where the file puts the change before it, so roundings never
+accumulate. The page counts the odd tiles and sections and the meters Rhythm Doctor
+cannot place. Tests: `game-formats-more.test.js`, against hand-written files in
+`test/fixtures/games` and read back by each game's own arithmetic.
+
+Checked in the browser pane (5243/3073, no worker: a generated WAV uploaded and a
+hand-made result posted to `/api/internal` as the worker): the calculator at 375 px in
+ES and EN, dark and light, nothing past the edge, the link's BPM and offset filled in,
+Shift+↑ and Alt+↓ stepping a field (174.3 → 184.2); the result page's "More downloads"
+at 375 px with the eight game buttons, the two DAW buttons and their notes; the six new
+files caught in the page and read (the MIDI header, the Reaper envelope with the 3/4
+packed as 262147, the JSON files). Not checked: any file opened in its game or DAW
+(none was run), the clipboard copy in a real click, Safari and Firefox.
 
 ### The timing editor and the offset lab (W7, W12.17, 2026-10-28)
 

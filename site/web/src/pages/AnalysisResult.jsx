@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -16,7 +16,6 @@ import Reanalyse from '../components/result/Reanalyse.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
 import TempoMap from '../components/result/TempoMap.jsx'
-import TimingEditor from '../components/result/TimingEditor.jsx'
 import Listening from '../components/result/Listening.jsx'
 import Transport from '../components/result/Transport.jsx'
 import { useExportOptions } from '../components/result/ExportOptions.jsx'
@@ -26,6 +25,7 @@ import usePageMeta from '../hooks/usePageMeta.js'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { useTimingEdits } from '../hooks/useTimingEdits.js'
 import { formatRange } from '../lib/analysis-options.js'
+import { calculatorPath } from '../lib/calc.js'
 import { checkSpans } from '../lib/check-spans.js'
 import { addLine, updateLine } from '../lib/editor.js'
 import { comparePath } from '../lib/compare.js'
@@ -34,6 +34,9 @@ import { heldAudio } from '../lib/session-audio.js'
 import { tracker, useAnalysis } from '../lib/tracking.js'
 import { publishAnalysis, timingPath, unpublishAnalysis } from '../lib/timings.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatClock, formatMs, governing, isAdjusted, lineDrift } from '../lib/timing.js'
+
+// The editor (W7) and its offset lab load after the page: a reader who never edits never waits for them.
+const TimingEditor = lazy(() => import('../components/result/TimingEditor.jsx'))
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
@@ -490,6 +493,7 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
           onAdjust={setFrame}
         />
         {lines.length > 0 && (
+          <Suspense fallback={null}>
           <TimingEditor
             editor={editor}
             editing={editing}
@@ -506,6 +510,7 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
             onAdjust={setFrame}
             audioFile={audioFile}
           />
+          </Suspense>
         )}
       </TempoMap>
 
@@ -539,6 +544,10 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
             {t('compare.withAdjusted')}
           </Link>
         )}
+        {/* The first red line's BPM and offset, as the page has them, filled in. */}
+        <Link to={calculatorPath(lines[0])} className="btn-ghost h-8 px-3 text-caption">
+          {t('calculator.fromResult')}
+        </Link>
       </CompareWithMap>
 
       <AdjustExport

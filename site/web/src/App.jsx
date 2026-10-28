@@ -18,6 +18,7 @@ const AnalysisResult = lazy(() => import('./pages/AnalysisResult.jsx'))
 const Analyze = lazy(() => import('./pages/Analyze.jsx'))
 const CollectionPage = lazy(() => import('./pages/CollectionPage.jsx'))
 const Community = lazy(() => import('./pages/Community.jsx'))
+const Calculator = lazy(() => import('./pages/Calculator.jsx'))
 const Compare = lazy(() => import('./pages/Compare.jsx'))
 const Credits = lazy(() => import('./pages/Credits.jsx'))
 // W12.20: the API's reference carries the whole OpenAPI document, and the
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="how-it-works" element={page(HowItWorks)} />
         <Route path="faq" element={page(Faq)} />
         <Route path="glossary" element={page(Glossary)} />
+        <Route path="tools/calculator" element={page(Calculator)} />
         <Route path="terms" element={page(Terms)} />
         <Route path="privacy" element={page(Privacy)} />
         <Route path="disclaimer" element={page(Disclaimer)} />

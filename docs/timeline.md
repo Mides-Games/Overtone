@@ -50,7 +50,9 @@ version is `v0.2.0-alpha`.
   (`site/web/test/fixtures/editor-golden.json`): every red line within 1e-6 ms and
   BPM, every refit share within 1e-9, the same refusals. The engine is not touched: no
   gate or benchmark run concerns it.
-- `AnalysisResult` chunk 25.68 kB gzip (budget 30), initial JS 125.48 kB.
+- After merging `master`, the result page went to 31.4 kB gzip (budget 30): the editor
+  and its offset lab now load on their own (`TimingEditor` 5.1 kB), the page 27.7 kB.
+  The Russian file reached 50.8 kB (budget 50); its budget is 55 kB.
 
 ### Rejected / tried and dropped
 
@@ -59,6 +61,84 @@ version is `v0.2.0-alpha`.
   The edits are kept before both instead.
 - The desktop's decoder comparison (Python's first attack against Rust's): the browser
   has neither engine, and the server never sees the audio again.
+
+---
+
+## Unreleased — 2026-10-28 · A timing calculator, DAW tempo maps and four more games
+
+### Changed
+
+- `/tools/calculator` (W13.9): BPM ↔ ms, ms ↔ ticks, the gap between two red lines,
+  drift and the BPMs within an accepted drift, and the BPM from two timestamps. Keyboard
+  first; the result page opens it with its first red line filled in.
+- "More downloads" gains a MIDI tempo map (type 1, 960 PPQ) and a Reaper project (W13.10).
+  Ableton gets no file of its own: Live has no tempo-map text format, so the page sends
+  its users to the MIDI file and says so.
+- Four more games' timing files (W13.11): Beat Saber v3 `bpmEvents`, A Dance of Fire and
+  Ice `.adofai`, Friday Night Funkin' legacy chart JSON, Rhythm Doctor `.rdlevel`.
+
+### Measured
+
+- MIDI read back by an independent parser in the tests: every red line within 0.5 ms of
+  its time on 40 changes off the grid (the worst is printed on the page; 0.08 ms on the
+  browser check's two-line result). The games' files read back by each game's arithmetic,
+  all under 0.5 ms. `site/web` tests 264/264 on the branch (240 before), 280/280 after merging master, budget ok (AnalysisResult
+  24.6 of 30 kB, Calculator 2.5 kB). No file was opened in a game or a DAW.
+
+### Rejected / tried and dropped
+
+- ADOFAI changes off the beat by an angled tile (a fractional beat): exact, but which way
+  an angle counts is easy to get backwards untested, and a wrong guess would be silent.
+  An odd tile with its own speed is visible in the editor and right either way.
+- Fitting the whole span's BPM so a change lands on a whole tile or section (as Clone Hero
+  does between ticks): over a long span it moves the grid by up to half a beat against the
+  music before the change; the odd unit keeps the grid exact everywhere else.
+
+---
+
+## Unreleased — 2026-10-28 · Mapping helpers on the result page
+
+### Changed
+
+- The `.osz` can carry more than the Timing difficulty (W13.1, W13.5): the game mode
+  (osu!, taiko, catch, mania with 4K-10K as `CircleSize`), empty Easy-to-Expert
+  difficulties with the same timing, and a playable "Overtone test (1/1)" or "(1/2)":
+  a circle on every beat or half beat, a combo and a finish on the bar's first beat, a
+  whistle on the half beats, so a mapper plays the timing and feels whether it is off.
+  All off until asked for: by default the `.osz` is still one Timing difficulty.
+- The result page shows where the attacks fall (W13.3): per red line and for the song,
+  the share on 1/1, 1/2, 1/3, 1/4, 1/6, 1/8 or none, and the suggested divisor, which the
+  `.osz` writes as `BeatDivisor` (on by default; it only sets the editor's snapping).
+- Long silences can go into the `.osz` as breaks (W13.4, off by default), inside osu!'s
+  gaps and minimum.
+- Patching your own `.osu` can also snap its hit objects to the new grid (W13.2, off by
+  default, 1/1 to 1/16): only the moved times change, spinners' and holds' ends with
+  them; the page says how many moved and by how much.
+
+### Hardening
+
+- The snap rewrites only the numbers it moves, row by row; the rest of the file keeps
+  its bytes (a test diffs everything before `[HitObjects]` against the plain patch).
+- A divisor osu! does not offer is no snap at all; a mode or divisor out of range falls
+  back to osu!'s defaults; the test map is capped at 20 000 objects.
+
+### Measured
+
+- site/web 256/256 (16 new: `test/mapping.test.js`, and the snap and the set in
+  `osu-patch.test.js` and `osz.test.js`); `pnpm --dir site/web budget` ok (the new
+  `mapping` chunk 1.75 kB); `bench/facts.py` ok.
+- Driven with Playwright at 375 px, EN and ES, dark and light, against the e2e fake
+  worker: the `.osz` read back with five entries, and a `.osu` snapped at 1/4.
+- Not measured: whether the suggested divisor and breaks agree with what mappers chose on
+  ranked maps (Corpus B could say), and none of it was opened in osu!.
+
+### Rejected / tried and dropped
+
+- **Keeping a slider's length in ms when the beat changes.** It would mean rewriting its
+  pixel length, which changes its shape on the playfield. Kept in beats instead: osu!
+  works the end out from the beat, so a slider that starts on the grid ends on it.
+- **Breaks from every 1.3 s pause**, osu!'s own minimum gap. Too many for a suggestion: a
+  pause that short is a rest a mapper maps around. Ours start at 5 s of silence.
 
 ---
 

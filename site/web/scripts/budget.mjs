@@ -60,7 +60,8 @@ export const CHUNK_KB = {
   'pt-BR': 45,
   ja: 50,
   ko: 50,
-  ru: 50,
+  // Cyrillic is two bytes a letter before compression: Russian is the largest file, 50.8 kB with the editor (W7).
+  ru: 55,
 }
 
 const kb = (bytes) => bytes / 1000

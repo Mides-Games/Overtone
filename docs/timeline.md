@@ -20,6 +20,77 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · API tokens, versions, whole batches, images, the app and copied rows
+
+### Changed
+
+- A public API with personal tokens (W12.20): `/settings/tokens` (linked from
+  `/settings` and the profile) makes, lists and revokes them; the secret is shown once
+  and kept as a SHA-256. Three scopes: `read:analyses`, `upload`, `read:timings`. A
+  token reaches an allow-list of `/api/v1` reads and the upload, each under its scope,
+  with its own rate limit (120 a minute, and every route's own limit counted per
+  token). `/developers` explains it and renders `site/api/docs/openapi.yaml`.
+- Versions of a timing (W12.21): the owner's re-analyses of the same audio and the
+  adjustments saved on them (factor and nudge only, never a copy of the result), on the
+  result page, with Apply and the difference per red line between any two.
+- Whole batches (W12.22): one ×2 / ÷2 and nudge for every song of the Analyze page's
+  batch, and every song's `.osz` in one zip, built one song at a time.
+- The tempo map as PNG and SVG, and `/embed/<id>` for a published timing (W12.18).
+  `deploy/web/serve.mjs` lets that path, and only that path, be framed.
+- An installable app (W12.23): `public/sw.js` keeps the shell and the visitor's own
+  final results for offline reading, and the manifest's share target sends an audio
+  file shared from a phone to the Analyze page.
+- Copy one red line, or ticked rows (Shift-click for a stretch), as `[TimingPoints]`
+  rows ready to paste (W12.24), written with the export options as the whole block is.
+- Decided: a token request drops its cookies and never falls back to them, skips the
+  same-origin header (an `Authorization` header is not ambient: no other site can make
+  a browser send it) and is refused everywhere outside its allow-list. No CORS: tokens
+  are for scripts and servers, not other sites' pages.
+- Decided: the API reference is rendered by a YAML reader of our own at build time,
+  not Swagger UI (about a megabyte for one page) or a YAML package; it throws on any
+  YAML it does not read, so nothing is misread into the page.
+- Decided: the tokens stay on their own sub-page of `/settings`, not a section of it:
+  the settings are this browser's and need no account, tokens are an account's.
+- Decided: a batch's `.osz` zip is capped at 1 GiB of audio (inside a zip without
+  zip64 and a phone's patience), said before it starts.
+- Decided: the worker caches only `GET /analyses/<id>` once final, never public
+  timings (they can be unpublished), lists, the account, tokens or audio, and the copies
+  go on sign-out.
+
+### Fixed
+
+- Publishing from the result page called a setter the page no longer had, so a
+  published timing showed "could not publish". Experimental fixed the same bug with
+  `tracker.patch`; this branch's fix was dropped in the merge in favour of it.
+- Two flow descriptions in `openapi.yaml` held an unquoted comma, which YAML reads as a
+  second key: both are quoted. The new reader refuses that construct.
+
+### Hardening
+
+- `requireSameOrigin` passes a token request only because its cookies are already gone;
+  tests send a token beside another account's session cookie, a broken Bearer beside a
+  valid cookie, and token requests to publish, delete, save a version, mint a token,
+  post a suggestion and sign out: every one is a 401 or 403 and nothing changes.
+- A test holds the document's `x-token-scope` marks equal to the allow-list.
+- `/embed/<id>` has `frame-ancestors *` and no `X-Frame-Options`; look-alike paths keep
+  `'none'` and `DENY` (tested). The card has nothing to click but its link.
+
+### Measured
+
+- Not measured: nothing here touches the engine. `site/api` 123/123, `site/web` 212/212,
+  `vite build`. The `/developers` chunk is 59 kB (13 kB gzip). A two-song batch's `.osz`
+  zip was 10.6 MB; a two-line PNG 2800×748, 90 kB.
+
+### Rejected / tried and dropped
+
+- Swagger UI and a YAML dependency for `/developers` (above).
+- Answering CORS preflights for token requests: it would weaken the reasoning the
+  same-origin guard rests on, for a use (another site's page holding a token) that
+  should not exist.
+- A section of `/settings` holding the whole tokens UI (above).
+
+---
+
 ## Unreleased — 2026-10-27 · Other games' formats and export options
 
 ### Changed

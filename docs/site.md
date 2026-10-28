@@ -1288,3 +1288,88 @@ Not checked: a screen reader on the popover and the charts; touch on a real phon
 `/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
 cache across several API processes (each keeps its own minute); the text against a
 mapper's reading, which only a mapper can give.
+
+### API tokens, versions, batches, images, the app and copied rows (W12.18, W12.20-W12.24, 2026-10-27)
+
+**Personal API tokens (W12.20).** `services/token.service.js` (memory and PostgreSQL,
+table `api_tokens`), `middlewares/token.js`, `routes/tokens.routes.js`; the web's
+`pages/Tokens.jsx` at `/settings/tokens` (the "API tokens" section of `/settings` and the
+profile lead there) and `pages/Developers.jsx` at `/developers`.
+
+- A token is `ot_` and 256 random bits, shown once; the row keeps its SHA-256, a name,
+  its scopes, when it was made and last used (written at most once a minute). At most 5
+  an account; revoking deletes the row. Signing out does not revoke them.
+- `Authorization: Bearer` on `/api/v1`: the request's Cookie header is dropped before
+  any route runs; an invalid or revoked token is 401 `INVALID_TOKEN` and never falls
+  back to a cookie; only the allow-list in `middlewares/token.js` is reachable, each
+  route under its scope (403 `TOKEN_NOT_ALLOWED`, 403 `TOKEN_SCOPE`). Allowed: health,
+  `/me`, your analyses with their `timing.txt`, CSV and versions, your history, the
+  upload and the lookup, and the published timings. A token never manages tokens.
+- `requireSameOrigin` lets a token request through: `Authorization` is not
+  CORS-safelisted, so another site's page cannot make a browser send it, and the cookies
+  of that request are already gone. Only the Bearer scheme triggers any of it (`Basic`,
+  say a staging site behind basic auth, is a browser request as before).
+- Rate limits count per token (`rate-limit.js` keys `t:<id>`): 120 a minute in its own
+  bucket instead of the address's 300, and every route's own limit per token. A
+  per-address limit of 600 a minute bounds token lookups.
+- There is no CORS: tokens are for scripts, bots and servers.
+- `/developers` renders `site/api/docs/openapi.yaml` through `scripts/openapi.mjs`, a
+  reader of the YAML the document uses (served as `virtual:openapi`, like the
+  changelog); it throws, with the line, on anything else. Operations a token reaches
+  carry `x-token-scope`; `site/api/test/openapi.test.js` holds those marks equal to the
+  allow-list.
+
+**Versions of a timing (W12.21).** `services/version.service.js` (table
+`analysis_versions`), `routes/versions.routes.js`, `components/result/Versions.jsx`,
+`lib/versions.js`. A reading is another analysis of the same audio (by SHA-1) by the same
+owner (account, or the anonymous cookie's hash); a cache copy is not one. A saved version
+is a factor (0.5, 1, 2) and a nudge (±500 ms) with an optional label, never a copy of the
+result; the same one saved twice is the same row; at most 20 a reading; they go when the
+analysis is deleted. The page pairs two versions' red lines closest first within half a
+beat and shows the difference per line; a line only one has is its own row. Only the
+uploader's page shows versions (not `/t/<id>`).
+
+**Whole batches (W12.22).** `components/BatchTools.jsx`, `lib/batch-export.js`,
+`ZipWriter` in `lib/zip.js`. One ×2 / ÷2 and nudge for the batch, applied with the export
+options to the timings zip and to "all as .osz". The `.osz` files are built one at a time
+from the files the page holds into a zip whose parts are Blobs, so one song's bytes are in
+memory at a time; the batch is capped at 1 GiB of audio and the page says so first.
+
+**The tempo map as an image, and the embed (W12.18).** `lib/map-image.js`,
+`components/result/MapImage.jsx`, `pages/Embed.jsx`. PNG: the page's own `paintMap` of the
+whole song, twice the pixels, under a title line. SVG: a reduced drawing (red lines and
+their BPM, each line's tempo, the local tempo curve, levels, a ruler) written as a string.
+`/embed/<id>` is a published timing's card outside the layout (song, BPM, red lines, a small
+SVG chart, a link back). `deploy/web/serve.mjs` sends `frame-ancestors *` and no
+`X-Frame-Options` for exactly `/embed/<32 hex>`; every other page keeps `'none'` and `DENY`.
+
+**The installable app (W12.23).** `public/sw.js`, `lib/pwa.js`, the manifest's
+`share_target`. The worker (production builds only) keeps the shell (network first for
+pages, cache first for hashed assets) and `GET /api/v1/analyses/<id>` answers once final,
+served only when the network fails or the proxy answers 502-504, dropped on a 404, on
+delete and on sign-out, at most 50. It never keeps audio, uploads, public timings, lists,
+the account or tokens. A shared file is POSTed to `/share-target`, kept in its own cache
+for the Analyze page (`?shared=1`), which takes and deletes it. Without a worker,
+`serve.mjs` answers that POST with a 303 to `/analyze?shared=unavailable`, unread.
+`serve.mjs` serves `/sw.js` with `no-cache, max-age=0` and `Service-Worker-Allowed: /`.
+
+**Copy as rows (W12.24).** `lib/osu-copy.js` and the red lines table: a copy button per
+row and ticked rows (Shift-click for a stretch) copy `[TimingPoints]` rows, CRLF, by time,
+no header or comment: the engine's own rows unadjusted, the rebuilt ones adjusted, both
+through the export options as the whole-block copy is.
+
+Checked: `site/api` 123/123 (tokens, versions and the OpenAPI marks on the memory store;
+`serve.test.js` for framing, the worker's headers and the share fallback), `site/web`
+212/212 (the YAML reader against the real document, diffs, copy rows, the streaming zip
+against `zipStore`, the batch, the SVG, the worker's handlers on an in-memory Cache
+Storage), `vite build`. In the browser (dev API on its own port with a stand-in worker):
+two readings 6 ms apart compared as −6.0 ms per line; ×2 saved and listed; the PNG and SVG
+looked at; the embed card at 560×320; a two-song batch ×2 +5 ms as `.osz` (10.6 MB, both
+`.osu` with the adjusted rows) and as timings; `/developers` and `/settings/tokens` at
+375 px in Spanish, light and dark, no horizontal scroll; a token made and shown once; the
+share hand-off through the cache and the "nothing usable" notice, on `serve.mjs`.
+
+Not checked: the PostgreSQL stores of tokens and versions against a database; the service
+worker in a browser (the preview pane refused to register any worker), so installing,
+reading a result offline and a real phone's share sheet were not seen; a batch near the
+1 GiB cap; how forums actually frame the embed; Safari and Firefox.

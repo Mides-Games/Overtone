@@ -790,13 +790,13 @@ Todo es del sitio: nada toca el engine ni la línea base de precisión. Lo que d
 | W12.15 | **Ajustes y accesibilidad** (2.ª tanda): `/settings` con tema, alto contraste, tamaño de letra, paleta del mapa apta para daltonismo, movimiento reducido, volúmenes por defecto y la latencia de W12.2; todo en el navegador |
 | W12.16 | **Más idiomas**: pt-BR, fr, de, ja, ko, con un flujo para que la comunidad traduzca (un JSON por idioma y la prueba de claves de i18n) |
 | W12.17 | **Editor ligero de red lines** en el resultado: mover, agregar o borrar una red line con deshacer, como anticipo de W7 |
-| W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord |
+| W12.18 | **Exportar el mapa de tempo como imagen** (PNG/SVG) y un **embed** (`/embed/<id>`) para foros y Discord (hecho, 2026-10-27: PNG del mapa de la página, SVG reducido, `/embed/<id>` enmarcable solo esa ruta; falta una imagen Open Graph para que Discord la muestre en el link) |
 | W12.19 | **Recortar antes de subir**: elegir el tramo de la canción a analizar en el navegador (menos espera, misma cuota) |
-| W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad |
-| W12.21 | **Historial de versiones** de un timing: cada reanálisis o ajuste guardado como versión, con la diferencia entre ellas |
-| W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos |
-| W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) |
-| W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor |
+| W12.20 | **API pública con tokens personales**, documentada en el sitio (OpenAPI), con su propio rate limit, para las herramientas de la comunidad (hecho, 2026-10-27: `/settings/tokens`, `/developers`, tres permisos, 120 pedidos/min por token; falta probar el store de PostgreSQL contra una base real) |
+| W12.21 | **Historial de versiones** de un timing: cada reanálisis o ajuste guardado como versión, con la diferencia entre ellas (hecho, 2026-10-27: los reanálisis del mismo audio y dueño, y los ajustes guardados como factor y corrimiento; diferencia por red line en la página) |
+| W12.22 | **Lotes completos:** aplicar el mismo ajuste a todo un lote y bajar todos los `.osz` juntos (hecho, 2026-10-27: ×2/÷2 y corrimiento para todo el lote, zip de `.osz` armado de a una canción, tope de 1 GiB de audio) |
+| W12.23 | **PWA instalable** que abre los resultados guardados sin red y recibe un audio compartido desde el teléfono (share target) (hecho en parte, 2026-10-27: service worker, caché de resultados propios y share target con tests; no se vio instalado en un navegador ni en un teléfono) |
+| W12.24 | **Copiar al estilo del editor de osu!**: una sola red line o un tramo, listo para pegar en el editor (hecho, 2026-10-27: copiar por fila y filas marcadas, con Shift para un tramo, con las opciones de exportación) |
 
 ---
 

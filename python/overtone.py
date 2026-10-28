@@ -3180,6 +3180,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         raise ValueError(f"Subdivision must be one of {sorted(ALLOWED_FACTORS)} (or 0 for auto).")
     say = progress or (lambda _message: None)
     y, sr = _load_audio(path, say)
+    # Beat This! hears the mix it was trained on; the grid, the drums.
+    y_mix, y = y, _percussive(y, sr)
     factor = float(force_subdivision) if force_subdivision else 1.0
 
     if engine in ("auto", "precision"):
@@ -3202,15 +3204,16 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
             if follow_drift:
                 analysis = _follow_drift(analysis)
+            analysis = _change_points(analysis)
             before, before_beats = float(analysis.global_bpm), analysis.beats
             if beat_vote and _beat_this_session() is not None:
                 say("Checking the beats with Beat This!…")
-                analysis = _beat_this_vote(analysis, y, sr)
+                analysis = _beat_this_vote(analysis, y_mix, sr)
             analysis = _fold_local_to_map_octave(
-                analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
-            analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y, sr))
-            return _tidy_bpms(_snap_whole_points(_fold_lines_to_song_octave(
-                analysis, lambda: _beat_this_judge_beats(y, sr))))
+                analysis, before, before_beats, lambda: _beat_this_tempo(y_mix, sr))
+            analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y_mix, sr))
+            return _tidy_bpms(_snap_whole_points(_octave_rule(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y_mix, sr)))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3223,11 +3226,11 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     if tracked is None:
         return _tidy_bpms(_fold_to_map_octave(analysis, min_delta, persistence, min_confidence))
     tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
-                                        lambda: _beat_this_tempo(y, sr))
-    tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y, sr))
-    tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
-    tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
-    return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr)))
+                                        lambda: _beat_this_tempo(y_mix, sr))
+    tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
+    tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
+    tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
+    return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3727,7 +3730,7 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
     """The tempo Beat This! hears (BPM, from its beats' median spacing), for
     LOCAL_OCTAVE_JUDGE: loaded on its own, so the judge works where the vote
     is off; None without the model, the runtime or enough beats."""
-    beats = _beat_this_judge_beats(y, sr)
+    beats = _beat_this_judge_beats(y_mix, sr)
     if beats is None or beats.size < 16:
         return None
     return 60.0 / float(np.median(np.diff(beats)))
@@ -3767,18 +3770,25 @@ PIECEWISE_PENALTY = 40.0
 PIECEWISE_MIN_BEATS = 16
 
 
-def _piecewise_segments(beats_ms: np.ndarray) -> list[tuple[int, int, float, float]]:
+def _piecewise_segments(beats_ms: np.ndarray, index: np.ndarray | None = None,
+                        sigma_ms: float | None = None,
+                        least: int | None = None) -> list[tuple[int, int, float, float]]:
     """(first, end, period ms, start ms) per steady stretch of the beats, by
-    optimal partitioning; each stretch holds PIECEWISE_MIN_BEATS or more."""
+    optimal partitioning; each stretch holds PIECEWISE_MIN_BEATS or more.
+    ``index`` gives each beat's number on the grid when it is known (gaps
+    allowed); otherwise it is read from the local beat spacing."""
     t = np.asarray(beats_ms, dtype=float)
     n = t.size
-    least = PIECEWISE_MIN_BEATS
+    least = PIECEWISE_MIN_BEATS if least is None else least
     if n < 2 * least:
         return []
-    gaps = np.diff(t)
-    from scipy.ndimage import median_filter
-    local = np.maximum(median_filter(gaps, size=17, mode="nearest"), 1e-6)
-    x = np.concatenate([[0.0], np.cumsum(np.maximum(1.0, np.round(gaps / local)))])
+    if index is not None:
+        x = np.asarray(index, dtype=float) - float(index[0])
+    else:
+        gaps = np.diff(t)
+        from scipy.ndimage import median_filter
+        local = np.maximum(median_filter(gaps, size=17, mode="nearest"), 1e-6)
+        x = np.concatenate([[0.0], np.cumsum(np.maximum(1.0, np.round(gaps / local)))])
     # Residuals from one line over the whole song keep the sums small, so
     # the closed-form errors below lose nothing to cancellation.
     slope, intercept = np.polyfit(x, t, 1)
@@ -3788,7 +3798,7 @@ def _piecewise_segments(beats_ms: np.ndarray) -> list[tuple[int, int, float, flo
     sxx = np.concatenate([z, np.cumsum(x * x)])
     sxr = np.concatenate([z, np.cumsum(x * r)])
     srr = np.concatenate([z, np.cumsum(r * r)])
-    penalty = PIECEWISE_PENALTY * PIECEWISE_SIGMA_MS ** 2
+    penalty = PIECEWISE_PENALTY * (PIECEWISE_SIGMA_MS if sigma_ms is None else sigma_ms) ** 2
     best = np.full(n + 1, np.inf)
     best[0] = 0.0
     back = np.zeros(n + 1, dtype=int)
@@ -3815,8 +3825,94 @@ def _piecewise_segments(beats_ms: np.ndarray) -> list[tuple[int, int, float, flo
     out = []
     for i, j in reversed(cuts):
         period, start = np.polyfit(x[i:j] - x[i], t[i:j], 1)
-        out.append((int(i), int(j), float(period), float(start)))
+        out.append((int(x[i]), int(x[j - 1]) + 1, float(period), float(start)))
     return out
+
+
+#: Tempo changes read off the attacks themselves (CHANGE_POINTS): a one-line
+#: song is followed beat by beat, each beat put on the strongest attack near
+#: where the grid expects it, and the beats found are split by optimal
+#: partitioning into the fewest steady stretches (sigma CHANGE_SIGMA_MS, the
+#: attacks' own spread). anime-variable dev (2026-10-28): 474 misses are maps
+#: timed with ~6 lines that came out as one, 0.9-4.8 % off; fixed-window drift
+#: following cut where a window ended and lost. A split stands only where the
+#: stretches differ by CHANGE_MIN_STEP and explain the attacks clearly better.
+CHANGE_POINTS = False
+CHANGE_SIGMA_MS = 6.0
+CHANGE_MIN_STEP = 0.004
+CHANGE_GAIN = 0.85
+CHANGE_MIN_BEATS = 16
+
+
+def _follow_attacks(times_ms: np.ndarray, weights: np.ndarray, start_ms: float,
+                    period_ms: float, end_ms: float) -> tuple[np.ndarray, np.ndarray]:
+    """(beat numbers, times ms) of the beats an attack confirms, followed from
+    ``start_ms``: each expected beat takes the strongest attack within a fifth
+    of a beat, and the expected spacing follows the confirmed ones slowly."""
+    strong = weights >= np.median(weights) if weights.size else weights.astype(bool)
+    t, w = times_ms[strong], weights[strong]
+    index, found = [], []
+    pos, step, k = float(start_ms), float(period_ms), 0
+    last_k, last_t = None, None
+    while pos < end_ms + 0.5 * step:
+        lo, hi = np.searchsorted(t, [pos - 0.2 * step, pos + 0.2 * step])
+        if hi > lo:
+            j = lo + int(np.argmax(w[lo:hi] - np.abs(t[lo:hi] - pos) / (0.2 * step) * w[lo:hi].max() * 0.5))
+            hit = float(t[j])
+            if last_k is not None and k > last_k:
+                seen = (hit - last_t) / (k - last_k)
+                if abs(seen / period_ms - 1.0) < 0.08:
+                    step = 0.8 * step + 0.2 * seen
+            index.append(k)
+            found.append(hit)
+            last_k, last_t = k, hit
+            pos = hit + step
+        else:
+            pos += step
+        k += 1
+    return np.asarray(index, dtype=float), np.asarray(found, dtype=float)
+
+
+def _change_points(analysis: Analysis) -> Analysis:
+    """A one-line precision analysis split where its attacks change tempo
+    (CHANGE_POINTS); the analysis as it was otherwise."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not CHANGE_POINTS or len(points) != 1 or analysis.engine != "precision"
+            or getattr(points[0], "manual", False)):
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 4 * CHANGE_MIN_BEATS:
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    period = 60000.0 / float(points[0].bpm)
+    start = points[0].offset_ms
+    index, beats = _follow_attacks(times * 1000.0, weights, start, period, duration_ms)
+    segments = _piecewise_segments(beats, index=index, sigma_ms=CHANGE_SIGMA_MS,
+                                   least=CHANGE_MIN_BEATS)
+    if len(segments) < 2:
+        return analysis
+    lines = []
+    for first, _end, step, origin in segments:
+        offset, bpm = origin, 60000.0 / step
+        if lines and abs(bpm / lines[-1][1] - 1.0) < CHANGE_MIN_STEP:
+            continue
+        lines.append((float(offset), float(bpm)))
+    if len(lines) < 2:
+        return analysis
+    # The first line keeps the bar the analysis found, on its new grid.
+    first_period = 60000.0 / lines[0][1]
+    lines[0] = (lines[0][0] + round((start - lines[0][0]) / first_period) * first_period, lines[0][1])
+    while len(lines) > 1 and lines[0][0] >= lines[1][0]:
+        lines[0] = (lines[0][0] - first_period, lines[0][1])
+    lines = _snap_whole_lines(lines, times, weights, float(analysis.duration))
+    if len(lines) < 2:
+        return analysis
+    old = _attack_rms_ms(_beats_of([(start, points[0].bpm)], float(analysis.duration)), times, weights)
+    new = _attack_rms_ms(_beats_of(lines, float(analysis.duration)), times, weights)
+    if not new < CHANGE_GAIN * old:
+        return analysis
+    return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
 def _piecewise_grid(analysis: Analysis, heard) -> Analysis:
@@ -4228,6 +4324,85 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
                    global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
 
 
+#: The drums, not the mix, for the grid (PERCUSSIVE_INPUT): harmonic-percussive
+#: separation (librosa's median-filter HPSS) leaves the kick, snare and hats and
+#: drops the sustained guitars and bass that smear a live band's attacks.
+#: Beat This! keeps the mix. 0 is off; above 0, the separation's margin.
+#: Off until measured (experiment percussive).
+PERCUSSIVE_INPUT = 0.0
+
+
+def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
+    """The percussive part of ``y`` at PERCUSSIVE_INPUT's margin, peak-normalized
+    as the loader leaves audio; ``y`` itself when off."""
+    if not PERCUSSIVE_INPUT:
+        return y
+    import librosa
+    out = librosa.effects.percussive(np.asarray(y, dtype=np.float32), margin=float(PERCUSSIVE_INPUT))
+    peak = float(np.max(np.abs(out))) if out.size else 0.0
+    return (out / peak).astype(np.float32) if peak > 0 else np.asarray(y, dtype=np.float32)
+
+
+#: A per-song octave rule fitted on the server's stages (OCTAVE_RULE). The
+#: precision grid's misses sit where the fixed range cuts: a fast punk song
+#: read at half (under 130 BPM, its half beats as loud as its beats) and a
+#: slow one read at double (over 160 BPM, almost nothing on the half beats).
+#: Fitted on dev (bands and anime-variable, tidy-bpm runs of 2026-10-28,
+#: 1677 maps), checked on held out (681): first lines at the right octave
+#: +63 maps dev, +44 held out. Off until measured end to end.
+OCTAVE_RULE = False
+OCTAVE_RULE_DOUBLE = (130.0, 0.9)     # below this BPM, at or above this off-beat ratio
+OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat ratio
+
+
+def _offbeat_ratio(analysis: Analysis) -> float | None:
+    """Attack weight on the half beats over the weight on the beats, on the
+    first red line's grid (bench/corpus_b.py reports the same number)."""
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 16 or not analysis.points:
+        return None
+    period = 60.0 / float(analysis.points[0].bpm)
+    phase = np.mod((times - analysis.points[0].offset_ms / 1000.0) / period, 1.0)
+    on = float(weights[(phase < 0.1) | (phase > 0.9)].sum())
+    half = float(weights[np.abs(phase - 0.5) < 0.1].sum())
+    return half / on if on > 0 else None
+
+
+def _octave_rule(analysis: Analysis) -> Analysis:
+    """Every red line at twice or half its tempo where OCTAVE_RULE says the
+    song was read an octave out; a halved song keeps the beats that carry
+    more of the attacks."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not OCTAVE_RULE or not points or analysis.engine != "precision"
+            or any(getattr(p, "manual", False) for p in points)):
+        return analysis
+    ratio = _offbeat_ratio(analysis)
+    bpm = float(analysis.global_bpm) or float(points[0].bpm)
+    if ratio is None:
+        return analysis
+    if bpm < OCTAVE_RULE_DOUBLE[0] and ratio >= OCTAVE_RULE_DOUBLE[1] and bpm * 2.0 <= 300.0:
+        lines = [(p.offset_ms, p.bpm * 2.0) for p in points]
+    elif bpm > OCTAVE_RULE_HALVE[0] and ratio < OCTAVE_RULE_HALVE[1]:
+        times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
+        weights = np.asarray(analysis.attack_weights, dtype=float)
+        lines = []
+        for n, p in enumerate(points):
+            end = points[n + 1].offset_ms if n + 1 < len(points) else float(analysis.duration) * 1000.0
+            period = 120000.0 / p.bpm
+            inside = (times >= p.offset_ms) & (times < end)
+
+            def weight(start: float) -> float:
+                phase = np.mod((times[inside] - start) / period, 1.0)
+                return float(weights[inside][(phase < 0.05) | (phase > 0.95)].sum())
+
+            start = max((p.offset_ms, p.offset_ms + period / 2.0), key=weight)
+            lines.append((start, p.bpm / 2.0))
+    else:
+        return analysis
+    return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
+
+
 def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes) -> Analysis:
     """The analysis with these red lines, each keeping the meter and kiai of
     the point that governed its offset."""
@@ -4248,8 +4423,10 @@ def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes)
 #: where that is within TIDY_BPM_ONE_DECIMAL of it (180.19 -> 180.2; 180.18
 #: stays), at the owner's request (2026-10-28): 180.178 is not a tempo
 #: anyone hears. Each line keeps the beat at the middle of its span where it
-#: was, so the rounding's drift is split between the line's two ends.
-TIDY_BPM = False
+#: was, so the rounding's drift is split between the line's two ends. On since
+#: 2026-10-28: the tidy-bpm runs left tempo ok and octave unchanged on every
+#: stage (bands dev 51.1, held out 59.9; anime-variable 31.9 / 21.5).
+TIDY_BPM = True
 TIDY_BPM_ONE_DECIMAL = 0.011
 
 

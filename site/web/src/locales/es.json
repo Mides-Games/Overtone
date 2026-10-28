@@ -1816,6 +1816,19 @@
       "more_one": "y {{count}} red line más",
       "more_other": "y {{count}} red lines más",
       "open": "Abrir en Overtone"
+    },
+    "batch": {
+      "title": "Todo el lote",
+      "adjust": "Un ajuste para todas las canciones",
+      "adjustNote": "×2, ÷2 o un corrimiento acá se aplican a todas las canciones del lote en las dos descargas. Revisá cada canción de oído en su página.",
+      "adjusted": "Todas las canciones se escriben {{adjustment}}: las descargas lo dicen en una línea de comentario. Revisalas de oído.",
+      "osz_one": "Bajar {{count}} canción como .osz (zip)",
+      "osz_other": "Bajar las {{count}} canciones como .osz (zip)",
+      "oszBusy": "Armando .osz {{done}} de {{total}}…",
+      "oszNote": "Cada .osz lleva su canción, armado acá con los archivos que elegiste, de a uno. Hasta {{max}} MB de audio por zip.",
+      "tooLarge": "Estas canciones suman {{mb}} MB, más de los {{max}} MB que entran en un zip acá. Bajá sus .osz de a uno desde sus páginas.",
+      "oszFailed": "No se pudieron armar los .osz en este navegador.",
+      "oszSome": "Quedaron afuera, no se pudo armar su .osz: {{names}}"
     }
   }
 }

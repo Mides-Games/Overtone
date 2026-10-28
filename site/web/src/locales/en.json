@@ -1816,6 +1816,19 @@
       "more_one": "and {{count}} more red line",
       "more_other": "and {{count}} more red lines",
       "open": "Open on Overtone"
+    },
+    "batch": {
+      "title": "The whole batch",
+      "adjust": "One adjustment for every song",
+      "adjustNote": "×2, ÷2 or a nudge here apply to every song of the batch in both downloads. Check each song by ear on its own page.",
+      "adjusted": "Every song is written {{adjustment}}: the downloads say so in a comment line. Check them by ear.",
+      "osz_one": "Download {{count}} song as .osz (zip)",
+      "osz_other": "Download all {{count}} songs as .osz (zip)",
+      "oszBusy": "Building .osz {{done}} of {{total}}…",
+      "oszNote": "Each .osz carries its song, built here from the files you picked, one at a time. Up to {{max}} MB of audio in one zip.",
+      "tooLarge": "These songs come to {{mb}} MB, over the {{max}} MB one zip can carry here. Download their .osz one by one from their pages.",
+      "oszFailed": "The .osz files could not be built in this browser.",
+      "oszSome": "Left out, their .osz could not be built: {{names}}"
     }
   }
 }

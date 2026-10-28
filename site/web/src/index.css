@@ -263,10 +263,39 @@ body {
   overflow-x: clip;
 }
 
-h1,
-h2,
-h3 {
-  text-wrap: balance;
+/*
+ * Base type, in the base layer so any utility on an element wins. Headings
+ * are Archivo, wide and tight; prose wraps without orphans; every number set
+ * in mono is tabular, so a column of readouts lines up.
+ */
+@layer base {
+  body {
+    line-height: 1.6;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-stretch: 112%;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Room under the sticky bar for whatever a link or the keyboard brings into view. */
+  [id] {
+    scroll-margin-top: calc(var(--bar-height) + 16px);
+  }
 }
 
 /* A link inside a sentence is told from its words by more than colour
@@ -277,10 +306,13 @@ h3 {
   text-underline-offset: 2px;
 }
 
+/* The focus ring (WCAG 2.4.7, 2.4.11): 2 px of accent, 2 px off the edge so
+   the page shows between them, on everything the keyboard reaches. The
+   accent is 4.5:1 or more on every surface in both themes. The outline
+   follows each element's own rounding. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 /* The palette's field is the only thing in its dialog that takes the focus,
@@ -306,61 +338,342 @@ h3 {
   color: var(--accent-ink);
   font-size: 0.875rem;
   font-weight: 600;
-  transition: transform 0.18s var(--ease-standard);
+  transition: transform var(--dur-panel) var(--ease-out-strong);
 }
 .skip-link:focus {
   transform: translate(-50%, 0);
 }
 
-/* Utilities, so the variants below can @apply them. */
+/*
+ * The primitives (docs/design.md, section 6). The class names the pages
+ * already use (btn-primary, btn-ghost, tool-btn, field, panel, label,
+ * readout, chip-*) keep working and take the new look in place; the new
+ * names (btn-quiet, btn-sm, btn-lg, eyebrow, heading-*, lede, chip-red,
+ * chip-tempo, chip-neutral, panel-well, link, skeleton) are for the pages
+ * being reworked. components/ui/ holds the ones that need markup.
+ */
 @utility btn {
-  @apply inline-flex h-10 items-center justify-center gap-2 rounded-control px-4 text-label font-semibold transition
-    disabled:cursor-not-allowed disabled:opacity-50;
+  display: inline-flex;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-inline: 1rem;
+  border-radius: var(--radius-control);
+  font-size: calc(14px * var(--font-scale, 1));
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    transform var(--dur-press) var(--ease-out-strong),
+    background-color var(--dur-fast) var(--ease-out-strong),
+    border-color var(--dur-fast) var(--ease-out-strong),
+    color var(--dur-fast) var(--ease-out-strong);
+  &:active:not(:disabled, [aria-disabled='true']) {
+    transform: scale(0.97);
+  }
+  &:disabled,
+  &[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  /* A finger needs 44 px (WCAG 2.5.5); a pointer is fine with 40. */
+  @media (pointer: coarse) {
+    min-height: 44px;
+  }
 }
+
+/* A state as a small mono label, in a reserved colour only. Square-cornered,
+   like a meter's legend, not a pill. */
 @utility chip {
-  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-display text-caption font-semibold uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 0.125rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: calc(11.5px * var(--font-scale, 1));
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 @layer components {
-  /* A flat panel: hairline border, no shadow. Used by role, not everywhere. */
+  /* Something you operate (the drop zone, the map, a form): a flat panel. No
+     shadow in the dark; one soft one in the light, where a hairline alone
+     reads as a hole. Never a panel inside a panel: use .panel-well inside. */
   .panel {
-    @apply rounded-panel border border-line bg-surface;
+    border-radius: var(--radius-panel);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--shadow-panel);
+  }
+  /* A recessed area inside a panel: an input's well, the map's lane. */
+  .panel-well {
+    border-radius: var(--radius-control);
+    background: var(--surface-3);
   }
 
-  /* Small-caps label, as in the app. */
+  /* A short label: mono, small, uppercase, dim. For a field, a column, a readout. */
   .label {
-    @apply font-display text-caption font-semibold uppercase text-dim;
+    font-family: var(--font-mono);
+    font-size: var(--text-caption);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  /* A section's eyebrow: the label, with a short accent tick in front. */
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-caption);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .eyebrow::before {
+    content: '';
+    width: 14px;
+    height: 2px;
+    flex: none;
+    border-radius: 1px;
+    background: var(--accent);
   }
 
+  /* Display headings: Archivo, wide, heavy and tight. */
+  .heading-display,
+  .heading-headline,
+  .heading-section,
+  .heading-title {
+    font-family: var(--font-display);
+    font-stretch: 118%;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    color: var(--text);
+  }
+  .heading-display {
+    font-size: var(--text-display);
+    line-height: 1;
+    font-stretch: 122%;
+  }
+  .heading-headline {
+    font-size: var(--text-headline);
+    line-height: 1.05;
+  }
+  .heading-section {
+    font-size: var(--text-section);
+    line-height: 1.1;
+    font-weight: 750;
+  }
+  .heading-title {
+    font-size: var(--text-lead);
+    line-height: 1.3;
+    font-weight: 700;
+    font-stretch: 110%;
+    letter-spacing: -0.01em;
+  }
+  /* The one line under a heading. */
+  .lede {
+    font-size: var(--text-lead);
+    line-height: 1.55;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+
+  /* A number set like a readout: mono, tabular, aligned on the decimal. */
   .readout {
-    @apply font-mono tabular-nums;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: -0.01em;
+  }
+  /* A unit after a readout: smaller, muted, a thin space away. */
+  .unit {
+    margin-left: 0.2em;
+    font-size: 0.7em;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--dim);
   }
 
   .btn-primary {
-    @apply btn bg-accent text-accent-ink hover:bg-accent-hover;
+    @apply btn;
+    background: var(--accent);
+    color: var(--accent-ink);
   }
   .btn-ghost {
-    @apply btn border border-line-strong text-text hover:border-line-hover hover:bg-surface-2;
+    @apply btn;
+    border: 1px solid var(--line-strong);
+    background: transparent;
+    color: var(--text);
+  }
+  /* Text only: a secondary action that should not weigh as much as a button. */
+  .btn-quiet {
+    @apply btn;
+    padding-inline: 0.625rem;
+    color: var(--accent);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      border-color: var(--line-hover);
+      background: var(--surface-2);
+    }
+    .btn-quiet:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+  }
+  .btn-sm {
+    height: 2rem;
+    padding-inline: 0.75rem;
+    font-size: var(--text-label);
+  }
+  .btn-lg {
+    height: 3rem;
+    padding-inline: 1.5rem;
+    font-size: calc(15px * var(--font-scale, 1));
   }
 
+  /* A text field: a well, an edge at 3:1 (it is the only thing that says
+     "type here"), the accent edge and ring on focus. Real types and
+     autocomplete stay on the element. */
   .field {
-    @apply w-full rounded-control border border-line-strong bg-surface-2 px-3 py-2.5 text-body text-text outline-none
-      transition placeholder:text-dim focus:border-accent;
+    width: 100%;
+    min-height: 2.5rem;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--line-control);
+    background: var(--surface-3);
+    padding: 0.5rem 0.75rem;
+    font-size: var(--text-body);
+    line-height: 1.4;
+    color: var(--text);
+    outline: none;
+    transition:
+      border-color var(--dur-fast) var(--ease-out-strong),
+      background-color var(--dur-fast) var(--ease-out-strong);
+  }
+  .field::placeholder {
+    color: var(--dim);
+  }
+  .field:focus {
+    border-color: var(--accent);
+  }
+  .field[aria-invalid='true'] {
+    border-color: var(--red);
+  }
+  .field:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .field:hover:not(:focus, :disabled) {
+      border-color: var(--line-hover);
+    }
   }
 
-  /* The result page's small instrument buttons: zoom, rate, loop, ×2. Pressed reads as lit. */
+  /* The result page's small instrument buttons: zoom, rate, loop, ×2. Pressed
+     reads as lit. 32 px is fine here: a toolbar for a pointer (section 4). */
   .tool-btn {
-    @apply inline-flex h-8 min-w-8 items-center justify-center rounded-control border border-line-strong bg-surface px-1.5
-      font-mono text-label text-text tabular-nums transition hover:border-line-hover hover:bg-surface-2
-      disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent/15 aria-pressed:text-accent;
+    display: inline-flex;
+    height: 2rem;
+    min-width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    padding-inline: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    transition:
+      transform var(--dur-press) var(--ease-out-strong),
+      background-color var(--dur-fast) var(--ease-out-strong),
+      border-color var(--dur-fast) var(--ease-out-strong),
+      color var(--dur-fast) var(--ease-out-strong);
+  }
+  .tool-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+  .tool-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+  .tool-btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .tool-btn:hover:not(:disabled, [aria-pressed='true']) {
+      border-color: var(--line-hover);
+      background: var(--surface-2);
+    }
   }
 
   .chip-amber {
-    @apply chip border-amber/40 bg-amber/10 text-amber;
+    @apply chip;
+    border-color: color-mix(in srgb, var(--amber) 40%, transparent);
+    background: color-mix(in srgb, var(--amber) 10%, transparent);
+    color: var(--amber);
   }
   .chip-accent {
-    @apply chip border-accent/40 bg-accent/10 text-accent;
+    @apply chip;
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
   }
+  .chip-red {
+    @apply chip;
+    border-color: color-mix(in srgb, var(--red) 40%, transparent);
+    background: color-mix(in srgb, var(--red) 10%, transparent);
+    color: var(--red);
+  }
+  .chip-tempo {
+    @apply chip;
+    border-color: color-mix(in srgb, var(--tempo) 40%, transparent);
+    background: color-mix(in srgb, var(--tempo) 10%, transparent);
+    color: var(--tempo);
+  }
+  .chip-neutral {
+    @apply chip;
+    border-color: var(--line-strong);
+    color: var(--muted);
+  }
+
+  /* A link in prose: it looks like one (underlined), the accent on hover. */
+  .link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--dur-fast) var(--ease-out-strong);
+  }
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* A loading block (components/ui/Skeleton.jsx): a slow breath, never a spinner. */
+  .skeleton {
+    border-radius: 4px;
+    background: var(--surface-3);
+    animation: skeleton-breathe 1.6s var(--ease-in-out-strong) infinite alternate;
+  }
+
   /* A glossary word (components/Term.jsx): the text it sits in, dotted underneath. */
   .term {
     font: inherit;
@@ -382,18 +695,9 @@ h3 {
   }
 }
 
-/* The signal strip: the ticker, quiet and monospaced. */
-@keyframes ticker-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-12.5%); }
-}
-.ticker-track {
-  display: flex;
-  width: max-content;
-  animation: ticker-scroll 60s linear infinite;
-}
-.ticker-track:hover {
-  animation-play-state: paused;
+@keyframes skeleton-breathe {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
 }
 
 /* The loader: a bar of four beats, the downbeat in red. */
@@ -406,7 +710,7 @@ h3 {
   width: 4px;
   border-radius: 2px;
   transform-origin: bottom;
-  animation: beat 1.2s var(--ease-standard) infinite;
+  animation: beat 1.2s var(--ease-out-strong) infinite;
 }
 
 /* The hero's playhead sweeps across the timing strip once a bar. */
@@ -425,12 +729,64 @@ h3 {
   to { transform: none; }
 }
 .rise {
-  animation: rise 0.45s var(--ease-standard) both;
+  animation: rise 0.36s var(--ease-out-strong) both;
+}
+
+/* A popover or menu enters from its trigger: scale 0.96 to 1 with opacity,
+   from the corner it hangs from (set --origin on the element, top right by
+   default). Exits are instant, so always faster than the entry. */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.pop-in {
+  transform-origin: var(--origin, top right);
+  animation: pop-in var(--dur-fast) var(--ease-out-strong) both;
+}
+
+/* The phone's menu sheet slides down from under the bar. */
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.sheet-in {
+  animation: sheet-in var(--dur-panel) var(--ease-out-strong) both;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in {
+  animation: fade-in var(--dur-panel) var(--ease-out-strong) both;
+}
+
+/* components/ui/Reveal.jsx: a group that starts below the fold waits, then
+   its [data-reveal] children rise in, --stagger apart, the seventh and after
+   together. Nothing is ever held back without the script, so a page with no
+   JavaScript, a thumbnail or a print shows everything. */
+[data-reveal-state='armed'] [data-reveal],
+[data-reveal-state='armed'][data-reveal] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+[data-reveal-state='in'] [data-reveal],
+[data-reveal-state='in'][data-reveal] {
+  transition:
+    opacity 0.42s var(--ease-out-strong),
+    transform 0.42s var(--ease-out-strong);
+  transition-delay: calc(min(var(--i, 0), 6) * var(--stagger));
+}
+@media print {
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* Reduced motion follows the system unless the reader chose (W12.15): the
    rule runs under the media query when nothing overrides it, and always
-   under .motion-reduce. The two copies are the same rule. */
+   under .motion-reduce. The two copies are the same rule. Movement becomes
+   nothing; what was a fade still ends where it should, at once. */
 @media (prefers-reduced-motion: reduce) {
   :root:not(.motion-allow) *,
   :root:not(.motion-allow) *::before,
@@ -438,8 +794,9 @@ h3 {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
   }
-  :root:not(.motion-allow) :is(.ticker-track, .playhead, .beat-bar) {
+  :root:not(.motion-allow) :is(.playhead, .beat-bar, .skeleton) {
     animation: none !important;
   }
 }
@@ -449,7 +806,8 @@ h3 {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
 }
-.motion-reduce :is(.ticker-track, .playhead, .beat-bar) {
+.motion-reduce :is(.playhead, .beat-bar, .skeleton) {
   animation: none !important;
 }

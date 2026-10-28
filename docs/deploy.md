@@ -400,12 +400,13 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
 
 En el panel, el release es reiniciar. Push a GitHub no despliega nada solo.
 
-1. `feat/*` → PR a `experimental` → merge.
+Desde el 2026-10-28 hay una sola rama, `master` (decisión del dueño). Los
+servers que antes seguían `experimental` (`overtone-*-exp`) siguen `master`.
+
+1. Una rama de trabajo → PR a `master` → merge.
 2. En el panel, reiniciar `overtone-api-exp`, `overtone-worker-exp` y
    `overtone-web-exp`, en ese orden: la migración va primero.
-3. Probar en staging.
-4. PR `experimental` → `master` → merge → reiniciar `overtone-api`,
-   `overtone-worker` y `overtone-web`.
+3. Probar en el sitio; los ejecutables del release salen de `scripts/release.py`.
 
 Esto hace `start.sh` en cada arranque, con `AUTO_UPDATE=1`. Es la lógica que
 tenía `deploy/overtone-update.sh` en la VPS:

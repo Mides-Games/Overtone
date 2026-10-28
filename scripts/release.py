@@ -273,7 +273,7 @@ Keep the folder together: overtone.exe reads _internal and assets beside it.
 The first run of a session compiles some kernels and takes longer.
 
 Licence: MIT (LICENSE). The model's licence: assets\\models\\LICENSE-beat-this.txt.
-Source: https://github.com/Mides-Projects/Overtone
+Source: https://github.com/Mides-Games/Overtone
 """
 
 
@@ -419,7 +419,7 @@ Analyses are run by the worker (worker/main.py in the repository) with the
 Python engine; overtone-engine-{version}-windows-x64.zip is that engine frozen.
 The production setup (TLS, the proxy secret, the worker) is in docs/deploy.md.
 
-Licence: MIT (LICENSE). Source: https://github.com/Mides-Projects/Overtone
+Licence: MIT (LICENSE). Source: https://github.com/Mides-Games/Overtone
 """
 
 

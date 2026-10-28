@@ -76,7 +76,7 @@ y nunca hace falta `safe.directory`.
    ```
 
    ```bash
-   sudo -u overtone -H git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
+   sudo -u overtone -H git clone https://github.com/Mides-Games/Overtone.git /opt/overtone
    ```
 
 3. Python 3.14 con `uv` y las dependencias del motor, como `overtone`:

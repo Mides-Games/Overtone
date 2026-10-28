@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
 
+import { Contents, DocHeader, DocLayout, NextLinks } from '../components/ui/Doc.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { api } from '../lib/api.js'
 
@@ -13,6 +14,9 @@ import { api } from '../lib/api.js'
  * The limits are not written down here: they are read from
  * `GET /api/v1/health`, the one place the API states them, so the page cannot
  * go stale when the owner changes a quota.
+ *
+ * Set as long-form reading (components/ui/Doc.jsx): the questions beside the
+ * answers on a wide screen, listed above them on a phone.
  */
 function Limits() {
   const { t } = useTranslation()
@@ -32,16 +36,14 @@ function Limits() {
   if (limits === undefined) return <p className="text-label text-dim">{t('learn.faq.limits.loading')}</p>
   if (!limits) {
     return (
-      <p className="text-label text-amber">
-        {t('learn.faq.limits.unreachable')}{' '}
-        <Link to="/status" className="text-accent hover:underline">
-          {t('legal.footer.status')} →
-        </Link>
-      </p>
+      <div className="callout callout-amber">
+        <p>{t('learn.faq.limits.unreachable')}</p>
+        <NextLinks links={[{ to: '/status', label: t('legal.footer.status') }]} className="mt-1" />
+      </div>
     )
   }
   return (
-    <ul className="list-disc space-y-1.5 pl-5 leading-relaxed text-muted marker:text-dim">
+    <ul>
       <li>{t('learn.faq.limits.anon', { daily: limits.anonDailyLimit, pending: limits.anonMaxPending })}</li>
       <li>{t('learn.faq.limits.user', { daily: limits.userDailyLimit, pending: limits.userMaxPending })}</li>
       <li>{t('learn.faq.limits.size', { minutes: Math.floor(limits.maxAudioSeconds / 60), mb: limits.maxUploadMb })}</li>
@@ -63,53 +65,46 @@ export default function Faq() {
   }, [target])
 
   return (
-    <article className="rise mx-auto max-w-[72ch] space-y-8">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('learn.faq.title')}</h1>
-        <p className="text-body leading-relaxed text-muted">
-          {t('learn.faq.intro')}{' '}
-          <Link to="/glossary" className="text-accent hover:underline">
-            {t('learn.footer.glossary')}
-          </Link>
-          {' · '}
-          <Link to="/how-it-works" className="text-accent hover:underline">
-            {t('learn.footer.how')}
-          </Link>
-        </p>
-      </header>
+    <article className="rise">
+      <DocHeader eyebrow={t('learn.footer.title')} title={t('learn.faq.title')} lede={t('learn.faq.intro')}>
+        <NextLinks
+          links={[
+            { to: '/glossary', label: t('learn.footer.glossary') },
+            { to: '/how-it-works', label: t('learn.footer.how') },
+          ]}
+        />
+      </DocHeader>
 
-      <nav aria-label={t('learn.faq.title')}>
-        <ul className="space-y-1.5 text-label">
+      <DocLayout contents={<Contents label={t('learn.faq.title')} items={list.map((item) => ({ id: item.id, label: item.q }))} />}>
+        {/* Below 1024 px the questions are listed here, above the answers, instead of beside them. */}
+        <nav aria-label={t('learn.faq.title')} className="mb-12 max-w-[70ch] lg:hidden">
+          <ol className="divide-y divide-line border-y border-line">
+            {list.map((item, i) => (
+              <li key={item.id}>
+                <a href={`#${item.id}`} className="flex items-baseline gap-3 py-2.5 text-label text-muted transition-colors duration-150 hover:text-text">
+                  <span className="readout shrink-0 text-dim">{String(i + 1).padStart(2, '0')}</span>
+                  {item.q}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        <div className="space-y-12">
           {list.map((item) => (
-            <li key={item.id}>
-              <a href={`#${item.id}`} className="text-muted hover:text-text hover:underline">
+            <section key={item.id} id={item.id} aria-labelledby={`${item.id}-q`} className="prose">
+              <h2 id={`${item.id}-q`} className="doc-heading">
                 {item.q}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      {list.map((item) => (
-        <section key={item.id} id={item.id} className="scroll-mt-36 space-y-3 border-t border-line pt-6">
-          <h2 className="font-display text-title font-bold">{item.q}</h2>
-          {item.id === 'limits' && <Limits />}
-          {(item.a ?? []).map((text) => (
-            <p key={text} className="leading-relaxed text-muted">
-              {text}
-            </p>
-          ))}
-          {item.links && (
-            <p className="flex flex-wrap gap-4 text-label">
-              {item.links.map((link) => (
-                <Link key={link.to} to={link.to} className="text-accent hover:underline">
-                  {link.label} →
-                </Link>
+              </h2>
+              {item.id === 'limits' && <Limits />}
+              {(item.a ?? []).map((text) => (
+                <p key={text}>{text}</p>
               ))}
-            </p>
-          )}
-        </section>
-      ))}
+              <NextLinks links={item.links} />
+            </section>
+          ))}
+        </div>
+      </DocLayout>
     </article>
   )
 }

@@ -14,13 +14,12 @@ import { useTranslation } from 'react-i18next'
 export function ErrorPage() {
   const { t } = useTranslation()
   return (
-    <div role="alert" className="mx-auto max-w-[60ch] space-y-5 px-4 py-16 text-center">
-      <p className="readout text-[56px] font-semibold leading-none text-red" aria-hidden="true">
-        !
-      </p>
-      <h1 className="font-display text-title font-bold uppercase">{t('errorPage.title')}</h1>
-      <p className="leading-relaxed text-muted">{t('errorPage.body')}</p>
-      <div className="flex flex-wrap justify-center gap-3">
+    // Set like the 404 page, but with nothing beyond the stylesheet: the
+    // frame itself may be what failed.
+    <div role="alert" className="max-w-xl space-y-6 px-4 py-10 sm:py-16">
+      <h1 className="heading-headline">{t('errorPage.title')}</h1>
+      <p className="lede">{t('errorPage.body')}</p>
+      <div className="flex flex-wrap gap-3">
         <button type="button" className="btn-primary" onClick={() => window.location.reload()}>
           {t('errorPage.reload')}
         </button>

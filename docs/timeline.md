@@ -20,6 +20,44 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-28 · The studio look: content and tool pages
+
+### Changed
+
+- The legal pages, credits, how it works, the FAQ, the glossary, statistics, status, the
+  calculator, the microphone tool, the 404, the error page and the embed follow
+  `docs/design.md` section 11: sentence-case headings, text at a 70ch measure inside the
+  wide layout with a sticky contents list that marks the section in view, callouts
+  instead of boxed notes, readouts on hairlines instead of tiles, icons instead of
+  arrow characters. `components/ui/Doc.jsx` and `.prose` / `.doc-heading` / `.callout`
+  carry the long-form layout.
+- The pipeline on `/how-it-works` is an HTML signal chain (six, three or two across)
+  instead of a fixed-width vertical SVG.
+- The microphone tool's one button is Listen, Stop and Again in turn, so the keyboard's
+  focus is never dropped mid-reading.
+
+### Fixed
+
+- Legal pages in Russian and Japanese gave every section the same empty anchor (only
+  `a-z0-9` was kept): duplicate ids and React keys, contents links that went nowhere.
+- The microphone's level meter was invisible: it used `bg-lavender`, which the `--tempo`
+  rename left without a colour.
+- The credits said no fonts are downloaded; the three self-hosted faces are listed now.
+
+### Hardening
+
+- axe covers `/tools/calculator` and `/tools/tap-mic` in both themes.
+
+### Measured
+
+- `site/web` 326/326 (314 before master's tip); the build and the budget ok. e2e 78/80 with axe clean on every public
+  page in both themes; the two failures are the EN/ES toggle tests that predate the
+  language selector and fail on master too.
+- No sideways scroll and no console error on any of these pages at 375, 1024 and 1440 px,
+  dark and light, in en, de, ja and ru (Playwright screenshots).
+
+---
+
 ## Unreleased — 2026-10-28 · Clients for the API, a stream overlay, and a fingerprint study
 
 ### Changed

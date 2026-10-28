@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
 
 import PipelineDiagram from '../components/learn/PipelineDiagram.jsx'
 import Sources from '../components/learn/Sources.jsx'
+import { Contents, DocHeader, DocLayout, NextLinks } from '../components/ui/Doc.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 
 /**
@@ -15,16 +15,16 @@ import usePageMeta from '../hooks/usePageMeta.js'
  * real-map measurements (Corpus B) are named as research, without a number,
  * until the site publishes them. A change to the engine that changes a step
  * has to change this text too.
+ *
+ * Set as long-form reading (components/ui/Doc.jsx): the pipeline as a signal
+ * chain across the page, then the steps at a reading measure beside a
+ * contents list. A step's heading carries its number as a readout, the way
+ * the diagram does, so the locale's own "1." prefix is dropped from the text.
  */
-const heading = 'font-display text-title font-bold'
-const paragraph = 'leading-relaxed text-muted'
+const stepTitle = (h) => String(h).replace(/^\s*\d+\.\s*/, '')
 
 function Paragraphs({ items }) {
-  return (items ?? []).map((text) => (
-    <p key={text} className={paragraph}>
-      {text}
-    </p>
-  ))
+  return (items ?? []).map((text) => <p key={text}>{text}</p>)
 }
 
 export default function HowItWorks() {
@@ -35,67 +35,81 @@ export default function HowItWorks() {
   const time = t('learn.how.time', { returnObjects: true })
   const bench = t('learn.how.bench', { returnObjects: true })
   const list = Array.isArray(steps) ? steps : []
+  const number = (i) => String(i + 1).padStart(2, '0')
+
+  const contents = [
+    ...list.map((step, i) => ({ id: `step-${step.id}`, label: stepTitle(step.h), number: number(i) })),
+    { id: 'check-by-ear', label: ear.h },
+    { id: 'analysis-time', label: time.h },
+    { id: 'measured', label: bench.h },
+  ]
 
   return (
-    <article className="rise mx-auto max-w-[72ch] space-y-10">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('learn.how.title')}</h1>
-        <p className="text-body leading-relaxed text-muted">{t('learn.how.intro')}</p>
-      </header>
+    <article className="rise">
+      <DocHeader eyebrow={t('learn.footer.title')} title={t('learn.how.title')} lede={t('learn.how.intro')} />
 
-      <PipelineDiagram steps={list} title={t('learn.how.diagram.title')} desc={t('learn.how.diagram.desc')} />
+      <div className="mt-10">
+        <PipelineDiagram steps={list} title={t('learn.how.diagram.title')} desc={t('learn.how.diagram.desc')} />
+      </div>
 
-      <ol className="space-y-8">
-        {list.map((step) => (
-          <li key={step.id} id={`step-${step.id}`} className="scroll-mt-36 space-y-3">
-            <h2 className={heading}>{step.h}</h2>
-            <Paragraphs items={step.p} />
-            <Sources items={step.src} />
-          </li>
-        ))}
-      </ol>
+      <DocLayout contents={<Contents label={t('legal.contents')} items={contents} />}>
+        <div className="space-y-14">
+          <ol className="space-y-14">
+            {list.map((step, i) => (
+              <li key={step.id} id={`step-${step.id}`} className="prose">
+                <h2 className="doc-heading flex items-baseline gap-3">
+                  <span className="readout shrink-0 text-[0.8em] font-medium text-accent">{number(i)}</span>
+                  <span>{stepTitle(step.h)}</span>
+                </h2>
+                <Paragraphs items={step.p} />
+                <Sources items={step.src} />
+              </li>
+            ))}
+          </ol>
 
-      <section className="space-y-3 rounded-panel border border-amber/40 bg-amber/5 p-4">
-        <h2 className={heading}>{ear.h}</h2>
-        <Paragraphs items={ear.p} />
-        <ul className="list-disc space-y-1.5 pl-5 leading-relaxed text-muted marker:text-dim">
-          {(ear.li ?? []).map((text) => (
-            <li key={text}>{text}</li>
-          ))}
-        </ul>
-        <Paragraphs items={ear.after} />
-        <p className="text-label">
-          <Link to="/disclaimer" className="text-accent hover:underline">
-            {t('legal.footer.disclaimer')} →
-          </Link>
-        </p>
-      </section>
+          {/* The one note the page is for: amber, the colour of "check by ear" on every page. */}
+          <section id="check-by-ear" aria-labelledby="check-by-ear-h" className="prose border-l-2 border-amber pl-5 sm:pl-6">
+            <p className="chip-amber">{t('home.checkByEar')}</p>
+            <h2 id="check-by-ear-h" className="doc-heading">
+              {ear.h}
+            </h2>
+            <Paragraphs items={ear.p} />
+            <ul>
+              {(ear.li ?? []).map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+            <Paragraphs items={ear.after} />
+            <NextLinks links={[{ to: '/disclaimer', label: t('legal.footer.disclaimer') }]} />
+          </section>
 
-      <section className="space-y-3">
-        <h2 className={heading}>{time.h}</h2>
-        <Paragraphs items={time.p} />
-        <Sources items={time.src} />
-        <p className="text-label">
-          <Link to="/stats" className="text-accent hover:underline">
-            {t('learn.footer.stats')} →
-          </Link>
-        </p>
-      </section>
+          <section id="analysis-time" aria-labelledby="analysis-time-h" className="prose">
+            <h2 id="analysis-time-h" className="doc-heading">
+              {time.h}
+            </h2>
+            <Paragraphs items={time.p} />
+            <Sources items={time.src} />
+            <NextLinks links={[{ to: '/stats', label: t('learn.footer.stats') }]} />
+          </section>
 
-      <section className="space-y-3">
-        <h2 className={heading}>{bench.h}</h2>
-        <Paragraphs items={bench.p} />
-        <Sources items={bench.src} />
-      </section>
+          <section id="measured" aria-labelledby="measured-h" className="prose">
+            <h2 id="measured-h" className="doc-heading">
+              {bench.h}
+            </h2>
+            <Paragraphs items={bench.p} />
+            <Sources items={bench.src} />
+          </section>
 
-      <nav className="flex flex-wrap gap-4 border-t border-line pt-6 text-label">
-        <Link to="/faq" className="text-accent hover:underline">
-          {t('learn.footer.faq')} →
-        </Link>
-        <Link to="/glossary" className="text-accent hover:underline">
-          {t('learn.footer.glossary')} →
-        </Link>
-      </nav>
+          <nav aria-label={t('learn.footer.title')} className="max-w-[70ch] border-t border-line pt-6">
+            <NextLinks
+              links={[
+                { to: '/faq', label: t('learn.footer.faq') },
+                { to: '/glossary', label: t('learn.footer.glossary') },
+              ]}
+            />
+          </nav>
+        </div>
+      </DocLayout>
     </article>
   )
 }

@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
 
+import { DocHeader, NextLinks } from '../components/ui/Doc.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { GLOSSARY } from '../lib/glossary.js'
 
@@ -26,46 +27,44 @@ export default function Glossary() {
   }, [target])
 
   return (
-    <article className="rise mx-auto max-w-[72ch] space-y-8">
-      <header className="space-y-3">
-        <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('learn.glossary.title')}</h1>
-        <p className="text-body leading-relaxed text-muted">{t('learn.glossary.intro')}</p>
-      </header>
+    <article className="rise">
+      <DocHeader eyebrow={t('learn.footer.title')} title={t('learn.glossary.title')} lede={t('learn.glossary.intro')} />
 
-      <nav aria-label={t('learn.glossary.title')} className="flex flex-wrap gap-2">
+      <nav aria-label={t('learn.glossary.title')} className="mt-8 flex flex-wrap gap-2">
         {GLOSSARY.map((id) => (
-          <a key={id} href={`#${id}`} className="tool-btn px-2.5">
+          <a key={id} href={`#${id}`} className="btn-ghost btn-sm font-medium">
             {t(`learn.glossary.terms.${id}.term`)}
           </a>
         ))}
       </nav>
 
-      <dl className="space-y-3">
+      {/* One row per term: the word on the left, its definitions at a reading measure on the right. */}
+      <dl className="mt-12 border-t border-line">
         {GLOSSARY.map((id) => (
           <div
             key={id}
             id={id}
             tabIndex={-1}
-            className={`scroll-mt-36 space-y-2 rounded-panel border p-4 outline-none ${
-              id === target ? 'border-accent/60 bg-accent/5' : 'border-line bg-surface'
+            className={`relative grid gap-x-10 gap-y-2 border-b border-line py-7 outline-none lg:grid-cols-12 ${
+              id === target ? 'before:absolute before:inset-y-0 before:-left-4 before:w-0.5 before:bg-accent sm:before:-left-6' : ''
             }`}
           >
-            <dt className="font-display text-title font-bold">{t(`learn.glossary.terms.${id}.term`)}</dt>
-            <dd className="space-y-2">
-              <p className="leading-relaxed text-text">{t(`learn.glossary.terms.${id}.short`)}</p>
-              <p className="leading-relaxed text-muted">{t(`learn.glossary.terms.${id}.long`)}</p>
+            <dt className={`doc-heading lg:col-span-3 ${id === target ? 'text-accent' : ''}`}>{t(`learn.glossary.terms.${id}.term`)}</dt>
+            <dd className="prose space-y-3 lg:col-span-9 [&>*+*]:mt-0">
+              <p className="text-text">{t(`learn.glossary.terms.${id}.short`)}</p>
+              <p>{t(`learn.glossary.terms.${id}.long`)}</p>
             </dd>
           </div>
         ))}
       </dl>
 
-      <nav className="flex flex-wrap gap-4 border-t border-line pt-6 text-label">
-        <Link to="/how-it-works" className="text-accent hover:underline">
-          {t('learn.footer.how')} →
-        </Link>
-        <Link to="/faq" className="text-accent hover:underline">
-          {t('learn.footer.faq')} →
-        </Link>
+      <nav aria-label={t('learn.footer.title')} className="mt-10">
+        <NextLinks
+          links={[
+            { to: '/how-it-works', label: t('learn.footer.how') },
+            { to: '/faq', label: t('learn.footer.faq') },
+          ]}
+        />
       </nav>
     </article>
   )

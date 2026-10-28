@@ -147,6 +147,15 @@ Geist and Geist Mono).
 - **Menus:** `menu` and `menu-item` (`data-active="true"` for the keyboard's item).
 - **Section header:** `components/ui/SectionHeader.jsx`: the `eyebrow` (a mono
   label with an accent tick), a `heading-section`, an optional `lede`, an optional action.
+- **Long-form pages:** `components/ui/Doc.jsx`: `DocHeader` (eyebrow, the page's
+  `h1`, lede, notes), `DocLayout` (a hairline, then the text beside a sticky
+  `Contents` list from 1024 px; the list marks the section in view with
+  `aria-current="location"`) and `NextLinks` (quiet links onward with the arrow icon).
+  In `index.css`: `prose` (a 70ch measure, line height 1.7, the list markers and the
+  rhythm between blocks), `doc-heading` (a section heading in long text, 20 px) and
+  `callout` / `callout-amber` (a note set off by a rule on its left, for the draft,
+  the translation note and "check by ear"). Used by the legal pages, the credits, how
+  it works, the FAQ and the glossary.
 - **Headings:** `heading-display`, `heading-headline`, `heading-section`, `heading-title`.
 - **Text:** `lede`, `label`, `readout` and `unit` (a unit after a readout), `link`
   (a link in prose, underlined).
@@ -233,6 +242,14 @@ Contrast, computed from `index.css` (WCAG 2 ratio; the lowest surface first):
   rules forbid outside the playhead. It no longer scrolls, is not sticky, and is not
   drawn below 768 px.
 - **Archivo has no Cyrillic:** Russian display text falls to Geist (section 3).
+- **The content pages (`design/content-pages`):** long text keeps a 70ch measure inside
+  the wide layout rather than a narrow page column (the owner found 72ch columns
+  cramped; the contents list fills the side instead). The status page's "down" and
+  "unreachable" keep red (`chip-red`): it is how the site already says an error
+  (`text-red` on every failure message), and no other reserved colour means "broken".
+  The pipeline on `/how-it-works` is HTML, not an SVG: six across from 1280 px, three
+  on a tablet, two on a phone, so its words never shrink with a viewBox; its one red
+  line falls where the steps start making red lines (Sections).
 
 ## 11. Guide for restyling a page
 

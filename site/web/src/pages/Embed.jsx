@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router'
 
 import Mark from '../components/Mark.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { DARK, mapSvg, svgDataUrl } from '../lib/map-image.js'
 import { adjustLines, formatBpm, formatClock } from '../lib/timing.js'
@@ -58,29 +59,33 @@ export default function Embed() {
         <article className="space-y-2">
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="truncate font-display text-[17px] font-bold">{timing.title ?? t('timings.untitled')}</h1>
+              <h1 className="heading-title truncate">{timing.title ?? t('timings.untitled')}</h1>
               {timing.artist && <p className="truncate text-label text-muted">{timing.artist}</p>}
             </div>
-            <p className="readout shrink-0 text-title text-accent">
+            <p className="readout shrink-0 text-title font-medium text-text">
               {bpmLabel(timing.bpm)}
-              <span className="ml-1 text-label text-dim">BPM</span>
+              <span className="unit">BPM</span>
             </p>
           </header>
           <img src={chart} alt={t('platform.embed.chartAlt')} className="block w-full rounded-control" width="600" height="150" />
-          <ul className="readout grid grid-cols-2 gap-x-4 text-caption text-muted sm:grid-cols-3">
+          <ul className="readout grid grid-cols-2 gap-x-4 gap-y-1 border-t border-line pt-2 text-caption text-muted sm:grid-cols-3">
             {lines.slice(0, SHOWN).map((line) => (
-              <li key={line.index} className="truncate">
-                <span className="text-red">▍</span>
-                {formatClock(line.timeMs)} · {formatBpm(line.bpm)}
-                {line.meter !== 4 ? ` · ${line.meter}/4` : ''}
+              <li key={line.index} className="flex min-w-0 items-center gap-2">
+                <span aria-hidden="true" className="h-3 w-0.5 shrink-0 bg-red" />
+                <span className="truncate">
+                  {formatClock(line.timeMs)} · {formatBpm(line.bpm)}
+                  {line.meter !== 4 ? ` · ${line.meter}/4` : ''}
+                </span>
               </li>
             ))}
           </ul>
           <footer className="flex items-center justify-between gap-3 text-caption text-dim">
             <span>{lines.length > SHOWN ? t('platform.embed.more', { count: lines.length - SHOWN }) : t('timings.redLines', { count: lines.length })}</span>
-            <a href={href} target="_blank" rel="noopener" className="flex items-center gap-1.5 text-accent hover:underline">
+            <a href={href} target="_blank" rel="noopener" className="link inline-flex items-center gap-1.5 no-underline hover:underline">
               <Mark size={14} />
-              {t('platform.embed.open')} ↗
+              {t('platform.embed.open')}
+              <Icon name="external" size={13} />
+              <span className="sr-only">{t('common.newTab')}</span>
             </a>
           </footer>
         </article>

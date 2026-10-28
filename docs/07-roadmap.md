@@ -1241,6 +1241,137 @@ encodes, run one after another with the progress panel naming which rung.
 5. **Whether a copy should be deleted when its original changes.** The write log knows the
    original's hash, so the copy can at least be marked stale.
 
+## Phase 27 — Accuracy on real maps (proposed 2026-10-28)
+
+Phase 10 made the engine exact on synthetic ground truth; the server's stages measure it
+on ranked maps, and there it is far from done. Every step below is measured on the
+server (`bench/remote.py run <stage> --split dev`, then `--split holdout`), switched by an
+experiment in `python/overtone_runs.py` before it is a default, and recorded in
+`docs/timeline.md` with its numbers or under *Rejected*. No local runs past ~20 tests
+(owner, 2026-10-27).
+
+### Where it stands (2026-10-28, engine `app`, ranked maps)
+
+Tempo ok is every red line of a map at the right octave and within 0.05 BPM; *within 0.5*
+is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the first line's.
+
+| Stage | Split | Tempo ok | Within 0.5 BPM | Octave ×1 |
+|---|---|---|---|---|
+| bands-variable | dev | 51.1 | 53.5 | 83.5 |
+| bands-variable | held out | 59.9 | 59.9 | 82.4 |
+| anime-variable | dev | 31.9 | 33.8 | 84.8 |
+| anime-variable | held out | 21.5 | 23.9 | 77.6 |
+| anime-single | dev | 83.9 | 85.4 | 92.8 |
+| anime-single | held out | 84.0 | 87.4 | 94.3 |
+
+### What the misses are
+
+- **Small tempo changes read as one line** (the largest loss). anime-variable dev: 474
+  precision-path failures are maps timed with a median of 6 red lines that came out as
+  one; the misses sit 0.9–4.8 % (interquartile) off the map. Drift following re-fits on
+  fixed windows: 48, 32 and 16 beats, and a looser gain guard, all measured worse
+  (31.9 → 31.1 / 31.7 / 30.6 / 27.5), because they cut where a window ends, not where
+  the tempo moved, and invent changes in steady songs.
+- **Octave at the edges of the fixed range.** Maps at 75–118 BPM read doubled, at
+  190–290 halved. No fixed [a, 2a) holds more than 87.8 % of anime-variable, 86.6 % of
+  bands or 95.7 % of anime-single first lines; the present (120, 240) is within a point
+  of the best. Past that, the octave has to be decided per song.
+- **Octave jumps inside a song** (owner's report: a run of changes read at double, or a
+  start at double that settles). Not yet counted on the engine's own lines: the reports
+  kept only the map lines' matches until `bench/stages.py` gained `lines` (2026-10-28).
+  OCTAVE_CONTINUITY, folding on the song's own tempo, changed no map.
+- **The tracker path** (songs the precision grid refuses): bands dev still loses 157 maps
+  there; the constant grid rescued the steady ones; piecewise stretches gain dev
+  (52.2 %) and lose held out (59.9 → 57.7).
+
+### Steps, in order
+
+27.1 **Count the octave jumps on the engine's lines.** Re-run anime-variable and bands dev
+     with the `lines` field; count songs whose engine lines step by ×2 / ×0.5 between
+     neighbours, and how many of those the map does not. Pull 10 by name for listening.
+     Done when the count and the list are in the timeline. *Diff* low · *Pri* P0.
+
+27.2 **Octave smoothing across neighbouring lines.** A Viterbi over the lines with states
+     ×½ / ×1 / ×2: a cost for leaving a line's own reading (lower where its octave margin
+     is thin or its span short), a cost for an octave step between neighbours, none for a
+     step the attacks prove (a double-time section whose half-beats carry the weight).
+     Experiment `octave-smooth`. Target: the 27.1 jumps halved, anime-single unmoved.
+     *Diff* medium · *Pri* P0.
+
+27.3 **Change points from the attacks, not windows.** On the precision grid's one line,
+     take each strong attack's phase error against the line; a tempo change is where that
+     error turns from flat into a straight ramp. Find the bends by optimal partitioning on
+     the phase error (piecewise linear, BIC penalty), re-fit each stretch with
+     `_refine_grid`, keep a cut only where both sides fit their own tempo better than the
+     shared one by a margin, and snap each stretch's BPM (whole, then .5, then the tidy
+     rule). Beat This! only confirms a cut, never places it: its beats wander more than
+     the changes are large. Experiment `change-points`. Target: anime-variable dev
+     31.9 → 40+, steady songs unmoved (anime-single within 0.3). *Diff* high · *Pri* P0.
+
+27.4 **A per-song octave rule, fitted on dev.** Features already in the reports:
+     octave margin, off-beat ratio, Beat This!'s tempo, attack density per beat, the
+     reading's BPM. Fit a small logistic rule (or a depth-2 tree) on dev maps for ×½ / ×1 /
+     ×2 against the map, check on held out, write the coefficients as constants (no new
+     dependency; ports to Rust as arithmetic). Experiment `octave-rule`. Target: octave ×1
+     83–85 → 90+ on bands and anime-variable. *Diff* medium · *Pri* P1.
+
+27.5 **BPM tidying** (`TIDY_BPM`, built 2026-10-28, measuring): two decimals at most, one
+     where within 0.011, the line's middle beat held. Turn on if tempo ok and the
+     convergence shares hold. *Diff* low · *Pri* P1.
+
+27.6 **A tempo-following beat tracker on Beat This!'s activation**, for the tracker path:
+     a DBN / HMM written from the published method (Krebs, Böck and Widmer, 2015) in our
+     own code, its BPM range opened past madmom's 55 BPM floor (the 2026 "SMC Blind Spot"
+     paper ties that floor to forced double tempo) and an explicit octave prior; compared
+     with `librosa.beat.plp` on the same activation. Replaces `_local_tempo_track` only
+     where it measures better on bands. *Diff* high · *Pri* P1.
+
+27.7 **Red lines start on the downbeat.** A new line takes its phase from the attacks and
+     its bar from Beat This!'s downbeats, so a line the mapper puts on beat 1 is not one
+     beat early or late. *Diff* medium · *Pri* P2.
+
+27.8 **Our own TempoCNN-style model** (clean room). TempoCNN (Schreiber and Müller, ISMIR
+     2018) is AGPL code with non-commercial weights, so it cannot ship; the method is
+     public. Implement a small CNN on mel spectrograms from the paper alone, without
+     reading its code, and train it on the server's ~25 000 hand-timed maps (tempo and
+     octave as mappers write them), split by song as the stages are. Export to ONNX like
+     Beat This!. Use: an octave and tempo judge beside 27.4, never the red lines. Needs
+     PyTorch on the server for training only. Go only if 27.4 leaves octave under 90 %.
+     The audio is copyrighted; only the weights ship, as with every model trained on
+     music. *Diff* high · *Pri* P2.
+
+27.9 **Lighter Beat This!** (`small0` or int8, docs/17 §7): no accuracy gain expected;
+     measure it, adopt only if the stages hold, for more analyses at once on the server.
+     *Diff* low · *Pri* P3.
+
+### What the other engines get wrong, and what ours does instead
+
+- **Beat This!** has no tempo model: excellent beats, weak continuity, and octave slips it
+  cannot see. Ours uses it as a voter and a judge, never as the grid.
+- **madmom's DBN**: a 55 BPM floor that forces double tempo, and one tempo path with no
+  notion of a mapper's red line. 27.6 opens the range and adds the prior.
+- **TempoCNN**: one global (or windowed) tempo in whole-BPM classes, no beat positions,
+  generic music data. 27.8 trains on mapped tempi and stays a judge.
+- **librosa `beat_track`**: a 120 BPM prior and one tempo per song. Ours already fits
+  attacks at sample resolution and snaps to whole BPMs; what it lacks is the change points.
+- **Essentia RhythmExtractor2013**: octave errors and one tempo; no red lines.
+
+What none of them do, and ours must keep doing: a grid fitted on the attacks to the
+millisecond, whole and tidy BPMs where the audio allows, and a refusal where there is no
+pulse.
+
+### Where the steps should land (targets, not claims)
+
+| Stage | Tempo ok now (dev / held out) | Target |
+|---|---|---|
+| bands-variable | 51.1 / 59.9 | 60–65 / 63–68 |
+| anime-variable | 31.9 / 21.5 | 42–50 / 32–40 |
+| anime-single | 83.9 / 84.0 | 87–90 / 87–90 |
+| octave ×1, bands and anime-variable | 83–85 | 90–92 |
+
+Most of the anime-variable gain rests on 27.3, most of the octave gain on 27.2 and 27.4.
+A step that does not move its stage on held out is rejected, however good dev looks.
+
 ## Rejected ideas
 
 | Idea | Verdict |

@@ -42,6 +42,12 @@ export const CHUNK_KB = {
   // What the result page and a published timing share: the player, the song
   // in the browser, the .osz (14.0 kB on 2026-10-27).
   useSongAudio: 20,
+  // The upload form with the analysis options and the tag reader (13.5 kB
+  // on 2026-10-27).
+  Analyze: 20,
+  // The API reference carries the whole OpenAPI document (17.0 kB on
+  // 2026-10-27).
+  Developers: 24,
   // The Spanish strings, loaded only for a Spanish visitor (28 kB on
   // 2026-10-27); they grow with every page.
   es: 36,

@@ -323,7 +323,7 @@ locales de `CLAUDE.md`.
 
 ## Actualización automática
 
-Cada push a `experimental` (la rama de staging) llega solo a la VPS:
+Cada push a `master` (la única rama desde el 2026-10-28) llega solo a la VPS:
 
 1. GitHub Actions (`.github/workflows/deploy.yml`) entra a la VPS como
    `overtone-deploy`, un usuario cuya llave solo puede arrancar
@@ -340,7 +340,9 @@ Cada push a `experimental` (la rama de staging) llega solo a la VPS:
 3. Un timer hace lo mismo cada 5 minutos, por si GitHub falla o la VPS
    estaba apagada.
 
-Solo se despliega esa rama: las experimentales nunca llegan solas. Si dejas
+Solo se despliega esa rama: las de trabajo nunca llegan solas. Una VPS que
+seguía en `experimental` se pasa sola a `master` una vez, si está limpia y
+`master` la contiene (`deploy/overtone-update.sh`). Si dejas
 la VPS en otra rama a mano, el actualizador la deja en paz y lo dice en el
 log.
 

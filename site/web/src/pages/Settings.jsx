@@ -355,6 +355,28 @@ export default function Settings() {
       <Appearance />
       <Language />
       <Audio />
+      <ApiTokens />
     </div>
+  )
+}
+
+/**
+ * W12.20: personal API tokens live on their own sub-page, `/settings/tokens`:
+ * unlike everything above they belong to an account, not to this browser, and
+ * the page needs a sign-in. This section says what they are and leads there.
+ */
+function ApiTokens() {
+  const { t } = useTranslation()
+  return (
+    <Section title={t('platform.tokens.title')} note={t('platform.tokens.settingsNote')}>
+      <div className="flex flex-wrap gap-3">
+        <Link to="/settings/tokens" className="btn-ghost">
+          {t('platform.tokens.manage')} →
+        </Link>
+        <Link to="/developers" className="btn-ghost">
+          {t('platform.tokens.docs')}
+        </Link>
+      </div>
+    </Section>
   )
 }

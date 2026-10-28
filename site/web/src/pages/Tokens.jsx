@@ -8,9 +8,10 @@ import usePageMeta from '../hooks/usePageMeta.js'
 import { createToken, curlExample, listTokens, NAME_MAX, revokeToken, SCOPES, tokenFormProblem } from '../lib/api-tokens.js'
 
 /**
- * `/settings/tokens` (W12.20): the signed-in person's personal API tokens.
- * Self-contained on purpose, so the settings page (W12.15) can link to it or
- * hold it as a section without either knowing the other's insides.
+ * `/settings/tokens` (W12.20): the signed-in person's personal API tokens, a
+ * sub-page of `/settings` (W12.15), whose "API tokens" section leads here.
+ * Apart because tokens belong to an account and need a sign-in, while the
+ * rest of the settings are this browser's.
  *
  * A new token's secret is shown once, here, and kept nowhere: not in state
  * after the page is left, not in storage. The list never has it.
@@ -43,7 +44,9 @@ export default function Tokens() {
   return (
     <div className="rise space-y-8">
       <header className="space-y-2">
-        <p className="label text-accent">{t('platform.tokens.eyebrow')}</p>
+        <Link to="/settings" className="label inline-block text-accent hover:underline">
+          ← {t('platform.tokens.eyebrow')}
+        </Link>
         <h1 className="font-display text-[clamp(1.8rem,1.4rem+1.6vw,2.4rem)] font-bold uppercase">{t('platform.tokens.title')}</h1>
         <p className="max-w-[64ch] text-muted">{t('platform.tokens.intro')}</p>
         <Link to="/developers" className="inline-block text-label text-accent hover:underline">

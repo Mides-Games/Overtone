@@ -116,7 +116,7 @@ Every mode reads the golden vectors, so a new golden fixture must pass all five.
 And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (208 on 2026-10-28)
+pnpm --dir site/api test                               # all pass (209 on 2026-10-28)
 pnpm --dir site/web test                               # all pass (335 on 2026-10-28)
 pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
 pnpm --dir site/e2e test                               # 82 pass in Chromium: the main paths, axe on every page in both themes

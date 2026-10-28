@@ -196,7 +196,7 @@
       "CACHE_LIMIT": "Otworzyłeś dziś {{count}} zapisanych wyników. Licznik zeruje się o 00:00 UTC."
     },
     "private": "Nie pokazuj w publicznej kolejce",
-    "privateHint": "Kolejka pokaże wtedy tylko, że coś jest analizowane: bez utworu, nazwy pliku i osoby wysyłającej.",
+    "privateHint": "Kolejka pokaże wtedy tylko, że coś jest analizowane: bez utworu, nazwy pliku i osoby wysyłającej. Publiczne przesłanie bez logowania można też otworzyć z kolejki po zakończeniu, razem z timingiem.",
     "folder": "Wybierz folder",
     "atOnce_one": "Maksymalnie {{count}} utwór w kolejce naraz",
     "atOnce_few": "Maksymalnie {{count}} utwory w kolejce naraz",
@@ -1067,6 +1067,8 @@
     "page": {
       "eyebrow": "Opublikowany timing",
       "published": "opublikowano {{date}}",
+      "analysed": "przeanalizowano {{date}}, nieopublikowane",
+      "fromQueue": "Przesłane bez konta i nieoznaczone jako prywatne, więc widać je z kolejki. Nikt go nie opublikował, więc nie ma głosów ani komentarzy.",
       "yourOwn": "Zrób timing swojej piosenki",
       "notFoundTitle": "Nie znaleziono timingu",
       "notFound": "Ten timing nie istnieje albo autor cofnął jego publikację.",

@@ -194,7 +194,7 @@
       "CACHE_LIMIT": "You have opened {{count}} stored results today. The count resets at 00:00 UTC."
     },
     "private": "Keep it off the public queue",
-    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader.",
+    "privateHint": "The queue then shows only that something is being analysed: no song, no file name, no uploader. Left public, an upload made without signing in can also be opened from the queue once it is done, timing and all.",
     "folder": "Choose a folder",
     "atOnce_one": "Up to {{count}} song in the queue at once",
     "atOnce_other": "Up to {{count}} songs in the queue at once",
@@ -1029,6 +1029,8 @@
     "page": {
       "eyebrow": "Published timing",
       "published": "published {{date}}",
+      "analysed": "analysed {{date}}, not published",
+      "fromQueue": "Uploaded without an account and not kept private, so it can be seen from the queue. Nobody published it, so it has no votes or comments.",
       "yourOwn": "Time your own song",
       "notFoundTitle": "Timing not found",
       "notFound": "This timing does not exist, or whoever published it took it back.",

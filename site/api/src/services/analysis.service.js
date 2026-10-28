@@ -445,6 +445,11 @@ const memoryStore = {
     return a && a.publishedAt && !a.deletedAt && a.status === 'done' ? { ...a } : null;
   },
 
+  async getViewable(publicId) {
+    const a = memory.analyses.get(publicId);
+    return a && !a.deletedAt && a.status === 'done' && (a.publishedAt || (!a.private && !a.accountId)) ? { ...a } : null;
+  },
+
   async listPublished(filters) {
     return memoryPage(
       [...memory.analyses.values()].filter((a) => a.publishedAt && !a.deletedAt && a.status === 'done'),
@@ -1047,6 +1052,18 @@ const pgStore = {
     return rows[0] ? { ...listRow(rows[0]), sha1: rows[0].audio_sha1 } : null;
   },
 
+  async getViewable(publicId) {
+    const { rows } = await query(
+      `SELECT ${LIST_COLS}, s.audio_sha1
+         FROM analyses a
+         JOIN songs s ON s.id = a.song_id
+         LEFT JOIN accounts u ON u.id = a.account_id
+        WHERE a.public_id = $1 AND ${VIEWABLE}`,
+      [publicId],
+    );
+    return rows[0] ? { ...listRow(rows[0]), sha1: rows[0].audio_sha1 } : null;
+  },
+
   async listPublished(filters) {
     return pgPage(PUBLISHED, [], 'a.published_at', filters);
   },
@@ -1150,6 +1167,11 @@ const MICROS = (col) =>
   `(extract(epoch FROM date_trunc('second', ${col}))::bigint * 1000000 + extract(microseconds FROM ${col})::bigint % 1000000)`;
 
 const PUBLISHED = "a.published_at IS NOT NULL AND a.deleted_at IS NULL AND a.status = 'done'";
+// What a timing's page may show: a published one, or an anonymous upload that
+// was not kept private, which has nobody signed in to publish it and which the
+// queue links to once it is done.
+const VIEWABLE = `a.deleted_at IS NULL AND a.status = 'done'
+  AND (a.published_at IS NOT NULL OR (NOT a.private AND a.account_id IS NULL))`;
 
 /**
  * What the recent list, a public page and the history read. No sha1 and no

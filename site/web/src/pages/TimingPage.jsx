@@ -23,7 +23,8 @@ import { ACCENT_HEADER, accentWash, Result, ResultSkeleton } from './AnalysisRes
  * the clicks and offers the .osz.
  *
  * Under the result (W6): its stars, who used it, the reader's collections,
- * and comments, which may point at a time in the song (W13.15).
+ * and comments, which may point at a time in the song (W13.15). An anonymous
+ * upload opened from the queue is not published: it has the result alone.
  */
 export default function TimingPage() {
   const { t, i18n } = useTranslation()
@@ -32,8 +33,10 @@ export default function TimingPage() {
   const [error, setError] = useState(null)
   // W13.24: the cover of the visitor's own copy of the song, once it is checked.
   const [accent, setAccent] = useState(null)
-  const [social, updateSocial] = useTimingSocial(id)
-  const [votes, setVotes] = useTimingVotes(id)
+  // Asked for once the timing says it is published: an unpublished one has none.
+  const socialId = timing?.published ? id : null
+  const [social, updateSocial] = useTimingSocial(socialId)
+  const [votes, setVotes] = useTimingVotes(socialId)
   const [comments, setComments] = useState([])
   const playerRef = useRef(null)
   const resultRef = useRef(null)
@@ -119,7 +122,9 @@ export default function TimingPage() {
             <UploaderMark uploader={timing.uploader} size={24} />
             <span>
               {timing.uploader ? <UploaderLink uploader={timing.uploader} linked={Boolean(social?.uploaderProfile)} /> : uploaderName(t, timing)} ·{' '}
-              {t('timings.page.published', { date: shortDate(timing.publishedAt, i18n.language) })}
+              {timing.published
+                ? t('timings.page.published', { date: shortDate(timing.publishedAt, i18n.language) })
+                : t('timings.page.analysed', { date: shortDate(timing.createdAt, i18n.language) })}
             </span>
             {social && (
               <span className="readout inline-flex flex-wrap items-center gap-1">
@@ -157,10 +162,16 @@ export default function TimingPage() {
         />
       </div>
 
-      {votes && <Votes id={id} durationS={durationS} votes={votes} onChange={setVotes} />}
-      {social && <TimingSocial id={id} social={social} onChange={updateSocial} />}
-      {(social === false || votes === false) && <p className="text-caption text-dim">{t('social.failed')}</p>}
-      <Comments id={id} durationS={durationS} onSeek={seek} position={position} onItems={setComments} />
+      {timing.published ? (
+        <>
+          {votes && <Votes id={id} durationS={durationS} votes={votes} onChange={setVotes} />}
+          {social && <TimingSocial id={id} social={social} onChange={updateSocial} />}
+          {(social === false || votes === false) && <p className="text-caption text-dim">{t('social.failed')}</p>}
+          <Comments id={id} durationS={durationS} onSeek={seek} position={position} onItems={setComments} />
+        </>
+      ) : (
+        <p className="callout">{t('timings.page.fromQueue')}</p>
+      )}
     </div>
   )
 }

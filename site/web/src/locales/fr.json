@@ -195,7 +195,7 @@
       "CACHE_LIMIT": "Vous avez ouvert {{count}} résultats conservés aujourd'hui. Le compteur repart à zéro à 00:00 UTC."
     },
     "private": "Ne pas l'afficher dans la file publique",
-    "privateHint": "La file indique alors seulement qu'une analyse est en cours : ni chanson, ni nom de fichier, ni auteur de l'envoi.",
+    "privateHint": "La file indique alors seulement qu'une analyse est en cours : ni chanson, ni nom de fichier, ni auteur de l'envoi. Laissé public, un envoi fait sans être connecté peut aussi être ouvert depuis la file une fois terminé, timing compris.",
     "folder": "Choisir un dossier",
     "atOnce_one": "Jusqu'à {{count}} chanson dans la file à la fois",
     "atOnce_many": "Jusqu'à {{count}} chansons dans la file à la fois",
@@ -1048,6 +1048,8 @@
     "page": {
       "eyebrow": "Timing publié",
       "published": "publié le {{date}}",
+      "analysed": "analysé le {{date}}, non publié",
+      "fromQueue": "Envoyé sans compte et sans être rendu privé, il est donc visible depuis la file. Personne ne l'a publié : il n'a ni votes ni commentaires.",
       "yourOwn": "Timez votre propre chanson",
       "notFoundTitle": "Timing introuvable",
       "notFound": "Ce timing n'existe pas, ou la personne qui l'a publié l'a retiré.",

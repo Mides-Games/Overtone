@@ -194,7 +194,7 @@
       "CACHE_LIMIT": "Hoy ya abriste {{count}} resultados guardados. La cuenta vuelve a cero a las 00:00 UTC."
     },
     "private": "No mostrarla en la cola pública",
-    "privateHint": "La cola solo mostrará que se está analizando algo: sin canción, sin nombre de archivo y sin quién la subió.",
+    "privateHint": "La cola solo mostrará que se está analizando algo: sin canción, sin nombre de archivo y sin quién la subió. Si no la marcás como privada y no iniciaste sesión, cuando termine cualquiera podrá abrir su timing desde la cola.",
     "folder": "Elegir una carpeta",
     "atOnce_one": "Hasta {{count}} canción en la cola a la vez",
     "atOnce_other": "Hasta {{count}} canciones en la cola a la vez",
@@ -1029,6 +1029,8 @@
     "page": {
       "eyebrow": "Timing publicado",
       "published": "publicado el {{date}}",
+      "analysed": "analizado el {{date}}, sin publicar",
+      "fromQueue": "Se subió sin cuenta y sin marcarlo como privado, así que se puede ver desde la cola. Nadie lo publicó, así que no tiene votos ni comentarios.",
       "yourOwn": "Timeá tu propia canción",
       "notFoundTitle": "No encontramos el timing",
       "notFound": "Este timing no existe, o quien lo publicó lo sacó.",

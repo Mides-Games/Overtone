@@ -8,7 +8,9 @@ import { songLabel } from './upload.js';
  * uploader. A public one shows the song and, when it was signed in, the
  * uploader's public Mides profile. The audio and the spool path are never
  * part of it, and the analysis id only reaches the person who may open it
- * (`mine`): for everybody else an id would be a link to a 404.
+ * (`mine`): for everybody else an id would be a link to a 404. A finished
+ * anonymous upload that was not kept private carries `timing`, the id of its
+ * read-only page (/t/<id>), so anyone can see how it was timed.
  *
  * Staff (W3.18) get `ref` on every waiting or running row: the handle the
  * moderation buttons act on. It opens nothing, and a private row still shows
@@ -26,6 +28,7 @@ export const queueEntry = (row, { mine = false, staff = false, now = Date.now(),
   const shown = !row.private;
   return {
     ...(mine ? { id: row.publicId } : {}),
+    ...(!mine && row.status === 'done' && shown && !row.uploader ? { timing: row.publicId } : {}),
     ...(staff && (row.status === 'queued' || row.status === 'running') ? { ref: row.publicId } : {}),
     mine,
     status: row.status,

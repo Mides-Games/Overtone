@@ -222,6 +222,38 @@ test('the check answers only match or no match, and only for a published timing'
   assert.equal(noHeader.status, 403);
 });
 
+test('the queue opens a finished anonymous upload that was not private, read-only and off the recent list', async () => {
+  const { queueEntry } = await import('../src/utils/queue.js');
+  const open = await finished({ cookie: '', body: 'anonymous and public' });
+  const hidden = await finished({ cookie: '', body: 'anonymous and private', headers: { 'X-Private': '1' } });
+  const signedIn = await finished({ body: 'signed in, not published' });
+
+  const page = await fetch(`${base}/timings/${open.id}`);
+  assert.equal(page.status, 200);
+  const timing = await page.json();
+  assert.equal(timing.published, false);
+  assert.equal(timing.publishedAt, null);
+  assert.equal(timing.anonymous, true);
+  assert.equal((await fetch(`${base}/timings/${open.id}/timing.txt`)).status, 200);
+  // Votes and comments stay with published timings; the recent list too.
+  assert.equal((await fetch(`${base}/timings/${open.id}/comments`)).status, 404);
+  assert.equal((await fetch(`${base}/timings/${open.id}/votes`)).status, 404);
+  assert.equal((await recentIds('?limit=50')).includes(open.id), false);
+  // A private one, and a signed-in uploader's unpublished one, stay closed.
+  assert.equal((await fetch(`${base}/timings/${hidden.id}`)).status, 404);
+  assert.equal((await fetch(`${base}/timings/${signedIn.id}`)).status, 404);
+
+  // The queue row carries the link for strangers only, and only for that one.
+  const rowOf = async (id) => analyses().get(id, { position: false });
+  assert.equal(queueEntry(await rowOf(open.id)).timing, open.id);
+  assert.ok(!('timing' in queueEntry(await rowOf(open.id), { mine: true })));
+  assert.ok(!('timing' in queueEntry(await rowOf(hidden.id))));
+  assert.ok(!('timing' in queueEntry(await rowOf(signedIn.id))));
+  // Once published, it is an ordinary published timing.
+  assert.equal((await publish(open.id, open.cookie)).status, 200);
+  assert.equal((await (await fetch(`${base}/timings/${open.id}`)).json()).published, true);
+});
+
 test('unpublishing takes the page and its list row down again; only the uploader can', async () => {
   const song = await finished();
   await publish(song.id, alice);

@@ -194,7 +194,7 @@
       "CACHE_LIMIT": "Oggi hai aperto {{count}} risultati salvati. Il conteggio si azzera alle 00:00 UTC."
     },
     "private": "Tienila fuori dalla coda pubblica",
-    "privateHint": "La coda mostrerà solo che qualcosa è in analisi: nessuna canzone, nessun nome di file, nessun autore del caricamento.",
+    "privateHint": "La coda mostrerà solo che qualcosa è in analisi: nessuna canzone, nessun nome di file, nessun autore del caricamento. Se resta pubblico, un caricamento fatto senza accedere si può anche aprire dalla coda una volta finito, timing compreso.",
     "folder": "Scegli una cartella",
     "atOnce_one": "Fino a {{count}} canzone in coda alla volta",
     "atOnce_other": "Fino a {{count}} canzoni in coda alla volta",
@@ -1029,6 +1029,8 @@
     "page": {
       "eyebrow": "Timing pubblicato",
       "published": "pubblicato il {{date}}",
+      "analysed": "analizzato il {{date}}, non pubblicato",
+      "fromQueue": "Caricato senza account e non reso privato, quindi è visibile dalla coda. Nessuno l'ha pubblicato, quindi non ha voti né commenti.",
       "yourOwn": "Fai il timing della tua canzone",
       "notFoundTitle": "Timing non trovato",
       "notFound": "Questo timing non esiste, oppure chi l'ha pubblicato l'ha ritirato.",

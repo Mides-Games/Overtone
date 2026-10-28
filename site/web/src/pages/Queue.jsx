@@ -12,12 +12,14 @@ import { SkeletonRows } from '../components/ui/Skeleton.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { formatRange } from '../lib/analysis-options.js'
 import { api } from '../lib/api.js'
+import { timingPath } from '../lib/timings.js'
 
 /**
  * The public queue (W3.8): every analysis waiting or running, and the ones
  * that finished in the last hour. Polled every few seconds; the rows carry
  * only what their uploaders let be shown (no song or uploader for a private
  * upload), and an id only on the reader's own rows, which open their result.
+ * A finished anonymous upload that was not private opens its timing page.
  *
  * Staff (W3.18) also get a remove and a requeue button on the live rows, and
  * the moderation log under the queue: who did what, and why.
@@ -170,7 +172,8 @@ function Row({ row, onModerated, index = 0 }) {
       </div>
     </div>
   )
-  const link = row.id ? <Link to={`/analyze/${row.id}`} className="block transition-colors duration-150 ease-out hover:bg-surface-2">{body}</Link> : body
+  const to = row.id ? `/analyze/${row.id}` : row.timing ? timingPath(row.timing) : null
+  const link = to ? <Link to={to} className="block transition-colors duration-150 ease-out hover:bg-surface-2">{body}</Link> : body
   // Your own waiting song can be taken back (W3.12); the button sits beside
   // the link, not inside it.
   const cancellable = row.mine && row.id && row.status === 'queued'

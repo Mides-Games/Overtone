@@ -70,10 +70,13 @@ const readRateLimit = guard('timings', 240, 10 * 60_000);
 const checkRateLimit = guard('check', 20, 10 * 60_000);
 
 /** The published timing `:id`, or the same 404 as for an id that never existed. */
+// A published timing, or an anonymous one the queue opens (getViewable): the
+// page, its card, its files and the audio check. Votes and comments stay on
+// published ones (their own routes ask getPublished).
 const published = async (req) => {
   const { id } = req.params;
   if (!ID.test(id)) throw new HttpError(404, 'No such timing.', 'NOT_FOUND');
-  const row = await analyses().getPublished(id);
+  const row = await analyses().getViewable(id);
   if (!row) throw new HttpError(404, 'No such timing.', 'NOT_FOUND');
   return row;
 };

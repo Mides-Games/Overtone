@@ -1288,3 +1288,51 @@ Not checked: a screen reader on the popover and the charts; touch on a real phon
 `/stats` route against PostgreSQL (the store was, the route ran on the memory one); the
 cache across several API processes (each keeps its own minute); the text against a
 mapper's reading, which only a mapper can give.
+
+### Modes, hints, a stretch, re-analysis and the queue's estimate (W11.1, W3.21, W12.19, W3.24, W3.16, 2026-10-27)
+
+**Asking.** The upload form has a folded *Options* panel (`components/AnalysisOptions.jsx`,
+`lib/analysis-options.js`): the mode, one BPM or a changing tempo, an approximate BPM or
+a range, beats per bar, and a stretch (one song at a time). Left alone it sends nothing
+but the file, as before. The browser checks the API's bounds first; the API checks them
+again (`utils/analysis-options.js`): `X-Mode` and `X-Options` (percent-encoded JSON, at
+most 512 bytes) on upload, `mode` and `options` in a lookup's body, a 400 `BAD_MODE` /
+`BAD_OPTIONS` before a byte of audio is read. `X-Duration` is the length the browser
+read, used only for the estimate.
+
+**Storing.** `analyses` gains `mode`, `options`, `options_key` (the hints as one
+canonical string), `audio_seconds` and `reanalysis_of`. The worker announces one
+engine hash per mode at each claim, and every cache lookup (`findCached`, `findCopy`)
+matches mode and `options_key` as well as the hash. When a result arrives the row takes
+the mode and hints the result says it was made with (`askedOf` in
+`routes/internal.routes.js`).
+
+**The worker** (`worker/timing_result.py`): `MODE_SETTINGS` says what each mode changes
+(fast: no vote, no octave judges; strict: as normal for now), `engine_settings` sets and
+restores the engine's switches around one job, `octave_window` moves `MAP_OCTAVE_RANGE`
+for a tempo hint outside 120-240, a meter fills unproven bars, and a stretch is cut out
+of the engine's own decode and shifted back (`shift_result`). `hint_checks` say where
+the audio disagrees with a hint. The default mode with no hints is the call it always
+was (`DefaultModeTests`).
+
+**Reading.** The result shows *How it was analysed* (`components/result/HowAsked.jsx`):
+the mode, the hints, the stretch covered and each check; and *Analyse again*
+(`components/result/Reanalyse.jsx`): another mode with the same hints, with the held
+file or one picked again and checked by SHA-1, linked both ways, with a link to
+`/compare?a=&b=`. `/queue` and the waiting page show "done in ≈ a – b" from
+`utils/estimate.js` (W2.4's cost per audio minute and mode, one worker assumed).
+
+How it was checked: `node --test` in site/api (122; `test/modes.test.js` through the
+memory store: keys, cache separation, re-analysis ownership and audio, a pre-modes
+worker's result, the queue's estimate) and site/web (190), `vite build`, 14 targeted
+Python tests (`DefaultModeTests`, `ResultPartsTests`; earlier on this branch the whole
+`tests/test_worker.py`, 29). In the browser pane with a real worker: the options panel,
+a fast job on a 40 s stretch with a tempo hint (its checks, the stretch note, times in
+the song's timeline) and `/queue` with estimates.
+
+Not checked: the PostgreSQL store (no database here: the statements are written, never
+ran); the Python suite and the engine gates on this branch (the owner's rule: they run
+on the server after merging); Spanish, the light theme and 375 px in the browser; the
+re-analysis button end to end (a file pick cannot be driven from here; the API side is
+tested, and the dev worker ran out of memory on the shared machine before its second
+job); the estimates against real waits on the server.

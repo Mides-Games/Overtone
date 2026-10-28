@@ -50,7 +50,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (525 on 2026-10-27)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (537 on 2026-10-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -104,8 +104,8 @@ Every mode reads the golden vectors, so a new golden fixture must pass all five.
 And the site's, before any commit that touches `site/` (after `pnpm install --frozen-lockfile`):
 
 ```bash
-pnpm --dir site/api test                               # all pass (108 on 2026-10-27)
-pnpm --dir site/web test                               # all pass (183 on 2026-10-27)
+pnpm --dir site/api test                               # all pass (122 on 2026-10-27)
+pnpm --dir site/web test                               # all pass (190 on 2026-10-27)
 pnpm --dir site/web build                              # the site builds
 ```
 

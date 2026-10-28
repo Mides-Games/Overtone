@@ -1,5 +1,5 @@
 import './index.css'
-import './i18n.js'
+import { i18nReady } from './i18n.js'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -10,6 +10,11 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { SettingsProvider } from './context/SettingsContext.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
+
+// A Spanish visitor's strings are a chunk of their own (i18n.js): the first
+// frame waits for them rather than flash English. If they fail to load, the
+// page renders in English, i18next's fallback.
+await i18nReady.catch(() => {})
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

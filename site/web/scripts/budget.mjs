@@ -39,6 +39,12 @@ export const CHUNK_KB = {
   // The changelog tab carries the timeline's last 30 entries as data
   // (11.7 kB on 2026-10-27), and grows with them.
   Changelog: 16,
+  // What the result page and a published timing share: the player, the song
+  // in the browser, the .osz (14.0 kB on 2026-10-27).
+  useSongAudio: 20,
+  // The Spanish strings, loaded only for a Spanish visitor (28 kB on
+  // 2026-10-27); they grow with every page.
+  es: 36,
 }
 
 const kb = (bytes) => bytes / 1000

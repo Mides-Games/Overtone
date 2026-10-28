@@ -2721,8 +2721,44 @@
         "refused": "Votre analyse de « {{title}} » s'est terminée sans BPM.",
         "failed": "Votre analyse de « {{title}} » a échoué."
       },
-      "unknown": "Il s'est passé quelque chose."
-    }
+      "unknown": "Il s'est passé quelque chose.",
+      "staff": {
+        "correction": "Une correction de « {{title}} » attend une vérification.",
+        "report": {
+          "suggestion": "Une suggestion a été signalée.",
+          "review": "Un avis a été signalé.",
+          "comment": "Un commentaire a été signalé.",
+          "item": "Quelque chose a été signalé."
+        }
+      }
+    },
+    "deleteRead": "Supprimer les lues",
+    "markRead": "Marquer comme lue",
+    "markUnread": "Marquer comme non lue",
+    "delete": "Supprimer",
+    "unreadTab": "Non lues",
+    "emptyUnread": "Vous êtes à jour.",
+    "emptyHint": "Les commentaires, votes et utilisations de vos timings, vos analyses terminées et vos suggestions apparaissent ici.",
+    "changeFailed": "Cette modification n'a pas pu être enregistrée ; la liste a été rechargée.",
+    "retry": "Réessayer",
+    "select": "Sélectionner : {{text}}",
+    "selectPage": "Sélectionner cette page",
+    "selected": "Sélectionnées : {{count}}",
+    "bulk": "Avec la sélection",
+    "kind": "Type",
+    "allKinds": "Tous les types",
+    "kinds": {
+      "suggestion": "Suggestions",
+      "comment": "Commentaires",
+      "use": "Utilisations",
+      "vote": "Votes",
+      "analysis": "Analyses",
+      "staff": "Équipe"
+    },
+    "pages": "Pages",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "range": "{{first}}–{{last}} sur {{total}}"
   },
   "staff": {
     "nav": "Panneau de l'équipe",

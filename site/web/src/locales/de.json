@@ -2662,8 +2662,44 @@
         "refused": "Deine Analyse von „{{title}}“ endete ohne BPM.",
         "failed": "Deine Analyse von „{{title}}“ ist fehlgeschlagen."
       },
-      "unknown": "Etwas ist passiert."
-    }
+      "unknown": "Etwas ist passiert.",
+      "staff": {
+        "correction": "Eine Korrektur zu „{{title}}“ wartet auf Prüfung.",
+        "report": {
+          "suggestion": "Ein Vorschlag wurde gemeldet.",
+          "review": "Eine Bewertung wurde gemeldet.",
+          "comment": "Ein Kommentar wurde gemeldet.",
+          "item": "Etwas wurde gemeldet."
+        }
+      }
+    },
+    "deleteRead": "Gelesene löschen",
+    "markRead": "Als gelesen markieren",
+    "markUnread": "Als ungelesen markieren",
+    "delete": "Löschen",
+    "unreadTab": "Ungelesen",
+    "emptyUnread": "Du bist auf dem neuesten Stand.",
+    "emptyHint": "Hier erscheinen Kommentare, Stimmen und Nutzungen deiner Timings, deine fertigen Analysen und deine Vorschläge.",
+    "changeFailed": "Diese Änderung konnte nicht gespeichert werden; die Liste wurde neu geladen.",
+    "retry": "Erneut versuchen",
+    "select": "Auswählen: {{text}}",
+    "selectPage": "Diese Seite auswählen",
+    "selected": "Ausgewählt: {{count}}",
+    "bulk": "Mit den ausgewählten",
+    "kind": "Art",
+    "allKinds": "Alle Arten",
+    "kinds": {
+      "suggestion": "Vorschläge",
+      "comment": "Kommentare",
+      "use": "Nutzungen",
+      "vote": "Stimmen",
+      "analysis": "Analysen",
+      "staff": "Team"
+    },
+    "pages": "Seiten",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "range": "{{first}}–{{last}} von {{total}}"
   },
   "staff": {
     "nav": "Staff-Bereich",

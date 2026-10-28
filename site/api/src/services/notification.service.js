@@ -1,4 +1,5 @@
 import { hasDatabase, query } from '../config/database.js';
+import { staffIds } from './account.service.js';
 import { newPublicId } from './community.service.js';
 
 /**
@@ -12,6 +13,8 @@ import { newPublicId } from './community.service.js';
  *   vote        someone voted your timing on time or off (never named: votes
  *               are anonymous to everyone but staff, utils/votes.js)
  *   analysis    an analysis of yours ended and you had not seen it yet
+ *   staff       (staff only) something waits on the staff panel: a report
+ *               on an item, or a vote's correction to review
  *
  * Each notification has a `dedupe_key`, one row per account and key: a vote
  * changed three times is one notification, brought back to unread, not
@@ -24,10 +27,65 @@ import { newPublicId } from './community.service.js';
  * it (`notify` logs and carries on): the bell is a courtesy, the comment or
  * the result is the point.
  */
-export const KINDS = ['suggestion', 'comment', 'use', 'vote', 'analysis'];
+export const KINDS = ['suggestion', 'comment', 'use', 'vote', 'analysis', 'staff'];
 export const KEEP = 200;
 export const PAGE = 50;
 export const DROPDOWN = 8;
+
+// ── Where a notification leads (the panel's click) ──────────────────────────
+
+const HEX = /^[0-9a-f]{32}$/;
+/**
+ * What a target may name, and the one path each is drawn as. The path is
+ * built here from a fixed shape and a checked id, never read from a row, so
+ * a link is always a path on this site: no scheme, no host, no `//`.
+ */
+export const TARGETS = {
+  timing: (id) => `/t/${id}`,
+  comment: (id, timing) => `/t/${timing}#comment-${id}`,
+  analysis: (id) => `/analyze/${id}`,
+  suggestion: (id) => (id ? `/community?suggestion=${id}#suggestion-${id}` : '/community'),
+  staff: () => '/staff',
+};
+export const SAME_SITE = /^\/(?!\/)[A-Za-z0-9/_?=#-]*$/;
+
+const target = (kind, id = null, extra = {}) => {
+  const path = TARGETS[kind](id, extra.timing);
+  return SAME_SITE.test(path) ? { kind, id, path } : null;
+};
+
+/**
+ * `{ kind, id, path }`, or null when the row names nothing this site can
+ * open. A row may carry its own `payload.target` ({ kind, id }, the staff
+ * rows do); every older row is read from its kind and payload, which have
+ * always held the ids (a comment's timing and comment, a suggestion's id...).
+ */
+export const targetOf = (kind, payload) => {
+  const p = payload ?? {};
+  const stored = p.target;
+  if (stored && typeof stored === 'object' && Object.hasOwn(TARGETS, stored.kind)) {
+    if (stored.kind === 'staff') return target('staff');
+    if (stored.kind === 'suggestion' && stored.id == null) return target('suggestion');
+    if (stored.kind === 'comment' && HEX.test(stored.id ?? '') && HEX.test(p.timing ?? '')) return target('comment', stored.id, { timing: p.timing });
+    if (stored.kind !== 'comment' && HEX.test(stored.id ?? '')) return target(stored.kind, stored.id);
+  }
+  switch (kind) {
+    case 'suggestion':
+      return target('suggestion', HEX.test(p.suggestion ?? '') ? p.suggestion : null);
+    case 'comment':
+      if (!HEX.test(p.timing ?? '')) return null;
+      return HEX.test(p.comment ?? '') ? target('comment', p.comment, { timing: p.timing }) : target('timing', p.timing);
+    case 'use':
+    case 'vote':
+      return HEX.test(p.timing ?? '') ? target('timing', p.timing) : null;
+    case 'analysis':
+      return HEX.test(p.analysis ?? '') ? target('analysis', p.analysis) : null;
+    case 'staff':
+      return target('staff');
+    default:
+      return null;
+  }
+};
 
 // ── In memory ───────────────────────────────────────────────────────────────
 
@@ -61,9 +119,42 @@ const memoryStore = {
     }
   },
 
-  async list(accountId, { offset = 0, limit = PAGE, unreadOnly = false } = {}) {
-    const rows = [...(memory.get(accountId)?.values() ?? [])].filter((n) => !unreadOnly || !n.readAt).sort(newestFirst);
+  async list(accountId, { offset = 0, limit = PAGE, unreadOnly = false, kinds = null } = {}) {
+    const rows = [...(memory.get(accountId)?.values() ?? [])]
+      .filter((n) => (!unreadOnly || !n.readAt) && (!kinds || kinds.includes(n.kind)))
+      .sort(newestFirst);
     return { total: rows.length, items: rows.slice(offset, offset + limit).map(view) };
+  },
+
+  async markUnread(accountId, ids) {
+    let n = 0;
+    for (const row of memory.get(accountId)?.values() ?? []) {
+      if (row.readAt && ids.includes(row.publicId)) {
+        row.readAt = null;
+        n += 1;
+      }
+    }
+    return n;
+  },
+
+  async remove(accountId, publicId) {
+    const mine = memory.get(accountId);
+    for (const [key, row] of mine ?? []) {
+      if (row.publicId === publicId) return mine.delete(key);
+    }
+    return false;
+  },
+
+  async removeRead(accountId) {
+    const mine = memory.get(accountId);
+    let n = 0;
+    for (const [key, row] of mine ?? []) {
+      if (row.readAt) {
+        mine.delete(key);
+        n += 1;
+      }
+    }
+    return n;
   },
 
   async unread(accountId) {
@@ -114,14 +205,38 @@ const pgStore = {
     );
   },
 
-  async list(accountId, { offset = 0, limit = PAGE, unreadOnly = false } = {}) {
-    const { rows } = await query(
-      `SELECT public_id, kind, payload, created_at, read_at, count(*) OVER () AS total
-         FROM notifications WHERE account_id = $1 AND ($2::boolean IS FALSE OR read_at IS NULL)
-        ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4`,
-      [accountId, unreadOnly, limit, offset],
+  async list(accountId, { offset = 0, limit = PAGE, unreadOnly = false, kinds = null } = {}) {
+    const where = `account_id = $1 AND ($2::boolean IS FALSE OR read_at IS NULL) AND ($3::text[] IS NULL OR kind = ANY($3::text[]))`;
+    const [{ rows }, { rows: [count] }] = await Promise.all([
+      query(
+        `SELECT public_id, kind, payload, created_at, read_at FROM notifications WHERE ${where}
+          ORDER BY created_at DESC, id DESC LIMIT $4 OFFSET $5`,
+        [accountId, unreadOnly, kinds, limit, offset],
+      ),
+      // Its own count: a window count is empty on a page past the end, and the
+      // page's "more" needs the total even there.
+      query(`SELECT count(*)::int AS n FROM notifications WHERE ${where}`, [accountId, unreadOnly, kinds]),
+    ]);
+    return { total: count.n, items: rows.map(fromRow) };
+  },
+
+  async markUnread(accountId, ids) {
+    const { rowCount } = await query(
+      `UPDATE notifications SET read_at = NULL
+        WHERE account_id = $1 AND read_at IS NOT NULL AND public_id = ANY($2::bpchar[])`,
+      [accountId, ids],
     );
-    return { total: rows.length ? Number(rows[0].total) : 0, items: rows.map(fromRow) };
+    return rowCount;
+  },
+
+  async remove(accountId, publicId) {
+    const { rowCount } = await query('DELETE FROM notifications WHERE account_id = $1 AND public_id = $2', [accountId, publicId]);
+    return rowCount === 1;
+  },
+
+  async removeRead(accountId) {
+    const { rowCount } = await query('DELETE FROM notifications WHERE account_id = $1 AND read_at IS NOT NULL', [accountId]);
+    return rowCount;
   },
 
   async unread(accountId) {
@@ -156,6 +271,24 @@ export const notify = async (accountId, kind, key, payload, { actorId = null } =
   } catch (error) {
     console.warn(`[notify] a ${kind} notification was not stored: ${error.message}`);
   }
+};
+
+/**
+ * Tells every staff account but the actor that something waits on `/staff`
+ * (`item` is `report` or `correction`). The payload names what kind of thing
+ * and its song's title at most, never the reporter or the reason: the panel
+ * shows those to whoever opens it. One row per thing (`key`), brought back to
+ * unread by the next report on it. Never throws, as `notify`.
+ */
+export const notifyStaff = async (key, payload, { actorId = null } = {}) => {
+  let ids;
+  try {
+    ids = await staffIds();
+  } catch (error) {
+    console.warn(`[notify] the staff could not be listed: ${error.message}`);
+    return;
+  }
+  for (const id of ids) await notify(id, 'staff', key, { ...payload, target: { kind: 'staff', id: null } }, { actorId });
 };
 
 /** An analysis's notification is marked read once its owner has read the ended analysis. */

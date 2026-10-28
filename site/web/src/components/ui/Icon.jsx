@@ -165,6 +165,15 @@ const PATHS = {
       <path d="M10.3 20a1.9 1.9 0 0 0 3.4 0" />
     </>
   ),
+  // The notification panel's kinds and marks (W13.17).
+  comment: <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-7.5L7 20.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5Z" />,
+  bulb: (
+    <>
+      <path d="M9 17.5h6M10 20.5h4" />
+      <path d="M12 3.5a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17.5h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3.5Z" />
+    </>
+  ),
+  dot: <circle cx="12" cy="12" r="4" />,
   history: (
     <>
       <path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5" />

@@ -7,7 +7,7 @@ import { guard } from '../middlewares/rate-limit.js';
 import { optionalSession, requireSameOrigin, requireSession } from '../middlewares/session.js';
 import { isStaff } from '../services/account.service.js';
 import { community, KINDS, newPublicId, PAGE_MAX, SORTS, STATES } from '../services/community.service.js';
-import { notify } from '../services/notification.service.js';
+import { notify, notifyStaff } from '../services/notification.service.js';
 import { social } from '../services/social.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { cleanText } from '../utils/text.js';
@@ -317,7 +317,9 @@ const visibleItem = async (req) => {
 router.post('/community/:kind/:id/report', reportLimit, requireSameOrigin, optionalSession, async (req, res) => {
   const { kind, item } = await visibleItem(req);
   const reason = field(req.body?.reason, 'reason', 1, REASON_MAX);
-  await community().report(kind, item.publicId, { accountId: req.account?.id ?? null, ipHash: ipHashOf(req), reason });
+  const added = await community().report(kind, item.publicId, { accountId: req.account?.id ?? null, ipHash: ipHashOf(req), reason });
+  // W13.17: staff hear of it, one notification per reported item; never who or why.
+  if (added) await notifyStaff(`staff:report:${kind}:${item.publicId}`, { item: 'report', kind }, { actorId: req.account?.id ?? null });
   res.status(204).end();
 });
 

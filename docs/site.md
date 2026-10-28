@@ -2344,3 +2344,71 @@ px, dark and light, in en, de, ja and ru: no sideways scroll, no console error.
 Not checked: the statistics charts with data (the dev API had no finished analysis),
 the `<Term>` popover and the glossary's highlighted entry by eye, the microphone tool
 listening (no microphone in the headless browser), a screen reader, Safari, Firefox.
+
+### The notification panel (W13.17, second pass, 2026-10-28)
+
+The bell's dropdown became a panel, and `/notifications` its full page. The API is in
+`routes/notifications.routes.js` (its rules at the top) and `services/notification.service.js`
+(both stores, `targetOf`, `notifyStaff`); the web's in `components/Bell.jsx` (the button, the
+count, the poll), `components/notifications/Panel.jsx` (lazy) and `NotificationItem.jsx`
+(one row and the list's keys, shared with the page), `pages/Notifications.jsx` and
+`lib/notifications.js`.
+
+- **Placement.** The bell sits in the bar's right-hand cluster beside the account, at
+  every width, with the unread count (99+ past 99). The panel opens under it at the bar's
+  right edge (`pop-in` from the top right, `docs/design.md` §5); on a phone it spans the
+  bar less 8 px a side. Signed in, under 420 px the wordmark is hidden so the row fits:
+  with 44 px touch targets it was 24 px wider than a 375 px screen.
+- **The panel.** "Mark all as read", "Delete read" (off when nothing is read), All and
+  Unread tabs (`components/ui/Tabs.jsx`), the latest eight, each with its kind's icon
+  (`KIND_ICON`; a mapper's confirmation a trophy), its text, a relative time from
+  `Intl.RelativeTimeFormat` (short, `numeric: 'auto'`, the full date in its `title`,
+  refreshed every minute), an unread dot, and icon buttons to mark it read or unread and
+  to delete it. "See all" and an empty state end it. A non-modal `role="dialog"`: the
+  focus moves to the first row when it opens, Tab stays inside, Escape closes it and gives
+  the focus back to the bell, a click outside closes it; the arrow keys, Home and End move
+  between rows, Enter opens one, Delete removes it and the focus moves to the next.
+- **Where a click lands.** It marks the notification read and follows `target.path`,
+  which the API builds for every item from a fixed shape and a checked id (`TARGETS`):
+  `/t/<timing>` for a use or a vote, `/t/<timing>#comment-<id>` for a comment,
+  `/analyze/<id>`, `/community?suggestion=<id>#suggestion-<id>` (the suggestions list shows
+  that one first when its sort, filter or paging would leave it out) and `/staff`. A path
+  must match `^/(?!/)[A-Za-z0-9/_?=#-]*$` on both sides, so a row never leads off the site.
+  No column was added: every kind's payload has always held its ids, so old rows get
+  targets too; a row may carry `payload.target` (`{ kind, id }`, rebuilt, never trusted as
+  a path) when its kind cannot say, as the staff rows do.
+- **Staff.** A new kind, `staff`, for moderators only: a report on an item (one row per
+  item, back to unread with the next report) and a vote's correction waiting for review.
+  It names the kind of thing and the song's title at most, never who reported or why.
+  The actor is never told of their own report.
+- **The page.** All or unread, a kind filter (the staff kind for staff only), numbered
+  pages of fifty, all three in the address (`?unread=1&kind=vote&page=2`); tick rows or
+  the page and mark them read or unread or delete them; "Mark all as read" and "Delete
+  read" act on every page. A change in the panel over the page reloads the page and the
+  other way round (`CHANGED`, a window event).
+- **The count.** Every change moves the bell at once (`optimisticUnread`) and each answer
+  carries the server's `unread`, which replaces it; a failed request reads the count
+  again and the list reloads. The poll is unchanged: once a minute while visible.
+- **API.** `POST /me/notifications/unread { ids }`, `DELETE /me/notifications/<id>` (the
+  404 of a missing id for another account's), `DELETE /me/notifications?read=true` (a bare
+  DELETE is a 400 `READ_ONLY`), `?kind=a,b` on the list (an unknown kind is a 400), and
+  the list's total counted on its own so a page past the end still knows it. All behind
+  `requireSameOrigin`; deletes have their own limit, 120 in ten minutes.
+
+Checked: `site/api` 198/198 (7 new in `test/notifications.test.js`: every kind's target and
+hostile payloads; targets, the kind filter and paging; read and unread marks and their
+counts, scoped to the account, with the 400s, 403 and 401; one deleted, another account's a
+404; "delete read" only by name; the delete limit; staff told of a report and a correction,
+never who), `site/web` 331/331 (5 new: the API's target and its same-site check, the staff
+texts, the icons, the relative time in en and es, the optimistic count), `budget` ok,
+`bench/facts.py` ok, and the axe spec for the bell's open panel and `/notifications`
+signed in as staff, dark and light, 4/4 together with the palette's.
+
+Seen in the browser (web 5271, API 3101 in memory, notifications of every kind seeded by a
+script outside the repository): the panel at 1440 px dark and 375 px light in Spanish, the
+page at 375 px in Spanish and English, the arrow keys and Delete (focus to the next row,
+the count from 12 to 11 at once), Escape back to the bell, Enter on a comment landing on
+its anchor, the suggestion link with its history open, "Delete read", bulk "Mark as read",
+the staff kinds leading to `/staff`, and a change in the panel reloading the page under it.
+Not seen: the PostgreSQL store (its SQL is unexercised here; the memory twin is what the
+tests run).

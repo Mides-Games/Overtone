@@ -20,6 +20,55 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## v1.0.0-stable — 2026-10-28 · The notification panel
+
+### Changed
+
+- The bell opens a panel at the right edge of the bar: "Mark all as read" and "Delete
+  read", All and Unread tabs, each notification with its kind's icon, a relative time
+  (`Intl.RelativeTimeFormat`), an unread dot and its own read/unread and delete buttons,
+  "See all" and an empty state. Arrow keys move between rows, Enter opens one, Delete
+  removes it, Escape closes and gives the focus back to the bell. The panel is its own
+  chunk, loaded the first time the bell opens.
+- A click marks it read and lands where it happened: `/t/<id>` (a comment's anchor on it),
+  `/analyze/<id>`, `/community?suggestion=<id>` (shown first even when the list's filter
+  or paging would leave it out) or `/staff`.
+- `/notifications` gains the same actions in bulk (tick some or the page), a filter by
+  kind and numbered pages kept in the address.
+- New API: `POST /me/notifications/unread`, `DELETE /me/notifications/<id>`,
+  `DELETE /me/notifications?read=true`, `?kind=` on the list, and a `target` on every
+  item. New kind `staff`: moderators hear of a report and of a vote's correction.
+- Signed in, under 420 px the bar shows the mark without the wordmark, so the bell and
+  the account fit beside the menu button.
+
+### Fixed
+
+- At 375 px on a touch screen the signed-in bar was 24 px wider than the screen (the
+  bell's 44 px target was added to the row without taking anything away), pushing the
+  menu button half off it.
+
+### Hardening
+
+- A notification's link is built by the API from a fixed shape and a checked id, and
+  checked again by the page: always a path on this site, never a URL read from a row.
+- Deleting is the 404 of a missing id for another account's; marking someone else's
+  changes nothing. A bare `DELETE /me/notifications` is a 400: only `?read=true` empties
+  anything. Deletes have their own rate limit (120 in ten minutes).
+- The `staff` kind is widened in `schema.sql`'s one CHECK, not by a later DROP/ADD that a
+  narrower earlier ADD would refuse on the next boot.
+
+### Measured
+
+- Not measured beyond the checks: no engine change. `site/api` 198/198, `site/web`
+  331/331, `budget` ok, the axe spec for the bell's panel and `/notifications` 4/4 (dark
+  and light).
+
+### Rejected / tried and dropped
+
+- A stored `target` column: every kind's payload already holds its ids, so the target is
+  derived from them (old rows included); a row may carry `payload.target` when a kind
+  cannot be derived, as the staff rows do.
+
 ## v1.0.0-stable — 2026-10-28 · The studio look: community and account pages
 
 ### Changed

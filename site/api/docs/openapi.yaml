@@ -514,12 +514,22 @@ components:
         title, user, comment, atMs), `use` (timing, title, user), `vote`
         (timing, title, verdict, proposedBpm, proposedOffsetMs, and `mapper`
         only for a mapper's confirmation; a vote's voter is otherwise never
-        named) and `analysis` (analysis, name, status).
-      required: [id, kind, payload, createdAt, read]
+        named), `analysis` (analysis, name, status) and, for staff only,
+        `staff` (item: `report` with the reported kind, or `correction` with
+        timing and title). `target` is where it leads: a path on this site,
+        built by the API from a checked id, or null when there is nowhere.
+      required: [id, kind, payload, target, createdAt, read]
       properties:
         id: { type: string, pattern: '^[0-9a-f]{32}$' }
-        kind: { type: string, enum: [suggestion, comment, use, vote, analysis] }
+        kind: { type: string, enum: [suggestion, comment, use, vote, analysis, staff] }
         payload: { type: object }
+        target:
+          type: [object, 'null']
+          required: [kind, id, path]
+          properties:
+            kind: { type: string, enum: [timing, comment, analysis, suggestion, staff] }
+            id: { type: [string, 'null'], pattern: '^[0-9a-f]{32}$' }
+            path: { type: string, pattern: '^/(?!/)[A-Za-z0-9/_?=#-]*$' }
         createdAt: { type: string, format: date-time }
         read: { type: boolean }
 
@@ -2441,6 +2451,10 @@ paths:
         - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
         - { name: unread, in: query, description: '`1` for unread ones only.', schema: { type: string, enum: ['1'] } }
+        - name: kind
+          in: query
+          description: Only these kinds, comma-separated (`comment,vote`); absent for every kind.
+          schema: { type: string, pattern: '^(suggestion|comment|use|vote|analysis|staff)(,(suggestion|comment|use|vote|analysis|staff))*$' }
       responses:
         '200':
           description: One page and the unread count.
@@ -2455,10 +2469,86 @@ paths:
                   unread: { type: integer }
                   offset: { type: integer }
                   limit: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete every read notification
+      description: |
+        Only the read ones, and only with `read=true` (a 400 `READ_ONLY`
+        without it), so a bare DELETE never empties the bell.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+        - { name: read, in: query, required: true, schema: { type: string, const: 'true' } }
+      responses:
+        '200':
+          description: '`{ deleted, unread }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer }
+                  unread: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/notifications/{id}:
+    delete:
+      summary: Delete one notification
+      description: Another account's id, or one that is not there, is the same 404.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      responses:
+        '200':
+          description: '`{ deleted: 1, unread }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer, const: 1 }
+                  unread: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
 
   /me/notifications/unread:
+    post:
+      summary: Mark some read ones unread again
+      description: Ids that are not yours mark nothing (`marked` says how many did).
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, pattern: '^[0-9a-f]{32}$' } }
+      responses:
+        '200':
+          description: '`{ marked, unread }`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: integer }
+                  unread: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
     get:
       summary: How many are unread; what the bell polls (once a minute at most)
       security: [{ session: [] }]

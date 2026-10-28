@@ -2663,8 +2663,44 @@
         "refused": "Sua análise de \"{{title}}\" terminou sem um BPM.",
         "failed": "Sua análise de \"{{title}}\" falhou."
       },
-      "unknown": "Algo aconteceu."
-    }
+      "unknown": "Algo aconteceu.",
+      "staff": {
+        "correction": "Uma correção de \"{{title}}\" aguarda revisão.",
+        "report": {
+          "suggestion": "Uma sugestão foi denunciada.",
+          "review": "Uma avaliação foi denunciada.",
+          "comment": "Um comentário foi denunciado.",
+          "item": "Algo foi denunciado."
+        }
+      }
+    },
+    "deleteRead": "Excluir lidas",
+    "markRead": "Marcar como lida",
+    "markUnread": "Marcar como não lida",
+    "delete": "Excluir",
+    "unreadTab": "Não lidas",
+    "emptyUnread": "Você está em dia.",
+    "emptyHint": "Aqui aparecem comentários, votos e usos dos seus timings, suas análises concluídas e suas sugestões.",
+    "changeFailed": "Não foi possível salvar essa alteração; a lista foi recarregada.",
+    "retry": "Tentar de novo",
+    "select": "Selecionar: {{text}}",
+    "selectPage": "Selecionar esta página",
+    "selected": "Selecionadas: {{count}}",
+    "bulk": "Com as selecionadas",
+    "kind": "Tipo",
+    "allKinds": "Todos os tipos",
+    "kinds": {
+      "suggestion": "Sugestões",
+      "comment": "Comentários",
+      "use": "Usos",
+      "vote": "Votos",
+      "analysis": "Análises",
+      "staff": "Equipe"
+    },
+    "pages": "Páginas",
+    "previous": "Anterior",
+    "next": "Próxima",
+    "range": "{{first}}–{{last}} de {{total}}"
   },
   "staff": {
     "nav": "Painel da staff",

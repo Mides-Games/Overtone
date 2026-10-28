@@ -186,6 +186,17 @@ export const accountById = async (id) => {
   return rows[0] ?? null;
 };
 
+/**
+ * The staff's account ids (W13.17's `staff` notifications): every account
+ * whose last sign-in brought Mides' moderator role. A handful at most, so
+ * read whole.
+ */
+export const staffIds = async () => {
+  if (!hasDatabase()) return [...memory.accounts.values()].filter(isStaff).map((a) => a.id);
+  const { rows } = await query(`SELECT id FROM accounts WHERE mides_role = 'moderator'`);
+  return rows.map((r) => r.id);
+};
+
 /** The private-profile switch (W13.18). */
 export const setProfilePrivate = async (id, on) => {
   if (!hasDatabase()) {

@@ -2780,8 +2780,44 @@
         "refused": "Twoja analiza „{{title}}” zakończyła się bez BPM.",
         "failed": "Twoja analiza „{{title}}” nie powiodła się."
       },
-      "unknown": "Coś się stało."
-    }
+      "unknown": "Coś się stało.",
+      "staff": {
+        "correction": "Poprawka do „{{title}}” czeka na sprawdzenie.",
+        "report": {
+          "suggestion": "Zgłoszono sugestię.",
+          "review": "Zgłoszono recenzję.",
+          "comment": "Zgłoszono komentarz.",
+          "item": "Coś zostało zgłoszone."
+        }
+      }
+    },
+    "deleteRead": "Usuń przeczytane",
+    "markRead": "Oznacz jako przeczytane",
+    "markUnread": "Oznacz jako nieprzeczytane",
+    "delete": "Usuń",
+    "unreadTab": "Nieprzeczytane",
+    "emptyUnread": "Wszystko przeczytane.",
+    "emptyHint": "Tutaj pojawiają się komentarze, głosy i użycia twoich timingów, ukończone analizy i twoje sugestie.",
+    "changeFailed": "Nie udało się zapisać tej zmiany; lista została wczytana ponownie.",
+    "retry": "Spróbuj ponownie",
+    "select": "Zaznacz: {{text}}",
+    "selectPage": "Zaznacz tę stronę",
+    "selected": "Zaznaczone: {{count}}",
+    "bulk": "Z zaznaczonymi",
+    "kind": "Rodzaj",
+    "allKinds": "Wszystkie rodzaje",
+    "kinds": {
+      "suggestion": "Sugestie",
+      "comment": "Komentarze",
+      "use": "Użycia",
+      "vote": "Głosy",
+      "analysis": "Analizy",
+      "staff": "Obsługa"
+    },
+    "pages": "Strony",
+    "previous": "Poprzednia",
+    "next": "Następna",
+    "range": "{{first}}–{{last}} z {{total}}"
   },
   "staff": {
     "nav": "Panel zespołu",

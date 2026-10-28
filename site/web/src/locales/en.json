@@ -2639,7 +2639,7 @@
     "title": "Notifications",
     "subtitle": "What happened to your suggestions, your published timings and your analyses while you were away.",
     "bell": "Notifications, unread: {{count}}",
-    "allRead": "Mark all read",
+    "allRead": "Mark all as read",
     "failed": "The notifications could not be loaded.",
     "empty": "Nothing new.",
     "seeAll": "See all notifications",
@@ -2662,8 +2662,44 @@
         "refused": "Your analysis of \"{{title}}\" ended without a BPM.",
         "failed": "Your analysis of \"{{title}}\" failed."
       },
-      "unknown": "Something happened."
-    }
+      "unknown": "Something happened.",
+      "staff": {
+        "correction": "A correction to \"{{title}}\" waits for review.",
+        "report": {
+          "suggestion": "A suggestion was reported.",
+          "review": "A review was reported.",
+          "comment": "A comment was reported.",
+          "item": "Something was reported."
+        }
+      }
+    },
+    "deleteRead": "Delete read",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "delete": "Delete",
+    "unreadTab": "Unread",
+    "emptyUnread": "You are all caught up.",
+    "emptyHint": "Comments, votes and uses of your timings, your finished analyses and your suggestions show up here.",
+    "changeFailed": "That change could not be saved; the list was read again.",
+    "retry": "Try again",
+    "select": "Select: {{text}}",
+    "selectPage": "Select this page",
+    "selected": "Selected: {{count}}",
+    "bulk": "With the selected ones",
+    "kind": "Kind",
+    "allKinds": "All kinds",
+    "kinds": {
+      "suggestion": "Suggestions",
+      "comment": "Comments",
+      "use": "Uses",
+      "vote": "Votes",
+      "analysis": "Analyses",
+      "staff": "Staff"
+    },
+    "pages": "Pages",
+    "previous": "Previous",
+    "next": "Next",
+    "range": "{{first}}–{{last}} of {{total}}"
   },
   "staff": {
     "nav": "Staff panel",

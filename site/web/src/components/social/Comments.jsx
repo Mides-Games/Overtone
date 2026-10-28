@@ -16,7 +16,7 @@ import { Counter } from '../community/Suggestions.jsx'
  * Text is plain text, rendered as such. Its author deletes it; anyone
  * reports it and staff hide it, through the community's moderation.
  */
-export default function Comments({ id, durationS, onSeek, position }) {
+export default function Comments({ id, durationS, onSeek, position, onItems = null }) {
   const { t } = useTranslation()
   const { account } = useAuth()
   const [page, setPage] = useState(null)
@@ -35,11 +35,16 @@ export default function Comments({ id, durationS, onSeek, position }) {
     }
   }, [id, tick, account?.id])
 
-  // A link to one comment (the staff panel's) lands on it once the list is in.
+  // A link to one comment (the staff panel's, a notification's) lands on it once the list is in.
   useEffect(() => {
     if (!page || !window.location.hash.startsWith('#comment-')) return
     document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'center' })
   }, [page])
+
+  // The timed ones are drawn on the tempo map too (W13.15).
+  useEffect(() => {
+    if (page) onItems?.(page.items)
+  }, [page, onItems])
 
   async function more() {
     const next = await listComments(id, page.items.length)

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { gutter } from '../lib/gutter.js'
 import Avatar from './Avatar.jsx'
+import Bell from './Bell.jsx'
 import { SearchIcon, usePalette } from './CommandPalette.jsx'
 import LanguageSelect from './LanguageSelect.jsx'
 import Mark from './Mark.jsx'
@@ -118,9 +119,18 @@ function UserMenu({ account }) {
             <Link role="menuitem" to="/history" className={item} onClick={() => setOpen(false)}>
               {t('timings.nav.history')}
             </Link>
+            <Link role="menuitem" to="/notifications" className={item} onClick={() => setOpen(false)}>
+              {t('notifications.title')}
+            </Link>
             <Link role="menuitem" to="/settings" className={item} onClick={() => setOpen(false)}>
               {t('settings.title')}
             </Link>
+            {/* W13.19: Mides moderators only; the page is a 404 for anyone else. */}
+            {account.role === 'moderator' && (
+              <Link role="menuitem" to="/staff" className={item} onClick={() => setOpen(false)}>
+                {t('staff.nav')}
+              </Link>
+            )}
             <button
               role="menuitem"
               type="button"
@@ -176,6 +186,8 @@ export default function Navbar() {
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <TrayButton />
+          {/* W13.17: the bell, for an account only; it polls once a minute while the tab is seen. */}
+          {account && <Bell />}
           <div className="hidden md:block">
             <PaletteButton />
           </div>

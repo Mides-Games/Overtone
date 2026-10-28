@@ -58,6 +58,32 @@ export function beatmapLink(text) {
   return `https://osu.ppy.sh/beatmapsets/${set}${match[2] ? `#${match[2]}/${Number(match[3])}` : ''}`
 }
 
+/** How much of a comment its mark on the tempo map shows (W13.15); the list has the rest. */
+export const MARK_TEXT = 80
+
+/**
+ * The timed comments of a page as marks on the tempo map (W13.15): those
+ * with a time inside the song, not hidden (staff and the author still see a
+ * hidden one in the list, marked; the map is for everyone), each with its
+ * author's name and the start of its text on one line.
+ */
+export function commentMarks(items, durationS = 0) {
+  const end = durationS > 0 ? durationS * 1000 : Number.POSITIVE_INFINITY
+  return (items ?? [])
+    .filter((c) => Number.isInteger(c.atMs) && c.atMs >= 0 && c.atMs <= end && !c.hidden)
+    .map((c) => {
+      const flat = String(c.body ?? '').replace(/\s+/g, ' ').trim()
+      const points = [...flat]
+      return {
+        id: c.id,
+        atMs: c.atMs,
+        author: c.author?.username ?? null,
+        text: points.length > MARK_TEXT ? `${points.slice(0, MARK_TEXT - 1).join('')}…` : flat,
+      }
+    })
+    .sort((a, b) => a.atMs - b.atMs)
+}
+
 /** "4.25" for a rating, a dash for none. */
 export const ratingLabel = (average) => (average === null || average === undefined ? '–' : Number(average).toFixed(2).replace(/\.?0+$/, ''))
 

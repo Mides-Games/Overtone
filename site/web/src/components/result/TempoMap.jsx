@@ -18,7 +18,7 @@ const OVERVIEW_H = 34
  * the playhead following the song. Two canvases: the map, repainted when the
  * view or the data change, and an overlay for what moves every frame.
  */
-export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, focus, children }) {
+export default function TempoMap({ data, player, snapshot, selected, hovered, onSelect, onHover, clockRef, focus, marks = null, onMark = null, children }) {
   const { t } = useTranslation()
   const wrapRef = useRef(null)
   const mapRef = useRef(null)
@@ -35,6 +35,8 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
   const [follow, setFollow] = useState(true)
   const [viewLabel, setViewLabel] = useState(null)
   const [tip, setTip] = useState(null)
+  // The view as state too, for what is drawn in HTML over it (W13.15's comment marks).
+  const [span, setSpan] = useState(null)
 
   const L = useMemo(() => (width ? layout(width) : null), [width])
   const duration = Math.max(data.durationS, MIN_SPAN_S)
@@ -166,8 +168,9 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
     const { a, b } = view.current
     const zoomed = b - a < duration - 1e-6
     setViewLabel((old) => (!zoomed ? null : old && old.a === a && old.b === b ? old : { a, b }))
+    if (marks?.length) setSpan((old) => (old && old.a === a && old.b === b ? old : { a, b }))
     paintOverlay()
-  }, [L, data, selected, hovered, palette, paintOverlay, duration])
+  }, [L, data, selected, hovered, palette, paintOverlay, duration, marks])
 
   // The overview's base, once per data and size.
   useEffect(() => {
@@ -507,6 +510,8 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
         )}
       </div>
 
+      {marks?.length > 0 && L && span && <CommentMarks marks={marks} L={L} span={span} onMark={onMark} />}
+
       <canvas
         ref={overviewRef}
         className="block w-full cursor-pointer border-t border-line"
@@ -519,6 +524,77 @@ export default function TempoMap({ data, player, snapshot, selected, hovered, on
       {children}
       <Legend hints={data.hints} swing={data.swing} subdivision={data.subdivision ?? 1} other={data.other?.length ? data.otherLabel ?? t('compare.other') : null} />
     </section>
+  )
+}
+
+/**
+ * W13.15: a published timing's timed comments as marks on a lane under the
+ * map, where they are in the song at the map's zoom. Hovering or focusing a
+ * mark shows who said what; clicking it moves the player there (`onMark`).
+ * Marks closer than a few pixels share one button, so a busy chorus stays
+ * one target a finger can hit, and its note lists the comments it holds.
+ */
+const MARK_MERGE_PX = 14
+const MARK_TIP_W = 224
+
+function CommentMarks({ marks, L, span, onMark }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(null)
+  const X = (ms) => L.x0 + ((ms / 1000 - span.a) / (span.b - span.a)) * (L.x1 - L.x0)
+  const groups = []
+  for (const mark of [...marks].sort((p, q) => p.atMs - q.atMs)) {
+    const x = X(mark.atMs)
+    if (x < L.x0 - 1 || x > L.x1 + 1) continue
+    const last = groups.at(-1)
+    if (last && x - last.x < MARK_MERGE_PX) last.marks.push(mark)
+    else groups.push({ key: mark.id, x, marks: [mark] })
+  }
+  const shown = groups.find((g) => g.key === open) ?? null
+  const hide = (key) => setOpen((current) => (current === key ? null : current))
+  return (
+    <div className="relative h-8 border-t border-line">
+      <ul className="contents" aria-label={t('social.comments.marks', { count: marks.length })}>
+        {groups.map((g) => (
+          <li key={g.key} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: g.x }}>
+            <button
+              type="button"
+              className="flex h-6 min-w-6 items-center justify-center rounded-full border border-accent bg-accent/15 px-1 text-[11px] leading-none text-accent transition hover:bg-accent/35 focus-visible:bg-accent/35"
+              aria-label={t('social.comments.markLabel', { at: formatClock(g.marks[0].atMs), count: g.marks.length })}
+              aria-describedby={open === g.key ? 'comment-mark-tip' : undefined}
+              onMouseEnter={() => setOpen(g.key)}
+              onMouseLeave={() => hide(g.key)}
+              onFocus={() => setOpen(g.key)}
+              onBlur={() => hide(g.key)}
+              onClick={() => onMark?.(g.marks[0])}
+            >
+              {g.marks.length > 1 ? g.marks.length : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z" />
+                </svg>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {shown && (
+        <div
+          id="comment-mark-tip"
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full z-10 mb-1 space-y-1 rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-caption shadow-lg"
+          style={{ width: Math.min(MARK_TIP_W, L.width - 8), left: Math.max(4, Math.min(shown.x - MARK_TIP_W / 2, L.width - MARK_TIP_W - 4)) }}
+        >
+          {shown.marks.slice(0, 4).map((m) => (
+            <p key={m.id} className="break-words">
+              <span className="readout text-accent">{formatClock(m.atMs)}</span>{' '}
+              <span className="font-semibold">{m.author ? `@${m.author}` : t('social.uses.goneAccount')}</span>{' '}
+              <span className="text-muted">{m.text}</span>
+            </p>
+          ))}
+          {shown.marks.length > 4 && <p className="text-dim">{t('social.comments.moreMarks', { count: shown.marks.length - 4 })}</p>}
+          <p className="text-dim">{t('social.comments.markHint')}</p>
+        </div>
+      )}
+    </div>
   )
 }
 

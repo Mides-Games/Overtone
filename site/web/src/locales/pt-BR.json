@@ -1980,7 +1980,11 @@
       "delete": "Apagar",
       "deleteConfirm": "Apagar seu comentário?",
       "deleteYes": "Apagar",
-      "openTiming": "Abrir o timing"
+      "openTiming": "Abrir o timing",
+      "marks": "Comentários com tempo no mapa: {{count}}",
+      "markLabel": "Comentários em {{at}} ({{count}}): mostrar, ou tocar a partir daqui",
+      "moreMarks": "+{{count}} na lista abaixo",
+      "markHint": "Clique para tocar a partir daqui."
     },
     "errors": {
       "TOO_LONG": "Isso está longo demais.",
@@ -2227,5 +2231,139 @@
       "sharedAdded": "A música que você compartilhou está na lista. Confira e clique em Analisar.",
       "sharedNone": "Nada utilizável chegou pelo compartilhamento: compartilhe um arquivo MP3, OGG, WAV, FLAC, M4A ou Opus, ou escolha-o abaixo."
     }
+  },
+  "votes": {
+    "title": "Está no tempo?",
+    "onCount": "No tempo: {{count}}",
+    "offCount": "Fora: {{count}}",
+    "on": "No tempo",
+    "off": "Está fora",
+    "takeBack": "Retirar meu voto",
+    "own": "Este timing é seu: você não pode votar nele.",
+    "signIn": "Entre para votar",
+    "yourCorrection": "Você propôs {{bpm}} BPM, offset {{offset}} ms.",
+    "review": {
+      "pending": "Esperando a staff",
+      "accepted": "Aceita",
+      "dismissed": "Descartada"
+    },
+    "offHint": "Opcional: o BPM ou o offset (onde a primeira red line deveria estar, em ms) que você acha certo. Uma correção vai para a staff analisar.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "O Overtone pode usar minha correção como dados para testar e melhorar a análise. Nada é compartilhado fora do site.",
+    "sendOff": "Enviar",
+    "privacy": "Os votos são anônimos: a página mostra só as contagens. Se a sua conta do osu! vinculada tem mapas ranqueados, um voto \"no tempo\" mostra o seu nome como o mapper que verificou.",
+    "queued": "Obrigado. Sua correção está esperando a staff.",
+    "saved": "Seu voto foi salvo.",
+    "errors": {
+      "bad": "Esse voto não foi aceito. Confira os números.",
+      "bpm": "O BPM é um número de 20 a 1000.",
+      "offset": "O offset é em milissegundos inteiros, de -10000 até o fim da música."
+    },
+    "verified": "Verificado por um mapper",
+    "verifiedHint": "Alguém cuja conta do osu! vinculada tem mapas ranqueados disse que este timing está no tempo.",
+    "verifiedBy": "por",
+    "ranked": "{{name}} no osu!, mapas ranqueados: {{count}}",
+    "andMore": "+{{count}}"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "subtitle": "O que aconteceu com suas sugestões, seus timings publicados e suas análises enquanto você estava fora.",
+    "bell": "Notificações, não lidas: {{count}}",
+    "allRead": "Marcar todas como lidas",
+    "failed": "Não foi possível carregar as notificações.",
+    "empty": "Nada novo.",
+    "seeAll": "Ver todas as notificações",
+    "unreadMark": "(não lida)",
+    "proposed": "Proposto: {{bpm}} BPM, offset {{offset}} ms",
+    "signIn": "Entre para ver suas notificações.",
+    "filter": "Quais notificações",
+    "all": "Todas",
+    "unreadOnly": "Não lidas ({{count}})",
+    "kept": "As 200 mais recentes são guardadas. Os votos nunca dizem quem votou, exceto um mapper que verificou o seu timing.",
+    "text": {
+      "suggestion": "Sua sugestão \"{{title}}\" agora está {{to}}.",
+      "comment": "@{{user}} comentou em \"{{title}}\".",
+      "use": "@{{user}} usou o seu timing de \"{{title}}\".",
+      "verified": "@{{user}}, um mapper com mapas ranqueados, verificou que \"{{title}}\" está no tempo.",
+      "voteOn": "Alguém votou que \"{{title}}\" está no tempo.",
+      "voteOff": "Alguém votou que \"{{title}}\" está fora.",
+      "analysis": {
+        "done": "Sua análise de \"{{title}}\" está pronta.",
+        "refused": "Sua análise de \"{{title}}\" terminou sem um BPM.",
+        "failed": "Sua análise de \"{{title}}\" falhou."
+      },
+      "unknown": "Algo aconteceu."
+    }
+  },
+  "staff": {
+    "nav": "Painel da staff",
+    "title": "Painel da staff",
+    "subtitle": "A fila e o worker, as falhas recentes, as denúncias abertas, as correções vindas dos votos e o registro de moderação, num só lugar.",
+    "refresh": "Atualizar",
+    "failed": "Não foi possível carregar o painel da staff.",
+    "readAt": "Lido às {{time}}; lido de novo a cada 30 segundos enquanto esta aba estiver aberta.",
+    "open": "Abrir",
+    "awaiting": {
+      "title": "Esperando revisão",
+      "suggestions": "Sugestões abertas",
+      "reports": "Itens com denúncias abertas",
+      "corrections": "Correções esperando"
+    },
+    "queue": {
+      "title": "Fila e worker",
+      "moderate": "Remover ou recolocar na fila na página da fila",
+      "running": "Em análise",
+      "waiting": "Esperando",
+      "oldest": "Maior espera"
+    },
+    "worker": {
+      "memory": "Memória: {{rss}} agora, {{peak}} no pico do último trabalho, limite {{limit}}",
+      "memoryAgo": "informado há {{seconds}} s",
+      "noMemory": "O worker não informou a memória (só consegue no Linux)."
+    },
+    "failures": {
+      "title": "Falhas, últimos 7 dias",
+      "none": "Nenhuma falha.",
+      "codes": "too_heavy: ficou sem memória · timeout: passou do limite de tempo · stale: o worker parou de responder · removed: por um moderador · failed: erro do próprio motor."
+    },
+    "corrections": {
+      "title": "Correções vindas dos votos",
+      "hint": "Pessoas que votaram um timing como fora com um BPM ou um offset. Ouça antes de decidir; cada decisão fica registrada.",
+      "none": "Nada aqui.",
+      "change": "Agora {{bpm}} BPM, offset {{offset}} ms → proposto {{newBpm}} BPM, offset {{newOffset}} ms",
+      "trainingOk": "Pode ser usada como dados",
+      "trainingNo": "Não é para dados",
+      "by": "Decidido por @{{moderator}}",
+      "accept": "Aceitar",
+      "dismiss": "Descartar",
+      "acceptPrompt": "Aceitar esta correção? Motivo para o registro (opcional):",
+      "dismissPrompt": "Descartar esta correção? Motivo para o registro (opcional):"
+    },
+    "did": {
+      "accept": "@{{moderator}} aceitou uma correção",
+      "dismiss": "@{{moderator}} descartou uma correção"
+    }
+  },
+  "limits": {
+    "title": "Você não pode enviar mais agora",
+    "why": {
+      "anonymous_one": "Sem conta você pode analisar {{count}} música por dia.",
+      "anonymous_other": "Sem conta você pode analisar {{count}} músicas por dia.",
+      "account_one": "Sua conta pode analisar {{count}} música por dia.",
+      "account_other": "Sua conta pode analisar {{count}} músicas por dia.",
+      "cache_one": "Você pode abrir {{count}} resultado salvo por dia.",
+      "cache_other": "Você pode abrir {{count}} resultados salvos por dia.",
+      "pending_one": "Você pode ter {{count}} música na fila de cada vez.",
+      "pending_other": "Você pode ter {{count}} músicas na fila de cada vez."
+    },
+    "free": "Você já pode enviar de novo.",
+    "resetIn": "Você pode enviar de novo em",
+    "resetAt": "às {{time}}",
+    "resetWhen": "a contagem zera às 00:00 UTC",
+    "whenFinished_one": "Você pode enviar outra quando a sua música na fila terminar.",
+    "whenFinished_other": "Você pode enviar outra quando uma das suas {{count}} músicas na fila terminar.",
+    "seeQueue": "Ver a fila",
+    "signIn": "Entre para ter um limite diário maior"
   }
 }

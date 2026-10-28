@@ -1980,7 +1980,11 @@
       "delete": "Löschen",
       "deleteConfirm": "Deinen Kommentar löschen?",
       "deleteYes": "Löschen",
-      "openTiming": "Sein Timing öffnen"
+      "openTiming": "Sein Timing öffnen",
+      "marks": "Kommentare mit Zeitangabe auf der Map: {{count}}",
+      "markLabel": "Kommentare bei {{at}} ({{count}}): anzeigen oder ab hier abspielen",
+      "moreMarks": "+{{count}} weitere in der Liste unten",
+      "markHint": "Klick, um ab hier abzuspielen."
     },
     "errors": {
       "TOO_LONG": "Das ist zu lang.",
@@ -2227,5 +2231,139 @@
       "sharedAdded": "Der Song, den du geteilt hast, steht auf der Liste. Prüf ihn und drück auf Analysieren.",
       "sharedNone": "Aus dem Teilen kam nichts Brauchbares an: Teile eine MP3-, OGG-, WAV-, FLAC-, M4A- oder Opus-Datei oder wähl sie unten aus."
     }
+  },
+  "votes": {
+    "title": "Sitzt es im Takt?",
+    "onCount": "Im Takt: {{count}}",
+    "offCount": "Daneben: {{count}}",
+    "on": "Im Takt",
+    "off": "Es liegt daneben",
+    "takeBack": "Meine Stimme zurücknehmen",
+    "own": "Das ist dein Timing: Du kannst nicht darüber abstimmen.",
+    "signIn": "Zum Abstimmen anmelden",
+    "yourCorrection": "Du hast {{bpm}} BPM, Offset {{offset}} ms vorgeschlagen.",
+    "review": {
+      "pending": "Wartet auf das Staff",
+      "accepted": "Angenommen",
+      "dismissed": "Verworfen"
+    },
+    "offHint": "Optional: das BPM oder das Offset (wo die erste red line liegen sollte, in ms), das du für richtig hältst. Eine Korrektur geht zur Prüfung an das Staff.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "Overtone darf meine Korrektur als Daten nutzen, um seine Analyse zu testen und zu verbessern. Nichts wird außerhalb der Seite geteilt.",
+    "sendOff": "Senden",
+    "privacy": "Stimmen sind anonym: Die Seite zeigt nur die Zahlen. Wenn dein verknüpftes osu!-Konto ranked Maps hat, zeigt eine „im Takt“-Stimme deinen Namen als den Mapper, der es bestätigt hat.",
+    "queued": "Danke. Deine Korrektur wartet auf das Staff.",
+    "saved": "Deine Stimme ist gespeichert.",
+    "errors": {
+      "bad": "Diese Stimme wurde nicht angenommen. Prüf die Zahlen.",
+      "bpm": "Das BPM ist eine Zahl von 20 bis 1000.",
+      "offset": "Das Offset ist in ganzen Millisekunden, von -10000 bis zum Ende des Songs."
+    },
+    "verified": "Von einem Mapper bestätigt",
+    "verifiedHint": "Jemand, dessen verknüpftes osu!-Konto ranked Maps hat, hat gesagt, dass dieses Timing im Takt sitzt.",
+    "verifiedBy": "von",
+    "ranked": "{{name}} auf osu!, ranked Maps: {{count}}",
+    "andMore": "+{{count}} weitere"
+  },
+  "notifications": {
+    "title": "Benachrichtigungen",
+    "subtitle": "Was mit deinen Vorschlägen, deinen veröffentlichten Timings und deinen Analysen passiert ist, während du weg warst.",
+    "bell": "Benachrichtigungen, ungelesen: {{count}}",
+    "allRead": "Alle als gelesen markieren",
+    "failed": "Die Benachrichtigungen konnten nicht geladen werden.",
+    "empty": "Nichts Neues.",
+    "seeAll": "Alle Benachrichtigungen ansehen",
+    "unreadMark": "(ungelesen)",
+    "proposed": "Vorgeschlagen: {{bpm}} BPM, Offset {{offset}} ms",
+    "signIn": "Melde dich an, um deine Benachrichtigungen zu sehen.",
+    "filter": "Welche Benachrichtigungen",
+    "all": "Alle",
+    "unreadOnly": "Ungelesen ({{count}})",
+    "kept": "Die letzten 200 werden behalten. Stimmen nennen nie, wer abgestimmt hat, außer einem Mapper, der dein Timing bestätigt hat.",
+    "text": {
+      "suggestion": "Dein Vorschlag „{{title}}“ ist jetzt {{to}}.",
+      "comment": "@{{user}} hat „{{title}}“ kommentiert.",
+      "use": "@{{user}} hat dein Timing von „{{title}}“ verwendet.",
+      "verified": "@{{user}}, ein Mapper mit ranked Maps, hat bestätigt, dass „{{title}}“ im Takt sitzt.",
+      "voteOn": "Jemand hat „{{title}}“ als im Takt bewertet.",
+      "voteOff": "Jemand hat „{{title}}“ als daneben bewertet.",
+      "analysis": {
+        "done": "Deine Analyse von „{{title}}“ ist fertig.",
+        "refused": "Deine Analyse von „{{title}}“ endete ohne BPM.",
+        "failed": "Deine Analyse von „{{title}}“ ist fehlgeschlagen."
+      },
+      "unknown": "Etwas ist passiert."
+    }
+  },
+  "staff": {
+    "nav": "Staff-Bereich",
+    "title": "Staff-Bereich",
+    "subtitle": "Die Warteschlange und der Worker, jüngste Fehlschläge, offene Meldungen, Korrekturen aus Stimmen und das Moderationslog, an einem Ort.",
+    "refresh": "Aktualisieren",
+    "failed": "Der Staff-Bereich konnte nicht geladen werden.",
+    "readAt": "Gelesen um {{time}}; wird alle 30 Sekunden neu gelesen, solange dieser Tab offen ist.",
+    "open": "Öffnen",
+    "awaiting": {
+      "title": "Wartet auf Prüfung",
+      "suggestions": "Offene Vorschläge",
+      "reports": "Einträge mit offenen Meldungen",
+      "corrections": "Wartende Korrekturen"
+    },
+    "queue": {
+      "title": "Warteschlange und Worker",
+      "moderate": "Auf der Warteschlangenseite entfernen oder neu einreihen",
+      "running": "In Analyse",
+      "waiting": "Wartend",
+      "oldest": "Längste Wartezeit"
+    },
+    "worker": {
+      "memory": "Speicher: {{rss}} jetzt, {{peak}} beim Spitzenwert des letzten Jobs, Limit {{limit}}",
+      "memoryAgo": "gemeldet vor {{seconds}} s",
+      "noMemory": "Der Worker hat seinen Speicher nicht gemeldet (das geht nur unter Linux)."
+    },
+    "failures": {
+      "title": "Fehlschläge, letzte 7 Tage",
+      "none": "Keine Fehlschläge.",
+      "codes": "too_heavy: kein Speicher mehr · timeout: Zeitlimit überschritten · stale: der Worker hat nicht mehr geantwortet · removed: von einem Moderator · failed: eigener Fehler der Engine."
+    },
+    "corrections": {
+      "title": "Korrekturen aus Stimmen",
+      "hint": "Leute, die ein Timing mit einem BPM oder einem Offset als daneben bewertet haben. Hör rein, bevor du entscheidest; jede Entscheidung wird geloggt.",
+      "none": "Hier ist nichts.",
+      "change": "Jetzt {{bpm}} BPM, Offset {{offset}} ms → vorgeschlagen {{newBpm}} BPM, Offset {{newOffset}} ms",
+      "trainingOk": "Darf als Daten genutzt werden",
+      "trainingNo": "Nicht für Daten",
+      "by": "Entschieden von @{{moderator}}",
+      "accept": "Annehmen",
+      "dismiss": "Verwerfen",
+      "acceptPrompt": "Diese Korrektur annehmen? Grund für das Log (optional):",
+      "dismissPrompt": "Diese Korrektur verwerfen? Grund für das Log (optional):"
+    },
+    "did": {
+      "accept": "@{{moderator}} hat eine Korrektur angenommen",
+      "dismiss": "@{{moderator}} hat eine Korrektur verworfen"
+    }
+  },
+  "limits": {
+    "title": "Du kannst gerade nichts mehr senden",
+    "why": {
+      "anonymous_one": "Ohne Konto kannst du {{count}} Song pro Tag analysieren.",
+      "anonymous_other": "Ohne Konto kannst du {{count}} Songs pro Tag analysieren.",
+      "account_one": "Dein Konto kann {{count}} Song pro Tag analysieren.",
+      "account_other": "Dein Konto kann {{count}} Songs pro Tag analysieren.",
+      "cache_one": "Du kannst {{count}} gespeichertes Ergebnis pro Tag öffnen.",
+      "cache_other": "Du kannst {{count}} gespeicherte Ergebnisse pro Tag öffnen.",
+      "pending_one": "Du kannst {{count}} Song gleichzeitig in der Warteschlange haben.",
+      "pending_other": "Du kannst {{count}} Songs gleichzeitig in der Warteschlange haben."
+    },
+    "free": "Du kannst jetzt wieder senden.",
+    "resetIn": "Du kannst wieder senden in",
+    "resetAt": "um {{time}}",
+    "resetWhen": "der Zähler wird um 00:00 UTC zurückgesetzt",
+    "whenFinished_one": "Du kannst einen weiteren senden, wenn dein Song in der Warteschlange fertig ist.",
+    "whenFinished_other": "Du kannst einen weiteren senden, wenn einer deiner {{count}} Songs in der Warteschlange fertig ist.",
+    "seeQueue": "Warteschlange ansehen",
+    "signIn": "Melde dich an für ein höheres Tageslimit"
   }
 }

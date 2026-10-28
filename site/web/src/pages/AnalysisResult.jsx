@@ -273,7 +273,7 @@ function Refused({ result }) {
  * server, and `csvHref`, the public CSV. Only the uploader's page (`owner`)
  * lists and saves versions (W12.21).
  */
-export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false }) {
+export function Result({ id, analysis, verify = null, csvHref = null, playerRef = null, owner = false, marks = null, onMark = null }) {
   const { t } = useTranslation()
   const result = analysis.result
   const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
@@ -444,6 +444,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
         onHover={setHovered}
         clockRef={clockRef}
         focus={focus}
+        marks={marks}
+        onMark={onMark}
       >
         <AudioSource audio={audio} filename={analysis.filename} visitor={Boolean(verify)} />
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />

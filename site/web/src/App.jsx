@@ -30,11 +30,13 @@ const History = lazy(() => import('./pages/History.jsx'))
 const HowItWorks = lazy(() => import('./pages/HowItWorks.jsx'))
 const Login = lazy(() => import('./pages/Login.jsx'))
 const LoginCallback = lazy(() => import('./pages/LoginCallback.jsx'))
+const Notifications = lazy(() => import('./pages/Notifications.jsx'))
 const OsuLink = lazy(() => import('./pages/OsuLink.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 const Queue = lazy(() => import('./pages/Queue.jsx'))
 const Recent = lazy(() => import('./pages/Recent.jsx'))
 const Settings = lazy(() => import('./pages/Settings.jsx'))
+const Staff = lazy(() => import('./pages/Staff.jsx'))
 const Stats = lazy(() => import('./pages/Stats.jsx'))
 const Status = lazy(() => import('./pages/Status.jsx'))
 const Timers = lazy(() => import('./pages/Timers.jsx'))
@@ -85,6 +87,9 @@ export default function App() {
         {/* Self-contained, so the settings page (W12.15) can link to it as it is. */}
         <Route path="settings/tokens" element={page(Tokens)} />
         <Route path="settings" element={page(Settings)} />
+        {/* W13.17 and W13.19: an account's notifications, and the staff panel (a 404 for anyone else). Private. */}
+        <Route path="notifications" element={page(Notifications)} />
+        <Route path="staff" element={page(Staff)} />
         <Route path="stats" element={page(Stats)} />
         <Route path="how-it-works" element={page(HowItWorks)} />
         <Route path="faq" element={page(Faq)} />

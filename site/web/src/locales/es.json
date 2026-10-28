@@ -1980,7 +1980,11 @@
       "delete": "Borrar",
       "deleteConfirm": "¿Borrar tu comentario?",
       "deleteYes": "Borrar",
-      "openTiming": "Abrir su timing"
+      "openTiming": "Abrir su timing",
+      "marks": "Comentarios con tiempo en el mapa: {{count}}",
+      "markLabel": "Comentarios en {{at}} ({{count}}): mostrar, o reproducir desde acá",
+      "moreMarks": "+{{count}} más en la lista de abajo",
+      "markHint": "Hacé clic para reproducir desde acá."
     },
     "errors": {
       "TOO_LONG": "Es demasiado largo.",
@@ -2227,5 +2231,139 @@
       "sharedAdded": "La canción que compartiste está en la lista. Revisala y apretá Analizar.",
       "sharedNone": "No llegó nada que se pueda usar desde el compartir: compartí un archivo MP3, OGG, WAV, FLAC, M4A u Opus, o elegilo abajo."
     }
+  },
+  "votes": {
+    "title": "¿Está a tiempo?",
+    "onCount": "A tiempo: {{count}}",
+    "offCount": "Corrido: {{count}}",
+    "on": "A tiempo",
+    "off": "Está corrido",
+    "takeBack": "Retirar mi voto",
+    "own": "Es tu timing: no lo podés votar.",
+    "signIn": "Iniciá sesión para votar",
+    "yourCorrection": "Propusiste {{bpm}} BPM, offset {{offset}} ms.",
+    "review": {
+      "pending": "Esperando al staff",
+      "accepted": "Aceptada",
+      "dismissed": "Descartada"
+    },
+    "offHint": "Opcional: el BPM o el offset (dónde debería estar la primera red line, en ms) que te parece correcto. Una corrección le llega al staff para que la revise.",
+    "bpm": "BPM",
+    "offset": "Offset (ms)",
+    "trainingOk": "Overtone puede usar mi corrección como datos para probar y mejorar su análisis. No se comparte nada fuera del sitio.",
+    "sendOff": "Enviar",
+    "privacy": "Los votos son anónimos: la página muestra solo los totales. Si tu cuenta de osu! vinculada tiene mapas rankeados, un voto \"a tiempo\" muestra tu nombre como el mapper que lo verificó.",
+    "queued": "Gracias. Tu corrección está esperando al staff.",
+    "saved": "Tu voto quedó guardado.",
+    "errors": {
+      "bad": "Ese voto no se aceptó. Revisá los números.",
+      "bpm": "El BPM es un número de 20 a 1000.",
+      "offset": "El offset va en milisegundos enteros, de -10000 al final de la canción."
+    },
+    "verified": "Verificado por un mapper",
+    "verifiedHint": "Alguien cuya cuenta de osu! vinculada tiene mapas rankeados dijo que este timing está a tiempo.",
+    "verifiedBy": "por",
+    "ranked": "{{name}} en osu!, mapas rankeados: {{count}}",
+    "andMore": "+{{count}} más"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "subtitle": "Qué pasó con tus sugerencias, tus timings publicados y tus análisis mientras no estabas.",
+    "bell": "Notificaciones, sin leer: {{count}}",
+    "allRead": "Marcar todo como leído",
+    "failed": "No se pudieron cargar las notificaciones.",
+    "empty": "Nada nuevo.",
+    "seeAll": "Ver todas las notificaciones",
+    "unreadMark": "(sin leer)",
+    "proposed": "Propuesto: {{bpm}} BPM, offset {{offset}} ms",
+    "signIn": "Iniciá sesión para ver tus notificaciones.",
+    "filter": "Qué notificaciones",
+    "all": "Todas",
+    "unreadOnly": "Sin leer ({{count}})",
+    "kept": "Se guardan las últimas 200. Los votos nunca dicen quién votó, salvo un mapper que verificó tu timing.",
+    "text": {
+      "suggestion": "Tu sugerencia \"{{title}}\" ahora está {{to}}.",
+      "comment": "@{{user}} comentó en \"{{title}}\".",
+      "use": "@{{user}} usó tu timing de \"{{title}}\".",
+      "verified": "@{{user}}, un mapper con mapas rankeados, verificó que \"{{title}}\" está a tiempo.",
+      "voteOn": "Alguien votó que \"{{title}}\" está a tiempo.",
+      "voteOff": "Alguien votó que \"{{title}}\" está corrido.",
+      "analysis": {
+        "done": "Tu análisis de \"{{title}}\" está listo.",
+        "refused": "Tu análisis de \"{{title}}\" terminó sin un BPM.",
+        "failed": "Tu análisis de \"{{title}}\" falló."
+      },
+      "unknown": "Pasó algo."
+    }
+  },
+  "staff": {
+    "nav": "Panel del staff",
+    "title": "Panel del staff",
+    "subtitle": "La cola y el worker, las fallas recientes, los reportes abiertos, las correcciones de los votos y el registro de moderación, en un solo lugar.",
+    "refresh": "Actualizar",
+    "failed": "No se pudo cargar el panel del staff.",
+    "readAt": "Leído a las {{time}}; se vuelve a leer cada 30 segundos mientras esta pestaña esté abierta.",
+    "open": "Abrir",
+    "awaiting": {
+      "title": "Esperando revisión",
+      "suggestions": "Sugerencias abiertas",
+      "reports": "Elementos con reportes abiertos",
+      "corrections": "Correcciones esperando"
+    },
+    "queue": {
+      "title": "Cola y worker",
+      "moderate": "Sacar o volver a encolar en la página de la cola",
+      "running": "Analizándose",
+      "waiting": "Esperando",
+      "oldest": "Espera más larga"
+    },
+    "worker": {
+      "memory": "Memoria: {{rss}} ahora, {{peak}} en el pico del último trabajo, límite {{limit}}",
+      "memoryAgo": "informado hace {{seconds}} s",
+      "noMemory": "El worker no informó su memoria (solo puede en Linux)."
+    },
+    "failures": {
+      "title": "Fallas, últimos 7 días",
+      "none": "Sin fallas.",
+      "codes": "too_heavy: se quedó sin memoria · timeout: pasó su límite de tiempo · stale: el worker dejó de responder · removed: lo sacó un moderador · failed: error del propio motor."
+    },
+    "corrections": {
+      "title": "Correcciones de los votos",
+      "hint": "Gente que votó un timing como corrido con un BPM o un offset. Escuchá antes de decidir; cada decisión queda registrada.",
+      "none": "No hay nada acá.",
+      "change": "Ahora {{bpm}} BPM, offset {{offset}} ms → propuesto {{newBpm}} BPM, offset {{newOffset}} ms",
+      "trainingOk": "Se puede usar como datos",
+      "trainingNo": "No es para datos",
+      "by": "Decidido por @{{moderator}}",
+      "accept": "Aceptar",
+      "dismiss": "Descartar",
+      "acceptPrompt": "¿Aceptar esta corrección? Motivo para el registro (opcional):",
+      "dismissPrompt": "¿Descartar esta corrección? Motivo para el registro (opcional):"
+    },
+    "did": {
+      "accept": "@{{moderator}} aceptó una corrección",
+      "dismiss": "@{{moderator}} descartó una corrección"
+    }
+  },
+  "limits": {
+    "title": "Por ahora no podés mandar más",
+    "why": {
+      "anonymous_one": "Sin cuenta podés analizar {{count}} canción por día.",
+      "anonymous_other": "Sin cuenta podés analizar {{count}} canciones por día.",
+      "account_one": "Tu cuenta puede analizar {{count}} canción por día.",
+      "account_other": "Tu cuenta puede analizar {{count}} canciones por día.",
+      "cache_one": "Podés abrir {{count}} resultado guardado por día.",
+      "cache_other": "Podés abrir {{count}} resultados guardados por día.",
+      "pending_one": "Podés tener {{count}} canción en la cola a la vez.",
+      "pending_other": "Podés tener {{count}} canciones en la cola a la vez."
+    },
+    "free": "Ya podés mandar de nuevo.",
+    "resetIn": "Podés mandar de nuevo en",
+    "resetAt": "a las {{time}}",
+    "resetWhen": "el contador se reinicia a las 00:00 UTC",
+    "whenFinished_one": "Podés mandar otra cuando termine tu canción en la cola.",
+    "whenFinished_other": "Podés mandar otra cuando termine una de tus {{count}} canciones en la cola.",
+    "seeQueue": "Ver la cola",
+    "signIn": "Iniciá sesión para tener un límite diario más alto"
   }
 }

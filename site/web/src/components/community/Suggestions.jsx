@@ -176,8 +176,14 @@ export function StateChip({ state }) {
 function SuggestionCard({ suggestion: s, staff, signedIn, onChanged }) {
   const { t, i18n } = useTranslation()
   const [votes, setVotes] = useState({ count: s.votes, voted: s.voted })
-  const [open, setOpen] = useState(false)
+  // A notification's link (W13.17) lands on the suggestion with its history open.
+  const linked = typeof window !== 'undefined' && window.location.hash === `#suggestion-${s.id}`
+  const [open, setOpen] = useState(linked)
   const [voteError, setVoteError] = useState(null)
+
+  useEffect(() => {
+    if (linked) document.getElementById(`suggestion-${s.id}`)?.scrollIntoView({ block: 'center' })
+  }, [linked, s.id])
 
   useEffect(() => setVotes({ count: s.votes, voted: s.voted }), [s.votes, s.voted])
 
@@ -194,7 +200,7 @@ function SuggestionCard({ suggestion: s, staff, signedIn, onChanged }) {
   const date = new Date(s.createdAt).toLocaleDateString(i18n.language, { dateStyle: 'medium' })
 
   return (
-    <li className={`panel flex gap-3 p-4 ${s.hidden ? 'opacity-70' : ''}`}>
+    <li id={`suggestion-${s.id}`} className={`panel flex scroll-mt-24 gap-3 p-4 ${s.hidden ? 'opacity-70' : ''}`}>
       <button
         type="button"
         onClick={toggleVote}

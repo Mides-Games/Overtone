@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router'
 
 import AnalysisOptions from '../components/AnalysisOptions.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import LimitNotice from '../components/LimitNotice.jsx'
+import { limitOf } from '../lib/limits.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { buildRequest, EMPTY_FORM } from '../lib/analysis-options.js'
@@ -49,6 +51,7 @@ export default function Analyze() {
   const [hidden, setHidden] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [state, setState] = useState({ kind: 'idle' })
+  const [limitNotice, setLimitNotice] = useState(null)
   const [recent] = useState(recentAnalyses)
   const { live, settings } = useTracker()
   // W3.21: the options, folded away; W3.16/W11.1: what each mode costs.
@@ -119,6 +122,7 @@ export default function Analyze() {
    */
   async function submit(event) {
     event.preventDefault()
+    setLimitNotice(null)
     const waiting = items.filter((item) => item.upload.kind === 'ready' || item.upload.kind === 'error')
     if (!waiting.length) return setState({ kind: 'error', message: t('analyze.pickAudio') })
     if (request.error) return setState({ kind: 'error', message: t(`modes.errors.${request.error}`) })
@@ -163,6 +167,8 @@ export default function Analyze() {
         if (alone) return navigate(`/analyze/${created.id}`)
         update(item.key, { upload: { kind: 'sent', id: created.id } })
       } catch (error) {
+        const limit = limitOf(error)
+        if (limit) setLimitNotice(limit)
         if (alone) return setState({ kind: 'error', message: messageFor(t, error, limits) })
         update(item.key, { upload: { kind: 'error', message: messageFor(t, error, limits) } })
         // Nothing after this one would get through either.
@@ -299,10 +305,15 @@ export default function Analyze() {
               {sending ? t('analyze.sendingMany') : toSend > 1 ? t('analyze.submitMany', { count: toSend }) : t('analyze.submit')}
             </button>
 
-            {state.kind === 'error' && (
-              <p role="alert" className="rounded-control border border-red/40 bg-red/10 p-4 text-label text-text">
-                {state.message}
-              </p>
+            {/* W13.20: a refusal for one of the person's own limits says why and when it frees up, live. */}
+            {limitNotice ? (
+              <LimitNotice limit={limitNotice} />
+            ) : (
+              state.kind === 'error' && (
+                <p role="alert" className="rounded-control border border-red/40 bg-red/10 p-4 text-label text-text">
+                  {state.message}
+                </p>
+              )
             )}
 
             <p className="text-caption leading-relaxed text-dim">{t('analyze.privacy')}</p>

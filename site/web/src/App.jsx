@@ -6,14 +6,20 @@ import Layout from './components/Layout.jsx'
 import AnalysisResult from './pages/AnalysisResult.jsx'
 import Analyze from './pages/Analyze.jsx'
 import Community from './pages/Community.jsx'
+import Compare from './pages/Compare.jsx'
+import Faq from './pages/Faq.jsx'
+import Glossary from './pages/Glossary.jsx'
 import History from './pages/History.jsx'
 import Home from './pages/Home.jsx'
+import HowItWorks from './pages/HowItWorks.jsx'
 import { Disclaimer, Privacy, Terms } from './pages/Legal.jsx'
 import Login from './pages/Login.jsx'
 import LoginCallback from './pages/LoginCallback.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Profile from './pages/Profile.jsx'
 import Queue from './pages/Queue.jsx'
+import Settings from './pages/Settings.jsx'
+import Stats from './pages/Stats.jsx'
 import Status from './pages/Status.jsx'
 
 // The credits carry the whole dependency list (src/data/credits.json): loaded
@@ -33,6 +39,8 @@ export default function App() {
         <Route path="community" element={<Community />} />
         <Route path="recent" element={<Recent />} />
         <Route path="history" element={<History />} />
+        {/* Two timings side by side (W12.11): private-ish, its ids in the query; not in the sitemap. */}
+        <Route path="compare" element={<Compare />} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
         <Route path="t/:id" element={<TimingPage />} />
         <Route path="login" element={<Login />} />
@@ -40,6 +48,11 @@ export default function App() {
         <Route path="login/callback" element={<LoginCallback />} />
         <Route path="profile" element={<Profile />} />
         <Route path="status" element={<Status />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="stats" element={<Stats />} />
+        <Route path="how-it-works" element={<HowItWorks />} />
+        <Route path="faq" element={<Faq />} />
+        <Route path="glossary" element={<Glossary />} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="disclaimer" element={<Disclaimer />} />

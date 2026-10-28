@@ -425,6 +425,22 @@ def octave_margin(analysis) -> float | None:
     return min(margins) if margins else None
 
 
+def offbeat_ratio(analysis) -> float | None:
+    """The attack weight on the half beats over the weight on the beats, on
+    the first red line's grid; None without attacks. Near 1, the grid at
+    twice the tempo is as heard as this one -- the octave question in one
+    number, kept beside the mapper's answer so a rule can be fitted to it."""
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 16 or not analysis.points:
+        return None
+    period = 60.0 / float(analysis.points[0].bpm)
+    phase = np.mod((times - analysis.points[0].offset_ms / 1000.0) / period, 1.0)
+    on = float(weights[(phase < 0.1) | (phase > 0.9)].sum())
+    half = float(weights[np.abs(phase - 0.5) < 0.1].sum())
+    return half / on if on > 0 else None
+
+
 def analyse(audio: str, engine: str, cli: str | None) -> dict:
     """Run one engine on one file. Never raises: a refusal or an error is an
     answer, recorded with the engine's own message."""
@@ -462,7 +478,8 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
                       # away. A grid read at twice the tempo fits beautifully,
                       # so residual and stability cannot see that mistake and
                       # this is the only number that can.
-                      octave_margin=octave_margin(analysis))
+                      octave_margin=octave_margin(analysis),
+                      offbeat_ratio=offbeat_ratio(analysis))
     except Exception as exc:  # noqa: BLE001 - every failure is reported, none hidden
         refused = type(exc).__name__ == "SidecarRefused" or (
             isinstance(exc, ValueError) and str(exc).startswith(V3_REFUSALS))

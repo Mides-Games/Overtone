@@ -132,7 +132,9 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
                     "path": analysis["path"], "map_lines": len(reds),
                     "detected_lines": len(detected), "rows": rows,
                     "d_map": d_map, "d_eng": d_eng,
-                    **({"message": analysis["message"]} if analysis.get("message") else {})})
+                    **({"message": analysis["message"]} if analysis.get("message") else {}),
+                    **{k: analysis.get(k) for k in ("global_bpm", "octave_margin", "offbeat_ratio",
+                                                    "residual_ms", "stability", "backend")}})
     return out
 
 

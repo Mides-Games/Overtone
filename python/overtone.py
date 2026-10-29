@@ -3229,6 +3229,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                                         lambda: _beat_this_tempo(y_mix, sr))
     tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _smooth_octaves(_fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
+    tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
 
@@ -4332,9 +4333,79 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
 PERCUSSIVE_INPUT = 0.0
 
 
+#: The drum kit's own bands for the grid (DRUM_BANDS): HPSS's percussive part,
+#: then the kick (under 120 Hz), the snare's body (150-400 Hz) and the hats
+#: (over 6 kHz) mixed back at DRUM_BAND_WEIGHTS, so a cymbal wash or a
+#: guitar's pick noise in the middle bands weighs less than a kick or a
+#: snare. Off until measured (experiment drum-bands).
+DRUM_BANDS = False
+DRUM_BAND_WEIGHTS = (1.0, 1.0, 0.5)
+
+
+def _drum_signal(y: np.ndarray, sr: int) -> np.ndarray:
+    """Kick, snare and hats out of ``y``'s percussive part, peak-normalized."""
+    import librosa
+    from scipy.signal import butter, sosfiltfilt
+    perc = librosa.effects.percussive(np.asarray(y, dtype=np.float32), margin=1.0).astype(np.float64)
+    kick = sosfiltfilt(butter(4, 120.0, "lowpass", fs=sr, output="sos"), perc)
+    snare = sosfiltfilt(butter(4, (150.0, 400.0), "bandpass", fs=sr, output="sos"), perc)
+    hats = sosfiltfilt(butter(4, 6000.0, "highpass", fs=sr, output="sos"), perc)
+    wk, ws, wh = DRUM_BAND_WEIGHTS
+
+    def unit(x: np.ndarray) -> np.ndarray:
+        peak = float(np.max(np.abs(x))) if x.size else 0.0
+        return x / peak if peak > 0 else x
+
+    out = wk * unit(kick) + ws * unit(snare) + wh * unit(hats)
+    peak = float(np.max(np.abs(out))) if out.size else 0.0
+    return (out / peak).astype(np.float32) if peak > 0 else np.asarray(y, dtype=np.float32)
+
+
+#: Following the drummer on the tracker path (DRUMMER_FOLLOW): the kick and
+#: snare onsets of _drum_signal, each expected beat taking the strongest one
+#: near it and the beat spacing following slowly (an alpha-beta filter, as
+#: B-Keeper follows a live kick drum), the beats then written as red lines.
+#: Replaces the tracker's lines only where they explain the drum onsets
+#: DRUMMER_GAIN better with no more lines. Off until measured.
+DRUMMER_FOLLOW = False
+DRUMMER_GAIN = 0.9
+
+
+def _follow_drummer(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
+    """The tracker's red lines re-read off the drummer (DRUMMER_FOLLOW)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not DRUMMER_FOLLOW or not points or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    import librosa
+    drums = _drum_signal(y, sr)
+    env = librosa.onset.onset_strength(y=drums, sr=sr, hop_length=256)
+    frames = librosa.onset.onset_detect(onset_envelope=env, sr=sr, hop_length=256, units="frames")
+    if frames.size < 32:
+        return analysis
+    times = librosa.frames_to_time(frames, sr=sr, hop_length=256) * 1000.0
+    weights = env[frames].astype(float)
+    duration_ms = float(analysis.duration) * 1000.0
+    song = _song_tempo(points, duration_ms) or float(points[0].bpm)
+    index, found = _follow_attacks(times, weights, points[0].offset_ms, 60000.0 / song, duration_ms)
+    if found.size < 32:
+        return analysis
+    beats = np.interp(np.arange(int(index[0]), int(index[-1]) + 1), index, found) / 1000.0
+    lines = _beats_to_lines(beats, LOCAL_LINE_TOL_MS)
+    if not lines or len(lines) > len(points):
+        return analysis
+    old = _attack_rms_ms(_beats_of([(p.offset_ms, p.bpm) for p in points], float(analysis.duration)),
+                         times / 1000.0, weights)
+    new = _attack_rms_ms(_beats_of(lines, float(analysis.duration)), times / 1000.0, weights)
+    if not new < DRUMMER_GAIN * old:
+        return analysis
+    return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
+
+
 def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
     """The percussive part of ``y`` at PERCUSSIVE_INPUT's margin, peak-normalized
     as the loader leaves audio; ``y`` itself when off."""
+    if DRUM_BANDS:
+        return _drum_signal(y, sr)
     if not PERCUSSIVE_INPUT:
         return y
     import librosa

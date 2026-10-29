@@ -160,7 +160,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     if binary is None:
         raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
     source, scratch = os.fspath(path), None
-    if ta.PERCUSSIVE_INPUT:
+    if ta.PERCUSSIVE_INPUT or ta.DRUM_BANDS:
         # The engine reads a file: the drums go to a temporary WAV beside it.
         import tempfile
         import soundfile

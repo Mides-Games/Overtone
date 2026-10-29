@@ -3212,8 +3212,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y_mix, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y_mix, sr))
-            return _tidy_bpms(_snap_whole_points(_octave_rule(_fold_lines_to_song_octave(
-                analysis, lambda: _beat_this_judge_beats(y_mix, sr)))))
+            return _tidy_bpms(_snap_whole_points(_octave_rule(_smooth_octaves(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y_mix, sr))))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3228,7 +3228,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
                                         lambda: _beat_this_tempo(y_mix, sr))
     tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
-    tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
+    tracked = _smooth_octaves(_fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
 
@@ -4353,6 +4353,63 @@ def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
 OCTAVE_RULE = False
 OCTAVE_RULE_DOUBLE = (130.0, 0.9)     # below this BPM, at or above this off-beat ratio
 OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat ratio
+
+
+#: Octaves smoothed across neighbouring red lines (OCTAVE_SMOOTH): the owner's
+#: report of 2026-10-28, a run of tempo changes read at double, or a song that
+#: starts at double and settles. Each line may stay, double or halve; leaving
+#: its own reading costs OCTAVE_SMOOTH_KEEP plus OCTAVE_SMOOTH_SPAN times its
+#: share of the song (a long line is believed, a short one is not), and an
+#: octave step between neighbours costs 1. The cheapest path (Viterbi) wins.
+OCTAVE_SMOOTH = False
+OCTAVE_SMOOTH_KEEP = 0.2
+OCTAVE_SMOOTH_SPAN = 3.0
+
+
+def _smooth_octaves(analysis: Analysis) -> Analysis:
+    """Red lines whose octave steps against their neighbours read at the
+    octave of the song around them (OCTAVE_SMOOTH)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not OCTAVE_SMOOTH or len(points) < 2
+            or any(getattr(p, "manual", False) for p in points)):
+        return analysis
+    end_ms = float(analysis.duration) * 1000.0
+    spans = np.array([max(1.0, (points[n + 1].offset_ms if n + 1 < len(points) else end_ms)
+                          - p.offset_ms) for n, p in enumerate(points)])
+    share = spans / spans.sum()
+    factors = (0.5, 1.0, 2.0)
+    keep = [[0.0 if f == 1.0 else OCTAVE_SMOOTH_KEEP + OCTAVE_SMOOTH_SPAN * w for f in factors]
+            for w in share]
+    for n, p in enumerate(points):
+        for k, f in enumerate(factors):
+            if f != 1.0 and not 60.0 <= p.bpm * f <= 320.0:
+                keep[n][k] = np.inf
+
+    def step(a: float, b: float) -> float:
+        return 1.0 if abs(np.log2(b / a)) > 0.75 else 0.0
+
+    cost = list(keep[0])
+    back = []
+    for n in range(1, len(points)):
+        row, ptr = [], []
+        for k, f in enumerate(factors):
+            options = [cost[j] + step(points[n - 1].bpm * factors[j], points[n].bpm * f)
+                       for j in range(3)]
+            j = int(np.argmin(options))
+            row.append(options[j] + keep[n][k])
+            ptr.append(j)
+        cost = row
+        back.append(ptr)
+    k = int(np.argmin(cost))
+    path = [k]
+    for ptr in reversed(back):
+        k = ptr[k]
+        path.append(k)
+    path.reverse()
+    if all(factors[k] == 1.0 for k in path):
+        return analysis
+    lines = [(p.offset_ms, p.bpm * factors[k]) for p, k in zip(points, path)]
+    return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
 def _offbeat_ratio(analysis: Analysis) -> float | None:

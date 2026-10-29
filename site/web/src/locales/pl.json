@@ -741,6 +741,7 @@
             "overtone.player.latencyMs: opóźnienie twojego audio, jeśli je skalibrowałeś.",
             "overtone.player.listening: podział klików, ich głośność i to, czy kliki są przesuwane o twoje opóźnienie.",
             "overtone.recentAnalyses: identyfikatory i nazwy plików ostatnich 10 analiz rozpoczętych w tej przeglądarce, żeby je znowu znaleźć.",
+            "overtone-kept-osz (IndexedDB): pobrane pliki .osz, dokładnie takie, jak zostały utworzone, z tytułem utworu, identyfikatorem strony, datą i użytymi opcjami, żeby pobrać je ponownie; do 1 GB, najpierw usuwane najdawniej pobrane. Każdy .osz zawiera utwór, tak jak twoje pobranie.",
             "overtone.sso: dokąd wrócić po zalogowaniu, usuwane, gdy wrócisz."
           ],
           "after": [
@@ -1226,6 +1227,37 @@
     "breaks": "Przerwy",
     "breaksAt": "Długie cisze między uderzeniami, w odstępach, jakich osu! wymaga dla przerwy: {{spans}}.",
     "breaksNone": "Brak ciszy 5 s lub dłuższej między uderzeniami."
+  },
+  "kept": {
+    "nav": "Pobrane",
+    "again": "Pobierz .osz ponownie",
+    "when": "Utworzono {{date}} · {{size}}",
+    "delete": "Usuń",
+    "deviceOnly": "Przechowywane w tej przeglądarce, tylko na tym urządzeniu: nic nie jest wysyłane, a wyczyszczenie danych tej strony je usuwa.",
+    "allLink": "Wszystkie zachowane .osz",
+    "gone": "Tej kopii nie ma już w tej przeglądarce.",
+    "keptNote": "Kopia została zachowana w tej przeglądarce, żeby pobrać ją ponownie później bez utworu.",
+    "evicted": "Aby zrobić miejsce, usunięto najdawniej pobrane: {{names}}.",
+    "notKept": "Ta przeglądarka nie mogła zachować kopii (pamięć zablokowana lub pełna); samo pobieranie się udało.",
+    "tooLarge": "Za duże, by zachować kopię w tej przeglądarce; samo pobieranie się udało.",
+    "page": {
+      "title": "Pobrane",
+      "description": "Pliki .osz utworzone w tej przeglądarce, zachowane na tym urządzeniu, żeby pobrać je ponownie bez utworu.",
+      "subtitle": "Każdy .osz pobrany z wyniku lub opublikowanego timingu jest zachowywany tutaj, więc możesz pobrać go ponownie po opuszczeniu strony, bez utworu.",
+      "deleteAll": "Usuń wszystko",
+      "confirmAll": "Usunąć wszystkie pliki .osz zachowane w tej przeglądarce?",
+      "unavailable": "Ta przeglądarka nie pozwala stronie zachowywać plików (okno prywatne lub zablokowana pamięć). Pobieranie nadal działa; pliki po prostu nie są zachowywane.",
+      "empty": "Nic jeszcze nie zachowano. Następny pobrany .osz trafi tutaj.",
+      "fromAnalysis": "twoja analiza",
+      "fromTiming": "opublikowany timing",
+      "download": "Pobierz",
+      "total_one": "{{count}} plik · {{size}}",
+      "total_few": "{{count}} pliki · {{size}}",
+      "total_many": "{{count}} plików · {{size}}",
+      "total_other": "{{count}} pliku · {{size}}",
+      "room": "Ta strona używa {{used}} z {{quota}}, które przyznaje jej ta przeglądarka. Biblioteka przechowuje do {{cap}} i robi miejsce, usuwając najpierw najdawniej pobrane.",
+      "roomUnknown": "Biblioteka przechowuje do {{cap}} i robi miejsce, usuwając najpierw najdawniej pobrane."
+    }
   },
   "listening": {
     "subdivision": "Między beatami",

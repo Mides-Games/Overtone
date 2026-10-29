@@ -4,8 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { useExportOptions } from './result/ExportOptions.jsx'
 import { adjustmentLabel } from '../lib/versions.js'
 import { BATCH_OSZ_MAX_BYTES, batchOsz, batchTimingFiles, oszPlan } from '../lib/batch-export.js'
+import { keptLibrary, keptOptions } from '../lib/kept-osz.js'
+import { songNames } from '../lib/osz.js'
 import { saveText } from '../lib/timing.js'
 import { zipStore } from '../lib/zip.js'
+import { KeptNote } from './KeptOsz.jsx'
 
 const FACTORS = [
   { value: 0.5, label: '÷2' },
@@ -13,6 +16,14 @@ const FACTORS = [
   { value: 2, label: '×2' },
 ]
 const NUDGE_LIMIT = 500
+
+/** One line for the whole batch: kept if any was, with every entry dropped to make room. */
+function mergeOutcomes(outcomes) {
+  if (!outcomes.length) return null
+  const kept = outcomes.filter((o) => o.kept)
+  if (!kept.length) return outcomes[0]
+  return { kept: true, evicted: outcomes.flatMap((o) => o.evicted ?? []), reason: null }
+}
 
 /**
  * The batch's own tools under its cards (W3.15, W12.22): one adjustment for
@@ -39,11 +50,20 @@ export default function BatchTools({ items, creator }) {
   async function downloadOsz() {
     setOsz({ kind: 'busy', done: 0, total: plan.songs.length })
     try {
+      const outcomes = []
       const { blob, failed } = await batchOsz(items, {
         adjustment, options, creator, onProgress: (done, total) => setOsz({ kind: 'busy', done, total }),
+        // Each song's own .osz is kept in this browser, to download again from its page or /downloads.
+        onBuilt: async ({ analysis, name, bytes }) => {
+          if (!analysis?.id) return
+          const { title, artist } = songNames(analysis)
+          outcomes.push(await keptLibrary().keep({
+            source: 'analysis', id: analysis.id, title, artist, name, bytes, options: keptOptions({ adjustment, exportOptions: options }),
+          }))
+        },
       })
       saveText(blob, 'overtone-osz.zip', 'application/zip')
-      setOsz({ kind: 'done', failed })
+      setOsz({ kind: 'done', failed, kept: mergeOutcomes(outcomes) })
     } catch {
       setOsz({ kind: 'failed' })
     }
@@ -103,6 +123,7 @@ export default function BatchTools({ items, creator }) {
               ? t('platform.batch.tooLarge', { mb: mb(plan.bytes), max: mb(BATCH_OSZ_MAX_BYTES) })
               : t('platform.batch.oszNote', { max: mb(BATCH_OSZ_MAX_BYTES) })}
       </p>
+      {osz.kind === 'done' && <KeptNote outcome={osz.kept} />}
     </section>
   )
 }

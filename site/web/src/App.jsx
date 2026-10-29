@@ -24,6 +24,7 @@ const Credits = lazy(() => import('./pages/Credits.jsx'))
 // W12.20: the API's reference carries the whole OpenAPI document, and the
 // tokens page is for the few who script.
 const Developers = lazy(() => import('./pages/Developers.jsx'))
+const Downloads = lazy(() => import('./pages/Downloads.jsx'))
 const Embed = lazy(() => import('./pages/Embed.jsx'))
 const Overlay = lazy(() => import('./pages/Overlay.jsx'))
 const Faq = lazy(() => import('./pages/Faq.jsx'))
@@ -74,6 +75,7 @@ export default function App() {
         <Route path="community" element={page(Community)} />
         <Route path="recent" element={page(Recent)} />
         <Route path="history" element={page(History)} />
+        <Route path="downloads" element={page(Downloads)} />
         {/* Two timings side by side (W12.11): private-ish, its ids in the query; not in the sitemap. */}
         <Route path="compare" element={page(Compare)} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}

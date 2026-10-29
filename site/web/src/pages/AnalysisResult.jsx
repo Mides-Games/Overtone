@@ -679,6 +679,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
       <section id="export" aria-labelledby="export-title" className="scroll-mt-24 space-y-8 border-t border-line pt-[calc(var(--space-section)*0.4)]">
         <SectionHeader id="export-title" eyebrow={t('result.zones.export.eyebrow')} title={t('result.zones.export.title')} />
         <AdjustExport
+          id={id}
+          keptSource={verify ? 'timing' : 'analysis'}
           analysis={analysis}
           lines={lines}
           adjustment={adjustment}

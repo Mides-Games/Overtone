@@ -766,7 +766,8 @@ rules are tested), hearing the chime, a screen reader, Safari, a real worker run
   ADR-W4 (when the audio is deleted); `rate-limit.js` (windows swept a minute after
   they end); the web's `localStorage` keys (`mides.theme`, `mides.lang`,
   `overtone.player.volumes`, `overtone.player.latencyMs`, `overtone.player.listening`,
-  `overtone.recentAnalyses`, `overtone.sso`). There is
+  `overtone.recentAnalyses`, `overtone.sso`), and `lib/kept-osz.js`'s IndexedDB
+  library `overtone-kept-osz` (the .osz files downloaded, as built, capped at 1 GB). There is
   **no expiry job** for analyses, songs, accounts or the moderation log, and the page
   says so ("no automatic expiry is set yet") instead of naming a period. It also says
   plainly that the IP hash is keyed, not anonymous. A change to what is stored has to

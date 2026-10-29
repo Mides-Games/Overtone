@@ -7,6 +7,8 @@ Disallow: /analyze/
 Disallow: /login
 Disallow: /profile
 Disallow: /history
+# The .osz files kept in this browser: the page lists this device's own.
+Disallow: /downloads
 Disallow: /link/
 Disallow: /compare
 # This browser's own settings (W12.15): nothing on it is worth a search result.

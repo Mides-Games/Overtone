@@ -51,10 +51,12 @@ export function oszPlan(items, max = BATCH_OSZ_MAX_BYTES) {
 
 /**
  * Every finished song's .osz in one zip, one at a time. `onProgress(done,
- * total)` after each. Returns `{ blob, failed }`, `failed` the file names
+ * total)` after each, and `onBuilt({ item, analysis, name, bytes })` with
+ * each song's own .osz as it goes in (the page keeps it to download again,
+ * lib/kept-osz.js). Returns `{ blob, failed }`, `failed` the file names
  * whose .osz could not be built (they are left out, the rest go on).
  */
-export async function batchOsz(items, { adjustment = NO_ADJUSTMENT, options = null, creator = null, onProgress = () => {}, build = buildOsz } = {}) {
+export async function batchOsz(items, { adjustment = NO_ADJUSTMENT, options = null, creator = null, onProgress = () => {}, onBuilt = () => {}, build = buildOsz } = {}) {
   const plan = oszPlan(items)
   if (!plan.fits) throw new Error(plan.songs.length ? 'too large' : 'nothing to build')
   const zip = new ZipWriter()
@@ -67,6 +69,12 @@ export async function batchOsz(items, { adjustment = NO_ADJUSTMENT, options = nu
         file: item.file, analysis, lines: batchLines(item.result, adjustment, options), adjustment, options, creator,
       })
       zip.add(name, { data: bytes })
+      try {
+        // Awaited, so only one song's bytes are held at once, as before.
+        await onBuilt({ item, analysis, name, bytes })
+      } catch {
+        // Keeping a copy is a convenience: it never stops the batch.
+      }
     } catch {
       failed.push(item.file.name)
     }

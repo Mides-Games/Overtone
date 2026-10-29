@@ -11,6 +11,7 @@ export const PUBLIC_PAGES = [
   '/community?tab=reviews',
   '/community?tab=changelog',
   '/recent',
+  '/downloads',
   '/compare',
   '/stats',
   '/how-it-works',

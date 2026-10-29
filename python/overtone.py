@@ -3730,7 +3730,7 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
     """The tempo Beat This! hears (BPM, from its beats' median spacing), for
     LOCAL_OCTAVE_JUDGE: loaded on its own, so the judge works where the vote
     is off; None without the model, the runtime or enough beats."""
-    beats = _beat_this_judge_beats(y_mix, sr)
+    beats = _beat_this_judge_beats(y, sr)
     if beats is None or beats.size < 16:
         return None
     return 60.0 / float(np.median(np.diff(beats)))

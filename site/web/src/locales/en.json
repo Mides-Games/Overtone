@@ -725,6 +725,7 @@
             "overtone.player.latencyMs: your audio latency, if you calibrated it.",
             "overtone.player.listening: the click subdivision, its volume and whether the clicks are moved by your latency.",
             "overtone.recentAnalyses: the ids and file names of the last 10 analyses this browser started, to find them again.",
+            "overtone-kept-osz (IndexedDB): the .osz files you downloaded, exactly as built, with the song's title, the page's id, the date and the options used, to download them again; up to 1 GB, the least recently downloaded removed first. Each .osz holds the song, as your download did.",
             "overtone.sso: where to come back to after signing in, removed when you return."
           ],
           "after": [
@@ -1172,6 +1173,35 @@
     "breaks": "Breaks",
     "breaksAt": "Long silences between the attacks, inside osu!'s break gaps: {{spans}}.",
     "breaksNone": "No silence of 5 s or more between the attacks."
+  },
+  "kept": {
+    "nav": "Downloads",
+    "again": "Download the .osz again",
+    "when": "Built {{date}} · {{size}}",
+    "delete": "Delete",
+    "deviceOnly": "Kept in this browser, on this device only: nothing is uploaded, and clearing this site's data removes it.",
+    "allLink": "All kept .osz",
+    "gone": "This copy is no longer in this browser.",
+    "keptNote": "A copy is kept in this browser, to download again later without the song.",
+    "evicted": "To make room, the least recently downloaded went: {{names}}.",
+    "notKept": "This browser could not keep a copy (storage blocked or full); the download itself went through.",
+    "tooLarge": "Too large to keep a copy in this browser; the download itself went through.",
+    "page": {
+      "title": "Downloads",
+      "description": "The .osz files built in this browser, kept on this device to download again without the song.",
+      "subtitle": "Every .osz you download from a result or a published timing is kept here, so you can download it again after leaving the page, without the song.",
+      "deleteAll": "Delete all",
+      "confirmAll": "Delete every .osz kept in this browser?",
+      "unavailable": "This browser does not let the site keep files (a private window or blocked storage). Downloads still work; they just are not kept.",
+      "empty": "Nothing kept yet. The next .osz you download is kept here.",
+      "fromAnalysis": "your analysis",
+      "fromTiming": "published timing",
+      "download": "Download",
+      "total_one": "{{count}} file · {{size}}",
+      "total_other": "{{count}} files · {{size}}",
+      "room": "This site uses {{used}} of the {{quota}} this browser grants it. The library keeps up to {{cap}} and makes room by removing the least recently downloaded first.",
+      "roomUnknown": "The library keeps up to {{cap}} and makes room by removing the least recently downloaded first."
+    }
   },
   "listening": {
     "subdivision": "Between beats",

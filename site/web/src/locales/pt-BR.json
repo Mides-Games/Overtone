@@ -725,6 +725,7 @@
             "overtone.player.latencyMs: a latência do seu áudio, se você a calibrou.",
             "overtone.player.listening: a subdivisão dos cliques, o volume deles e se os cliques são deslocados pela sua latência.",
             "overtone.recentAnalyses: os ids e nomes de arquivo das últimas 10 análises que este navegador iniciou, para encontrá-las de novo.",
+            "overtone-kept-osz (IndexedDB): os .osz que você baixou, exatamente como foram montados, com o título da música, o id da página, a data e as opções usadas, para baixar de novo; até 1 GB, excluindo primeiro os baixados há mais tempo. Cada .osz leva a música dentro, como o seu download.",
             "overtone.sso: para onde voltar depois de entrar, removido quando você volta."
           ],
           "after": [
@@ -1172,6 +1173,35 @@
     "breaks": "Breaks",
     "breaksAt": "Silêncios longos entre os ataques, dentro das margens de um break do osu!: {{spans}}.",
     "breaksNone": "Nenhum silêncio de 5 s ou mais entre os ataques."
+  },
+  "kept": {
+    "nav": "Downloads",
+    "again": "Baixar o .osz de novo",
+    "when": "Montado em {{date}} · {{size}}",
+    "delete": "Excluir",
+    "deviceOnly": "Guardado neste navegador, só neste dispositivo: nada é enviado, e limpar os dados deste site o remove.",
+    "allLink": "Todos os .osz guardados",
+    "gone": "Esta cópia não está mais neste navegador.",
+    "keptNote": "Uma cópia fica guardada neste navegador, para baixar de novo depois sem a música.",
+    "evicted": "Para abrir espaço, saíram os baixados há mais tempo: {{names}}.",
+    "notKept": "Este navegador não conseguiu guardar uma cópia (armazenamento bloqueado ou cheio); o download em si funcionou.",
+    "tooLarge": "Grande demais para guardar uma cópia neste navegador; o download em si funcionou.",
+    "page": {
+      "title": "Downloads",
+      "description": "Os .osz montados neste navegador, guardados neste dispositivo para baixar de novo sem a música.",
+      "subtitle": "Cada .osz que você baixa de um resultado ou de um timing publicado fica guardado aqui, para baixar de novo depois de sair da página, sem a música.",
+      "deleteAll": "Excluir tudo",
+      "confirmAll": "Excluir todos os .osz guardados neste navegador?",
+      "unavailable": "Este navegador não deixa o site guardar arquivos (janela anônima ou armazenamento bloqueado). Os downloads funcionam do mesmo jeito; só não ficam guardados.",
+      "empty": "Nada guardado ainda. O próximo .osz que você baixar fica guardado aqui.",
+      "fromAnalysis": "sua análise",
+      "fromTiming": "timing publicado",
+      "download": "Baixar",
+      "total_one": "{{count}} arquivo · {{size}}",
+      "total_other": "{{count}} arquivos · {{size}}",
+      "room": "Este site usa {{used}} dos {{quota}} que este navegador concede a ele. A biblioteca guarda até {{cap}} e abre espaço excluindo primeiro os baixados há mais tempo.",
+      "roomUnknown": "A biblioteca guarda até {{cap}} e abre espaço excluindo primeiro os baixados há mais tempo."
+    }
   },
   "listening": {
     "subdivision": "Entre batidas",

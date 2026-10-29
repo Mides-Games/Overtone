@@ -63,6 +63,7 @@ export default function Footer() {
           links={[
             { label: t('nav.analyze'), to: '/analyze' },
             { label: t('nav.profile'), to: '/profile' },
+            { label: t('kept.nav'), to: '/downloads' },
             { label: t('settings.title'), to: '/settings' },
             { label: t('legal.footer.status'), to: '/status' },
           ]}

@@ -144,6 +144,7 @@ function useCommands({ openHelp }) {
       page('/community', 'community.nav'),
       page('/recent', 'timings.nav.recent'),
       page('/history', 'timings.nav.history'),
+      page('/downloads', 'kept.nav'),
       page('/tools/calculator', 'calculator.title'),
       page('/profile', 'nav.profile'),
       page('/settings', 'settings.title'),

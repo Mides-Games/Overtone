@@ -725,6 +725,7 @@
             "overtone.player.latencyMs: deine Audiolatenz, falls du sie kalibriert hast.",
             "overtone.player.listening: die Klick-Unterteilung, ihre Lautstärke und ob die Klicks um deine Latenz verschoben werden.",
             "overtone.recentAnalyses: die IDs und Dateinamen der letzten 10 Analysen, die dieser Browser gestartet hat, um sie wiederzufinden.",
+            "overtone-kept-osz (IndexedDB): die .osz, die du heruntergeladen hast, genau so, wie sie erstellt wurden, mit dem Titel des Songs, der ID der Seite, dem Datum und den verwendeten Optionen, um sie erneut herunterzuladen; bis zu 1 GB, die am längsten nicht heruntergeladenen werden zuerst entfernt. Jede .osz enthält den Song, wie dein Download.",
             "overtone.sso: wohin du nach der Anmeldung zurückkehrst, entfernt, sobald du zurück bist."
           ],
           "after": [
@@ -1172,6 +1173,35 @@
     "breaks": "Breaks",
     "breaksAt": "Lange Stille zwischen den Anschlägen, innerhalb der Break-Abstände von osu!: {{spans}}.",
     "breaksNone": "Keine Stille von 5 s oder mehr zwischen den Anschlägen."
+  },
+  "kept": {
+    "nav": "Downloads",
+    "again": ".osz erneut herunterladen",
+    "when": "Erstellt am {{date}} · {{size}}",
+    "delete": "Löschen",
+    "deviceOnly": "Nur in diesem Browser auf diesem Gerät gespeichert: Nichts wird hochgeladen, und das Löschen der Daten dieser Seite entfernt sie.",
+    "allLink": "Alle gespeicherten .osz",
+    "gone": "Diese Kopie ist nicht mehr in diesem Browser.",
+    "keptNote": "Eine Kopie bleibt in diesem Browser, um sie später ohne den Song erneut herunterzuladen.",
+    "evicted": "Um Platz zu schaffen, wurden die am längsten nicht heruntergeladenen entfernt: {{names}}.",
+    "notKept": "Dieser Browser konnte keine Kopie behalten (Speicher blockiert oder voll); der Download selbst hat geklappt.",
+    "tooLarge": "Zu groß, um in diesem Browser eine Kopie zu behalten; der Download selbst hat geklappt.",
+    "page": {
+      "title": "Downloads",
+      "description": "Die in diesem Browser erstellten .osz, auf diesem Gerät gespeichert, um sie ohne den Song erneut herunterzuladen.",
+      "subtitle": "Jede .osz, die du von einem Ergebnis oder einem veröffentlichten Timing herunterlädst, bleibt hier, damit du sie nach dem Verlassen der Seite erneut herunterladen kannst, ohne den Song.",
+      "deleteAll": "Alle löschen",
+      "confirmAll": "Alle in diesem Browser gespeicherten .osz löschen?",
+      "unavailable": "Dieser Browser lässt die Seite keine Dateien speichern (privates Fenster oder blockierter Speicher). Downloads funktionieren trotzdem; sie werden nur nicht behalten.",
+      "empty": "Noch nichts gespeichert. Die nächste .osz, die du herunterlädst, landet hier.",
+      "fromAnalysis": "deine Analyse",
+      "fromTiming": "veröffentlichtes Timing",
+      "download": "Herunterladen",
+      "total_one": "{{count}} Datei · {{size}}",
+      "total_other": "{{count}} Dateien · {{size}}",
+      "room": "Diese Seite nutzt {{used}} der {{quota}}, die dieser Browser ihr gewährt. Die Bibliothek behält bis zu {{cap}} und schafft Platz, indem sie zuerst die am längsten nicht heruntergeladenen entfernt.",
+      "roomUnknown": "Die Bibliothek behält bis zu {{cap}} und schafft Platz, indem sie zuerst die am längsten nicht heruntergeladenen entfernt."
+    }
   },
   "listening": {
     "subdivision": "Zwischen den Beats",

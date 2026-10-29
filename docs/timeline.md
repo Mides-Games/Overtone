@@ -20,6 +20,64 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-29 · The .osz kept on this device, to download again
+
+### Changed
+
+- Every .osz downloaded from a result, a published timing or the batch's "all as .osz"
+  is kept in the visitor's browser (IndexedDB, `site/web/src/lib/kept-osz.js`): the
+  exact zipped bytes that were downloaded, with the song's title and artist, the page
+  and id it came from, its size, its date and the adjustment and options that built it.
+  The .osz is built from the visitor's own audio, which the page no longer has once it
+  is left; until now, so was the .osz.
+- The page it came from shows **Download the .osz again**, with the date, the size and
+  a delete, without asking for the song. **/downloads** lists every kept .osz with the
+  total and what the browser grants the site, each one downloaded again or deleted, or
+  all at once. It is linked from the account menu, the footer and the command palette,
+  and works without an account: the files are this device's, and the page says so.
+- One entry per page and id: building it again, with the same options or others,
+  replaces it. The newest build is the one the visitor wanted, and every copy is a
+  whole song.
+- The privacy page names the library (`overtone-kept-osz`) beside the local storage
+  keys, in all ten languages.
+
+### Hardening
+
+- The library is capped at 1 GB or half the quota the browser grants the site,
+  whichever is smaller, and makes room by dropping the least recently downloaded first;
+  the page names what it dropped. A file larger than the cap is not kept. Out of quota
+  under the cap (another tab, the rest of the site), it drops the oldest and tries
+  again.
+- The browser is asked once, when the first file is kept, to make the storage
+  persistent (`navigator.storage.persist()`); never on page load.
+- Nothing about it can stop a download: IndexedDB missing (some private windows),
+  blocked or full makes the page say quietly that no copy was kept, and the download
+  has already gone. Listing reads no song: entries and bytes are two object stores.
+
+### Measured
+
+- 13 node tests for the library over an in-memory IndexedDB stand-in (keep, replace,
+  order, eviction, cap, quota, persist once, delete, storage unavailable or refusing),
+  and one for the batch handing each .osz over. Bundle budgets: see the commit.
+- Not measured: how much a real visitor keeps, or how each browser treats a persisted
+  1 GB origin under disk pressure.
+
+### Rejected / tried and dropped
+
+- **Keeping the built .osz on the server**, so it could be downloaded from any device.
+  The site promises everywhere (FAQ, privacy page, upload form) that the audio is
+  deleted from the server after analysis, and an .osz is the audio plus a few
+  kilobytes: storing it breaks that promise. For someone else's timing it would also
+  mean the server handing out copyrighted music to whoever opens the page, and the API
+  server has a 2 GB disk, which a hundred songs fill. Kept on the visitor's own device
+  instead, only the bytes that already went to them.
+- **An audio-less .osz** (just the .osu, a few kB) from any timing: left out for now.
+  The page already gives the same lines without the song (the [TimingPoints] copy, the
+  timing file and the patched .osu), and what osu!stable does on importing a set whose
+  `AudioFilename` is missing was not checked.
+
+---
+
 ## v1.0.0-stable — 2026-10-28 · Tidy BPMs on, and three bands experiments
 
 ### Changed

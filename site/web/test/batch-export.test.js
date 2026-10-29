@@ -68,3 +68,17 @@ test('every .osz is built one at a time with the batch adjustment, and a failure
   assert.ok(!new TextDecoder().decode(bytes).includes('b.mp3.osz'))
   await assert.rejects(batchOsz(items.slice(2), { build }), /nothing to build/)
 })
+
+test('each built .osz is handed over to be kept, and a keeper that throws never stops the batch', async () => {
+  const build = async ({ file: f }) => ({ name: `${f.name}.osz`, bytes: new Uint8Array([1, 2, 3]) })
+  const kept = []
+  const { failed } = await batchOsz(items, {
+    build,
+    onBuilt: async ({ item, name, bytes }) => {
+      kept.push([item.file.name, name, bytes.length])
+      throw new Error('storage blocked')
+    },
+  })
+  assert.deepEqual(kept, [['a.mp3', 'a.mp3.osz', 3], ['b.mp3', 'b.mp3.osz', 3]])
+  assert.deepEqual(failed, [])
+})

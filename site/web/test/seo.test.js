@@ -19,7 +19,7 @@ const robots = read('../public/robots.txt')
  * an id in their path (a timing, a timer's profile, a collection, W6): public, but with no
  * fixed URL a static sitemap could list.
  */
-const PRIVATE = ['analyze/:id', 'history', 'compare', 't/:id', 'u/:username', 'c/:id', 'login', 'login/callback', 'profile', 'link/osu', 'settings', 'settings/tokens', 'embed/:id', 'overlay/:id', 'notifications', 'staff', '*']
+const PRIVATE = ['analyze/:id', 'history', 'downloads', 'compare', 't/:id', 'u/:username', 'c/:id', 'login', 'login/callback', 'profile', 'link/osu', 'settings', 'settings/tokens', 'embed/:id', 'overlay/:id', 'notifications', 'staff', '*']
 
 const routes = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
 const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+(\/[^<]*)<\/loc>/g)].map((m) => m[1])

@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../context/AuthContext.jsx'
 import { changesLines, exportLines } from '../../lib/export-options.js'
-import { buildOsz } from '../../lib/osz.js'
+import { keptLibrary, keptOptions } from '../../lib/kept-osz.js'
+import { buildOsz, songNames } from '../../lib/osz.js'
 import { isAdjusted, saveText, timingText } from '../../lib/timing.js'
+import { KeptAgain, KeptNote } from '../KeptOsz.jsx'
 import Icon from '../ui/Icon.jsx'
 import Disclosure from './Disclosure.jsx'
 import DivisorChart from './DivisorChart.jsx'
@@ -27,12 +29,18 @@ const NUDGE_LIMIT = 500
  * file, null until they pick it), and the [TimingPoints] block; `children`
  * (the "More downloads" group) below them. The .osz's options (W12.9) sit
  * under its button: OszOptions.jsx.
+ *
+ * Each .osz downloaded is kept in this browser (lib/kept-osz.js) under
+ * `keptSource` ('analysis' on the result page, 'timing' on a published
+ * timing's) and `id`, so it can be downloaded again without the song once the
+ * page is left.
  */
-export default function AdjustExport({ analysis, lines, adjustment, onAdjust, audioFile, songBuffer = null, children }) {
+export default function AdjustExport({ id = null, keptSource = 'analysis', analysis, lines, adjustment, onAdjust, audioFile, songBuffer = null, children }) {
   const { t } = useTranslation()
   const { account } = useAuth() ?? {}
   const [copied, setCopied] = useState(null)
   const [osz, setOsz] = useState(null) // null, 'busy' or 'failed'
+  const [kept, setKept] = useState(null) // what keeping the last download's copy did
   // The export options (W12.8) shape what is written, never what is heard.
   const options = useExportOptions()
   const written = useMemo(() => exportLines(lines, options), [lines, options])
@@ -72,6 +80,13 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
       saveText(bytes, name, 'application/x-osu-beatmap-archive')
       setOsz(null)
       if (!openTipDismissed()) setOpenTip(true)
+      if (id) {
+        const { title, artist } = songNames({ ...analysis, filename: analysis.filename ?? audioFile.name })
+        const built = keptOptions({ adjustment, exportOptions: options, oszOptions })
+        keptLibrary()
+          .keep({ source: keptSource, id, title, artist, name, bytes, options: built })
+          .then(setKept, () => setKept({ kept: false, reason: 'unavailable' }))
+      }
     } catch {
       setOsz('failed')
     }
@@ -103,6 +118,8 @@ export default function AdjustExport({ analysis, lines, adjustment, onAdjust, au
         <p className="w-full max-w-[72ch] text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
           {osz === 'failed' ? <span className="text-red">{t('result.oszFailed')}</span> : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
         </p>
+        <KeptNote outcome={kept} quiet />
+        {id && <KeptAgain source={keptSource} id={id} />}
         {changesLines(options) && <OptionsInForce options={options} />}
       </div>
       {openTip && (

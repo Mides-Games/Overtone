@@ -128,6 +128,9 @@ function UserMenu({ account }) {
             <Link role="menuitem" to="/history" className={item} onClick={() => setOpen(false)}>
               {t('timings.nav.history')}
             </Link>
+            <Link role="menuitem" to="/downloads" className={item} onClick={() => setOpen(false)}>
+              {t('kept.nav')}
+            </Link>
             <Link role="menuitem" to="/notifications" className={item} onClick={() => setOpen(false)}>
               {t('notifications.title')}
             </Link>

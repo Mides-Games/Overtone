@@ -3229,6 +3229,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                                         lambda: _beat_this_tempo(y_mix, sr))
     tracked = _song_octave_by_beat_this(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _smooth_octaves(_fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
+    tracked = _guard_tracker(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
@@ -4369,6 +4370,71 @@ def _drum_signal(y: np.ndarray, sr: int) -> np.ndarray:
 #: DRUMMER_GAIN better with no more lines. Off until measured.
 DRUMMER_FOLLOW = False
 DRUMMER_GAIN = 0.9
+
+
+#: The tracker held to what Beat This! hears (TRACKER_GUARD). The owner's
+#: reports of 2026-10-29: Sunday Cruise, ~158 BPM throughout by Beat This!,
+#: came out at ~300 for 20-40 s and 120-160 s; Pathetic, Ordinary, ~200, rose
+#: to 230-263 from 2:25 and stayed. The tracker's prior leans to fast tempi
+#: and nothing held it back. A tracker line more than TRACKER_GUARD_OFF off
+#: Beat This!'s tempo over its span is rewritten from Beat This!'s beats, a
+#: run of such lines as one; Beat This!'s local tempo an octave off its own
+#: song tempo is not trusted, and the song tempo stands in.
+TRACKER_GUARD = False
+TRACKER_GUARD_OFF = 0.06
+TRACKER_GUARD_SHARE = 0.1
+
+
+def _guard_tracker(analysis: Analysis, heard) -> Analysis:
+    """The tracker's lines that leave Beat This!'s tempo, rewritten from its
+    beats (TRACKER_GUARD); the analysis as it was otherwise."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not TRACKER_GUARD or len(points) < 2 or any(getattr(p, "manual", False) for p in points):
+        return analysis
+    found = heard()
+    if found is None:
+        return analysis
+    bt = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    if bt.size < 32:
+        return analysis
+    song = 60000.0 / float(np.median(np.diff(bt)))
+    end_ms = float(analysis.duration) * 1000.0
+    ends = [points[n + 1].offset_ms if n + 1 < len(points) else end_ms for n in range(len(points))]
+    target, bad = [], []
+    for p, end in zip(points, ends):
+        inside = bt[(bt >= p.offset_ms - 2000.0) & (bt <= end + 2000.0)]
+        local = 60000.0 / float(np.median(np.diff(inside))) if inside.size >= 6 else song
+        if abs(np.log2(local / song)) > 0.85:
+            local = song
+        target.append(local)
+        bad.append(abs(np.log2(p.bpm / local)) > np.log2(1.0 + TRACKER_GUARD_OFF))
+    spans = np.array(ends) - np.array([p.offset_ms for p in points])
+    if spans[np.array(bad)].sum() < TRACKER_GUARD_SHARE * spans.sum():
+        return analysis
+    lines: list[tuple[float, float]] = []
+    n = 0
+    while n < len(points):
+        if not bad[n]:
+            lines.append((points[n].offset_ms, points[n].bpm))
+            n += 1
+            continue
+        m = n
+        while m + 1 < len(points) and bad[m + 1]:
+            m += 1
+        a, b = points[n].offset_ms, ends[m]
+        inside = bt[(bt >= a) & (bt < b)]
+        period = 60000.0 / float(np.median(target[n:m + 1]))
+        if inside.size >= 4:
+            x = np.concatenate([[0.0], np.cumsum(np.maximum(1.0, np.round(np.diff(inside) / period)))])
+            fitted, start = np.polyfit(x, inside, 1)
+            if abs(fitted / period - 1.0) < 0.1:
+                period = float(fitted)
+            lines.append((float(start), 60000.0 / period))
+        else:
+            lines.append((a, 60000.0 / period))
+        n = m + 1
+    lines = _merge_lines(sorted(lines))
+    return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
 def _follow_drummer(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:

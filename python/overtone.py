@@ -4491,6 +4491,11 @@ def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
 OCTAVE_RULE = True
 OCTAVE_RULE_DOUBLE = (130.0, 0.9)     # below this BPM, at or above this off-beat ratio
 OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat ratio
+#: The least off-beat weight a halving needs (experiment octave-rule-floor):
+#: with nothing at all on the half beats (a click track, a sparse intro) the
+#: rule cannot tell a slow song read at double from a fast one with no
+#: subdivision, and halved 174 and 180 to 87 and 90 (engine tests, 2026-10-30).
+OCTAVE_RULE_HALVE_FLOOR = 0.0
 
 
 #: Octaves smoothed across neighbouring red lines (OCTAVE_SMOOTH): the owner's
@@ -4578,7 +4583,7 @@ def _octave_rule(analysis: Analysis) -> Analysis:
         return analysis
     if bpm < OCTAVE_RULE_DOUBLE[0] and ratio >= OCTAVE_RULE_DOUBLE[1] and bpm * 2.0 <= 300.0:
         lines = [(p.offset_ms, p.bpm * 2.0) for p in points]
-    elif bpm > OCTAVE_RULE_HALVE[0] and ratio < OCTAVE_RULE_HALVE[1]:
+    elif bpm > OCTAVE_RULE_HALVE[0] and OCTAVE_RULE_HALVE_FLOOR <= ratio < OCTAVE_RULE_HALVE[1]:
         times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
         weights = np.asarray(analysis.attack_weights, dtype=float)
         lines = []
@@ -4623,12 +4628,20 @@ def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes)
 #: stage (bands dev 51.1, held out 59.9; anime-variable 31.9 / 21.5).
 TIDY_BPM = True
 TIDY_BPM_ONE_DECIMAL = 0.011
+#: The most a line's ends may move to write its BPM with one decimal.
+TIDY_BPM_DRIFT_MS = 2.0
 
 
-def _tidy_bpm(bpm: float) -> float:
-    # One decimal always, at the owner's request (2026-10-30): 233.433 is
-    # written 233.4, as mappers write it.
-    return round(float(bpm), 1)
+def _tidy_bpm(bpm: float, beats: float = 0.0) -> float:
+    """One decimal where it holds over the line (the owner's request of
+    2026-10-30: 233.433 is written 233.4, as mappers write it), else two.
+    Rounding moves the line's ends by half its beats times the period's
+    change; past TIDY_BPM_DRIFT_MS a real decimal tempo (128.37) would drift
+    off its attacks, so it keeps its second decimal."""
+    two = round(float(bpm), 2)
+    one = round(float(bpm), 1)
+    drift = (beats / 2.0) * abs(60000.0 / float(bpm) - 60000.0 / one)
+    return one if drift <= TIDY_BPM_DRIFT_MS else two
 
 
 def _tidy_bpms(analysis: Analysis) -> Analysis:
@@ -4639,11 +4652,11 @@ def _tidy_bpms(analysis: Analysis) -> Analysis:
     end_ms = float(analysis.duration) * 1000.0
     out = []
     for n, point in enumerate(points):
-        bpm = _tidy_bpm(point.bpm)
+        stop = points[n + 1].offset_ms if n + 1 < len(points) else end_ms
+        bpm = _tidy_bpm(point.bpm, max(0.0, stop - point.offset_ms) * point.bpm / 60000.0)
         if bpm == point.bpm:
             out.append(point)
             continue
-        stop = points[n + 1].offset_ms if n + 1 < len(points) else end_ms
         was, now = 60000.0 / point.bpm, 60000.0 / bpm
         k = max(0, int((stop - point.offset_ms) / was) // 2)
         out.append(replace(point, bpm=bpm, offset_ms=point.offset_ms + k * (was - now)))

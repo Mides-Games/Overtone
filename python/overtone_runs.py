@@ -89,6 +89,8 @@ EXPERIMENTS = {
                      "CONSTANT_GRID_SHARE": 0.8},
     "octave-continuity": {"OCTAVE_CONTINUITY": True},
     "octave-rule": {"OCTAVE_RULE": True},
+    "octave-rule-floor": {"OCTAVE_RULE_HALVE_FLOOR": 0.05},
+    "octave-rule-no-halve": {"OCTAVE_RULE_HALVE_FLOOR": 99.0},
     "percussive": {"PERCUSSIVE_INPUT": 1.0},
     "percussive-strong": {"PERCUSSIVE_INPUT": 3.0},
     "percussive-octave-rule": {"PERCUSSIVE_INPUT": 1.0, "OCTAVE_RULE": True},

@@ -4331,7 +4331,7 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
 #: drops the sustained guitars and bass that smear a live band's attacks.
 #: Beat This! keeps the mix. 0 is off; above 0, the separation's margin.
 #: Off until measured (experiment percussive).
-PERCUSSIVE_INPUT = 0.0
+PERCUSSIVE_INPUT = 1.0
 
 
 #: The drum kit's own bands for the grid (DRUM_BANDS): HPSS's percussive part,
@@ -4487,7 +4487,7 @@ def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
 #: Fitted on dev (bands and anime-variable, tidy-bpm runs of 2026-10-28,
 #: 1677 maps), checked on held out (681): first lines at the right octave
 #: +63 maps dev, +44 held out. Off until measured end to end.
-OCTAVE_RULE = False
+OCTAVE_RULE = True
 OCTAVE_RULE_DOUBLE = (130.0, 0.9)     # below this BPM, at or above this off-beat ratio
 OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat ratio
 

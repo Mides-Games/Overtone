@@ -8496,5 +8496,30 @@ class WatchModeTests(unittest.TestCase):
             self.assertEqual(runs, [])
 
 
+class StemsDrumsTests(unittest.TestCase):
+    """STEMS_DRUMS: the drums stem from the stemsplit CLI, or a clear failure."""
+
+    def setUp(self):
+        import overtone
+        self.ta = overtone
+        self.y = (np.sin(np.arange(22050) * 0.05) * 0.5).astype(np.float32)
+
+    def test_missing_separator_fails_instead_of_measuring_the_mix(self):
+        with mock.patch.object(self.ta, "STEMS_DRUMS", True),                 mock.patch.object(self.ta, "STEMSPLIT_CLI", "no-such-stemsplit-binary"):
+            with self.assertRaisesRegex(RuntimeError, "not installed"):
+                self.ta._percussive(self.y, 22050)
+
+    def test_off_leaves_the_audio_alone(self):
+        self.assertIs(self.ta._percussive(self.y, 22050), self.y)
+
+    @unittest.skipUnless(os.environ.get("STEMSPLIT_CLI") and os.environ.get("STEMSPLIT_MODEL"),
+                         "needs STEMSPLIT_CLI and STEMSPLIT_MODEL")
+    def test_drums_come_back_mono_at_the_input_length(self):
+        with mock.patch.object(self.ta, "STEMS_DRUMS", True),                 mock.patch.object(self.ta, "STEMSPLIT_CLI", os.environ["STEMSPLIT_CLI"]),                 mock.patch.object(self.ta, "STEMSPLIT_MODEL", os.environ["STEMSPLIT_MODEL"]):
+            out = self.ta._percussive(self.y, 22050)
+        self.assertEqual(out.shape, self.y.shape)
+        self.assertLessEqual(float(np.max(np.abs(out))), 1.0 + 1e-6)
+
+
 if __name__ == "__main__":
     unittest.main()

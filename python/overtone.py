@@ -4491,9 +4491,54 @@ def _percussive_blocks(y: np.ndarray, sr: int, margin: float) -> np.ndarray:
     return out
 
 
+#: The drums stem of our own separator for the grid (STEMS_DRUMS, roadmap
+#: step 28.3): Mides-Games/Stemsplit's U-Net, run as its CLI the way the Rust
+#: engine runs overtone-cli, so the network and its weights stay out of this
+#: workspace until they earn a place. Beat This! keeps the mix. Off until
+#: measured (experiment stems-drums); when on and the separator is missing,
+#: the analysis fails rather than quietly measuring the mix.
+STEMS_DRUMS = False
+#: Where the separator is: the binary (on PATH unless STEMSPLIT_CLI names it)
+#: and the weights (assets/models, see stemsplit.json; STEMSPLIT_MODEL overrides).
+STEMSPLIT_CLI = os.environ.get("STEMSPLIT_CLI", "stemsplit")
+STEMSPLIT_MODEL = os.environ.get("STEMSPLIT_MODEL", "")
+STEMSPLIT_WEIGHTS = "stemsplit.safetensors"
+STEMSPLIT_TIMEOUT_S = 900.0
+
+
+def _stems_drums(y: np.ndarray, sr: int) -> np.ndarray:
+    """``y``'s drums stem through the stemsplit CLI, mono and peak-normalized."""
+    import shutil
+    import subprocess
+    import tempfile
+    import soundfile
+    binary = shutil.which(STEMSPLIT_CLI) or (STEMSPLIT_CLI if os.path.isfile(STEMSPLIT_CLI) else None)
+    if binary is None:
+        raise RuntimeError(f"STEMS_DRUMS is on but the separator ({STEMSPLIT_CLI}) is not installed")
+    model = STEMSPLIT_MODEL or os.fspath(ROOT / "assets" / "models" / STEMSPLIT_WEIGHTS)
+    if not os.path.isfile(model):
+        raise RuntimeError(f"STEMS_DRUMS is on but the separator's weights are missing ({model})")
+    with tempfile.TemporaryDirectory() as scratch:
+        mix = os.path.join(scratch, "mix.wav")
+        soundfile.write(mix, np.asarray(y, dtype=np.float32), sr, subtype="FLOAT")
+        done = subprocess.run([binary, "separate", mix, "--out", scratch, "--stems", "drums",
+                               "--model", model], capture_output=True,
+                              timeout=STEMSPLIT_TIMEOUT_S,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if done.returncode != 0:
+            detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+            raise RuntimeError(f"The separator failed (exit {done.returncode}): {detail}")
+        drums, _ = soundfile.read(os.path.join(scratch, "drums.wav"), dtype="float32", always_2d=True)
+    out = drums.mean(axis=1)[: len(y)]
+    peak = float(np.max(np.abs(out))) if out.size else 0.0
+    return (out / peak).astype(np.float32) if peak > 0 else np.asarray(y, dtype=np.float32)
+
+
 def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
     """The percussive part of ``y`` at PERCUSSIVE_INPUT's margin, peak-normalized
     as the loader leaves audio; ``y`` itself when off."""
+    if STEMS_DRUMS:
+        return _stems_drums(y, sr)
     if DRUM_BANDS:
         return _drum_signal(y, sr)
     if not PERCUSSIVE_INPUT:

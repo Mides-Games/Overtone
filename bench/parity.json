@@ -1,5 +1,9 @@
 {
  "classes": {
+  "StemsDrumsTests": {
+    "where": "python-only",
+    "why": "STEMS_DRUMS calls the stemsplit CLI (Mides-Games/Stemsplit) as a separate process, an experiment the Rust engine does not run"
+  },
   "MeasurementRunTests": {
    "where": "python-only",
    "why": "overtone_runs.py: the bench's timing stages run on a server, queued and kept on disk, which no Rust crate holds"

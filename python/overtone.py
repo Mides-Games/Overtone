@@ -3212,8 +3212,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y_mix, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y_mix, sr))
-            return _tidy_bpms(_snap_whole_points(_octave_rule(_smooth_octaves(_fold_lines_to_song_octave(
-                analysis, lambda: _beat_this_judge_beats(y_mix, sr))))))
+            return _tidy_bpms(_lines_on_downbeats(_snap_whole_points(_octave_rule(_smooth_octaves(
+                _fold_lines_to_song_octave(analysis, lambda: _beat_this_judge_beats(y_mix, sr)))))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3232,7 +3232,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _guard_tracker(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
-    return _tidy_bpms(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))
+    return _tidy_bpms(_lines_on_downbeats(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -4627,6 +4627,67 @@ def _octave_rule(analysis: Analysis) -> Analysis:
     else:
         return analysis
     return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
+
+
+#: Tempo changes on the downbeat (LINES_ON_DOWNBEATS, roadmap 27.7): mappers
+#: start a new red line on beat 1 of a bar, and the tracker's lines land on
+#: whatever beat the tempo moved (the owner's report, 2026-10-30, on live band
+#: songs). Each line after the first moves by whole beats of its own, so its
+#: grid stays where it was, to the beat nearest the previous line's next bar
+#: line, counted from the first line's accented beat. A move is kept only when
+#: the grid explains the attacks no worse than LINES_ON_DOWNBEATS_LOSS (10 ms
+#: F). Off until measured (experiment lines-on-downbeats).
+LINES_ON_DOWNBEATS = False
+LINES_ON_DOWNBEATS_TOL = 0.25          # of a beat: a bar line farther away is not this one's
+LINES_ON_DOWNBEATS_LOSS = 0.002
+
+
+def _lines_on_downbeats(analysis: Analysis) -> Analysis:
+    """Every red line after the first moved onto a bar line (LINES_ON_DOWNBEATS)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not LINES_ON_DOWNBEATS or len(points) < 2
+            or any(getattr(p, "manual", False) for p in points)):
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    duration = float(analysis.duration)
+    end_ms = duration * 1000.0
+    lines = [(float(p.offset_ms), float(p.bpm)) for p in points]
+    meter = max(1, int(getattr(points[0], "meter", 4) or 4))
+    first_period = 60.0 / lines[0][1]
+    span = times < (lines[1][0] / 1000.0)
+    _, cls, bar = _meter_from_grid(times[span], weights[span], first_period, lines[0][0] / 1000.0)
+    meter = bar if bar > 1 else meter
+    origin = lines[0][0] + cls * first_period * 1000.0     # a downbeat of the first line
+
+    def fit(ls):
+        return _grid_fit_score(_beats_of(ls, duration), times, weights, 10.0)
+
+    score = fit(lines)
+    moved = False
+    for n in range(1, len(lines)):
+        prev_offset, prev_bpm = lines[n - 1]
+        offset, bpm = lines[n]
+        step, prev_bar = 60000.0 / bpm, meter * 60000.0 / prev_bpm
+        stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        best = None
+        for j in range(-(meter - 1), meter):
+            at = offset + j * step
+            if not (prev_offset + step < at < stop - step):
+                continue
+            off_bar = (at - origin) % prev_bar
+            d = min(off_bar, prev_bar - off_bar)
+            if best is None or d < best[0]:
+                best = (d, at)
+        if best is not None and best[1] != offset and best[0] <= LINES_ON_DOWNBEATS_TOL * step:
+            trial = lines[:n] + [(best[1], bpm)] + lines[n + 1:]
+            trial_score = fit(trial)
+            if trial_score >= score - LINES_ON_DOWNBEATS_LOSS:
+                lines, score, offset, moved = trial, trial_score, best[1], True
+        origin = offset                                      # this line starts a bar
+    if not moved:
+        return analysis
+    return _with_lines(analysis, lines, beats=_beats_of(lines, duration))
 
 
 def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes) -> Analysis:

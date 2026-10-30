@@ -4513,11 +4513,15 @@ def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
 OCTAVE_RULE = True
 OCTAVE_RULE_DOUBLE = (130.0, 0.9)     # below this BPM, at or above this off-beat ratio
 OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat ratio
-#: The least off-beat weight a halving needs (experiment octave-rule-floor):
-#: with nothing at all on the half beats (a click track, a sparse intro) the
-#: rule cannot tell a slow song read at double from a fast one with no
-#: subdivision, and halved 174 and 180 to 87 and 90 (engine tests, 2026-10-30).
-OCTAVE_RULE_HALVE_FLOOR = 0.0
+#: The least off-beat weight a halving needs. With nothing on the half beats
+#: (a click track, a sparse intro) the rule cannot tell a slow song read at
+#: double from a fast one with no subdivision, and halved 174 and 180 to 87
+#: and 90 (engine tests, 2026-10-30). Measured 2026-10-30 (rust engine, 08501366):
+#: halving never fired on bands-variable (dev 47.6 / held out 61.0 with or
+#: without it) and was worth 0.3 points on anime-single dev (78.4 vs 78.1),
+#: held out equal (82.2). So it is off: only the doubling half of the rule
+#: runs. Experiment octave-rule-floor (0.05) brings it back.
+OCTAVE_RULE_HALVE_FLOOR = float("inf")
 
 
 #: Octaves smoothed across neighbouring red lines (OCTAVE_SMOOTH): the owner's

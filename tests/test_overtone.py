@@ -7648,6 +7648,23 @@ class LoudnessCurveTests(unittest.TestCase):
         self.assertEqual(loudness_curve(np.ones(4, dtype=np.float32), self.SR, 20)[0].size, 4)
 
 
+class PercussiveBlocksTests(unittest.TestCase):
+    """HPSS a block at a time reads what the whole song at once reads."""
+
+    def test_blocks_match_the_whole_song(self):
+        import librosa
+        import overtone
+        rng = np.random.default_rng(5)
+        sr = 22050
+        y = (rng.standard_normal(sr * 7) * 0.1).astype(np.float32)
+        y[::sr // 3] += 1.0  # clicks over noise
+        whole = librosa.effects.percussive(y, margin=1.0)
+        with mock.patch.object(overtone, "PERCUSSIVE_BLOCK_S", 2.0),                 mock.patch.object(overtone, "PERCUSSIVE_PAD_S", 0.5):
+            blocks = overtone._percussive_blocks(y, sr, 1.0)
+        self.assertEqual(blocks.shape, whole.shape)
+        np.testing.assert_allclose(blocks, whole, atol=1e-6)
+
+
 class PercussiveBalanceTests(unittest.TestCase):
     """How much of a moment is a hit rather than a note."""
 

@@ -44,11 +44,11 @@
    "where": "bench",
    "why": "bench/gates.py perf, which times the stages it is given"
   },
-   "ProductVersionTests": {
-    "where": "python-only",
-    "why": "python/overtone_paths.py: the product version (the release, from the workspace) and Overtone's data folder, which no Rust crate holds"
-   }
-  },
+  "ProductVersionTests": {
+   "where": "python-only",
+   "why": "python/overtone_paths.py: the product version (the release, from the workspace) and Overtone's data folder, which no Rust crate holds"
+  }
+ },
  "format": 1,
  "symbols": {
   "Analysis": {
@@ -711,6 +711,18 @@
   "write_osu_beatmap": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "PERCUSSIVE_BLOCK_S": {
+   "where": "python-only",
+   "why": "the drums-only input (PERCUSSIVE_INPUT) runs librosa's HPSS in Python before either engine; the Rust HPSS (overtone-dsp/src/hpss.rs) is the engine's own"
+  },
+  "PERCUSSIVE_PAD_S": {
+   "where": "python-only",
+   "why": "the drums-only input (PERCUSSIVE_INPUT) runs librosa's HPSS in Python before either engine; the Rust HPSS (overtone-dsp/src/hpss.rs) is the engine's own"
+  },
+  "_percussive_blocks": {
+   "where": "python-only",
+   "why": "the drums-only input (PERCUSSIVE_INPUT) runs librosa's HPSS in Python before either engine; the Rust HPSS (overtone-dsp/src/hpss.rs) is the engine's own"
   }
  }
 }

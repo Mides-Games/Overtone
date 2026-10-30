@@ -4468,6 +4468,29 @@ def _follow_drummer(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
     return _with_lines(analysis, lines, beats=_beats_of(lines, float(analysis.duration)))
 
 
+#: HPSS in blocks of this many seconds, each padded by PERCUSSIVE_PAD_S of
+#: its neighbours (_percussive_blocks). The whole song at once peaked at
+#: 1.75 GB for five minutes, and four analyses at a time took the server past
+#: its memory cap (2026-10-30). The median filters see +-0.2 s, so a 2 s pad
+#: leaves every kept sample's filters whole.
+PERCUSSIVE_BLOCK_S = 20.0
+PERCUSSIVE_PAD_S = 2.0
+
+
+def _percussive_blocks(y: np.ndarray, sr: int, margin: float) -> np.ndarray:
+    """librosa's percussive part of ``y``, a block at a time."""
+    import librosa
+    hop = 512  # librosa's STFT hop: blocks on its frames read the same frames
+    block, pad = (int(s * sr) // hop * hop for s in (PERCUSSIVE_BLOCK_S, PERCUSSIVE_PAD_S))
+    out = np.zeros_like(y)
+    for start in range(0, y.size, block):
+        lo, hi = max(0, start - pad), min(y.size, start + block + pad)
+        part = librosa.effects.percussive(y[lo:hi], margin=margin)
+        stop = min(y.size, start + block)
+        out[start:stop] = part[start - lo:stop - lo]
+    return out
+
+
 def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
     """The percussive part of ``y`` at PERCUSSIVE_INPUT's margin, peak-normalized
     as the loader leaves audio; ``y`` itself when off."""
@@ -4475,8 +4498,7 @@ def _percussive(y: np.ndarray, sr: int) -> np.ndarray:
         return _drum_signal(y, sr)
     if not PERCUSSIVE_INPUT:
         return y
-    import librosa
-    out = librosa.effects.percussive(np.asarray(y, dtype=np.float32), margin=float(PERCUSSIVE_INPUT))
+    out = _percussive_blocks(np.asarray(y, dtype=np.float32), sr, float(PERCUSSIVE_INPUT))
     peak = float(np.max(np.abs(out))) if out.size else 0.0
     return (out / peak).astype(np.float32) if peak > 0 else np.asarray(y, dtype=np.float32)
 

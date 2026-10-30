@@ -132,14 +132,44 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
             continue
         rows = cb.score_track(reds, detected)
         d_map, d_eng = beat_distances(reds, detected, analysis.get("duration_s") or 0.0)
+        bar_hits = lines_on_bars(reds, detected, analysis.get("duration_s") or 0.0)
         out.append({"file": entry["file"], "folder": song["folder"], "split": song["split"],
                     "path": analysis["path"], "map_lines": len(reds),
                     "detected_lines": len(detected), "rows": rows,
                     "lines": [[round(float(o), 1), round(float(b), 3)] for o, b in detected],
-                    "d_map": d_map, "d_eng": d_eng,
+                    "d_map": d_map, "d_eng": d_eng, "bar_hits": bar_hits,
                     **({"message": analysis["message"]} if analysis.get("message") else {}),
                     **{k: analysis.get(k) for k in ("global_bpm", "octave_margin", "offbeat_ratio",
                                                     "residual_ms", "stability", "backend")}})
+    return out
+
+
+#: How near a map's bar line an engine red line must start to count as on it.
+BAR_TOL_MS = 20.0
+
+
+def lines_on_bars(reds, detected, duration_s: float) -> list[bool]:
+    """For each engine red line after the first: does it start within
+    BAR_TOL_MS of one of the map's bar lines? Bars are the map's own red
+    lines and every 4 beats after each (4/4 assumed: a mapper starts a tempo
+    change on beat 1). Chance is about one in four."""
+    if len(detected) < 2 or not reds:
+        return []
+    end = (duration_s or 0.0) * 1000.0
+    bars = []
+    for n, (offset, bpm) in enumerate(reds):
+        stop = reds[n + 1][0] if n + 1 < len(reds) else max(end, offset)
+        bar = 4 * 60000.0 / bpm
+        t = offset
+        while t <= stop + 1e-6:
+            bars.append(t)
+            t += bar
+    bars = np.asarray(sorted(bars))
+    out = []
+    for offset, _ in detected[1:]:
+        i = np.clip(np.searchsorted(bars, offset), 1, bars.size - 1) if bars.size > 1 else 0
+        near = np.abs(bars[max(i - 1, 0):i + 1] - offset).min()
+        out.append(bool(near <= BAR_TOL_MS))
     return out
 
 
@@ -248,6 +278,8 @@ def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> 
         "beat_f10": (statistics.mean(beat_f(m, 10, beat_shift_ms) for m in maps) if maps else None),
         "beat_f20": (statistics.mean(beat_f(m, 20, beat_shift_ms) for m in maps) if maps else None),
         "lines": len(lines),
+        "line_on_bar": (lambda hits: sum(hits) / len(hits) if hits else None)(
+            [h for m in maps for h in m.get("bar_hits", [])]),
         "line_tempo_ok": len(line_ok) / len(lines) if lines else None,
         "line_conv_10": (sum(abs(r["error_ms"] - shift_ms) <= 10 for r in line_ok) / len(lines)
                          if lines else None),
@@ -276,7 +308,7 @@ def print_summary(title: str, s: dict, base: dict | None = None) -> None:
     print(f"  {'':<9} beats (F, convention off): within 10 ms {cell('beat_f10')} %,"
           f" within 20 ms {cell('beat_f20')} %")
     print(f"  {'':<9} red lines {s['lines']}: tempo ok {cell('line_tempo_ok')} %,"
-          f" conv 10 {cell('line_conv_10')} %")
+          f" conv 10 {cell('line_conv_10')} %, engine changes on a bar line {cell('line_on_bar')} %")
     print(f"  {'':<9} per song: tempo ok {pct(s['song_tempo_ok'])} %, conv 10 {pct(s['song_conv_10'])} %;"
           f" answered {s['answered']}/{s['maps']}; octaves "
           + ", ".join(f"{k} {v}" for k, v in s["octaves"].items()))

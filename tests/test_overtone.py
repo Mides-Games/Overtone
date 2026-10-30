@@ -7648,6 +7648,41 @@ class LoudnessCurveTests(unittest.TestCase):
         self.assertEqual(loudness_curve(np.ones(4, dtype=np.float32), self.SR, 20)[0].size, 4)
 
 
+class LinesOnDownbeatsTests(unittest.TestCase):
+    """LINES_ON_DOWNBEATS: a tempo change moves onto beat 1 of a bar."""
+
+    def _analysis(self, change_ms):
+        import overtone
+        # 120 BPM, 4/4, accented downbeats from 0 ms; 140 BPM from 8000 ms
+        # (beat 1 of bar 5), the attacks carrying the true grid.
+        times, weights = [], []
+        t, k = 0.0, 0
+        while t < 8000.0:
+            times.append(t); weights.append(3.0 if k % 4 == 0 else 1.0); t += 500.0; k += 1
+        t, k = 8000.0, 0
+        while t < 20000.0:
+            times.append(t); weights.append(3.0 if k % 4 == 0 else 1.0); t += 60000.0 / 140; k += 1
+        # The tracker put the change one beat late, on beat 2 of the new tempo.
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(change_ms, 140.0, 1.0, 16)]
+        return overtone.Analysis(source="x", duration=20.0, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.asarray(times) / 1000.0,
+                                 attack_weights=np.asarray(weights), engine="precision")
+
+    def test_a_late_change_moves_back_to_the_bar_line(self):
+        import overtone
+        late = 8000.0 + 60000.0 / 140
+        with mock.patch.object(overtone, "LINES_ON_DOWNBEATS", True):
+            out = overtone._lines_on_downbeats(self._analysis(late))
+        self.assertAlmostEqual(out.points[1].offset_ms, 8000.0, delta=1.0)
+        self.assertAlmostEqual(out.points[1].bpm, 140.0)
+
+    def test_off_leaves_the_lines_alone(self):
+        import overtone
+        a = self._analysis(8000.0 + 60000.0 / 140)
+        self.assertIs(overtone._lines_on_downbeats(a), a)
+
+
 class PercussiveBlocksTests(unittest.TestCase):
     """HPSS a block at a time reads what the whole song at once reads."""
 

@@ -4330,8 +4330,9 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
 #: separation (librosa's median-filter HPSS) leaves the kick, snare and hats and
 #: drops the sustained guitars and bass that smear a live band's attacks.
 #: Beat This! keeps the mix. 0 is off; above 0, the separation's margin.
-#: Off until measured (experiment percussive).
-PERCUSSIVE_INPUT = 1.0
+#: Off by default: on in the server's re-analysis it took the service past its
+#: memory cap on every song (2026-10-30). Measured with experiment percussive.
+PERCUSSIVE_INPUT = 0.0
 
 
 #: The drum kit's own bands for the grid (DRUM_BANDS): HPSS's percussive part,

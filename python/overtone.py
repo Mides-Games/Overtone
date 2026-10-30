@@ -4625,9 +4625,9 @@ TIDY_BPM_ONE_DECIMAL = 0.011
 
 
 def _tidy_bpm(bpm: float) -> float:
-    two = round(float(bpm), 2)
-    one = round(float(bpm), 1)
-    return one if abs(one - two) <= TIDY_BPM_ONE_DECIMAL else two
+    # One decimal always, at the owner's request (2026-10-30): 233.433 is
+    # written 233.4, as mappers write it.
+    return round(float(bpm), 1)
 
 
 def _tidy_bpms(analysis: Analysis) -> Analysis:

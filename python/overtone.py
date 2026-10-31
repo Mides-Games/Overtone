@@ -5005,6 +5005,118 @@ def _first_on_attack(line, strong: np.ndarray, stop: float) -> tuple[float, floa
     return line
 
 
+#: No double tick (the owner's report, 2026-10-31): a change a few ms after
+#: one of the previous line's beats ticks twice. Among a change's places, one
+#: within PHRASE_TICK_ON_MS of a previous beat (heard as one tick) or at
+#: least PHRASE_TICK_GAP of a beat after it wins over the rest; one still a
+#: few ms off (a drift fix) stretches the previous grid onto it or moves onto
+#: the previous beat, the cheaper, within PHRASE_STRETCH_MS and at most
+#: PHRASE_STRETCH_LOSS of 10 ms F (_one_tick).
+PHRASE_TICK_GAP = 0.4
+PHRASE_TICK_ON_MS = 3.0
+PHRASE_STRETCH_MS = 25.0
+PHRASE_STRETCH_LOSS = 0.03
+#: A line split where a second line explains its attacks (the owner's report,
+#: 2026-10-31: parts a mapper times with several lines had none): the best
+#: cut leaving PHRASE_DRIFT_BARS bars a side that raises 10 ms F by
+#: PHRASE_DRIFT_GAIN, unless it keeps the tempo and moves the grid under
+#: PHRASE_DRIFT_MIN_MS, which adds a tick, not a fix.
+PHRASE_DRIFT_BARS = 4
+PHRASE_DRIFT_GAIN = 0.03
+PHRASE_DRIFT_MIN_MS = 10.0
+
+
+def _lands_cleanly(prev, at: float) -> bool:
+    """Whether a change at ``at`` ticks once after the previous line."""
+    step = 60000.0 / prev[1]
+    gap = (at - prev[0]) % step
+    return gap <= PHRASE_TICK_ON_MS or step - gap <= PHRASE_TICK_ON_MS or gap >= PHRASE_TICK_GAP * step
+
+
+def _stretch_miss(prev, at: float) -> float:
+    """How far ``at`` sits from the previous grid's nearest beat (ms)."""
+    step = 60000.0 / prev[1]
+    return at - prev[0] - round((at - prev[0]) / step) * step
+
+
+def _one_tick(prev, line, stop: float, times, weights):
+    """The cheaper of stretching the previous grid onto the change and moving
+    the change back onto the previous grid's beat, within PHRASE_STRETCH_MS
+    and PHRASE_STRETCH_LOSS of 10 ms F; else both as they were."""
+    offset, bpm = prev
+    at, new_bpm = line
+    step = 60000.0 / bpm
+    beats = round((at - offset) / step)
+    miss = at - offset - beats * step
+    if beats < 2 or abs(miss) < 0.5 or abs(miss) > PHRASE_STRETCH_MS:
+        return prev, line
+
+    def f(lines, a, b):
+        m = (times * 1000.0 >= a) & (times * 1000.0 < b)
+        parts = [_line_beats(o, x, max(a, o) if k else a, lines[k + 1][0] if k + 1 < len(lines) else b)
+                 for k, (o, x) in enumerate(lines)]
+        return _grid_fit_score(np.concatenate(parts), times[m], weights[m], 10.0)
+
+    base = f([prev, line], offset, stop)
+    stretched = [(offset, 60000.0 * beats / (at - offset)), line]
+    moved = [prev, (offset + beats * step, new_bpm)]
+    best = max((f(c, offset, stop), n, c) for n, c in enumerate((stretched, moved)))
+    if best[0] >= base - PHRASE_STRETCH_LOSS:
+        return best[2][0], best[2][1]
+    return prev, line
+
+
+def _phrase_drift_split(lines, times, weights, end_ms: float, meter: int):
+    """Lines split at the bar where a second line explains the attacks best.
+
+    Each line tries a cut at every bar leaving PHRASE_DRIFT_BARS bars either
+    side, both sides refitted on their attacks, and takes the best cut when it
+    raises the line's 10 ms F by PHRASE_DRIFT_GAIN; the halves try again. A
+    band that drifts or jumps a few ms (a merged line sitting between two
+    phases, which 20 ms F let through) gets its line back."""
+    out = []
+    queue = list(lines)
+    budget = 2 * len(lines) + 16
+    while queue:
+        offset, bpm = queue.pop(0)
+        stop = queue[0][0] if queue else end_ms
+        step = 60000.0 / bpm
+        bar = meter * step
+        m = (times * 1000.0 >= offset) & (times * 1000.0 < stop)
+        t, w = times[m], weights[m]
+        bars = int((stop - offset) // bar)
+        best = None
+        if budget > 0 and bars >= 2 * PHRASE_DRIFT_BARS and t.size >= 16:
+            base = _grid_fit_score(_line_beats(offset, bpm, offset, stop), t, w, 10.0)
+            for k in range(PHRASE_DRIFT_BARS, bars - PHRASE_DRIFT_BARS + 1):
+                at = offset + k * bar
+                left = _fit_line(times, weights, offset, at, bpm)
+                left = (offset, bpm) if abs(left[0] - offset) > 0.25 * step else left
+                right = _fit_line(times, weights, at, stop, bpm)
+                if not (offset < right[0] < stop - bar):
+                    continue
+                lstep = 60000.0 / left[1]
+                slip = (right[0] - left[0]) % lstep
+                slip = min(slip, lstep - slip)
+                if abs(right[1] - left[1]) < 0.1 and slip < PHRASE_DRIFT_MIN_MS:
+                    continue
+                if not _lands_cleanly(left, right[0]):
+                    left, right = _one_tick(left, right, stop, times, weights)
+                    if not _lands_cleanly(left, right[0]) and abs(_stretch_miss(left, right[0])) > 0.5:
+                        continue
+                two = np.concatenate([_line_beats(left[0], left[1], offset, right[0]),
+                                      _line_beats(right[0], right[1], right[0], stop)])
+                gain = _grid_fit_score(two, t, w, 10.0) - base
+                if gain >= PHRASE_DRIFT_GAIN and (best is None or gain > best[0]):
+                    best = (gain, left, right)
+        if best is not None:
+            budget -= 1
+            queue[:0] = [best[1], best[2]]
+            continue
+        out.append((offset, bpm))
+    return out
+
+
 def _phrase_lines(analysis: Analysis) -> Analysis:
     """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
     points = list(getattr(analysis, "points", None) or [])
@@ -5060,6 +5172,7 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         refit.append((off, bpm) if keep else new)
     lines = refit
     lines = _snap_whole_lines(lines, times, weights, duration)
+    lines = _phrase_drift_split(lines, times, weights, end_ms, meter)
     lines = [_phrase_phase(times, weights, off, stop_of(lines, n), bpm)
              for n, (off, bpm) in enumerate(lines)]
 
@@ -5089,9 +5202,13 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
                 score += PHRASE_QUIET_BONUS
             if strong.size and float(np.min(np.abs(strong - at))) <= PHRASE_ONSET_MS:
                 score += PHRASE_ONSET_BONUS
+            if not _lands_cleanly(lines[n - 1], at):
+                score -= 1.0
             scored.append((score, -abs(j), at))
         if scored:
             lines[n] = (max(scored)[2], bpm)
+        if not _lands_cleanly(lines[n - 1], lines[n][0]):
+            lines[n - 1], lines[n] = _one_tick(lines[n - 1], lines[n], stop, times, weights)
         origin = lines[n][0]
     if lines == original:
         return analysis

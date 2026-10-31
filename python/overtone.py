@@ -5357,8 +5357,67 @@ def _tidy_bpm(bpm: float, beats: float = 0.0) -> float:
     return one if drift <= TIDY_BPM_DRIFT_MS else two
 
 
+#: A red line above OCTAVE_CAP_BPM is read at half (OCTAVE_CAP). Measured on
+#: the server's dev reports of 2026-10-31 (5fdf765, bench/diagnose.py by our
+#: line's BPM): above 260 no stretch of anime-single or anime-variable was right
+#: and 70-97 % of that time was the map's double; bands' fallback lines there
+#: were 18 % right and 24 % double. 240-260 is mixed (bands' precision lines 83 %
+#: right), so the cap starts above it.
+OCTAVE_CAP = True
+OCTAVE_CAP_BPM = 260.0
+
+
+def _cap_octaves(analysis: Analysis) -> Analysis:
+    """Lines above OCTAVE_CAP_BPM at half their BPM. The half grid takes the
+    beat with the stronger attacks; a run of capped lines keeps one grid, so a
+    change between two of them never lands on the other half's beat."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not OCTAVE_CAP or not points or any(getattr(p, "manual", False) for p in points)
+            or all(p.bpm <= OCTAVE_CAP_BPM for p in points)):
+        return analysis
+    raw = getattr(analysis, "attack_times", None)
+    times = np.zeros(0) if raw is None else np.asarray(raw, dtype=float) * 1000.0
+    raw = getattr(analysis, "attack_weights", None)
+    weights = np.ones(times.size) if raw is None else np.asarray(raw, dtype=float)
+    if weights.size != times.size:
+        weights = np.ones(times.size)
+    end_ms = float(analysis.duration) * 1000.0
+    lines, halved = [], None  # halved: the previous line's half grid (offset, step)
+    for n, p in enumerate(points):
+        offset, bpm = float(p.offset_ms), float(p.bpm)
+        if bpm <= OCTAVE_CAP_BPM:
+            lines.append((offset, bpm))
+            halved = None
+            continue
+        step = 60000.0 / bpm
+        stop = float(points[n + 1].offset_ms) if n + 1 < len(points) else end_ms
+        if halved is not None:
+            # on the previous half grid, or one of its beats on
+            k = round((offset - halved[0]) / halved[1])
+            start = offset if abs(halved[0] + k * halved[1] - offset) <= 0.25 * step else offset + step
+        else:
+            inside = (times >= offset - 0.5 * step) & (times < stop)
+
+            def weight(o):
+                ph = np.mod((times[inside] - o) / (2 * step), 1.0)
+                return float(weights[inside][(ph < 0.06) | (ph > 0.94)].sum())
+
+            start = max((offset, offset + step), key=weight)
+        if start >= stop - 2 * step:
+            start = offset
+        lines.append((start, bpm / 2.0))
+        halved = (start, 2 * step)
+    beats = _beats_of(lines, float(analysis.duration))
+    starts = np.array([o for o, _ in lines]) / 1000.0
+    which = np.clip(np.searchsorted(starts, beats, side="right") - 1, 0, len(lines) - 1)
+    return _with_lines(analysis, lines, beats=beats,
+                       local_bpms=np.array([b for _, b in lines], dtype=float)[which])
+
+
 def _tidy_bpms(analysis: Analysis) -> Analysis:
-    """The finished red lines at the BPMs _tidy_bpm reads (TIDY_BPM)."""
+    """The finished red lines at the BPMs _tidy_bpm reads (TIDY_BPM), after
+    the octave cap (OCTAVE_CAP): every engine path ends here."""
+    analysis = _cap_octaves(analysis)
     points = list(getattr(analysis, "points", None) or [])
     if not TIDY_BPM or not points or any(getattr(p, "manual", False) for p in points):
         return analysis

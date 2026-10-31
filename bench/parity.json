@@ -763,6 +763,14 @@
   "_tidy_bpm": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "OCTAVE_CAP": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "_cap_octaves": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   }
  }
 }

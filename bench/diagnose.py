@@ -16,13 +16,14 @@ wherever the map's line or ours changes. Every stretch then gets exactly one
 cause, the first of PROBLEMS that holds, so the shares add up to 100 % of the
 time and are read as "this much of the songs is wrong for this reason":
 
-- ``ok``: our BPM within 0.05 of the map's (or within 0.5 BPM with the beats
-  still within 10 ms at both ends) and our beats within 10 ms of its beats,
-  once the mappers' convention is taken off;
+- ``ok``: our beats within 10 ms of the map's all along the stretch, once
+  the mappers' convention is taken off (with the BPMs within 3 %: a ranked map
+  timed bar by bar changes its BPM every bar);
 - ``half`` / ``double`` / ``quadruple`` / ``quarter``: read at that octave;
 - ``ratio``: 3/2, 2/3, 4/3 or 3/4 of the map's (triplets, a bar read as beats);
 - ``bpm_slightly_off``: at the map's octave, more than 0.05 BPM off and within
-  3 %, the beats drifting off over the stretch ("222 instead of 220");
+  3 %, the beats drifting more than 10 ms off over the stretch ("222 instead
+  of 220");
 - ``tempo_wrong``: further than that, at no simple ratio;
 - ``offbeat``: the right tempo, the beats half a beat away;
 - ``phase_slightly_off``: the right tempo, the beats 10 to 25 ms away: as often
@@ -52,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 from collections import defaultdict
@@ -83,12 +85,12 @@ LABELS = {
 }
 
 BPM_BAR = 0.05        # stages.BPM_BAR
-BPM_EAR = 0.5         # stages.BPM_EAR
 SLIGHT = 0.03         # a BPM this close (relative) is the right tempo, misread
 RATIO_TOL = 0.03      # relative, for the octave and ratio readings
 PHASE_MS = 10.0       # the stages' conv 10
 PHASE_SMALL_MS = 25.0 # up to here a shift may be the mapper's own offset
 CHANGE_BEATS = 2.0    # how far a change may be and still be the same change
+SAMPLES = 16          # beats checked per stretch: SAMPLES + 1
 TICK_SHARE = 0.4      # a new line this close after a beat sounds it twice
 TICK_ON_MS = 3.0      # ... unless it is on the previous grid
 TAIL_S = 30.0         # an old report's song end after its last line
@@ -132,11 +134,16 @@ def stretch_problem(t0: float, t1: float, mline, eline, shift_ms: float = 0.0) -
             return "ratio"
         return "tempo_wrong"
     step = 60000.0 / mb
-    # the beats at both ends of the stretch, from the map's grid to ours
-    beats = [mo + round((t - mo) / step) * step for t in (t0, max(t0, t1 - step))]
-    errors = [_phase(b, eo, eb) - shift_ms for b in beats]
+    # map beats spread over the stretch (17 of them, or every one in a short
+    # stretch): two ends alone miss a drift of a whole beat, which wraps to 0
+    first, last = math.ceil((t0 - mo) / step - 1e-9), math.floor((t1 - 1.0 - mo) / step + 1e-9)
+    ks = sorted({round(first + (last - first) * i / SAMPLES) for i in range(SAMPLES + 1)}) if last >= first else [first]
+    errors = [_phase(mo + k * step, eo, eb) - shift_ms for k in ks]
     if abs(eb - mb) > BPM_BAR:
-        if abs(eb - mb) <= BPM_EAR and all(abs(e) <= PHASE_MS for e in errors):
+        # a stretch is a line or less (a ranked map times bar by bar, each bar a
+        # BPM or so apart): beats within PHASE_MS at every sampled beat are within it all
+        # along, whatever the BPMs say
+        if all(abs(e) <= PHASE_MS for e in errors):
             return "ok"
         return "bpm_slightly_off"
     error = statistics.median(errors)

@@ -33,11 +33,26 @@ version is `v1.0.0-stable` (2026-10-28).
   report (`diagnosis`), maps now record `duration_s`, and `remote.py diagnose <id>
   --compare <id>` reads any server run.
 
+- **Red lines above 260 BPM are read at half (OCTAVE_CAP)**, the diagnosis's first lead.
+  By our line's BPM, on the dev reports below: above 260 no stretch of anime-single or
+  anime-variable was right and 70-97 % of it was the map's double (about 3 % of their
+  time); bands' fallback lines there were 18 % right and 24 % double (about 6 % of bands'
+  time). 240-260 is mixed (bands' precision lines 83 % right), so the cap starts above it.
+  The half grid takes the beat with the stronger attacks, and a run of capped lines keeps
+  one grid. Benchmark, bpm-snapshot and golden unchanged; on the server, experiment
+  `octave-cap-off` is the comparison.
+
 ### Fixed
 
 - Found while writing its tests: half a beat away read +half at one end of a stretch and
   -half at the other, whose median is 0, so an offbeat grid counted as right. The phase is
   now wrapped into one half-open beat.
+- Then two more, found on Vampires against its ranked set: a ranked map times bar by bar,
+  each bar a BPM or so from the next, so judging a stretch by its BPM called right beats
+  "slightly off"; a stretch is now judged by its beats. And two ends alone missed a drift
+  of exactly one beat (202 against 200 over 30 s), which wraps to 0: 17 beats spread over
+  the stretch are checked. (A set's own audio, never another set's: the unranked set's
+  audio.mp3 has another offset, and against the ranked lines read 0 % right.)
 
 ### Measured
 

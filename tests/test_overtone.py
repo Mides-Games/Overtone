@@ -7899,6 +7899,44 @@ class DiagnoseTests(unittest.TestCase):
         self.assertEqual(out["time"]["half"], 50.0)
 
 
+class OctaveCapTests(unittest.TestCase):
+    """OCTAVE_CAP: a red line above 260 BPM is read at half, on its strong beats."""
+
+    def _analysis(self, points, beat_ms, strong_offset=0.0, duration=40.0):
+        import overtone
+        times, weights, t, k = [], [], 0.0, 0
+        while t < duration * 1000.0:
+            times.append(t); weights.append(3.0 if (t - strong_offset) % (2 * beat_ms) < 1.0 else 1.0)
+            t += beat_ms; k += 1
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.asarray(times) / 1000.0, attack_weights=np.asarray(weights),
+                                 engine="legacy")
+
+    def test_a_line_above_the_cap_is_halved_on_its_strong_beats(self):
+        import overtone
+        beat = 60000.0 / 280
+        out = overtone._cap_octaves(self._analysis([TimingPoint(0.0, 280.0, 1.0, 0)], beat, strong_offset=beat))
+        self.assertEqual([round(p.bpm, 2) for p in out.points], [140.0])
+        self.assertAlmostEqual(out.points[0].offset_ms, beat, delta=0.01)
+
+    def test_a_run_of_capped_lines_keeps_one_grid(self):
+        import overtone
+        beat = 60000.0 / 280
+        points = [TimingPoint(0.0, 280.0, 1.0, 0), TimingPoint(21 * beat, 280.0, 1.0, 0)]
+        out = overtone._cap_octaves(self._analysis(points, beat))
+        a, b = out.points
+        self.assertAlmostEqual(((b.offset_ms - a.offset_ms) / (2 * beat)) % 1.0, 0.0, delta=0.01)
+
+    def test_lines_under_the_cap_and_the_switch_off_leave_it_alone(self):
+        import overtone
+        a = self._analysis([TimingPoint(0.0, 250.0, 1.0, 0)], 240.0)
+        self.assertIs(overtone._cap_octaves(a), a)
+        b = self._analysis([TimingPoint(0.0, 280.0, 1.0, 0)], 60000.0 / 280)
+        with mock.patch.object(overtone, "OCTAVE_CAP", False):
+            self.assertIs(overtone._cap_octaves(b), b)
+
+
 class TidyBpmTests(unittest.TestCase):
     """A BPM is written with two decimals, as a ranked mapper writes it (2026-10-31)."""
 

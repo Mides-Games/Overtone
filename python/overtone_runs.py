@@ -96,6 +96,7 @@ EXPERIMENTS = {
     "local-step": {"LOCAL_STEP_JUMPS": True},
     "local-octave-up": {"LOCAL_OCTAVE_UP": True},
     "local-step-octave-up": {"LOCAL_STEP_JUMPS": True, "LOCAL_OCTAVE_UP": True},
+    "octave-cap-off": {"OCTAVE_CAP": False},
     "percussive": {"PERCUSSIVE_INPUT": 1.0},
     "percussive-strong": {"PERCUSSIVE_INPUT": 3.0},
     "percussive-octave-rule": {"PERCUSSIVE_INPUT": 1.0, "OCTAVE_RULE": True},

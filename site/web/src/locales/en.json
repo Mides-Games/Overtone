@@ -1935,6 +1935,8 @@
       "to": "End (m:ss)",
       "stretchNote": "Leave both empty for the whole song. The result's times stay in the song's own timeline.",
       "stretchOne": "A stretch can be chosen for one song at a time.",
+      "band": "Live band",
+      "bandNote": "Separates the drums before reading the grid: better beats on a live drummer's song, about two minutes more.",
       "honest": "Hints never override the audio. An expected tempo picks the octave the engine reads the song at, and a meter fills only the bars the engine could not prove; where the audio disagrees with a hint, the result says so.",
       "reset": "Back to the defaults"
     },
@@ -1968,7 +1970,8 @@
       "hints": "Your hints:",
       "aboutBpm": "about {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "only {{from}}–{{to}}"
+      "stretchShort": "only {{from}}–{{to}}",
+      "band": "live band"
     },
     "checks": {
       "tempo_not_constant_one": "You said one BPM throughout, and the engine found {{count}} tempo.",
@@ -1983,7 +1986,9 @@
       "octave_window_moved": "Your tempo chose the octave the engine read the song at ({{low}}–{{high}} BPM). Without it, the engine would have read it at {{bpm}} BPM.",
       "meter_differs": "You said {{meter}} beats per bar; where the engine could prove the bar it found {{found}}, and kept its own.",
       "meter_applied_one": "{{count}} red line had no bar the engine could prove: it uses your {{meter}} beats per bar.",
-      "meter_applied_other": "{{count}} red lines had no bar the engine could prove: they use your {{meter}} beats per bar."
+      "meter_applied_other": "{{count}} red lines had no bar the engine could prove: they use your {{meter}} beats per bar.",
+      "band_drums": "The drums were separated from the mix before the grid was read.",
+      "band_no_separator": "This worker has no drums separator yet: the mix was read as usual."
     },
     "reanalyse": {
       "title": "Analyse again",

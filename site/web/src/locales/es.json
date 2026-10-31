@@ -1935,6 +1935,8 @@
       "to": "Fin (m:ss)",
       "stretchNote": "Dejá los dos vacíos para toda la canción. Los tiempos del resultado siguen en la línea de tiempo de la canción.",
       "stretchOne": "Un tramo se puede elegir para una canción por vez.",
+      "band": "Banda en vivo",
+      "bandNote": "Separa la batería antes de leer la grilla: mejores beats en una canción con baterista en vivo, unos dos minutos más.",
       "honest": "Las pistas nunca pisan al audio. Un tempo esperado elige la octava en la que el engine lee la canción, y un compás completa solo los compases que el engine no pudo probar; donde el audio no coincide con una pista, el resultado lo dice.",
       "reset": "Volver a lo de por defecto"
     },
@@ -1968,7 +1970,8 @@
       "hints": "Tus pistas:",
       "aboutBpm": "unos {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "solo {{from}}–{{to}}"
+      "stretchShort": "solo {{from}}–{{to}}",
+      "band": "banda en vivo"
     },
     "checks": {
       "tempo_not_constant_one": "Dijiste un solo BPM, y el engine encontró {{count}} tempo.",
@@ -1983,7 +1986,9 @@
       "octave_window_moved": "Tu tempo eligió la octava en la que el engine leyó la canción ({{low}}–{{high}} BPM). Sin él, el engine la habría leído a {{bpm}} BPM.",
       "meter_differs": "Dijiste {{meter}} tiempos por compás; donde el engine pudo probar el compás encontró {{found}}, y dejó el suyo.",
       "meter_applied_one": "{{count}} red line no tenía un compás que el engine pudiera probar: usa tus {{meter}} tiempos por compás.",
-      "meter_applied_other": "{{count}} red lines no tenían un compás que el engine pudiera probar: usan tus {{meter}} tiempos por compás."
+      "meter_applied_other": "{{count}} red lines no tenían un compás que el engine pudiera probar: usan tus {{meter}} tiempos por compás.",
+      "band_drums": "La batería se separó de la mezcla antes de leer la grilla.",
+      "band_no_separator": "Este worker todavía no tiene el separador de batería: se leyó la mezcla como siempre."
     },
     "reanalyse": {
       "title": "Analizar de nuevo",

@@ -1935,6 +1935,8 @@
       "to": "Ende (m:ss)",
       "stretchNote": "Lass beide leer für den ganzen Song. Die Zeiten im Ergebnis bleiben in der Zeitleiste des Songs.",
       "stretchOne": "Ein Abschnitt kann nur für einen Song auf einmal gewählt werden.",
+      "band": "Live-Band",
+      "bandNote": "Trennt das Schlagzeug, bevor das Raster gelesen wird: bessere Beats bei einem Live-Schlagzeuger, etwa zwei Minuten länger.",
       "honest": "Hinweise überstimmen nie das Audio. Ein erwartetes Tempo wählt die Oktave, in der die Engine den Song liest, und eine Taktart füllt nur die Takte, die die Engine nicht belegen konnte; wo das Audio einem Hinweis widerspricht, sagt das Ergebnis es.",
       "reset": "Zurück zum Standard"
     },
@@ -1968,7 +1970,8 @@
       "hints": "Deine Hinweise:",
       "aboutBpm": "etwa {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "nur {{from}}–{{to}}"
+      "stretchShort": "nur {{from}}–{{to}}",
+      "band": "Live-Band"
     },
     "checks": {
       "tempo_not_constant_one": "Du hast durchgehend ein BPM angegeben, und die Engine hat {{count}} Tempo gefunden.",
@@ -1983,7 +1986,9 @@
       "octave_window_moved": "Dein Tempo hat die Oktave gewählt, in der die Engine den Song gelesen hat ({{low}}–{{high}} BPM). Ohne es hätte die Engine ihn bei {{bpm}} BPM gelesen.",
       "meter_differs": "Du hast {{meter}} Beats pro Takt angegeben; wo die Engine den Takt belegen konnte, hat sie {{found}} gefunden und ihren eigenen behalten.",
       "meter_applied_one": "{{count}} red line hatte keinen Takt, den die Engine belegen konnte: Sie nutzt deine {{meter}} Beats pro Takt.",
-      "meter_applied_other": "{{count}} red lines hatten keinen Takt, den die Engine belegen konnte: Sie nutzen deine {{meter}} Beats pro Takt."
+      "meter_applied_other": "{{count}} red lines hatten keinen Takt, den die Engine belegen konnte: Sie nutzen deine {{meter}} Beats pro Takt.",
+      "band_drums": "Das Schlagzeug wurde vor dem Lesen des Rasters vom Mix getrennt.",
+      "band_no_separator": "Dieser Worker hat noch keinen Schlagzeug-Separator: Der Mix wurde wie üblich gelesen."
     },
     "reanalyse": {
       "title": "Erneut analysieren",

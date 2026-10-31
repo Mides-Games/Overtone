@@ -14,6 +14,7 @@ lock, SBOM and notices gates do not move.
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import math
 import sys
@@ -251,16 +252,36 @@ def beat_vote_available() -> bool:
     return ta._beat_this_session() is not None
 
 
+@functools.lru_cache(maxsize=1)
+def model_info() -> dict | None:
+    """The Beat This! model a vote runs on: its file name and the first 12
+    hex of its SHA-1, so a result says which model it came from even when a
+    new model keeps the old name. ``None`` when the file is not there."""
+    path = ta.ROOT / "assets" / "models" / ta.BEAT_THIS_MODEL
+    if not path.is_file():
+        return None
+    return {"name": ta.BEAT_THIS_MODEL, "sha1": hashlib.sha1(path.read_bytes()).hexdigest()[:12]}
+
+
+def result_model(vote: bool) -> dict | None:
+    """The model a result names: only when the vote ran, since without it no model touched the reading."""
+    return model_info() if vote else None
+
+
 def engine_hash(vote: bool | None = None, mode: str = DEFAULT_MODE) -> str:
     """The code a result came from, keyed as ``bench/corpus_b.py`` and the
     library key their caches: a SHA-1 over the engine source, plus this
     file (it shapes the result), plus whether the Beat This! vote ran (it
-    moves red lines), plus the mode when it is not ``normal``. Any edit to
+    moves red lines) and the model it ran on, plus the mode when it is not
+    ``normal``. Any edit to
     either file stales every cached result."""
     if vote is None:
         vote = beat_vote_available()
     vote = bool(vote) and MODE_SETTINGS[mode]["vote"]
     label = f"{FORMAT} {VERSION}.{MINOR} {ENGINE} vote={vote}"
+    # The model moves red lines as the code does: another model, another hash.
+    if vote and model_info():
+        label += f" model={model_info()['sha1']}"
     if mode != DEFAULT_MODE:
         label += f" mode={mode}"
     digest = hashlib.sha1(label.encode())
@@ -505,7 +526,7 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
     return {
         "format": FORMAT, "version": VERSION, "minor": MINOR,
         "engine": ENGINE, "engine_mode": str(analysis.engine), "engine_hash": hash_,
-        "app_version": ta.APP_VERSION, "beat_vote": bool(vote),
+        "app_version": ta.APP_VERSION, "beat_vote": bool(vote), "model": result_model(bool(vote)),
         "params": default_params(),
         "duration_s": round(duration, 3),
         "refused": False, "refusal": None,
@@ -552,7 +573,7 @@ def refused_result(message: str, *, vote: bool, hash_: str, duration_s: float | 
     return {
         "format": FORMAT, "version": VERSION, "minor": MINOR,
         "engine": ENGINE, "engine_mode": None, "engine_hash": hash_,
-        "app_version": ta.APP_VERSION, "beat_vote": bool(vote),
+        "app_version": ta.APP_VERSION, "beat_vote": bool(vote), "model": result_model(bool(vote)),
         "params": default_params(),
         "duration_s": round(duration_s, 3) if duration_s is not None else None,
         "refused": True, "refusal": {"code": refusal_code(message), "message": message},

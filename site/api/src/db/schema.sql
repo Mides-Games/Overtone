@@ -624,3 +624,15 @@ CREATE TABLE IF NOT EXISTS overtone_ranks (
   granted_by      uuid REFERENCES accounts (id) ON DELETE SET NULL,
   granted_at      timestamptz NOT NULL DEFAULT now()
 );
+-- ── Which Overtone timed it (2026-10-31) ───────────────────────────────────
+
+-- The release (`app_version`, e.g. 4.2.0) and the Beat This! model a result
+-- came from (`engine_model`, "<file>@<sha1 12>", NULL when the vote did not
+-- run), as columns so old and new readings can be told apart and counted
+-- without opening every result. `engine_hash` stays the cache key. Results
+-- from before carried app_version in their JSON; they are filled from it.
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS app_version  text CHECK (char_length(app_version) <= 32);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS engine_model text CHECK (char_length(engine_model) <= 128);
+UPDATE analyses SET app_version = left(result->>'app_version', 32)
+ WHERE app_version IS NULL AND result ? 'app_version' AND jsonb_typeof(result->'app_version') = 'string';
+CREATE INDEX IF NOT EXISTS analyses_app_version_idx ON analyses (app_version, engine_model) WHERE result IS NOT NULL;

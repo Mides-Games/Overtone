@@ -55,6 +55,17 @@ const confidenceOf = (result) => {
 const statusOf = (result) => (result?.refused ? 'refused' : 'done');
 
 /**
+ * Which Overtone timed a result: its release and the Beat This! model the
+ * vote ran on ("<file>@<sha1 12>"), or null where the result does not say
+ * (an older worker, or no vote). Kept as columns so old and new readings can
+ * be told apart later.
+ */
+export const versionOf = (result) => ({
+  appVersion: typeof result?.app_version === 'string' ? result.app_version.slice(0, 32) : null,
+  engineModel: result?.model?.name && result.model.sha1 ? `${result.model.name}@${result.model.sha1}`.slice(0, 128) : null,
+});
+
+/**
  * The limits a new analysis must fit, given its owner's counts (W3.9,
  * W3.11): `{ quota, maxPending, queueMax, cacheDaily, scope }`. A queued
  * analysis is held to the daily quota, the owner's pending cap and the
@@ -283,7 +294,7 @@ const memoryStore = {
     };
     if (cachedFrom) {
       Object.assign(row, {
-        status: cachedFrom.status, progress: 1, result: cachedFrom.result, engineHash: cachedFrom.engineHash,
+        status: cachedFrom.status, progress: 1, result: cachedFrom.result, engineHash: cachedFrom.engineHash, ...versionOf(cachedFrom.result),
         cachedFrom: cachedFrom.publicId, finishedAt: new Date(), job: null,
       });
     }
@@ -358,7 +369,7 @@ const memoryStore = {
     a.job.state = 'done';
     a.job.lockedAt = null;
     Object.assign(a, {
-      status: statusOf(result), result, engineHash: result.engine_hash, progress: 1, stage: null, finishedAt: new Date(),
+      status: statusOf(result), result, engineHash: result.engine_hash, ...versionOf(result), progress: 1, stage: null, finishedAt: new Date(),
       ...(asked ? { mode: asked.mode, options: Object.keys(asked.options).length ? asked.options : null, optionsKey: asked.key } : {}),
     });
     return true;
@@ -573,7 +584,7 @@ const memoryLog = (action, a, { accountId, moderator, reason }) =>
 
 const SELECT = `
   SELECT a.public_id, a.account_id, a.anon_hash, a.ip_hash, a.filename, a.size_bytes, a.status, a.stage,
-         a.progress, a.error, a.result, a.engine_hash, a.created_at, a.finished_at,
+         a.progress, a.error, a.result, a.engine_hash, a.app_version, a.engine_model, a.created_at, a.finished_at,
          a.private, a.tag_title, a.tag_artist, a.published_at, a.deleted_at,
          a.mode, a.options, a.options_key, a.audio_seconds, r.public_id AS reanalysis_of,
          c.public_id AS cached_from, s.audio_sha1, j.id AS job_id, j.state AS job_state
@@ -597,6 +608,8 @@ const fromRow = (r) =>
     error: r.error,
     result: r.result,
     engineHash: r.engine_hash,
+    appVersion: r.app_version ?? null,
+    engineModel: r.engine_model ?? null,
     createdAt: r.created_at,
     finishedAt: r.finished_at,
     cachedFrom: r.cached_from,
@@ -757,9 +770,10 @@ const pgStore = {
         await client.query(
           `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine,
                                  engine_hash, result, confidence, status, progress, finished_at, cached_from,
-                                 private, tag_title, tag_artist, mode, options, options_key, audio_seconds, reanalysis_of)
+                                 private, tag_title, tag_artist, mode, options, options_key, audio_seconds, reanalysis_of,
+                                 app_version, engine_model)
            SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id,
-                  $9, $10, $11, $12, $13, $14, $15, ${linked}
+                  $9, $10, $11, $12, $13, $14, $15, ${linked}, c.app_version, c.engine_model
              FROM analyses c WHERE c.public_id = $8`,
           [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId, hidden, tagTitle, tagArtist,
             mode, hints, optionsKey, audioSeconds, reanalysisOf],
@@ -910,10 +924,12 @@ const pgStore = {
         `UPDATE analyses SET status = $2, result = $3, engine_hash = $4, confidence = $5, progress = 1,
                              stage = NULL, finished_at = now(),
                              mode = coalesce($6, mode), options = CASE WHEN $6::text IS NULL THEN options ELSE $7::jsonb END,
-                             options_key = coalesce($8, options_key)
+                             options_key = coalesce($8, options_key),
+                             app_version = $9, engine_model = $10
           WHERE id = $1`,
         [held.analysis_id, statusOf(result), result, result.engine_hash, confidenceOf(result),
-          asked?.mode ?? null, asked && Object.keys(asked.options).length ? asked.options : null, asked?.key ?? null],
+          asked?.mode ?? null, asked && Object.keys(asked.options).length ? asked.options : null, asked?.key ?? null,
+          versionOf(result).appVersion, versionOf(result).engineModel],
       );
       if (Number.isFinite(result.duration_s)) {
         await client.query(

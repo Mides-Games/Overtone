@@ -91,3 +91,14 @@ test('CSV text cells cannot start a formula; numbers, negative ones included, st
     sections: [{ confidence: 0.9, level: '=cmd|"/c calc"!A1' }] });
   assert.equal(csv.split('\r\n')[1], `-25,128,468.75,4,0.9,"'=cmd|""/c calc""!A1"`);
 });
+
+test('a result names the release and model that timed it, and a bad name is refused', async () => {
+  const { versionOf } = await import('../src/services/analysis.service.js');
+  const named = { ...good(), app_version: '4.2.0', model: { name: 'beat_this_final0.onnx', sha1: '0123456789ab' } };
+  assert.equal(validResult(named), true);
+  assert.deepEqual(versionOf(named), { appVersion: '4.2.0', engineModel: 'beat_this_final0.onnx@0123456789ab' });
+  const { app_version: _old, ...older } = good();
+  assert.deepEqual(versionOf(older), { appVersion: null, engineModel: null }, 'an older worker names neither');
+  assert.equal(validResult({ ...named, model: { name: 'x', sha1: 'not-hex' } }), false);
+  assert.equal(validResult({ ...named, app_version: 'v'.repeat(40) }), false);
+});

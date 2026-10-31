@@ -193,6 +193,9 @@ export const validResult = (result) =>
   nullOr((v) => finite(v, 0, 60_000))(result.residual_ms) &&
   nullOr((v) => text(v, 16))(result.meter) &&
   nullOr((v) => text(v, 32))(result.engine_mode) &&
+  // 2026-10-31: which release and which model; absent from older workers' results.
+  nullOr((v) => text(v, 32))(result.app_version) &&
+  nullOr((m) => typeof m === 'object' && text(m.name, 96) && /^[0-9a-f]{12}$/.test(m.sha1))(result.model) &&
   (result.findings === undefined || (Array.isArray(result.findings) && result.findings.length <= MAX_LINES)) &&
   nullOr((r) => typeof r === 'object' && REFUSAL_CODE.test(r.code) && text(r.message, 1000))(result.refusal) &&
   // v1.2 (W11.1, W3.21, W12.19): absent from older workers' results.

@@ -1777,6 +1777,42 @@ class LocalTempoTests(unittest.TestCase):
         path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
         self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
 
+    def test_an_octave_jump_steps_instead_of_ramping(self):
+        # Windows at 225 then 112.5: no tempo in between unless LOCAL_STEP_JUMPS is off.
+        from overtone import _tempo_curve
+        centres = np.array([4.0, 8.0])
+        x = np.linspace(4.0, 7.99, 50)
+        with mock.patch("overtone.LOCAL_STEP_JUMPS", False):
+            ramp = _tempo_curve(x, centres, [225.0, 112.5])
+        self.assertTrue(np.any((ramp > 120.0) & (ramp < 220.0)))
+        with mock.patch("overtone.LOCAL_STEP_JUMPS", True):
+            step = _tempo_curve(x, centres, [225.0, 112.5])
+            small = _tempo_curve(x, centres, [225.0, 220.0])
+        self.assertTrue(np.all((step == 225.0) | (step == 112.5)))
+        self.assertTrue(np.all(step[x < 6.0] == 225.0) and np.all(step[x >= 6.0] == 112.5))
+        # A change under LOCAL_STEP_RATIO is still a ramp: a song that speeds up keeps its curve.
+        self.assertTrue(np.any((small > 220.5) & (small < 224.5)))
+
+    def test_the_half_of_a_fast_song_is_read_at_its_tempo(self):
+        from overtone import _octave_up
+        path = [225.0] * 4 + [112.4] * 8 + [226.0] * 2 + [150.0] * 4
+        with mock.patch("overtone.LOCAL_OCTAVE_UP", False):
+            self.assertEqual(_octave_up(path), path)
+        with mock.patch("overtone.LOCAL_OCTAVE_UP", True):
+            up = _octave_up(path)
+        self.assertTrue(all(abs(b - 225.5) < 1.0 for b in up[:14]))
+        # 150 has no tempo at twice it in the song: left as it is.
+        self.assertEqual(up[14:], [150.0] * 4)
+
+    def test_octave_up_leaves_a_real_double_time_part_and_a_stray_window(self):
+        from overtone import _octave_up
+        with mock.patch("overtone.LOCAL_OCTAVE_UP", True):
+            # 130 and 260: 260 is past what osu! maps at, so 130 stays (a double-time part).
+            self.assertEqual(_octave_up([130.0] * 5 + [260.0] * 5), [130.0] * 5 + [260.0] * 5)
+            # One window of 24 at 224 is not enough to lift the song.
+            path = [112.0] * 23 + [224.0]
+            self.assertEqual(_octave_up(path)[:23], [112.0] * 23)
+
     @staticmethod
     def _local(bpm: float):
         """A local-tempo analysis at ``bpm``: one red line, beats on it."""

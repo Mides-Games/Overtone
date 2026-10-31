@@ -7846,6 +7846,59 @@ class PhraseLinesTests(unittest.TestCase):
             self.assertIs(overtone._phrase_lines(a), a)
 
 
+class DiagnoseTests(unittest.TestCase):
+    """bench/diagnose.py: each timing problem named, and its share of the time."""
+
+    @classmethod
+    def setUpClass(cls):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import diagnose
+        cls.d = diagnose
+
+    def problem(self, ours, truth=(0.0, 200.0)):
+        return self.d.stretch_problem(0.0, 30000.0, truth, ours)
+
+    def test_each_reading_is_named(self):
+        self.assertEqual(self.problem((0.0, 200.0)), "ok")
+        self.assertEqual(self.problem((4.0, 200.0)), "ok")
+        self.assertEqual(self.problem((0.0, 100.0)), "half")
+        self.assertEqual(self.problem((0.0, 400.0)), "double")
+        self.assertEqual(self.problem((0.0, 300.0)), "ratio")
+        self.assertEqual(self.problem((0.0, 175.0)), "tempo_wrong")
+        self.assertEqual(self.problem((0.0, 202.0)), "bpm_slightly_off")
+        self.assertEqual(self.problem((150.0, 200.0)), "offbeat")
+        self.assertEqual(self.problem((18.0, 200.0)), "phase_slightly_off")
+        self.assertEqual(self.problem((60.0, 200.0)), "phase_off")
+
+    def test_time_shares_add_up_and_follow_the_lines(self):
+        secs = self.d.time_problems([(0.0, 200.0)], [(0.0, 200.0), (20000.0, 100.0)], 40000.0)
+        self.assertAlmostEqual(secs["ok"], 20.0)
+        self.assertAlmostEqual(secs["half"], 20.0)
+
+    def test_line_problems(self):
+        step = 300.0
+        truth = [(0.0, 200.0), (12000.0, 180.0)]
+        self.assertEqual(dict(self.d.line_problems(truth, [(0.0, 200.0)])), {"missed_change": 1})
+        late = self.d.line_problems(truth, [(0.0, 200.0), (12000.0 + 40.0, 180.0)])
+        self.assertEqual(late["change_off"], 1)
+        extra = self.d.line_problems(truth, [(0.0, 200.0), (6000.0, 205.0), (12000.0, 180.0)])
+        self.assertEqual(extra["phantom_change"], 1)
+        tick = self.d.line_problems([(0.0, 200.0)], [(0.0, 200.0), (6000.0 + 0.2 * step, 200.0)])
+        self.assertEqual(tick["double_tick"], 1)
+        same = self.d.line_problems([(0.0, 200.0)], [(0.0, 200.0), (6000.0, 200.0)])
+        self.assertEqual(same["redundant_line"], 1)
+
+    def test_every_song_weighs_the_same(self):
+        rows = [{"offset_ms": 0.0, "bpm": 200.0, "error_ms": 0.0, "bpm_error": 0.0, "octave": 1}]
+        right = {"folder": "a", "rows": rows, "lines": [[0.0, 200.0]], "duration_s": 60.0}
+        half = {"folder": "b", "rows": rows, "lines": [[0.0, 100.0]], "duration_s": 60.0}
+        out = self.d.diagnose([right] * 8 + [half])
+        self.assertEqual(out["time"]["ok"], 50.0)
+        self.assertEqual(out["time"]["half"], 50.0)
+
+
 class TidyBpmTests(unittest.TestCase):
     """A BPM is written with two decimals, as a ranked mapper writes it (2026-10-31)."""
 

@@ -55,6 +55,7 @@ import overtone as ta  # noqa: E402
 import overtone_library as lib  # noqa: E402
 import corpus_b as cb  # noqa: E402
 import single_bpm as sb  # noqa: E402
+import diagnose  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "stages.json"
@@ -135,6 +136,7 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
         bar_hits = lines_on_bars(reds, detected, analysis.get("duration_s") or 0.0)
         out.append({"file": entry["file"], "folder": song["folder"], "split": song["split"],
                     "path": analysis["path"], "map_lines": len(reds),
+                    "duration_s": analysis.get("duration_s"),
                     "detected_lines": len(detected), "rows": rows,
                     "lines": [[round(float(o), 1), round(float(b), 3)] for o, b in detected],
                     "d_map": d_map, "d_eng": d_eng, "bar_hits": bar_hits,
@@ -407,6 +409,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.compare and base is None:
         print("  no baseline yet: run with --save-baseline first")
 
+    # Why the rest are wrong, and how much of the songs' time each reason takes
+    # (bench/diagnose.py): where the next fix pays most.
+    diagnosis = {}
+    for name, part in (("dev", dev), ("holdout", [m for m in maps if m["split"] == "holdout"])):
+        if part:
+            diagnosis[name] = diagnose.diagnose(part, shift)
+            diagnose.print_diagnosis("held out" if name == "holdout" else name, diagnosis[name])
+
     # The worst songs of the dev part: where to look next.
     failing: dict[str, list[str]] = {}
     for m in dev:
@@ -423,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = {"stage": stage, "engine": args.engine, "fingerprint": fingerprint,
                "ranked": ranked_info,
                "run": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-               "summary": summary, "skipped": skipped,
+               "summary": summary, "diagnosis": diagnosis, "skipped": skipped,
                "maps": [{k: v for k, v in m.items() if k not in ("rows", "d_map", "d_eng")} | {
                    "beat_f10": beat_f(m, 10, beat_shift),
                    "tempo_ok": tempo_ok(m), "conv_10": joint(m, 10, shift),

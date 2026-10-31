@@ -20,6 +20,38 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-31 · Which timing problems cost the most
+
+### Changed
+
+- **`bench/diagnose.py`** (owner's request: know which problems to attack first). A stage
+  report is cut wherever the map's red line or ours changes, and each stretch gets one
+  cause (right, half, double, another ratio, tempo wrong, BPM slightly off, offbeat,
+  beats shifted), so the shares add up to the songs' time; line problems (missed, late,
+  phantom changes, double ticks, lines that change nothing) are counted per minute. Every
+  song weighs the same. `bench/stages.py` prints it after its summary and keeps it in the
+  report (`diagnosis`), maps now record `duration_s`, and `remote.py diagnose <id>
+  --compare <id>` reads any server run.
+
+### Fixed
+
+- Found while writing its tests: half a beat away read +half at one end of a stretch and
+  -half at the other, whose median is 0, so an offbeat grid counted as right. The phase is
+  now wrapped into one half-open beat.
+
+### Measured
+
+Dev, server reports of 5fdf765 (bands: against bb624b0 before phrases), share of time:
+
+| | right | worst three time problems | worst line problem |
+|---|---|---|---|
+| bands-variable | 55.7 % (+1.3) | beats 10-25 ms off 9.6, tempo wrong 8.5, BPM slightly off 7.0 (−3.1) | missed changes 3.75 / min (37 % of songs) |
+| anime-variable | 58.4 % | read at double 10.5, beats 10-25 ms off 9.4, BPM slightly off 9.3 | missed changes 4.39 / min (54 %) |
+| anime-single | 70.8 % | beats 10-25 ms off 15.7, read at double 5.5, offbeat 2.3 | phantom changes 0.47 / min (8 %) |
+
+"Beats 10-25 ms off" is mostly the mappers' own offsets (see the tool's limits), so the
+engine's first targets are double readings, missed changes and BPMs slightly off.
+
 ## Unreleased — 2026-10-31 · Phrase red lines, and the gates they broke
 
 ### Changed

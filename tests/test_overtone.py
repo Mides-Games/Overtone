@@ -7793,6 +7793,27 @@ class PhraseLinesTests(unittest.TestCase):
         self.assertGreaterEqual(len(out.points), 2)
         self.assertAlmostEqual(out.points[-1].bpm, 202.0, delta=0.3)
 
+    def test_a_live_band_gets_one_line_a_bar_that_runs_on(self):
+        import overtone
+        # 4/4 bars whose length wanders as a drummer's does; the tracker gave one line.
+        bars = [2400.0, 2412.0, 2392.0, 2420.0, 2404.0, 2388.0, 2416.0, 2400.0] * 2
+        times, weights, t = [], [], 0.0
+        for length in bars:
+            for k in range(4):
+                times.append(t + k * length / 4); weights.append(3.0 if k == 0 else 1.0)
+            t += length
+        a = overtone.Analysis(source="x", duration=t / 1000.0 + 1.0, beats=np.zeros(0), local_bpms=np.zeros(0),
+                              points=[TimingPoint(0.0, 100.0, 1.0, 0), TimingPoint(t - 2400.0, 100.0, 1.0, 0)],
+                              hop_length=512, sample_rate=44100, subdivision=1.0,
+                              attack_times=np.asarray(times) / 1000.0, attack_weights=np.asarray(weights),
+                              engine="legacy")
+        out = overtone._phrase_lines(a)
+        self.assertGreater(len(out.points), 4)
+        # every line ends exactly where the next starts: one tick per change
+        for p, q in zip(out.points, out.points[1:]):
+            beats = (q.offset_ms - p.offset_ms) * p.bpm / 60000.0
+            self.assertAlmostEqual(beats, round(beats), delta=0.01)
+
     def test_short_lines_at_one_tempo_merge(self):
         import overtone
         step = 60000.0 / 200

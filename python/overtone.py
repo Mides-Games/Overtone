@@ -5117,6 +5117,80 @@ def _phrase_drift_split(lines, times, weights, end_ms: float, meter: int):
     return out
 
 
+#: Bar-by-bar lines on songs with no click (the fallback tracker's), as a
+#: ranked mapper times a live band (My Chemical Romance - Vampires Will Never
+#: Hurt You, 2437969: 236 red lines, 85 % of them one bar long, 94 % starting
+#: exactly where the previous grid's bar ends, BPMs with two decimals). Each
+#: phrase's downbeats move onto the strong attacks of their bar (at most
+#: PHRASE_BAR_SHIFT of a beat), each bar gets the BPM that ends it exactly on
+#: the next downbeat, so the grid runs on with no double tick, and bars merge
+#: while one line still puts every downbeat between within PHRASE_BAR_TOL_MS.
+PHRASE_BARS = True
+PHRASE_BAR_SHIFT = 0.15
+PHRASE_BAR_TOL_MS = 4.0
+
+
+def _phrase_bars(lines, times, weights, end_ms: float, meter: int):
+    """Each phrase as bar-long lines following its downbeats (PHRASE_BARS)."""
+    strong = weights >= np.median(weights)
+    st, sw = times[strong] * 1000.0, weights[strong]
+    out = []
+    for n, (offset, bpm) in enumerate(lines):
+        stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        step = 60000.0 / bpm
+        bar = meter * step
+        count = int((stop - offset) // bar)
+        if count < 2:
+            out.append((offset, bpm))
+            continue
+        downs = [offset]
+        for k in range(1, count + 1):
+            g = offset + k * bar
+            m = (st >= g - 0.5 * step) & (st < g + bar - 0.5 * step)
+            r = st[m] - g
+            r = r - np.round(r / step) * step
+            near = np.abs(r) <= PHRASE_BAR_SHIFT * step
+            if near.sum() >= 2:
+                order = np.argsort(r[near])
+                cum = np.cumsum(sw[m][near][order])
+                shift = float(r[near][order][np.searchsorted(cum, cum[-1] / 2.0)])
+            else:
+                shift = downs[-1] - (offset + (k - 1) * bar)
+            downs.append(max(downs[-1] + 0.5 * bar, g + shift))
+        if downs[-1] >= stop:
+            downs.pop()
+        i = 0
+        while i < len(downs) - 1:
+            j = i + 1
+            while j + 1 < len(downs):
+                beat = (downs[j + 1] - downs[i]) / (meter * (j + 1 - i))
+                if all(abs(downs[i] + meter * (q - i) * beat - downs[q]) <= PHRASE_BAR_TOL_MS
+                       for q in range(i + 1, j + 1)):
+                    j += 1
+                else:
+                    break
+            out.append((downs[i], 60000.0 * meter * (j - i) / (downs[j] - downs[i])))
+            i = j
+        # the last bar ends exactly where the next phrase starts: no double tick
+        beats = round((stop - downs[-1]) / step)
+        if n + 1 < len(lines) and beats >= 1 and abs((stop - downs[-1]) / beats - step) <= PHRASE_BAR_SHIFT * step:
+            out.append((downs[-1], 60000.0 * beats / (stop - downs[-1])))
+        else:
+            out.append((downs[-1], bpm))
+    # a line the one before already plays to within PHRASE_BAR_TOL_MS is dropped
+    kept = out[:1]
+    for k, (offset, bpm) in enumerate(out[1:], start=1):
+        end = out[k + 1][0] if k + 1 < len(out) else end_ms
+        o, b = kept[-1]
+        step = 60000.0 / b
+        on = abs(o + round((offset - o) / step) * step - offset) <= 1.0
+        far = (end - offset) * bpm / 60000.0 * abs(60000.0 / bpm - step)
+        if on and far <= PHRASE_BAR_TOL_MS:
+            continue
+        kept.append((offset, bpm))
+    return kept
+
+
 def _phrase_lines(analysis: Analysis) -> Analysis:
     """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
     points = list(getattr(analysis, "points", None) or [])
@@ -5210,6 +5284,8 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         if not _lands_cleanly(lines[n - 1], lines[n][0]):
             lines[n - 1], lines[n] = _one_tick(lines[n - 1], lines[n], stop, times, weights)
         origin = lines[n][0]
+    if PHRASE_BARS and analysis.engine == "legacy":
+        lines = _phrase_bars(lines, times, weights, end_ms, meter)
     if lines == original:
         return analysis
     beats = _beats_of(lines, duration)

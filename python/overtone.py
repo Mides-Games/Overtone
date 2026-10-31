@@ -4963,6 +4963,48 @@ def _phrase_halves(lines, times, weights, end_ms):
     return out
 
 
+#: A red line on its attack (the owner's report, 2026-10-31: lines a few ms
+#: off the note they start on). Each line's grid moves by the weighted median
+#: of its strong attacks' error, at most PHRASE_PHASE_MAX of a beat, and a
+#: change prefers a beat with a strong attack within PHRASE_ONSET_MS.
+PHRASE_PHASE_MAX = 0.1
+PHRASE_ONSET_MS = 10.0
+PHRASE_ONSET_BONUS = 0.008
+
+
+def _phrase_phase(times, weights, offset: float, stop: float, bpm: float) -> tuple[float, float]:
+    """The line with its grid moved onto the middle of its strong attacks."""
+    step = 60000.0 / bpm
+    m = (times * 1000.0 >= offset - 0.5 * step) & (times * 1000.0 < stop)
+    if m.sum() < 8:
+        return offset, bpm
+    t, w = times[m] * 1000.0, weights[m]
+    big = w >= np.median(w)
+    r = t[big] - offset - np.round((t[big] - offset) / step) * step
+    keep = np.abs(r) <= 0.15 * step
+    if keep.sum() < 6:
+        return offset, bpm
+    order = np.argsort(r[keep])
+    cum = np.cumsum(w[big][keep][order])
+    shift = float(r[keep][order][np.searchsorted(cum, cum[-1] / 2.0)])
+    if abs(shift) > PHRASE_PHASE_MAX * step:
+        return offset, bpm
+    return offset + shift, bpm
+
+
+def _first_on_attack(line, strong: np.ndarray, stop: float) -> tuple[float, float]:
+    """The first line moved by whole beats to its first beat on a strong attack."""
+    offset, bpm = line
+    step = 60000.0 / bpm
+    for k in range(0, 64):
+        at = offset + k * step
+        if at >= stop - step:
+            break
+        if strong.size and float(np.min(np.abs(strong - at))) <= PHRASE_ONSET_MS:
+            return at, bpm
+    return line
+
+
 def _phrase_lines(analysis: Analysis) -> Analysis:
     """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
     points = list(getattr(analysis, "points", None) or [])
@@ -5018,9 +5060,13 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         refit.append((off, bpm) if keep else new)
     lines = refit
     lines = _snap_whole_lines(lines, times, weights, duration)
+    lines = [_phrase_phase(times, weights, off, stop_of(lines, n), bpm)
+             for n, (off, bpm) in enumerate(lines)]
 
     # 2. each change on a downbeat or after the music eases off
     per_beat = float(weights.sum()) / max(1.0, end_ms / (60000.0 / lines[0][1]))
+    strong = times[weights >= np.median(weights)] * 1000.0
+    lines[0] = _first_on_attack(lines[0], strong, stop_of(lines, 0))
     origin = lines[0][0]
     for n in range(1, len(lines)):
         prev_offset, prev_bpm = lines[n - 1]
@@ -5041,6 +5087,8 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
             before = (times >= (at - step) / 1000.0) & (times < at / 1000.0 - 0.03)
             if per_beat > 0 and float(weights[before].sum()) < PHRASE_QUIET * per_beat:
                 score += PHRASE_QUIET_BONUS
+            if strong.size and float(np.min(np.abs(strong - at))) <= PHRASE_ONSET_MS:
+                score += PHRASE_ONSET_BONUS
             scored.append((score, -abs(j), at))
         if scored:
             lines[n] = (max(scored)[2], bpm)

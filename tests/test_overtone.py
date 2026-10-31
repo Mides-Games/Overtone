@@ -7777,6 +7777,21 @@ class PhraseLinesTests(unittest.TestCase):
         out = overtone._phrase_lines(self._analysis(points, segs))
         self.assertEqual([round(p.bpm, 2) for p in out.points], [120.0])
 
+    def test_a_part_at_the_song_tempo_is_not_halved(self):
+        import overtone
+        # A 217 intro on quarters only, then the song at 226 with its eighths: the
+        # intro's missing half beats are its arrangement, not a double read.
+        segs = [(0.0, 12000.0, 217.0), (12000.0, 39900.0, 452.0)]
+        points = [TimingPoint(0.0, 217.0, 1.0, 0), TimingPoint(12000.0, 226.0, 1.0, 0)]
+        out = overtone._phrase_lines(self._analysis(points, segs))
+        self.assertGreater(out.points[0].bpm, 200.0)
+
+    def test_a_signature_change_is_left_alone(self):
+        import overtone
+        points = [TimingPoint(0.0, 120.0, 1.0, 0, meter=4), TimingPoint(16000.0, 121.0, 1.0, 0, meter=3)]
+        a =self._analysis(points, [(0.0, 39900.0, 120.0)])
+        self.assertIs(overtone._phrase_lines(a), a)
+
     def test_a_line_a_few_ms_off_moves_onto_its_attacks(self):
         import overtone
         points = [TimingPoint(7.0, 120.0, 1.0, 0), TimingPoint(20007.0, 150.0, 1.0, 0)]

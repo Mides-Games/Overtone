@@ -20,6 +20,56 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-31 · Phrase red lines, and the gates they broke
+
+### Changed
+
+- **Red lines as phrases (PHRASE_LINES, #103–#108).** Jittery lines merge into one per
+  phrase; a change lands on a downbeat or where the music eases off; on the fallback
+  tracker (live bands) each phrase is then timed bar by bar with a continuous grid, as the
+  ranked set 2437969 (My Chemical Romance - Vampires Will Never Hurt You) is: 85 % of its
+  236 lines are one bar long and 94 % start on the previous line's grid. Ours: 239 lines,
+  76 % on the previous grid.
+
+### Fixed
+
+- **The benchmark fell to 21/24 and `signatures` failed** (server gates of 5fdf765). The
+  downbeat, quiet and onset bonuses that place a phrase change also ran on the precision
+  engine, whose change points are exact: on secs-2 two candidates fit equally and a 0.001
+  bonus moved the 142 line one beat late. The bonuses now apply to the fallback tracker
+  only. Phrases also merged a 6/4 line into a 3/4 one; a song whose lines change meter is
+  now left as read.
+- **First lines read at half** (bands-variable dev, octave x1 85.4 → 82.1 %). The halving
+  rule halved a 217 intro of a 226 song (Pierce The Veil - King For A Day) because the
+  intro has no half beats. A part within PHRASE_HALVE_SAME (8 %) of the rest of the song's
+  tempo is now kept; Alesana - Seduction's 235 ending of a 200 song is still halved to ~116.
+
+### Measured
+
+Locally: benchmark 24/24 (median 0.0000 BPM, 0.14 ms), bpm-snapshot 24/24, golden 27/27,
+signatures, measures, coverage, reference, assisted and robustness pass. real-audio needs
+the server's library (it pinned noble 14 → 4 and calm-down-juliet 102 → 1 lines on
+5fdf765, the intended merges); perf's Beat This! stage needs the model, absent here.
+
+Server, app engine (5fdf765 unless named), tempo ok / octave x1 / beats within 10 ms:
+
+| | bands dev | bands held out | anime-single held out |
+|---|---|---|---|
+| base, bb624b0 (before phrases) | 52.0 / 85.4 / 70.6 | 65.4 / 87.9 | 83.5 / 93.8 (lines-on-downbeats) |
+| base, 5fdf765 | 56.4 / 82.1 / 69.4 | 71.3 / 85.7 | 85.5 / 93.8 |
+| percussive, bb624b0 | 59.9 / 81.8 / 71.2 | 67.6 / 92.3 | 83.7 / 90.3 |
+| stems-drums | 58.0 / 83.2 / **78.8** | 71.0 / 88.2 | failed (jobs 4, out of memory) |
+
+Held-out beats are not comparable: a held-out run fits no convention of its own.
+
+### Rejected / tried and dropped
+
+- **Percussive input by default.** It trades octave for tempo on bands (dev octave −3.6,
+  held out +4.4) and costs anime-single 3.5 points of octave. Kept as an experiment.
+- **Stems-drums by default, for now.** Beats within 10 ms rise 9.4 points on bands, the
+  biggest single gain measured, but a song takes ~74 s instead of ~12 s on the server and
+  the site's worker would need the separator; anime is not measured yet.
+
 ## Unreleased — 2026-10-31 · The fallback tracker's octave jumps and ramps
 
 ### Changed

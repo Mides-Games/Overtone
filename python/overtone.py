@@ -4928,6 +4928,8 @@ PHRASE_HALVE_BPM = 160.0
 PHRASE_HALVE_S = 4.0
 PHRASE_HALVE_RATIO = 0.2
 PHRASE_HALVE_REL = 0.5
+#: Within this share of the rest of the song's tempo a part is kept as read.
+PHRASE_HALVE_SAME = 0.08
 
 
 def _half_beat_ratio(times, weights, offset: float, bpm: float, start: float, stop: float):
@@ -4951,6 +4953,13 @@ def _phrase_halves(lines, times, weights, end_ms):
             continue
         song = _weighted_median(np.array([x for x, _ in rest]), np.array([d for _, d in rest]))
         if r >= PHRASE_HALVE_REL * song:
+            continue
+        # a part at the rest of the song's tempo is not read at double: a 217 intro
+        # before a 226 song (Pierce The Veil - King For A Day) keeps its BPM, while a
+        # 235 part of a 200 song (Alesana - Seduction from 3:29) is a 118 one
+        others = [(b, d) for m, ((_, b), d) in enumerate(zip(lines, spans)) if m != n]
+        tempo = _weighted_median(np.array([b for b, _ in others]), np.array([d for _, d in others]))
+        if abs(np.log(bpm / tempo)) < np.log(1.0 + PHRASE_HALVE_SAME):
             continue
         step = 60000.0 / bpm
         inside = (times * 1000.0 >= offset) & (times * 1000.0 < offset + span)
@@ -5195,7 +5204,9 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
     """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
     points = list(getattr(analysis, "points", None) or [])
     if (not PHRASE_LINES or len(points) < 2
-            or any(getattr(p, "manual", False) for p in points)):
+            or any(getattr(p, "manual", False) for p in points)
+            # a signature change is a line the bar needs; merging would erase it
+            or len({getattr(p, "meter", 4) for p in points}) > 1):
         return analysis
     times = np.asarray(analysis.attack_times, dtype=float)
     weights = np.asarray(analysis.attack_weights, dtype=float)
@@ -5255,6 +5266,9 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
     strong = times[weights >= np.median(weights)] * 1000.0
     lines[0] = _first_on_attack(lines[0], strong, stop_of(lines, 0))
     origin = lines[0][0]
+    # the precision engine finds its change points exactly; only a tracked (legacy)
+    # boundary is loose enough for the downbeat, quiet and onset bonuses to move it
+    loose = analysis.engine == "legacy"
     for n in range(1, len(lines)):
         prev_offset, prev_bpm = lines[n - 1]
         offset, bpm = lines[n]
@@ -5268,14 +5282,15 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
                 continue
             trial = [lines[n - 1], (at, bpm)]
             score = _span_fit(trial, lo, hi, times, weights)
-            off_bar = (at - origin) % bar
-            if min(off_bar, bar - off_bar) <= 0.25 * step:
-                score += PHRASE_DOWNBEAT_BONUS
-            before = (times >= (at - step) / 1000.0) & (times < at / 1000.0 - 0.03)
-            if per_beat > 0 and float(weights[before].sum()) < PHRASE_QUIET * per_beat:
-                score += PHRASE_QUIET_BONUS
-            if strong.size and float(np.min(np.abs(strong - at))) <= PHRASE_ONSET_MS:
-                score += PHRASE_ONSET_BONUS
+            if loose:
+                off_bar = (at - origin) % bar
+                if min(off_bar, bar - off_bar) <= 0.25 * step:
+                    score += PHRASE_DOWNBEAT_BONUS
+                before = (times >= (at - step) / 1000.0) & (times < at / 1000.0 - 0.03)
+                if per_beat > 0 and float(weights[before].sum()) < PHRASE_QUIET * per_beat:
+                    score += PHRASE_QUIET_BONUS
+                if strong.size and float(np.min(np.abs(strong - at))) <= PHRASE_ONSET_MS:
+                    score += PHRASE_ONSET_BONUS
             if not _lands_cleanly(lines[n - 1], at):
                 score -= 1.0
             scored.append((score, -abs(j), at))

@@ -95,6 +95,8 @@ EXPERIMENTS = {
     "percussive": {"PERCUSSIVE_INPUT": 1.0},
     "percussive-strong": {"PERCUSSIVE_INPUT": 3.0},
     "percussive-octave-rule": {"PERCUSSIVE_INPUT": 1.0, "OCTAVE_RULE": True},
+    "stems-drums": {"STEMS_DRUMS": True},
+    "stems-drums-mix": {"STEMS_DRUMS": True, "CHANGE_POINTS": True, "OCTAVE_RULE": True},
     "change-points": {"CHANGE_POINTS": True},
     "change-points-loose": {"CHANGE_POINTS": True, "CHANGE_SIGMA_MS": 4.0, "CHANGE_GAIN": 0.92},
     "all-new": {"CHANGE_POINTS": True, "OCTAVE_RULE": True, "PERCUSSIVE_INPUT": 1.0},

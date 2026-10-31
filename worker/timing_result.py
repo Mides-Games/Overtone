@@ -17,6 +17,7 @@ import contextlib
 import functools
 import hashlib
 import math
+import os
 import sys
 import tempfile
 from dataclasses import replace
@@ -145,7 +146,18 @@ def clean_options(raw) -> dict:
     start, end = number("start_s", 0.0, 4 * 3600.0), number("end_s", 0.0, 4 * 3600.0)
     if start is not None and end is not None and end - start >= MIN_STRETCH_S:
         out["start_s"], out["end_s"] = start, end
+    if raw.get("band") is True:
+        out["band"] = True
     return out
+
+
+def stems_available() -> bool:
+    """Whether the drums separator a live band's hint asks for is installed:
+    the stemsplit binary and its weights (python/overtone.py, STEMS_DRUMS)."""
+    import shutil
+    binary = shutil.which(ta.STEMSPLIT_CLI) or os.path.isfile(ta.STEMSPLIT_CLI)
+    model = ta.STEMSPLIT_MODEL or os.fspath(ta.ROOT / "assets" / "models" / ta.STEMSPLIT_WEIGHTS)
+    return bool(binary) and os.path.isfile(model)
 
 
 def octave_window(options: dict) -> tuple[float, float] | None:
@@ -169,16 +181,18 @@ def octave_window(options: dict) -> tuple[float, float] | None:
 
 
 @contextlib.contextmanager
-def engine_settings(mode: str, window: tuple[float, float] | None):
-    """The engine switched as ``mode`` and the octave window ask, for one job,
-    and put back as it was after it, whatever happens. The worker's analysis
-    process runs one job at a time, so nothing else sees the switches."""
+def engine_settings(mode: str, window: tuple[float, float] | None, stems: bool = False):
+    """The engine switched as ``mode``, the octave window and a live band's
+    drums (``stems``) ask, for one job, and put back as it was after it,
+    whatever happens. The worker's analysis process runs one job at a time,
+    so nothing else sees the switches."""
     settings = MODE_SETTINGS[mode]
-    saved = {name: getattr(ta, name) for name in settings["flags"]}
+    flags = {**settings["flags"], **({"STEMS_DRUMS": True} if stems else {})}
+    saved = {name: getattr(ta, name) for name in flags}
     saved["MAP_OCTAVE_RANGE"] = ta.MAP_OCTAVE_RANGE
     saved["_beat_this_judge_beats"] = ta._beat_this_judge_beats
     try:
-        for name, value in settings["flags"].items():
+        for name, value in flags.items():
             setattr(ta, name, value)
         if window is not None:
             ta.MAP_OCTAVE_RANGE = window
@@ -746,6 +760,11 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     options = clean_options(options)
     vote = bool(vote) and MODE_SETTINGS[mode]["vote"]
     window = octave_window(options)
+    # A live band's drums, separated, for the grid: the biggest measured gain on
+    # live-drummed songs (bands-variable dev, beats within 10 ms 69.4 -> 78.8 %,
+    # docs/timeline.md 2026-10-31). Without the separator the mix is analysed and
+    # the result says so.
+    stems = bool(options.get("band")) and stems_available()
 
     def refuse(message: str, duration_s: float | None = None) -> dict:
         return {**refused_result(message, vote=vote, hash_=hash_, duration_s=duration_s),
@@ -786,7 +805,7 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
                 del y
                 stretch = {"start_ms": round(first / sr * 1000.0, 3), "end_ms": round(last / sr * 1000.0, 3),
                            "duration_s": round(full, 3)}
-            with engine_settings(mode, window):
+            with engine_settings(mode, window, stems):
                 analysis = ta.analyze_audio(
                     str(source), params["min_delta"], params["persistence"], params["prefer_map_bpm"],
                     params["min_confidence"], say, params["force_subdivision"], params["refine_beats"],
@@ -817,4 +836,7 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
         result["duration_s"] = stretch.pop("duration_s")
         result["stretch"] = stretch
     result["hint_checks"] = hint_checks(result, options, window, applied)
+    if options.get("band"):
+        result["hint_checks"].append({"level": "info" if stems else "warn",
+                                      "key": "band_drums" if stems else "band_no_separator", "values": {}})
     return result

@@ -30,6 +30,15 @@ version is `v1.0.0-stable` (2026-10-28).
   ranked set 2437969 (My Chemical Romance - Vampires Will Never Hurt You) is: 85 % of its
   236 lines are one bar long and 94 % start on the previous line's grid. Ours: 239 lines,
   76 % on the previous grid.
+- **BPMs with two decimals** (TIDY_BPM_DECIMALS, the owner's request after the same
+  ranked set: 94.04, 94.11 ...). The one-decimal rule of 2026-10-30 stays behind the
+  constant. Benchmark, bpm-snapshot and golden unchanged.
+- **A live band's hint (`band`) separates the drums** for that job (STEMS_DRUMS through
+  the worker's engine settings), the owner's decision on the stems-drums run below. The
+  engine cannot tell a band from the rest (residual and stability overlap with
+  anime-variable), so the person says it. A worker without the separator analyses the mix
+  and the result says so (`band_no_separator`). The separator takes ~2.4 GB and ~2.5 min
+  a song on the server's 6 cores, more than a 2 GB worker holds.
 
 ### Fixed
 

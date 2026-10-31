@@ -1,8 +1,8 @@
 {
  "classes": {
   "StemsDrumsTests": {
-    "where": "python-only",
-    "why": "STEMS_DRUMS calls the stemsplit CLI (Mides-Games/Stemsplit) as a separate process, an experiment the Rust engine does not run"
+   "where": "python-only",
+   "why": "STEMS_DRUMS calls the stemsplit CLI (Mides-Games/Stemsplit) as a separate process, an experiment the Rust engine does not run"
   },
   "MeasurementRunTests": {
    "where": "python-only",
@@ -744,11 +744,19 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
- "LINES_ON_DOWNBEATS": {
+  "LINES_ON_DOWNBEATS": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
   "_lines_on_downbeats": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "TIDY_BPM_DECIMALS": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "_tidy_bpm": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   }

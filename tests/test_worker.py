@@ -12,6 +12,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zlib
 from pathlib import Path
 
@@ -517,6 +518,21 @@ class ResultPartsTests(unittest.TestCase):
         self.assertEqual(tr.clean_options({"start_s": 10, "end_s": 15}), {})  # under ten seconds
         self.assertEqual(tr.clean_options({"start_s": 10, "end_s": 40}), {"start_s": 10.0, "end_s": 40.0})
         self.assertEqual(tr.clean_options({"bpm": True}), {})
+        self.assertEqual(tr.clean_options({"band": True}), {"band": True})
+        self.assertEqual(tr.clean_options({"band": "yes"}), {})
+        self.assertEqual(tr.clean_options({"band": False}), {})
+
+    def test_a_live_band_turns_the_drums_separator_on_for_its_job_only(self):
+        was = tr.ta.STEMS_DRUMS
+        with tr.engine_settings("normal", None, stems=True):
+            self.assertTrue(tr.ta.STEMS_DRUMS)
+        self.assertEqual(tr.ta.STEMS_DRUMS, was)
+        with tr.engine_settings("normal", None):
+            self.assertEqual(tr.ta.STEMS_DRUMS, was)
+
+    def test_without_the_separator_a_band_is_analysed_on_the_mix(self):
+        with mock.patch.object(tr.ta, "STEMSPLIT_CLI", "no-such-stemsplit-binary"):
+            self.assertFalse(tr.stems_available())
 
     def test_a_tempo_hint_moves_the_octave_window_only_outside_the_default(self):
         self.assertIsNone(tr.octave_window({}))

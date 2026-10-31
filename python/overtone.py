@@ -5334,6 +5334,10 @@ def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes)
 #: 2026-10-28: the tidy-bpm runs left tempo ok and octave unchanged on every
 #: stage (bands dev 51.1, held out 59.9; anime-variable 31.9 / 21.5).
 TIDY_BPM = True
+#: Decimals a BPM is written with. Two since 2026-10-31, the owner's request
+#: after comparing a ranked set (2437969, Vampires Will Never Hurt You: 94.04,
+#: 94.11 ...); 1 brings back the one-decimal rule below.
+TIDY_BPM_DECIMALS = 2
 TIDY_BPM_ONE_DECIMAL = 0.011
 #: The most a line's ends may move to write its BPM with one decimal.
 TIDY_BPM_DRIFT_MS = 2.0
@@ -5346,6 +5350,8 @@ def _tidy_bpm(bpm: float, beats: float = 0.0) -> float:
     change; past TIDY_BPM_DRIFT_MS a real decimal tempo (128.37) would drift
     off its attacks, so it keeps its second decimal."""
     two = round(float(bpm), 2)
+    if TIDY_BPM_DECIMALS >= 2:
+        return two
     one = round(float(bpm), 1)
     drift = (beats / 2.0) * abs(60000.0 / float(bpm) - 60000.0 / one)
     return one if drift <= TIDY_BPM_DRIFT_MS else two

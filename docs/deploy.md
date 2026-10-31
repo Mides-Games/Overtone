@@ -194,6 +194,14 @@ workers). Swap en 0 en todos.
   `bench/worker_perf.py` (2026-10-27, Windows, 4 hilos): un tema de 10 minutos pica
   1200 MB con el voto (1824 antes de apagar el memory pattern también en el loader del
   worker) y 566 MB sin él; antes decía 512 MB sin medir.
+- **Banda en vivo: 4 GB.** La pista `band` separa la batería con Stemsplit antes de
+  leer la grilla. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
+  versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`; si falla, el worker
+  arranca igual y esos análisis leen la mezcla, y el resultado lo dice
+  (`band_no_separator`). El separador solo pica ~2,4 GB y tarda ~2,5 min un tema de
+  5 minutos en 6 núcleos (VPS de mediciones, 2026-10-31), más que los 2 GB de arriba:
+  con 2 GB un análisis de banda muere por memoria. Con 4 GB alcanza, porque el
+  separador corre antes que el motor y termina antes de que este cargue.
 - **El CPU limit no alcanza solo.** Con el límite, el worker no pasa de cuatro
   núcleos de cuota, pero esa cuota la toma de cualquier núcleo, incluidos los que
   usan los servers de Minecraft en ese momento. El **pinning** (el campo

@@ -530,6 +530,19 @@ class ResultPartsTests(unittest.TestCase):
         with tr.engine_settings("normal", None):
             self.assertEqual(tr.ta.STEMS_DRUMS, was)
 
+    def test_the_separator_build_follows_the_systems_glibc(self):
+        import importlib.util
+        path = Path(__file__).resolve().parent.parent / "deploy" / "eggs" / "stemsplit.py"
+        spec = importlib.util.spec_from_file_location("egg_stemsplit", path)
+        egg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(egg)
+        for libc, name in ((("glibc", "2.41"), "gnu"), (("glibc", "2.39"), "gnu"),
+                           (("glibc", "2.36"), "musl"), (("", ""), "musl")):
+            with mock.patch.object(egg.platform, "libc_ver", return_value=libc):
+                self.assertTrue(egg.binary_name().endswith(name), libc)
+        self.assertEqual(set(egg.SHA256), {"stemsplit-x86_64-linux-gnu", "stemsplit-x86_64-linux-musl",
+                                           "stemsplit.safetensors"})
+
     def test_without_the_separator_a_band_is_analysed_on_the_mix(self):
         with mock.patch.object(tr.ta, "STEMSPLIT_CLI", "no-such-stemsplit-binary"):
             self.assertFalse(tr.stems_available())

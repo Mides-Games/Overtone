@@ -64,7 +64,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (570 on 2026-10-31)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (574 on 2026-10-31)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -100,6 +100,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 .venv/Scripts/python.exe bench/corpus_b.py --engine rust       # the same through overtone-cli
 .venv/Scripts/python.exe bench/corpus_b.py --onsets            # and where each track's sound starts
 .venv/Scripts/python.exe bench/remote.py run anime-single --split dev --wait  # a stage, on the user's server
+.venv/Scripts/python.exe bench/remote.py diagnose <id> --compare <older id>   # its timing problems, worst first
 ```
 
 And the Rust side:
@@ -252,6 +253,8 @@ bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
+bench/diagnose.py         a stage report's timing problems (octave, BPM off, shifted beats,
+                          missed or extra changes, double ticks) by share of the songs' time
 bench/local_data.py       the private library's measurements -- Corpus B's manifest, the
                           health sample, the real-audio snapshot -- as gitignored bench/*.local.json; bench/*.example.json has the shapes
 bench/remote.py           the server's measurement runs from the command line

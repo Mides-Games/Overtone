@@ -51,6 +51,10 @@
   "ProductVersionTests": {
    "where": "python-only",
    "why": "python/overtone_paths.py: the product version (the release, from the workspace) and Overtone's data folder, which no Rust crate holds"
+  },
+  "DiagnoseTests": {
+   "where": "python-only",
+   "why": "bench/diagnose.py reads stage reports offline; it is a measurement tool, not an engine stage"
   }
  },
  "format": 1,

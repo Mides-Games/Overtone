@@ -16,6 +16,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py show <id>
     python bench/remote.py wait <id>
     python bench/remote.py result <id> --out bench/.cache/remote/<id>.json
+    python bench/remote.py diagnose <id> --compare <older id>   # which problems cost most
     python bench/remote.py stop <id>
     python bench/remote.py log <id> --grep FAIL            # the whole log, or its matching lines
     python bench/remote.py gates --wait                    # every Python gate, on the server
@@ -162,6 +163,10 @@ def main(argv: list[str] | None = None) -> int:
     result = commands.add_parser("result", help="download a run's report")
     result.add_argument("id")
     result.add_argument("--out", help=f"where (default {CACHE}/<id>.json)")
+    diag = commands.add_parser("diagnose", help="a stage run's timing problems, worst first (bench/diagnose.py)")
+    diag.add_argument("id")
+    diag.add_argument("--compare", metavar="ID", help="an older run: each share's change beside it")
+    diag.add_argument("--split", choices=("dev", "holdout"))
     args = parser.parse_args(argv)
     remote = Remote(args.url, _token(args.token_file))
 
@@ -240,6 +245,25 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(json.dumps(report, indent=1), encoding="utf-8")
         print(f"written: {out} ({len(report.get('maps', []))} maps)")
         _summary(report.get("summary"))
+        return 0
+    if args.command == "diagnose":
+        import diagnose
+
+        def fetch(run_id: str) -> dict:
+            cached = CACHE / f"{run_id}.json"
+            if cached.is_file():
+                return json.loads(cached.read_text(encoding="utf-8"))
+            report = remote.call("GET", f"/api/v1/runs/{run_id}/result")
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_text(json.dumps(report, indent=1), encoding="utf-8")
+            return report
+
+        report = fetch(args.id)
+        now = diagnose.diagnose_report(report, args.split)
+        base = diagnose.diagnose_report(fetch(args.compare), args.split) if args.compare else {}
+        print(f"{report.get('stage', {}).get('title', '')} ({args.id})")
+        for name, d in now.items():
+            diagnose.print_diagnosis("held out" if name == "holdout" else name, d, base.get(name))
         return 0
     if args.command == "log":
         for line in remote.text(f"/api/v1/runs/{args.id}/log").splitlines():

@@ -151,6 +151,19 @@ def clean_options(raw) -> dict:
     return out
 
 
+#: The separator's share of a job's time: the job ends at 3x the audio's length
+#: (worker/isolate.py), so the separator stops at 1.5x and leaves the engine the
+#: rest, reading the mix if it has to. Measured on the VPS (2026-10-31, 6 cores):
+#: 0.47x the length with the glibc build, 0.63x with the static one.
+STEMS_TIME_SHARE = 1.5
+STEMS_MIN_TIMEOUT_S = 60.0
+
+
+def stems_timeout(seconds: float | None) -> float | None:
+    """How long the separator may run on audio this long; None when unknown."""
+    return max(STEMS_MIN_TIMEOUT_S, STEMS_TIME_SHARE * seconds) if seconds else None
+
+
 def stems_available() -> bool:
     """Whether the drums separator a live band's hint asks for is installed:
     the stemsplit binary and its weights (python/overtone.py, STEMS_DRUMS)."""
@@ -181,13 +194,16 @@ def octave_window(options: dict) -> tuple[float, float] | None:
 
 
 @contextlib.contextmanager
-def engine_settings(mode: str, window: tuple[float, float] | None, stems: bool = False):
+def engine_settings(mode: str, window: tuple[float, float] | None, stems: bool = False,
+                    stems_timeout_s: float | None = None):
     """The engine switched as ``mode``, the octave window and a live band's
     drums (``stems``) ask, for one job, and put back as it was after it,
     whatever happens. The worker's analysis process runs one job at a time,
     so nothing else sees the switches."""
     settings = MODE_SETTINGS[mode]
     flags = {**settings["flags"], **({"STEMS_DRUMS": True} if stems else {})}
+    if stems and stems_timeout_s:
+        flags["STEMSPLIT_TIMEOUT_S"] = float(stems_timeout_s)
     saved = {name: getattr(ta, name) for name in flags}
     saved["MAP_OCTAVE_RANGE"] = ta.MAP_OCTAVE_RANGE
     saved["_beat_this_judge_beats"] = ta._beat_this_judge_beats
@@ -784,6 +800,7 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
 
     params = default_params()
     stretch = None
+    separator_failed = False
     with contextlib.ExitStack() as stack:
         source = Path(path)
         try:
@@ -805,11 +822,20 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
                 del y
                 stretch = {"start_ms": round(first / sr * 1000.0, 3), "end_ms": round(last / sr * 1000.0, 3),
                            "duration_s": round(full, 3)}
-            with engine_settings(mode, window, stems):
-                analysis = ta.analyze_audio(
-                    str(source), params["min_delta"], params["persistence"], params["prefer_map_bpm"],
-                    params["min_confidence"], say, params["force_subdivision"], params["refine_beats"],
-                    beat_vote=vote)
+            def run(drums: bool):
+                with engine_settings(mode, window, drums, stems_timeout(seconds)):
+                    return ta.analyze_audio(
+                        str(source), params["min_delta"], params["persistence"], params["prefer_map_bpm"],
+                        params["min_confidence"], say, params["force_subdivision"], params["refine_beats"],
+                        beat_vote=vote)
+
+            try:
+                analysis = run(stems)
+            except ta.SeparatorFailed as exc:
+                # out of memory, out of time, or broken on this host: the mix, said so
+                print(f"[worker] drums separator failed, reading the mix: {exc}", file=sys.stderr)
+                stems, separator_failed = False, True
+                analysis = run(False)
         except ValueError as exc:
             return refuse(str(exc), seconds)
         except Exception as exc:  # noqa: BLE001 -- the job records why, the worker keeps going
@@ -837,6 +863,6 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
         result["stretch"] = stretch
     result["hint_checks"] = hint_checks(result, options, window, applied)
     if options.get("band"):
-        result["hint_checks"].append({"level": "info" if stems else "warn",
-                                      "key": "band_drums" if stems else "band_no_separator", "values": {}})
+        key = "band_drums" if stems else "band_separator_failed" if separator_failed else "band_no_separator"
+        result["hint_checks"].append({"level": "info" if stems else "warn", "key": key, "values": {}})
     return result

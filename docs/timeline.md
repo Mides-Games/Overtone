@@ -20,6 +20,41 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-31 · The fallback tracker's octave jumps and ramps
+
+### Changed
+
+- **Experiments added, both off** (owner's report: a Senses Fail song at ~225 BPM came
+  back mostly at 112 and 150, with ramps between). The song took the fallback tracker
+  (no fittable grid), where none of the octave fixes run (they ask for
+  `engine == "precision"`). `local-step` (`LOCAL_STEP_JUMPS`): a change of more than 8 %
+  between two windows happens at once, half-way, instead of the straight line that wrote
+  206, 198, 188 ... BPM over ~4 s. `local-octave-up` (`LOCAL_OCTAVE_UP`): where the path
+  reads X on at least 10 % of the windows and ~X/2 elsewhere, and X is at most
+  MAP_OCTAVE_RANGE's 240, the X/2 windows are read at X. `local-step-octave-up` is both.
+
+### Measured
+
+That song alone, v3 locally, no Beat This! vote (onnxruntime not installed here), seconds
+of red line at each tempo:
+
+| | lines | ~112 | ~150 | ~225 | ~266 | other (ramps) |
+|---|---|---|---|---|---|---|
+| base | 169 | 57.5 | 70.5 | 35.0 | 65.5 | 15.5 |
+| local-step | 125 | 64.4 | 70.1 | 40.6 | 65.5 | 3.4 |
+| local-octave-up | 134 | 0.0 | 65.3 | 100.8 | 65.5 | 12.4 |
+| both | 115 | 0.0 | 69.3 | 104.8 | 65.5 | 4.5 |
+
+The ~150 (2/3 of 225) and ~266 parts are not octave errors and stay. Not yet measured on
+the server's stages: that waits for the deploy, since the server runs `master`.
+
+### Rejected / tried and dropped
+
+- **The octave rule's off-beat ratio, read on the onset envelope** (the legacy tracker
+  keeps no attacks): over this song's 112 parts it ran 0.15 to 1.04 window to window, so
+  OCTAVE_RULE_DOUBLE's 0.9 would have doubled some parts of one tempo and not others.
+- **LOCAL_OCTAVE_HALVE off**: no change on this song; it never fired.
+
 ## Unreleased — 2026-10-30 · Out of the OOM loop; tidy, octave, drums and downbeats
 
 ### Fixed

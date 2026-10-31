@@ -3449,6 +3449,26 @@ LOCAL_RANGE_BPM = (140.0, 300.0)
 LOCAL_COSTS = {"jump": 0.5, "octave": 0.2, "prior": 0.6, "bias": 0.1}
 LOCAL_TIGHTNESS = 1000.0
 LOCAL_LINE_TOL_MS = 8.0
+#: Two fixes for the fallback tracker's tempo path (the owner's report,
+#: 2026-10-31: a 225 BPM band song read mostly at 112 and 150, with ramps of
+#: 206, 198, 188 ... BPM between). Both off until measured.
+#:
+#: LOCAL_STEP_JUMPS: the curve between two windows is a straight line, so a
+#: jump of an octave became ~4 s of tempi the song never plays, and as many
+#: red lines. A change larger than LOCAL_STEP_RATIO now happens at once,
+#: half-way between the windows' centres (experiment local-step).
+#:
+#: LOCAL_OCTAVE_UP: where the path reads a tempo X on some windows and ~X/2
+#: on others (within LOCAL_OCTAVE_UP_TOL), and X is still a tempo osu! maps
+#: at (MAP_OCTAVE_RANGE), the X/2 windows are read at X: the slower one is
+#: the bar's kick-snare pair of the faster song, not a second tempo. X must
+#: hold at least LOCAL_OCTAVE_UP_SHARE of the windows, so one stray window
+#: lifts nothing (experiment local-octave-up).
+LOCAL_STEP_JUMPS = False
+LOCAL_STEP_RATIO = 1.08
+LOCAL_OCTAVE_UP = False
+LOCAL_OCTAVE_UP_TOL = 0.04
+LOCAL_OCTAVE_UP_SHARE = 0.1
 
 
 def _window_tempi(env: np.ndarray, fps: float, k: int = 6) -> list[tuple[float, float]]:
@@ -3474,6 +3494,39 @@ def _window_tempi(env: np.ndarray, fps: float, k: int = 6) -> list[tuple[float, 
             if lo_bpm <= bpm * f <= hi_bpm and not any(abs(bpm * f / b - 1) < 0.03 for b, _ in out):
                 extra.append((bpm * f, 0.6 * strength))
     return out + extra
+
+
+def _octave_up(path: list[float]) -> list[float]:
+    """The path with its X/2 windows read at X (LOCAL_OCTAVE_UP)."""
+    if not LOCAL_OCTAVE_UP or len(path) < 2:
+        return list(path)
+    tempi = np.asarray(path, dtype=float)
+    out = tempi.copy()
+    hi = MAP_OCTAVE_RANGE[1]
+    for i, slow in enumerate(tempi):
+        fast = 2.0 * slow
+        if fast > hi * (1.0 + LOCAL_OCTAVE_UP_TOL):
+            continue
+        near = np.abs(np.log2(tempi / fast)) < np.log2(1.0 + LOCAL_OCTAVE_UP_TOL)
+        if near.mean() >= LOCAL_OCTAVE_UP_SHARE:
+            out[i] = float(np.median(tempi[near]))
+    return [float(t) for t in out]
+
+
+def _tempo_curve(x: np.ndarray, centres: np.ndarray, tempi: list[float]) -> np.ndarray:
+    """The tempo at each frame time: a straight line between window centres,
+    or with LOCAL_STEP_JUMPS a step half-way where the change is larger than
+    LOCAL_STEP_RATIO."""
+    tempi = np.asarray(tempi, dtype=float)
+    curve = np.interp(x, centres, tempi)
+    if not LOCAL_STEP_JUMPS:
+        return curve
+    for i in range(len(tempi) - 1):
+        if abs(np.log2(tempi[i + 1] / tempi[i])) > np.log2(LOCAL_STEP_RATIO):
+            inside = (x >= centres[i]) & (x < centres[i + 1])
+            mid = 0.5 * (centres[i] + centres[i + 1])
+            curve[inside] = np.where(x[inside] < mid, tempi[i], tempi[i + 1])
+    return curve
 
 
 def _tempo_path(cands: list[list[tuple[float, float]]]) -> list[float]:
@@ -3588,7 +3641,7 @@ def _local_tempo_track(analysis: Analysis) -> Analysis | None:
     if not good:
         return None
     cands = [c if c else good[0] for c in cands]
-    curve = np.interp(np.arange(env.size) / fps, starts + LOCAL_WINDOW_S / 2, _tempo_path(cands))
+    curve = _tempo_curve(np.arange(env.size) / fps, starts + LOCAL_WINDOW_S / 2, _octave_up(_tempo_path(cands)))
     _, beats = librosa.beat.beat_track(onset_envelope=env, sr=analysis.sample_rate,
                                        hop_length=analysis.hop_length, bpm=curve,
                                        tightness=LOCAL_TIGHTNESS, units="time")

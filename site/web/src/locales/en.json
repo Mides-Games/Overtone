@@ -2031,9 +2031,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "Timers"
-    },
     "title": "What people did with this timing",
     "failed": "That did not work. Try again in a moment.",
     "cancel": "Cancel",
@@ -2138,23 +2135,6 @@
       "usedNote": "Timings people said they used in a map, the most used first.",
       "ratedEmpty": "No timing has enough ratings to be ranked yet.",
       "usedEmpty": "Nobody has said they used one yet."
-    },
-    "timers": {
-      "title": "Timers",
-      "subtitle": "The people whose published timings others used in their maps, or rated best. Small and honest: there is a minimum to enter.",
-      "link": "Ranking of timers",
-      "by": {
-        "uses": "By uses",
-        "stars": "By stars"
-      },
-      "minUses_one": "A timer enters with {{count}} use of their timings by other people.",
-      "minUses_other": "A timer enters with {{count}} uses of their timings by other people.",
-      "minStars_one": "A timer enters with {{count}} rating received.",
-      "minStars_other": "A timer enters with {{count}} ratings received.",
-      "published_one": "{{count}} published",
-      "published_other": "{{count}} published",
-      "empty": "Nobody has reached the minimum yet.",
-      "howOrdered": "Stars are ordered by an average that counts three more ratings of 3, so a few perfect ratings do not beat many good ones. Private profiles are left out."
     },
     "profile": {
       "title": "Timer",
@@ -2928,5 +2908,46 @@
     "whenFinished_other": "You can send another when one of your {{count}} songs in the queue finishes.",
     "seeQueue": "See the queue",
     "signIn": "Sign in for a larger daily limit"
+  },
+  "crew": {
+    "nav": "Staff",
+    "testersNav": "Testers",
+    "eyebrow": "The team",
+    "staffTitle": "Staff",
+    "staffLede": "Who looks after Overtone: Mides Projects' staff and Overtone's own team.",
+    "testersTitle": "Testers",
+    "testersLede": "The people who test, translate and help build Overtone.",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Ranks given by Mides Projects. They are shown here and only changed on Mides.",
+    "overtoneGroup": "Overtone team",
+    "noStaff": "Nobody here yet.",
+    "noTesters": "No testers yet.",
+    "failed": "The team could not be read. Try again in a moment.",
+    "midesTitle": "A Mides Projects rank",
+    "related": "Overtone related",
+    "relatedTitle": "Also holds an Overtone rank",
+    "mides": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "moderator": "Moderator"
+    },
+    "overtone": {
+      "developer": "Developer",
+      "tester": "Tester",
+      "translator": "Translator",
+      "contributor": "Contributor"
+    },
+    "form": {
+      "title": "Overtone ranks",
+      "note": "Give an Overtone rank to an account that has signed in here, or take it. Mides Projects ranks are given on Mides, not here.",
+      "username": "Username",
+      "rank": "Rank",
+      "none": "No rank (take it)",
+      "save": "Save",
+      "given": "@{{name}} is now {{rank}}.",
+      "taken": "@{{name}} has no Overtone rank now.",
+      "noAccount": "No Overtone account has that username. They must sign in here once first."
+    },
+    "teamNav": "Team"
   }
 }

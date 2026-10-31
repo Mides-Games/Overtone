@@ -19,7 +19,7 @@ export const COLUMNS =
   'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, ' +
   'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private, ' +
   'profile_about, profile_name, profile_links, profile_accent, profile_showcase, discord_username, ' +
-  'osu_country, osu_global_rank, osu_country_rank, osu_pp, osu_accuracy, osu_play_count, osu_refreshed_at';
+  'osu_country, osu_global_rank, osu_country_rank, osu_pp, osu_accuracy, osu_play_count, osu_refreshed_at, mides_rank';
 
 /** The osu! card's columns, empty: what unlinking leaves (services/links.service.js). */
 export const OSU_EMPTY = {
@@ -69,6 +69,7 @@ export const upsertFromMides = async (user) => {
       // The name comes with the id or not at all: kept from before only when Mides sent no id.
       discord_username: user.discordId ? user.discordUsername ?? null : existing?.discord_username ?? null,
       mides_role: user.role,
+      mides_rank: user.midesRank ?? null,
       cached_at: now,
     };
     memory.accounts.set(row.id, row);
@@ -82,8 +83,8 @@ export const upsertFromMides = async (user) => {
     );
   }
   const { rows } = await query(
-    `INSERT INTO accounts (mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, discord_username)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO accounts (mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, discord_username, mides_rank)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (mides_user_id) DO UPDATE
              SET username = EXCLUDED.username,
                  display_name = EXCLUDED.display_name,
@@ -93,10 +94,11 @@ export const upsertFromMides = async (user) => {
                  discord_username = CASE WHEN EXCLUDED.discord_id IS NOT NULL THEN EXCLUDED.discord_username
                                          ELSE accounts.discord_username END,
                  mides_role = EXCLUDED.mides_role,
+                 mides_rank = EXCLUDED.mides_rank,
                  cached_at = now()
        RETURNING ${COLUMNS}`,
     [user.midesUserId, user.username, user.displayName, user.avatarUrl, user.bannerUrl, user.discordId, user.role,
-      user.discordId ? user.discordUsername ?? null : null],
+      user.discordId ? user.discordUsername ?? null : null, user.midesRank ?? null],
   );
   return rows[0];
 };

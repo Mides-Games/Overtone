@@ -38,13 +38,6 @@ export default function Recent() {
       <PageHeader
         title={t('timings.recent.title')}
         lede={t('timings.recent.subtitle')}
-        action={
-          <Link to="/timers" className="btn-quiet -mr-2.5">
-            <Icon name="trophy" size={16} />
-            {t('social.timers.link')}
-            <Icon name="arrow-right" size={16} />
-          </Link>
-        }
       />
 
       <div className="space-y-6">

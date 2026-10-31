@@ -10,9 +10,6 @@ import {
   PRIOR_RATINGS,
   PRIOR_STARS,
   rankScore,
-  TIMERS_LIMIT,
-  TIMER_MIN_RATINGS,
-  TIMER_MIN_USES,
 } from '../utils/social.js';
 import { encodeOffset, matches } from '../utils/timings.js';
 import { memoryAccounts } from './account.service.js';
@@ -21,8 +18,7 @@ import { memorySuggestions, registerMemoryKind } from './community.service.js';
 
 /**
  * Social v2 on published timings (W5.6, W6, W13.15, W13.18): stars, "I used
- * this", comments, collections, and the numbers a profile and the ranking of
- * timers are made of.
+ * this", comments, collections, and the numbers a profile is made of.
  *
  * A "timing" here is a published analysis, named by its public id as
  * /t/<id> names it. The tables are schema.sql's social tables, each pointed
@@ -285,31 +281,6 @@ const memoryStore = {
     return { timed: songs.size, published, uses, ratingSum, ratingCount, acceptedSuggestion };
   },
 
-  async timers({ by }) {
-    const per = new Map();
-    for (const a of memoryAnalyses()) {
-      if (!a.accountId || !publishedRow(a)) continue;
-      const t = per.get(a.accountId) ?? { published: 0, uses: 0, ratingSum: 0, ratingCount: 0 };
-      const s = memoryStats(a.publicId);
-      t.published += 1;
-      t.uses += s.uses;
-      t.ratingSum += s.ratingSum;
-      t.ratingCount += s.ratingCount;
-      per.set(a.accountId, t);
-    }
-    return [...per.entries()]
-      .map(([accountId, t]) => ({ account: memoryAccount(accountId), ...t }))
-      .filter(({ account, uses, ratingCount }) =>
-        account && !account.profile_private && (by === 'stars' ? ratingCount >= TIMER_MIN_RATINGS : uses >= TIMER_MIN_USES),
-      )
-      .sort((x, y) =>
-        (by === 'stars'
-          ? rankScore(y.ratingSum, y.ratingCount) - rankScore(x.ratingSum, x.ratingCount) || y.ratingCount - x.ratingCount
-          : y.uses - x.uses || y.published - x.published) || x.account.username.localeCompare(y.account.username),
-      )
-      .slice(0, TIMERS_LIMIT)
-      .map(({ account, ...t }) => ({ user: person(account), ...t }));
-  },
 };
 
 // ── PostgreSQL ──────────────────────────────────────────────────────────────
@@ -633,28 +604,6 @@ const pgStore = {
     };
   },
 
-  async timers({ by }) {
-    const stars = by === 'stars';
-    const { rows } = await query(
-      `WITH pub AS (SELECT a.id, a.account_id FROM analyses a WHERE a.account_id IS NOT NULL AND ${PUBLISHED}),
-            per AS (SELECT pub.account_id, count(*)::int AS published,
-                           coalesce(sum((SELECT count(*) FROM timing_uses t WHERE t.analysis_id = pub.id)), 0)::int AS uses,
-                           coalesce(sum((SELECT count(*) FROM timing_ratings t WHERE t.analysis_id = pub.id)), 0)::int AS rn,
-                           coalesce(sum((SELECT sum(t.stars) FROM timing_ratings t WHERE t.analysis_id = pub.id)), 0)::int AS rs
-                      FROM pub GROUP BY pub.account_id)
-       SELECT per.*, acc.username, acc.display_name, acc.avatar_url
-         FROM per JOIN accounts acc ON acc.id = per.account_id AND NOT acc.profile_private
-        WHERE ${stars ? 'per.rn' : 'per.uses'} >= $1
-        ORDER BY ${stars ? '($3::float8 + per.rs) / ($4::int + per.rn) DESC, per.rn DESC' : 'per.uses DESC, per.published DESC'},
-                 acc.username
-        LIMIT $2`,
-      // Every parameter is used by the text it is sent with: PostgreSQL cannot type one that is not.
-      stars
-        ? [TIMER_MIN_RATINGS, TIMERS_LIMIT, PRIOR_RATINGS * PRIOR_STARS, PRIOR_RATINGS]
-        : [TIMER_MIN_USES, TIMERS_LIMIT],
-    );
-    return rows.map((r) => ({ user: person(r), published: r.published, uses: r.uses, ratingSum: r.rs, ratingCount: r.rn }));
-  },
 };
 
 export const social = () => (hasDatabase() ? pgStore : memoryStore);

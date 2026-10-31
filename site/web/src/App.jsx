@@ -44,8 +44,9 @@ const Stats = lazy(() => import('./pages/Stats.jsx'))
 const Status = lazy(() => import('./pages/Status.jsx'))
 // W13.12: the microphone tool; its worklet and the spectral worker load with it.
 const TapMic = lazy(() => import('./pages/TapMic.jsx'))
-const Timers = lazy(() => import('./pages/Timers.jsx'))
 const TimingPage = lazy(() => import('./pages/TimingPage.jsx'))
+const Team = lazy(() => import('./pages/Team.jsx'))
+const Testers = lazy(() => import('./pages/Team.jsx').then((m) => ({ default: m.Testers })))
 const Tokens = lazy(() => import('./pages/Tokens.jsx'))
 const UserProfile = lazy(() => import('./pages/UserProfile.jsx'))
 const legal = () => import('./pages/Legal.jsx')
@@ -80,8 +81,7 @@ export default function App() {
         <Route path="compare" element={page(Compare)} />
         {/* A published timing's own page (W3.27); deploy/web/serve.mjs writes its link preview. */}
         <Route path="t/:id" element={page(TimingPage)} />
-        {/* W6 and W13.18: the ranking of timers, a timer's public profile, a collection. */}
-        <Route path="timers" element={page(Timers)} />
+        {/* W13.18: a timer's public profile, a collection. */}
         <Route path="u/:username" element={page(UserProfile)} />
         <Route path="c/:id" element={page(CollectionPage)} />
         <Route path="login" element={page(Login)} />
@@ -99,6 +99,8 @@ export default function App() {
         <Route path="notifications" element={page(Notifications)} />
         <Route path="staff" element={page(Staff)} />
         <Route path="stats" element={page(Stats)} />
+        <Route path="team" element={page(Team)} />
+        <Route path="testers" element={page(Testers)} />
         <Route path="how-it-works" element={page(HowItWorks)} />
         <Route path="faq" element={page(Faq)} />
         <Route path="glossary" element={page(Glossary)} />

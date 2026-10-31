@@ -903,6 +903,20 @@ body {
   animation: pop-in var(--dur-fast) var(--ease-out-strong) both;
 }
 
+/* The ticker above the bar (components/TickerBar.jsx) runs leftwards for
+   ever: its lines are drawn twice, so moving one copy's width loops without
+   a seam. A pointer over it pauses it; reduced motion stops it (below). */
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker 60s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
 /* The phone's menu sheet slides down from under the bar. */
 @keyframes sheet-in {
   from { opacity: 0; transform: translateY(-8px); }
@@ -955,7 +969,7 @@ body {
     transition-duration: 0.001ms !important;
     transition-delay: 0s !important;
   }
-  :root:not(.motion-allow) :is(.playhead, .beat-bar, .skeleton) {
+  :root:not(.motion-allow) :is(.playhead, .beat-bar, .skeleton, .ticker-track) {
     animation: none !important;
   }
 }
@@ -967,7 +981,7 @@ body {
   transition-duration: 0.001ms !important;
   transition-delay: 0s !important;
 }
-.motion-reduce :is(.playhead, .beat-bar, .skeleton) {
+.motion-reduce :is(.playhead, .beat-bar, .skeleton, .ticker-track) {
   animation: none !important;
 }
 

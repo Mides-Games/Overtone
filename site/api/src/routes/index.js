@@ -11,6 +11,7 @@ import staff from './staff.routes.js';
 import votes from './votes.routes.js';
 import social from './social.routes.js';
 import stats from './stats.routes.js';
+import team from './team.routes.js';
 import timings from './timings.routes.js';
 import tokens from './tokens.routes.js';
 import versions from './versions.routes.js';
@@ -32,5 +33,6 @@ router.use(votes);
 router.use(notifications);
 router.use(staff);
 router.use(stats);
+router.use(team);
 
 export default router;

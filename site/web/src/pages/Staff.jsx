@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import usePageMeta from '../hooks/usePageMeta.js'
 import { formatAt } from '../lib/social.js'
 import { corrections, reviewCorrection, staffOverview } from '../lib/votes.js'
+import { OVERTONE_RANKS, setRank } from '../lib/team.js'
 import NotFound from './NotFound.jsx'
 
 /**
@@ -86,6 +87,7 @@ export default function Staff() {
             <Failures failures={data.failures} />
           </div>
           <Corrections onChanged={refresh} tick={tick} />
+          <Ranks />
           <div className="grid gap-x-12 gap-y-14 lg:grid-cols-2">
             <Reports reports={data.reports} />
             <Log log={data.log} />
@@ -393,6 +395,53 @@ function Log({ log }) {
           ))}
         </ul>
       )}
+    </Section>
+  )
+}
+
+/**
+ * Overtone's ranks (2026-10-31): give one to an account that has signed in
+ * here, or take it. Mides Projects' ranks are not here: Mides gives them.
+ */
+function Ranks() {
+  const { t } = useTranslation()
+  const [username, setUsername] = useState('')
+  const [rank, setRankValue] = useState('tester')
+  const [state, setState] = useState(null)
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!username.trim()) return
+    setState({ busy: true })
+    try {
+      const member = await setRank(username.trim(), rank)
+      setState({ ok: member.overtoneRank ? t('crew.form.given', { name: member.username, rank: t(`crew.overtone.${member.overtoneRank}`) }) : t('crew.form.taken', { name: member.username }) })
+    } catch (failure) {
+      setState({ error: failure.status === 404 ? t('crew.form.noAccount') : t('crew.failed') })
+    }
+  }
+
+  return (
+    <Section id="staff-ranks" title={t('crew.form.title')} action={<Link to="/team" className="btn-quiet btn-sm">{t('crew.nav')}<Icon name="arrow-right" size={15} /></Link>}>
+      <p className="max-w-[60ch] text-label text-muted">{t('crew.form.note')}</p>
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
+        <label className="space-y-1.5">
+          <span className="label block">{t('crew.form.username')}</span>
+          <input className="field" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@username" autoComplete="off" />
+        </label>
+        <label className="space-y-1.5">
+          <span className="label block">{t('crew.form.rank')}</span>
+          <select className="field" value={rank} onChange={(e) => setRankValue(e.target.value)}>
+            {OVERTONE_RANKS.map((r) => (
+              <option key={r} value={r}>{t(`crew.overtone.${r}`)}</option>
+            ))}
+            <option value="">{t('crew.form.none')}</option>
+          </select>
+        </label>
+        <button type="submit" className="btn-primary" disabled={state?.busy}>{t('crew.form.save')}</button>
+      </form>
+      {state?.ok && <p role="status" className="text-caption text-accent">{state.ok}</p>}
+      {state?.error && <p role="alert" className="text-caption text-red">{state.error}</p>}
     </Section>
   )
 }

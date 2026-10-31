@@ -6,6 +6,7 @@ import { isStaff } from '../services/account.service.js';
 import { analyses, failureCode } from '../services/analysis.service.js';
 import { community, LOG_LIMIT, STAFF_LOG_KINDS } from '../services/community.service.js';
 import { social } from '../services/social.service.js';
+import { setOvertoneRank, teamView } from '../services/team.service.js';
 import { votes } from '../services/vote.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { queueEntry } from '../utils/queue.js';
@@ -154,3 +155,19 @@ router.post('/staff/corrections/:id', writeLimit, requireSameOrigin, async (req,
 });
 
 export default router;
+
+/**
+ * Overtone's ranks (2026-10-31): `{ username, rank }` gives one of
+ * services/team.service.js's OVERTONE_RANKS, `rank: null` takes it. Mides
+ * ranks are not given here: Mides gives them.
+ */
+router.get('/staff/ranks', async (_req, res) => {
+  res.json(await teamView());
+});
+
+router.post('/staff/ranks', writeLimit, requireSameOrigin, async (req, res) => {
+  const rank = req.body?.rank ?? null;
+  const member = await setOvertoneRank(req.body?.username, rank, req.account.id);
+  console.log(`[staff] ${req.account.username} set the Overtone rank of ${member.username} to ${rank ?? 'none'}`);
+  res.json(member);
+});

@@ -2031,9 +2031,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "Timer"
-    },
     "title": "Cosa hanno fatto le persone con questo timing",
     "failed": "Non ha funzionato. Riprova tra un momento.",
     "cancel": "Annulla",
@@ -2138,23 +2135,6 @@
       "usedNote": "I timing che le persone hanno detto di aver usato in una mappa, prima i più usati.",
       "ratedEmpty": "Nessun timing ha ancora abbastanza valutazioni per entrare in classifica.",
       "usedEmpty": "Nessuno ha ancora detto di averne usato uno."
-    },
-    "timers": {
-      "title": "Timer",
-      "subtitle": "Le persone i cui timing pubblicati altri hanno usato nelle loro mappe, o hanno valutato meglio. Piccola e onesta: c'è un minimo per entrare.",
-      "link": "Classifica dei timer",
-      "by": {
-        "uses": "Per usi",
-        "stars": "Per stelle"
-      },
-      "minUses_one": "Un timer entra con {{count}} uso dei suoi timing da parte di altre persone.",
-      "minUses_other": "Un timer entra con {{count}} usi dei suoi timing da parte di altre persone.",
-      "minStars_one": "Un timer entra con {{count}} valutazione ricevuta.",
-      "minStars_other": "Un timer entra con {{count}} valutazioni ricevute.",
-      "published_one": "{{count}} pubblicato",
-      "published_other": "{{count}} pubblicati",
-      "empty": "Nessuno ha ancora raggiunto il minimo.",
-      "howOrdered": "Le stelle sono ordinate con una media che conta tre valutazioni da 3 in più, così poche valutazioni perfette non battono molte buone. I profili privati sono esclusi."
     },
     "profile": {
       "title": "Timer",
@@ -2929,5 +2909,46 @@
     "whenFinished_other": "Potrai inviarne un'altra quando una delle tue {{count}} canzoni in coda sarà finita.",
     "seeQueue": "Vedi la coda",
     "signIn": "Accedi per un limite giornaliero più alto"
+  },
+  "crew": {
+    "nav": "Staff",
+    "testersNav": "Tester",
+    "eyebrow": "Il team",
+    "staffTitle": "Staff",
+    "staffLede": "Chi si occupa di Overtone: lo staff di Mides Projects e il team di Overtone.",
+    "testersTitle": "Tester",
+    "testersLede": "Le persone che testano, traducono e aiutano a costruire Overtone.",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Ranghi dati da Mides Projects. Sono mostrati qui e si cambiano solo su Mides.",
+    "overtoneGroup": "Team di Overtone",
+    "noStaff": "Ancora nessuno.",
+    "noTesters": "Ancora nessun tester.",
+    "failed": "Non è stato possibile leggere il team. Riprova tra un momento.",
+    "midesTitle": "Un rango di Mides Projects",
+    "related": "Legato a Overtone",
+    "relatedTitle": "Ha anche un rango di Overtone",
+    "mides": {
+      "owner": "Proprietario",
+      "admin": "Admin",
+      "moderator": "Moderatore"
+    },
+    "overtone": {
+      "developer": "Sviluppatore",
+      "tester": "Tester",
+      "translator": "Traduttore",
+      "contributor": "Collaboratore"
+    },
+    "form": {
+      "title": "Ranghi di Overtone",
+      "note": "Dai un rango di Overtone a un account che ha già effettuato l'accesso qui, o toglilo. I ranghi di Mides Projects si danno su Mides, non qui.",
+      "username": "Nome utente",
+      "rank": "Rango",
+      "none": "Nessun rango (togli)",
+      "save": "Salva",
+      "given": "@{{name}} ora è {{rank}}.",
+      "taken": "@{{name}} non ha più un rango di Overtone.",
+      "noAccount": "Nessun account Overtone ha quel nome. Deve prima accedere qui una volta."
+    },
+    "teamNav": "Team"
   }
 }

@@ -50,6 +50,7 @@ test('the code exchange sends this app and its secret', async () => {
     bannerUrl: null,
     discordId: null,
     discordUsername: null,
+    midesRank: 'moderator',
     role: 'moderator',
   });
 });

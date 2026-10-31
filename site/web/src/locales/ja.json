@@ -1987,9 +1987,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "タイマー"
-    },
     "title": "このタイミングの使われ方",
     "failed": "うまくいきませんでした。少ししてからもう一度お試しください。",
     "cancel": "キャンセル",
@@ -2087,20 +2084,6 @@
       "usedNote": "譜面で使ったと伝えられたタイミングを、使用数の多い順に。",
       "ratedEmpty": "順位を付けられるだけの評価があるタイミングはまだありません。",
       "usedEmpty": "まだ誰も使ったと伝えていません。"
-    },
-    "timers": {
-      "title": "タイマー",
-      "subtitle": "公開したタイミングがほかの人の譜面で使われた人、または高く評価された人。小さく正直なランキングで、入るには最低条件があります。",
-      "link": "タイマーのランキング",
-      "by": {
-        "uses": "使用数順",
-        "stars": "星の順"
-      },
-      "minUses_other": "自分のタイミングがほかの人に {{count}} 回使われると、タイマーとして入ります。",
-      "minStars_other": "評価を {{count}} 件受けると、タイマーとして入ります。",
-      "published_other": "{{count}} 件公開",
-      "empty": "まだ誰も最低条件に達していません。",
-      "howOrdered": "星は、評価3を3件追加した平均で並べるため、少数の満点が多数の高評価を上回ることはありません。非公開のプロフィールは除外されます。"
     },
     "profile": {
       "title": "タイマー",
@@ -2862,5 +2845,46 @@
     "whenFinished_other": "キューにある {{count}} 曲のうち 1 曲が終わると、もう 1 曲送信できます。",
     "seeQueue": "キューを見る",
     "signIn": "ログインすると 1 日の上限が増えます"
+  },
+  "crew": {
+    "nav": "スタッフ",
+    "testersNav": "テスター",
+    "eyebrow": "チーム",
+    "staffTitle": "スタッフ",
+    "staffLede": "Overtone を支える人たち：Mides Projects のスタッフと Overtone のチーム。",
+    "testersTitle": "テスター",
+    "testersLede": "Overtone をテストし、翻訳し、一緒に作る人たち。",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Mides Projects が付与するランクです。ここでは表示のみで、変更は Mides でのみ行えます。",
+    "overtoneGroup": "Overtone チーム",
+    "noStaff": "まだ誰もいません。",
+    "noTesters": "まだテスターはいません。",
+    "failed": "チームを読み込めませんでした。少し待ってからもう一度お試しください。",
+    "midesTitle": "Mides Projects のランク",
+    "related": "Overtone 関係者",
+    "relatedTitle": "Overtone のランクも持っています",
+    "mides": {
+      "owner": "オーナー",
+      "admin": "管理者",
+      "moderator": "モデレーター"
+    },
+    "overtone": {
+      "developer": "開発者",
+      "tester": "テスター",
+      "translator": "翻訳者",
+      "contributor": "協力者"
+    },
+    "form": {
+      "title": "Overtone のランク",
+      "note": "ここにサインインしたことのあるアカウントに Overtone のランクを付与、または外します。Mides Projects のランクはここではなく Mides で付与されます。",
+      "username": "ユーザー名",
+      "rank": "ランク",
+      "none": "ランクなし（外す）",
+      "save": "保存",
+      "given": "@{{name}} は {{rank}} になりました。",
+      "taken": "@{{name}} の Overtone ランクを外しました。",
+      "noAccount": "そのユーザー名の Overtone アカウントはありません。先に一度ここでサインインする必要があります。"
+    },
+    "teamNav": "チーム"
   }
 }

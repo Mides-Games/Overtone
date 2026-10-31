@@ -1554,9 +1554,9 @@ Collections tabs).
   `badgesOf` and waits for W9.2. A private profile (`PUT /me/profile`) is a 404 for
   everyone but its owner and leaves `/timers`; its timings stay published with the name
   on them, and the timing page then stops linking the name.
-- **Timers (W6).** `/timers` ranks by uses by others (3 to enter) or by stars received
-  (5 ratings, the same Bayesian order), 50 at most, private profiles out. Both minimums
-  are on the page.
+- **Timers (W6), removed 2026-10-31.** `/timers` ranked timers by uses by others or by
+  stars received. The owner dropped it: it read badly in the bar and few people cleared
+  its minimums. The page, its route and `GET /timers` are gone; profiles stay.
 - **Pages and SEO.** `/timers` is in the sitemap; `/u/<username>` and `/c/<id>` sit
   beside `/t/<id>` in `test/seo.test.js` as pages with an id, which no static sitemap
   can list. Every new page calls `usePageMeta`. Strings are under `social` in EN and ES.

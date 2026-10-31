@@ -2031,9 +2031,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "Timer"
-    },
     "title": "Was andere mit diesem Timing gemacht haben",
     "failed": "Das hat nicht geklappt. Versuch es gleich noch einmal.",
     "cancel": "Abbrechen",
@@ -2138,23 +2135,6 @@
       "usedNote": "Timings, die laut ihren Nutzern in einer Map verwendet wurden, die meistverwendeten zuerst.",
       "ratedEmpty": "Noch kein Timing hat genug Bewertungen für eine Rangliste.",
       "usedEmpty": "Noch niemand hat angegeben, eines verwendet zu haben."
-    },
-    "timers": {
-      "title": "Timer",
-      "subtitle": "Die Leute, deren veröffentlichte Timings andere in ihren Maps verwendet oder am besten bewertet haben. Klein und ehrlich: Es gibt ein Minimum für den Einstieg.",
-      "link": "Rangliste der Timer",
-      "by": {
-        "uses": "Nach Nutzungen",
-        "stars": "Nach Sternen"
-      },
-      "minUses_one": "Ein Timer kommt mit {{count}} Nutzung seiner Timings durch andere in die Liste.",
-      "minUses_other": "Ein Timer kommt mit {{count}} Nutzungen seiner Timings durch andere in die Liste.",
-      "minStars_one": "Ein Timer kommt mit {{count}} erhaltenen Bewertung in die Liste.",
-      "minStars_other": "Ein Timer kommt mit {{count}} erhaltenen Bewertungen in die Liste.",
-      "published_one": "{{count}} veröffentlicht",
-      "published_other": "{{count}} veröffentlicht",
-      "empty": "Noch niemand hat das Minimum erreicht.",
-      "howOrdered": "Sterne werden nach einem Durchschnitt sortiert, der drei zusätzliche Bewertungen von 3 mitzählt, damit ein paar perfekte Bewertungen nicht viele gute schlagen. Private Profile werden ausgelassen."
     },
     "profile": {
       "title": "Timer",
@@ -2928,5 +2908,46 @@
     "whenFinished_other": "Du kannst einen weiteren senden, wenn einer deiner {{count}} Songs in der Warteschlange fertig ist.",
     "seeQueue": "Warteschlange ansehen",
     "signIn": "Melde dich an für ein höheres Tageslimit"
+  },
+  "crew": {
+    "nav": "Staff",
+    "testersNav": "Tester",
+    "eyebrow": "Das Team",
+    "staffTitle": "Staff",
+    "staffLede": "Wer sich um Overtone kümmert: das Staff von Mides Projects und Overtones eigenes Team.",
+    "testersTitle": "Tester",
+    "testersLede": "Die Leute, die Overtone testen, übersetzen und mitbauen.",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Ränge, die Mides Projects vergibt. Sie werden hier gezeigt und nur auf Mides geändert.",
+    "overtoneGroup": "Overtone-Team",
+    "noStaff": "Noch niemand.",
+    "noTesters": "Noch keine Tester.",
+    "failed": "Das Team konnte nicht gelesen werden. Versuch es gleich noch einmal.",
+    "midesTitle": "Ein Rang von Mides Projects",
+    "related": "Mit Overtone verbunden",
+    "relatedTitle": "Hat auch einen Overtone-Rang",
+    "mides": {
+      "owner": "Inhaber",
+      "admin": "Admin",
+      "moderator": "Moderator"
+    },
+    "overtone": {
+      "developer": "Entwickler",
+      "tester": "Tester",
+      "translator": "Übersetzer",
+      "contributor": "Mitwirkender"
+    },
+    "form": {
+      "title": "Overtone-Ränge",
+      "note": "Vergib einen Overtone-Rang an ein Konto, das sich hier schon angemeldet hat, oder nimm ihn weg. Ränge von Mides Projects werden auf Mides vergeben, nicht hier.",
+      "username": "Benutzername",
+      "rank": "Rang",
+      "none": "Kein Rang (entfernen)",
+      "save": "Speichern",
+      "given": "@{{name}} ist jetzt {{rank}}.",
+      "taken": "@{{name}} hat keinen Overtone-Rang mehr.",
+      "noAccount": "Kein Overtone-Konto hat diesen Namen. Die Person muss sich hier zuerst einmal anmelden."
+    },
+    "teamNav": "Team"
   }
 }

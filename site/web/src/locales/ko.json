@@ -1987,9 +1987,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "타이머"
-    },
     "title": "사람들이 이 타이밍으로 한 것",
     "failed": "실패했어요. 잠시 후 다시 시도하세요.",
     "cancel": "취소",
@@ -2087,20 +2084,6 @@
       "usedNote": "사람들이 맵에 사용했다고 한 타이밍, 가장 많이 사용된 순.",
       "ratedEmpty": "아직 순위에 들 만큼 평가를 받은 타이밍이 없어요.",
       "usedEmpty": "아직 사용했다고 한 사람이 없어요."
-    },
-    "timers": {
-      "title": "타이머",
-      "subtitle": "게시한 타이밍을 다른 사람들이 맵에 사용했거나, 가장 높게 평가받은 사람들. 작고 정직하게: 들어가려면 최소 기준이 있어요.",
-      "link": "타이머 순위",
-      "by": {
-        "uses": "사용 기준",
-        "stars": "별점 기준"
-      },
-      "minUses_other": "다른 사람들이 자신의 타이밍을 {{count}}회 사용하면 타이머 순위에 들어가요.",
-      "minStars_other": "평가를 {{count}}개 받으면 타이머 순위에 들어가요.",
-      "published_other": "{{count}}개 게시",
-      "empty": "아직 최소 기준에 도달한 사람이 없어요.",
-      "howOrdered": "별점은 3점 평가 세 개를 더한 평균으로 정렬돼서, 몇 개의 만점이 많은 좋은 평가를 이기지 못해요. 비공개 프로필은 제외돼요."
     },
     "profile": {
       "title": "타이머",
@@ -2862,5 +2845,46 @@
     "whenFinished_other": "대기열에 있는 내 곡 {{count}}개 중 하나가 끝나면 또 보낼 수 있어요.",
     "seeQueue": "대기열 보기",
     "signIn": "로그인하면 하루 한도가 늘어나요"
+  },
+  "crew": {
+    "nav": "스태프",
+    "testersNav": "테스터",
+    "eyebrow": "팀",
+    "staffTitle": "스태프",
+    "staffLede": "Overtone을 돌보는 사람들: Mides Projects 스태프와 Overtone 팀.",
+    "testersTitle": "테스터",
+    "testersLede": "Overtone을 테스트하고 번역하고 함께 만드는 사람들.",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Mides Projects가 부여하는 등급입니다. 여기서는 보여주기만 하며 Mides에서만 바꿀 수 있습니다.",
+    "overtoneGroup": "Overtone 팀",
+    "noStaff": "아직 아무도 없습니다.",
+    "noTesters": "아직 테스터가 없습니다.",
+    "failed": "팀을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+    "midesTitle": "Mides Projects 등급",
+    "related": "Overtone 관련",
+    "relatedTitle": "Overtone 등급도 가지고 있습니다",
+    "mides": {
+      "owner": "소유자",
+      "admin": "관리자",
+      "moderator": "모더레이터"
+    },
+    "overtone": {
+      "developer": "개발자",
+      "tester": "테스터",
+      "translator": "번역가",
+      "contributor": "기여자"
+    },
+    "form": {
+      "title": "Overtone 등급",
+      "note": "여기에 로그인한 적이 있는 계정에 Overtone 등급을 주거나 뺍니다. Mides Projects 등급은 여기가 아니라 Mides에서 부여됩니다.",
+      "username": "사용자 이름",
+      "rank": "등급",
+      "none": "등급 없음(빼기)",
+      "save": "저장",
+      "given": "@{{name}} 님은 이제 {{rank}}입니다.",
+      "taken": "@{{name}} 님의 Overtone 등급을 뺐습니다.",
+      "noAccount": "그 사용자 이름의 Overtone 계정이 없습니다. 먼저 여기에 한 번 로그인해야 합니다."
+    },
+    "teamNav": "팀"
   }
 }

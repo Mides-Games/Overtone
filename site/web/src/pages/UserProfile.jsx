@@ -60,9 +60,9 @@ export default function UserProfile() {
           title={`@${username}`}
           className="border-y border-line"
           action={
-            <Link to="/timers" className="btn-ghost">
-              <Icon name="trophy" size={16} />
-              {t('social.timers.link')}
+            <Link to="/recent" className="btn-ghost">
+              {t('timings.nav.recent')}
+              <Icon name="arrow-right" size={16} />
             </Link>
           }
         />

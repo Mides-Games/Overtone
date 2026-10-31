@@ -19,6 +19,8 @@ import { newPublicId } from '../services/community.service.js';
 import { midesSettingsUrl } from '../services/mides.service.js';
 import { ACTIVITY_PAGE, activity, profileExtras } from '../services/profile.service.js';
 import { social } from '../services/social.service.js';
+import { overtoneRankOf } from '../services/team.service.js';
+import { MIDES_RANKS } from '../services/mides.service.js';
 import { utcDay, VISIT_DAYS, visits } from '../services/visit.service.js';
 import { clientKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
@@ -34,9 +36,6 @@ import {
   MIN_RATINGS_TO_RANK,
   OFFSET_MAX,
   starsOf,
-  TIMER_MIN_RATINGS,
-  TIMER_MIN_USES,
-  TIMER_SORTS,
   USERNAME,
 } from '../utils/social.js';
 import { decodeOffset, encodeOffset, listFilters, recentEntry, songNames } from '../utils/timings.js';
@@ -69,7 +68,6 @@ import { listPage } from './timings.routes.js';
  *   POST   /users/:username/visit              the page counts a visit   (see "Profile visits" below)
  *   GET    /me/profile                         yours, private or not, with what you edit
  *   PUT    /me/profile                         { private?, about?, displayName?, links?, accent?, showcase? }
- *   GET    /timers                             ?by=uses|stars             the ranking of timers
  *
  * The rules, in one place:
  *
@@ -343,6 +341,12 @@ router.delete('/collections/:id/items/:timingId', collectionLimit, requireSameOr
  * never private (a private upload stays out even as a number); the rest
  * counts published timings only.
  */
+/** The profile's ranks (/team): Mides Projects' (Mides gives it) and Overtone's (staff give it here). */
+const ranksOf = async (account) => ({
+  midesRank: isStaff(account) ? (MIDES_RANKS.includes(account.mides_rank) ? account.mides_rank : 'moderator') : null,
+  overtoneRank: await overtoneRankOf(account.id),
+});
+
 const profileOf = async (account, req) => {
   const fields = profileFields(account);
   const [stats, collections, showcase, mostUsed] = await Promise.all([
@@ -364,6 +368,7 @@ const profileOf = async (account, req) => {
       about: fields.about,
       links: fields.links,
       accent: fields.accent,
+      ...(await ranksOf(account)),
     },
     totals: {
       timed: stats.timed,
@@ -540,24 +545,6 @@ router.put('/me/profile', profileLimit, requireSameOrigin, requireSession, async
   }
   const row = await setProfileFields(req.account.id, edit);
   res.json({ private: Boolean(row.profile_private), ...profileFields(row) });
-});
-
-// ── The ranking of timers (W6) ──────────────────────────────────────────────
-
-router.get('/timers', readLimit, async (req, res) => {
-  const by = TIMER_SORTS.includes(req.query.by) ? req.query.by : 'uses';
-  const rows = await social().timers({ by });
-  res.set('Cache-Control', 'no-store');
-  res.json({
-    by,
-    min: { uses: TIMER_MIN_USES, ratings: TIMER_MIN_RATINGS },
-    timers: rows.map((r) => ({
-      user: r.user,
-      published: r.published,
-      uses: r.uses,
-      rating: { average: averageOf(r.ratingSum, r.ratingCount), count: r.ratingCount },
-    })),
-  });
 });
 
 export default router;

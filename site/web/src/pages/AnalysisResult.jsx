@@ -733,6 +733,9 @@ export function Result({ id, analysis, verify = null, csvHref = null, playerRef 
           </p>
           <p className="readout text-caption text-dim">
             {t('result.engine', { hash: result.engine_hash, vote: result.beat_vote ? t('result.voteOn') : t('result.voteOff') })}
+            {/* Which release and model timed it, so an old reading can be told from a new one. */}
+            {result.app_version ? ` · Overtone ${result.app_version}` : ''}
+            {result.model ? ` · ${result.model.name}@${result.model.sha1}` : ''}
             {analysis.cached ? ` · ${t('result.cached')}` : ''}
           </p>
         </div>

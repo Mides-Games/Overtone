@@ -25,6 +25,25 @@ import numpy as np  # noqa: E402
 import timing_result as tr  # noqa: E402
 
 
+class ModelRecordTests(unittest.TestCase):
+    """A result says which release and which Beat This! model timed it, so
+    readings from an old model can be told from a new one (2026-10-31)."""
+
+    def test_the_model_is_named_only_when_the_vote_ran(self):
+        info = tr.model_info()
+        if info is None:
+            self.skipTest("the Beat This! model is not in assets/models")
+        self.assertEqual(info["name"], tr.ta.BEAT_THIS_MODEL)
+        self.assertRegex(info["sha1"], r"^[0-9a-f]{12}$")
+        self.assertEqual(tr.result_model(True), info)
+        self.assertIsNone(tr.result_model(False))
+
+    def test_a_refused_result_names_the_release(self):
+        result = tr.refused_result("no pulse", vote=False, hash_="test")
+        self.assertEqual(result["app_version"], tr.ta.APP_VERSION)
+        self.assertIsNone(result["model"])
+
+
 class ResultOnAudioTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

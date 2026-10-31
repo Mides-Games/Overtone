@@ -295,7 +295,7 @@ export function summaryText({ filename, result, lines, adjustment = { factor: 1,
   })
   out.push('', checks.length ? 'Check here' : 'Check here: nothing flagged')
   for (const item of checks) out.push(`${formatClock(item.startMs)} - ${formatClock(item.endMs)}  ${item.reasons.join(', ')}`)
-  out.push('', `Engine v3 ${result.engine_hash ?? ''} · Beat This! vote ${result.beat_vote ? 'on' : 'off'}`, 'Check these red lines by ear before you rank.')
+  out.push('', `Overtone ${result.app_version ?? '?'} · Engine v3 ${result.engine_hash ?? ''} · Beat This! vote ${result.beat_vote ? 'on' : 'off'}${result.model ? ` (${result.model.name}@${result.model.sha1})` : ''}`, 'Check these red lines by ear before you rank.')
   return `${out.join('\r\n')}\r\n`
 }
 

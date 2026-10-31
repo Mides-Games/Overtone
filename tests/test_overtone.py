@@ -7753,6 +7753,22 @@ class PhraseLinesTests(unittest.TestCase):
         self.assertEqual(len(out.points), 2)
         self.assertAlmostEqual(out.points[1].offset_ms, 16000.0, delta=1.0)
 
+    def test_a_line_a_few_bpm_off_is_read_at_the_song_tempo(self):
+        import overtone
+        step = 60000.0 / 220
+        points = [TimingPoint(0.0, 217.0, 1.0, 0), TimingPoint(64 * step, 222.0, 1.0, 0)]
+        out = overtone._phrase_lines(self._analysis(points, [(0.0, 39900.0, 220.0)]))
+        self.assertEqual([round(p.bpm, 2) for p in out.points], [220.0])
+
+    def test_a_section_at_half_or_double_is_read_at_the_song_octave(self):
+        import overtone
+        step = 60000.0 / 180
+        for wrong in (90.0, 360.0):
+            points = [TimingPoint(0.0, 180.0, 1.0, 0), TimingPoint(48 * step, wrong, 1.0, 0),
+                      TimingPoint(96 * step, 180.0, 1.0, 0)]
+            out = overtone._phrase_lines(self._analysis(points, [(0.0, 39900.0, 180.0)]))
+            self.assertEqual([round(p.bpm, 2) for p in out.points], [180.0], wrong)
+
     def test_off_leaves_the_lines_alone(self):
         import overtone
         points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(16500.0, 140.0, 1.0, 0)]

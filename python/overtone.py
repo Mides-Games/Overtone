@@ -4830,25 +4830,59 @@ def _span_fit(lines, start: float, stop: float, times, weights) -> float:
 def _fit_line(times: np.ndarray, weights: np.ndarray, start: float, stop: float,
               bpm: float) -> tuple[float, float]:
     """One line (offset ms, bpm) over the span, refitted on the attacks near
-    its grid by weighted least squares, starting from ``bpm``."""
+    its grid by weighted least squares, starting from ``bpm``. The fit grows
+    from 16 beats to the whole span, so a start a few BPM off (217 for 220)
+    cannot slip a beat before it is corrected."""
     inside = (times >= start / 1000.0) & (times < stop / 1000.0)
     t, w = times[inside] * 1000.0, weights[inside]
-    offset, step = float(start), 60000.0 / bpm
+    step = 60000.0 / bpm
     if t.size < 6:
-        return offset, bpm
-    anchor = t[np.argmax(w[: max(1, min(t.size, 8))])]
-    offset = anchor
-    for _ in range(4):
-        k = np.round((t - offset) / step)
-        near = np.abs(t - offset - k * step) <= 0.2 * step
-        if near.sum() < 6 or np.ptp(k[near]) < 4:
+        return float(start), bpm
+    offset = float(t[np.argmax(w[: max(1, min(t.size, 8))])])
+    for reach in (16, 32, 64, 128, 256, 1 << 30):
+        for _ in range(3):
+            k = np.round((t - offset) / step)
+            near = (np.abs(t - offset - k * step) <= 0.2 * step) & (np.abs(k) <= reach)
+            if near.sum() < 6 or np.ptp(k[near]) < 4:
+                break
+            slope, icpt = np.polyfit(k[near], t[near], 1, w=np.sqrt(w[near]))
+            if not (0.95 * step < slope < 1.05 * step):
+                break
+            offset, step = float(icpt), float(slope)
+        if reach * step > (stop - start) * 2:
             break
-        slope, icpt = np.polyfit(k[near], t[near], 1, w=np.sqrt(w[near]))
-        if not (0.95 * step < slope < 1.05 * step):
-            break
-        offset, step = float(icpt), float(slope)
     first = offset + np.ceil((start - offset) / step) * step
     return float(first), 60000.0 / step
+
+
+#: A line within PHRASE_OCTAVE_TOL of twice or half the song's tempo is read
+#: at the song's octave before merging (the owner's report, 2026-10-31:
+#: sections at half or double BPM inside a band song).
+PHRASE_OCTAVE_TOL = 0.04
+
+
+def _phrase_octaves(lines, times, weights, end_ms):
+    """Lines folded to the song's octave (the duration-weighted median BPM)."""
+    spans = np.diff([o for o, _ in lines] + [end_ms])
+    song = _weighted_median(np.array([b for _, b in lines]), np.maximum(spans, 1e-6))
+    out = []
+    for n, (offset, bpm) in enumerate(lines):
+        r = bpm / song
+        stop = lines[n + 1][0] if n + 1 < len(lines) else end_ms
+        if abs(r - 2.0) <= 2.0 * PHRASE_OCTAVE_TOL:
+            step = 60000.0 / bpm
+            inside = (times >= offset / 1000.0) & (times < stop / 1000.0)
+
+            def weight(o):
+                ph = np.mod((times[inside] * 1000.0 - o) / (2 * step), 1.0)
+                return float(weights[inside][(ph < 0.06) | (ph > 0.94)].sum())
+
+            out.append((max((offset, offset + step), key=weight), bpm / 2.0))
+        elif abs(r - 0.5) <= 0.5 * PHRASE_OCTAVE_TOL:
+            out.append((offset, bpm * 2.0))
+        else:
+            out.append((offset, bpm))
+    return out
 
 
 def _phrase_lines(analysis: Analysis) -> Analysis:
@@ -4865,7 +4899,7 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
     end_ms = duration * 1000.0
     original = [(float(p.offset_ms), float(p.bpm)) for p in points]
     meter = max(1, int(getattr(points[0], "meter", 4) or 4))
-    lines = list(original)
+    lines = _phrase_octaves(list(original), times, weights, end_ms)
 
     def stop_of(ls, n):
         return ls[n + 1][0] if n + 1 < len(ls) else end_ms
@@ -4885,6 +4919,17 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         n = min((m for m, c in enumerate(costs) if c), key=lambda m: costs[m][0])
         lines = lines[:n] + [costs[n][1]] + lines[n + 2:]
         costs = costs[:max(0, n - 1)] + [pair(lines, m) for m in range(max(0, n - 1), min(n + 1, len(lines) - 1))] + costs[n + 2:]
+
+    # 1b. every line refitted on its attacks, then whole where they agree
+    refit = []
+    for n, (off, bpm) in enumerate(lines):
+        stop = stop_of(lines, n)
+        new = _fit_line(times, weights, off, stop, bpm)
+        keep = (abs(new[1] - bpm) <= 0.02
+                or _span_fit([new], off, stop, times, weights) < _span_fit([(off, bpm)], off, stop, times, weights))
+        refit.append((off, bpm) if keep else new)
+    lines = refit
+    lines = _snap_whole_lines(lines, times, weights, duration)
 
     # 2. each change on a downbeat or after the music eases off
     per_beat = float(weights.sum()) / max(1.0, end_ms / (60000.0 / lines[0][1]))
@@ -4914,7 +4959,11 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         origin = lines[n][0]
     if lines == original:
         return analysis
-    return _with_lines(analysis, lines, beats=_beats_of(lines, duration))
+    beats = _beats_of(lines, duration)
+    starts = np.array([o for o, _ in lines]) / 1000.0
+    which = np.clip(np.searchsorted(starts, beats, side="right") - 1, 0, len(lines) - 1)
+    return _with_lines(analysis, lines, beats=beats,
+                       local_bpms=np.array([b for _, b in lines], dtype=float)[which])
 
 
 def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes) -> Analysis:

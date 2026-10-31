@@ -7719,6 +7719,48 @@ class LinesOnDownbeatsTests(unittest.TestCase):
         self.assertIs(overtone._lines_on_downbeats(a), a)
 
 
+class PhraseLinesTests(unittest.TestCase):
+    """PHRASE_LINES: jitter merges into phrases, changes land on phrase points."""
+
+    def _analysis(self, points, segments, duration=40.0, quiet=None):
+        import overtone
+        times, weights = [], []
+        for start, stop, bpm in segments:
+            t, k = start, 0
+            while t < stop:
+                if quiet is None or not (quiet[0] <= t < quiet[1]):
+                    times.append(t); weights.append(3.0 if k % 4 == 0 else 1.0)
+                t += 60000.0 / bpm; k += 1
+        return overtone.Analysis(source="x", duration=duration, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 attack_times=np.asarray(times) / 1000.0,
+                                 attack_weights=np.asarray(weights), engine="legacy")
+
+    def test_jitter_on_a_steady_song_merges_into_one_line(self):
+        import overtone
+        step = 60000.0 / 220
+        bpms = [224.7, 215.3, 220.4, 217.6, 222.8, 219.1, 221.7, 218.5]
+        points = [TimingPoint(n * 8 * step, b, 1.0, 0) for n, b in enumerate(bpms)]
+        out = overtone._phrase_lines(self._analysis(points, [(0.0, 39900.0, 220.0)]))
+        self.assertEqual(len(out.points), 1)
+        self.assertAlmostEqual(out.points[0].bpm, 220.0, delta=0.5)
+
+    def test_a_real_change_stays_and_lands_on_the_bar_line(self):
+        import overtone
+        late = 16000.0 + 60000.0 / 140
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(late, 140.0, 1.0, 0)]
+        out = overtone._phrase_lines(self._analysis(points, [(0.0, 16000.0, 120.0), (16000.0, 39900.0, 140.0)]))
+        self.assertEqual(len(out.points), 2)
+        self.assertAlmostEqual(out.points[1].offset_ms, 16000.0, delta=1.0)
+
+    def test_off_leaves_the_lines_alone(self):
+        import overtone
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(16500.0, 140.0, 1.0, 0)]
+        a = self._analysis(points, [(0.0, 16000.0, 120.0), (16000.0, 39900.0, 140.0)])
+        with mock.patch.object(overtone, "PHRASE_LINES", False):
+            self.assertIs(overtone._phrase_lines(a), a)
+
+
 class PercussiveBlocksTests(unittest.TestCase):
     """HPSS a block at a time reads what the whole song at once reads."""
 

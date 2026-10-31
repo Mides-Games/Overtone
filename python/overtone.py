@@ -3212,8 +3212,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: _beat_this_tempo(y_mix, sr))
             analysis = _song_octave_by_beat_this(analysis, lambda: _beat_this_judge_beats(y_mix, sr))
-            return _tidy_bpms(_lines_on_downbeats(_snap_whole_points(_octave_rule(_smooth_octaves(
-                _fold_lines_to_song_octave(analysis, lambda: _beat_this_judge_beats(y_mix, sr)))))))
+            return _tidy_bpms(_lines_on_downbeats(_phrase_lines(_snap_whole_points(_octave_rule(_smooth_octaves(
+                _fold_lines_to_song_octave(analysis, lambda: _beat_this_judge_beats(y_mix, sr))))))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3232,7 +3232,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _guard_tracker(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
-    return _tidy_bpms(_lines_on_downbeats(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))))
+    return _tidy_bpms(_lines_on_downbeats(_phrase_lines(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -4784,6 +4784,135 @@ def _lines_on_downbeats(analysis: Analysis) -> Analysis:
                 lines, score, offset, moved = trial, trial_score, best[1], True
         origin = offset                                      # this line starts a bar
     if not moved:
+        return analysis
+    return _with_lines(analysis, lines, beats=_beats_of(lines, duration))
+
+
+#: Tempo changes at phrase points (PHRASE_LINES, the owner's request of
+#: 2026-10-31): the tracker opened a red line every half bar on band songs
+#: (78 lines on Kick Me, one in the map; 61 % of its segments shorter than a
+#: bar), so lines on downbeats had nothing to land on. First neighbouring
+#: lines merge, cheapest first, into one line fitted on their beats while the
+#: attacks lose no more than PHRASE_LOSS of 10 ms F (twice that for a line
+#: shorter than PHRASE_MIN_BARS bars). Then each change left moves, within a
+#: bar, to where a mapper recalculates: a downbeat (PHRASE_DOWNBEAT_BONUS) or
+#: the beat after the music eases off, a beat with under PHRASE_QUIET of the
+#: usual attack weight (PHRASE_QUIET_BONUS); the fit decides between them.
+PHRASE_LINES = True
+PHRASE_MIN_BARS = 2.0
+PHRASE_LOSS = 0.01
+PHRASE_DOWNBEAT_BONUS = 0.004
+PHRASE_QUIET = 0.5
+PHRASE_QUIET_BONUS = 0.003
+
+
+def _line_beats(offset: float, bpm: float, start: float, stop: float) -> np.ndarray:
+    """Beat times (s) of one line's grid between start and stop (ms)."""
+    step = 60000.0 / bpm
+    k0 = np.ceil((start - offset) / step)
+    k1 = np.ceil((stop - offset) / step)
+    return (offset + np.arange(k0, max(k0, k1)) * step) / 1000.0
+
+
+def _span_fit(lines, start: float, stop: float, times, weights) -> float:
+    """10 ms F of these lines' grids on the attacks between start and stop (ms)."""
+    parts = []
+    for n, (offset, bpm) in enumerate(lines):
+        a = start if n == 0 else max(start, offset)
+        b = stop if n + 1 == len(lines) else min(stop, lines[n + 1][0])
+        if b > a:
+            parts.append(_line_beats(offset, bpm, a, b))
+    beats = np.concatenate(parts) if parts else np.zeros(0)
+    inside = (times >= start / 1000.0) & (times < stop / 1000.0)
+    return _grid_fit_score(beats, times[inside], weights[inside], 10.0)
+
+
+def _fit_line(times: np.ndarray, weights: np.ndarray, start: float, stop: float,
+              bpm: float) -> tuple[float, float]:
+    """One line (offset ms, bpm) over the span, refitted on the attacks near
+    its grid by weighted least squares, starting from ``bpm``."""
+    inside = (times >= start / 1000.0) & (times < stop / 1000.0)
+    t, w = times[inside] * 1000.0, weights[inside]
+    offset, step = float(start), 60000.0 / bpm
+    if t.size < 6:
+        return offset, bpm
+    anchor = t[np.argmax(w[: max(1, min(t.size, 8))])]
+    offset = anchor
+    for _ in range(4):
+        k = np.round((t - offset) / step)
+        near = np.abs(t - offset - k * step) <= 0.2 * step
+        if near.sum() < 6 or np.ptp(k[near]) < 4:
+            break
+        slope, icpt = np.polyfit(k[near], t[near], 1, w=np.sqrt(w[near]))
+        if not (0.95 * step < slope < 1.05 * step):
+            break
+        offset, step = float(icpt), float(slope)
+    first = offset + np.ceil((start - offset) / step) * step
+    return float(first), 60000.0 / step
+
+
+def _phrase_lines(analysis: Analysis) -> Analysis:
+    """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
+    points = list(getattr(analysis, "points", None) or [])
+    if (not PHRASE_LINES or len(points) < 2
+            or any(getattr(p, "manual", False) for p in points)):
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 8:
+        return analysis
+    duration = float(analysis.duration)
+    end_ms = duration * 1000.0
+    original = [(float(p.offset_ms), float(p.bpm)) for p in points]
+    meter = max(1, int(getattr(points[0], "meter", 4) or 4))
+    lines = list(original)
+
+    def stop_of(ls, n):
+        return ls[n + 1][0] if n + 1 < len(ls) else end_ms
+
+    # 1. merge, cheapest first
+    def pair(ls, n):
+        a, b, c = ls[n][0], ls[n + 1][0], stop_of(ls, n + 1)
+        span_bpm = (ls[n][1] * (b - a) + ls[n + 1][1] * (c - b)) / max(c - a, 1e-9)
+        merged = _fit_line(times, weights, a, c, span_bpm)
+        loss = _span_fit(ls[n:n + 2], a, c, times, weights) - _span_fit([merged], a, c, times, weights)
+        bars = min((b - a) * ls[n][1], (c - b) * ls[n + 1][1]) / 60000.0 / meter
+        allowed = PHRASE_LOSS * (2.0 if bars < PHRASE_MIN_BARS else 1.0)
+        return (loss, merged) if loss <= allowed else None
+
+    costs = [pair(lines, n) for n in range(len(lines) - 1)]
+    while any(costs):
+        n = min((m for m, c in enumerate(costs) if c), key=lambda m: costs[m][0])
+        lines = lines[:n] + [costs[n][1]] + lines[n + 2:]
+        costs = costs[:max(0, n - 1)] + [pair(lines, m) for m in range(max(0, n - 1), min(n + 1, len(lines) - 1))] + costs[n + 2:]
+
+    # 2. each change on a downbeat or after the music eases off
+    per_beat = float(weights.sum()) / max(1.0, end_ms / (60000.0 / lines[0][1]))
+    origin = lines[0][0]
+    for n in range(1, len(lines)):
+        prev_offset, prev_bpm = lines[n - 1]
+        offset, bpm = lines[n]
+        step, bar = 60000.0 / bpm, meter * 60000.0 / prev_bpm
+        stop = stop_of(lines, n)
+        lo, hi = lines[n - 1][0], stop
+        scored = []
+        for j in range(-meter, meter + 1):
+            at = offset + j * step
+            if not (prev_offset + step < at < stop - step):
+                continue
+            trial = [lines[n - 1], (at, bpm)]
+            score = _span_fit(trial, lo, hi, times, weights)
+            off_bar = (at - origin) % bar
+            if min(off_bar, bar - off_bar) <= 0.25 * step:
+                score += PHRASE_DOWNBEAT_BONUS
+            before = (times >= (at - step) / 1000.0) & (times < at / 1000.0 - 0.03)
+            if per_beat > 0 and float(weights[before].sum()) < PHRASE_QUIET * per_beat:
+                score += PHRASE_QUIET_BONUS
+            scored.append((score, -abs(j), at))
+        if scored:
+            lines[n] = (max(scored)[2], bpm)
+        origin = lines[n][0]
+    if lines == original:
         return analysis
     return _with_lines(analysis, lines, beats=_beats_of(lines, duration))
 

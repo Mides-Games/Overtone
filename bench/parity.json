@@ -736,7 +736,15 @@
    "where": "python-only",
    "why": "the drums-only input (PERCUSSIVE_INPUT) runs librosa's HPSS in Python before either engine; the Rust HPSS (overtone-dsp/src/hpss.rs) is the engine's own"
   },
-  "LINES_ON_DOWNBEATS": {
+  "PHRASE_LINES": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "_phrase_lines": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+ "LINES_ON_DOWNBEATS": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },

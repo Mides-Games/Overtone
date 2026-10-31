@@ -7769,6 +7769,23 @@ class PhraseLinesTests(unittest.TestCase):
             out = overtone._phrase_lines(self._analysis(points, [(0.0, 39900.0, 180.0)]))
             self.assertEqual([round(p.bpm, 2) for p in out.points], [180.0], wrong)
 
+    def test_a_section_read_at_double_is_halved_against_the_song(self):
+        import overtone
+        # 120 BPM with eighths for 20 s, then quarters only, which the tracker read at 240.
+        segs = [(0.0, 20000.0, 240.0), (20000.0, 39900.0, 120.0)]
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(20000.0, 240.0, 1.0, 0)]
+        out = overtone._phrase_lines(self._analysis(points, segs))
+        self.assertEqual([round(p.bpm, 2) for p in out.points], [120.0])
+
+    def test_short_lines_at_one_tempo_merge(self):
+        import overtone
+        step = 60000.0 / 200
+        bpms = [200.3, 196.9, 202.7, 196.9, 201.5]
+        points = [TimingPoint(n * 2 * step, b, 1.0, 0) for n, b in enumerate(bpms)]
+        points.append(TimingPoint(10 * step, 200.0, 1.0, 0))
+        out = overtone._phrase_lines(self._analysis(points, [(0.0, 39900.0, 200.0)]))
+        self.assertEqual([round(p.bpm, 2) for p in out.points], [200.0])
+
     def test_off_leaves_the_lines_alone(self):
         import overtone
         points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(16500.0, 140.0, 1.0, 0)]

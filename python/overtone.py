@@ -3232,7 +3232,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _guard_tracker(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
-    return _tidy_bpms(_lines_on_downbeats(_phrase_lines(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)))))
+    tracked = _with_attacks(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)), y, sr)
+    return _tidy_bpms(_lines_on_downbeats(_phrase_lines(tracked)))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -4815,7 +4816,9 @@ def _line_beats(offset: float, bpm: float, start: float, stop: float) -> np.ndar
 
 
 def _span_fit(lines, start: float, stop: float, times, weights) -> float:
-    """10 ms F of these lines' grids on the attacks between start and stop (ms)."""
+    """PHRASE_TOL_MS F of these lines' grids on the attacks between start and
+    stop (ms), on any number of beats: _grid_fit_score reads under four
+    beats as 0, which priced every merge of a short line out."""
     parts = []
     for n, (offset, bpm) in enumerate(lines):
         a = start if n == 0 else max(start, offset)
@@ -4824,7 +4827,17 @@ def _span_fit(lines, start: float, stop: float, times, weights) -> float:
             parts.append(_line_beats(offset, bpm, a, b))
     beats = np.concatenate(parts) if parts else np.zeros(0)
     inside = (times >= start / 1000.0) & (times < stop / 1000.0)
-    return _grid_fit_score(beats, times[inside], weights[inside], 10.0)
+    t, w = times[inside], weights[inside]
+    if beats.size == 0 or t.size == 0:
+        return 0.0
+    beats = np.sort(beats)
+    i = np.clip(np.searchsorted(beats, t), 1, max(1, beats.size - 1))
+    d = np.minimum(np.abs(beats[i - 1] - t), np.abs(beats[np.minimum(i, beats.size - 1)] - t)) * 1000.0
+    recall = float(w[d <= PHRASE_TOL_MS].sum() / max(float(w.sum()), 1e-12))
+    j = np.clip(np.searchsorted(t, beats), 1, max(1, t.size - 1))
+    e = np.minimum(np.abs(t[j - 1] - beats), np.abs(t[np.minimum(j, t.size - 1)] - beats)) * 1000.0
+    precision = float(np.mean(e <= PHRASE_TOL_MS))
+    return 0.0 if recall + precision == 0 else 2 * recall * precision / (recall + precision)
 
 
 def _fit_line(times: np.ndarray, weights: np.ndarray, start: float, stop: float,
@@ -4885,6 +4898,71 @@ def _phrase_octaves(lines, times, weights, end_ms):
     return out
 
 
+def _with_attacks(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
+    """The analysis with the song's attacks, where the tracker left none: the
+    legacy tracker fills no attack_times, so _phrase_lines had nothing to
+    weigh a merge on and left every jittery line where it was (152 lines on
+    Senses Fail - Angela Baker, the owner's report of 2026-10-31)."""
+    if np.size(analysis.attack_times) or not PHRASE_LINES:
+        return analysis
+    try:
+        times, weights, _ = _detect_attacks(y, sr, FIT_HOP)
+    except Exception:
+        return analysis
+    return replace(analysis, attack_times=times, attack_weights=weights)
+
+
+#: Neighbouring lines this close in BPM merge at three times PHRASE_LOSS: a
+#: live drummer's 151.5 / 152 / 152.2 is one tempo (Senses Fail - Angela Baker).
+PHRASE_CLOSE = 0.02
+#: The fit tolerance merges are priced at: a live band drifts past 10 ms
+#: inside a bar that a mapper still times with one line.
+PHRASE_TOL_MS = 20.0
+#: A section read at double (Alesana - Seduction from 3:29, the owner's
+#: report of 2026-10-31: ~235 where the song plays ~118): above
+#: PHRASE_HALVE_BPM, at least PHRASE_HALVE_S long, with half-beat attack
+#: weight under PHRASE_HALVE_RATIO of its beats' and under PHRASE_HALVE_REL
+#: of the rest of the song's. Relative to the song, so a fast song with no
+#: subdivision anywhere (the 174 / 180 tests OCTAVE_RULE halved) is kept.
+PHRASE_HALVE_BPM = 160.0
+PHRASE_HALVE_S = 4.0
+PHRASE_HALVE_RATIO = 0.2
+PHRASE_HALVE_REL = 0.5
+
+
+def _half_beat_ratio(times, weights, offset: float, bpm: float, start: float, stop: float):
+    """Attack weight on the half beats over the weight on the beats in a span."""
+    m = (times * 1000.0 >= start) & (times * 1000.0 < stop)
+    ph = np.mod((times[m] * 1000.0 - offset) / (60000.0 / bpm), 1.0)
+    on = float(weights[m][(ph < 0.1) | (ph > 0.9)].sum())
+    return float(weights[m][np.abs(ph - 0.5) < 0.1].sum()) / on if on > 0 else None
+
+
+def _phrase_halves(lines, times, weights, end_ms):
+    """Lines read at double halved, by their half beats against the song's."""
+    spans = [((lines[n + 1][0] if n + 1 < len(lines) else end_ms) - o) for n, (o, _) in enumerate(lines)]
+    ratios = [_half_beat_ratio(times, weights, o, b, o, o + d) for (o, b), d in zip(lines, spans)]
+    out = list(lines)
+    for n, ((offset, bpm), span, r) in enumerate(zip(lines, spans, ratios)):
+        if bpm <= PHRASE_HALVE_BPM or span < PHRASE_HALVE_S * 1000.0 or r is None or r >= PHRASE_HALVE_RATIO:
+            continue
+        rest = [(x, d) for m, (x, d) in enumerate(zip(ratios, spans)) if m != n and x is not None]
+        if not rest:
+            continue
+        song = _weighted_median(np.array([x for x, _ in rest]), np.array([d for _, d in rest]))
+        if r >= PHRASE_HALVE_REL * song:
+            continue
+        step = 60000.0 / bpm
+        inside = (times * 1000.0 >= offset) & (times * 1000.0 < offset + span)
+
+        def weight(o):
+            ph = np.mod((times[inside] * 1000.0 - o) / (2 * step), 1.0)
+            return float(weights[inside][(ph < 0.06) | (ph > 0.94)].sum())
+
+        out[n] = (max((offset, offset + step), key=weight), bpm / 2.0)
+    return out
+
+
 def _phrase_lines(analysis: Analysis) -> Analysis:
     """Red lines merged into phrases and their changes on phrase points (PHRASE_LINES)."""
     points = list(getattr(analysis, "points", None) or [])
@@ -4911,14 +4989,24 @@ def _phrase_lines(analysis: Analysis) -> Analysis:
         merged = _fit_line(times, weights, a, c, span_bpm)
         loss = _span_fit(ls[n:n + 2], a, c, times, weights) - _span_fit([merged], a, c, times, weights)
         bars = min((b - a) * ls[n][1], (c - b) * ls[n + 1][1]) / 60000.0 / meter
-        allowed = PHRASE_LOSS * (2.0 if bars < PHRASE_MIN_BARS else 1.0)
+        close = abs(ls[n][1] - ls[n + 1][1]) <= PHRASE_CLOSE * max(ls[n][1], ls[n + 1][1])
+        allowed = PHRASE_LOSS * (3.0 if close else 2.0 if bars < PHRASE_MIN_BARS else 1.0)
         return (loss, merged) if loss <= allowed else None
 
-    costs = [pair(lines, n) for n in range(len(lines) - 1)]
-    while any(costs):
-        n = min((m for m, c in enumerate(costs) if c), key=lambda m: costs[m][0])
-        lines = lines[:n] + [costs[n][1]] + lines[n + 2:]
-        costs = costs[:max(0, n - 1)] + [pair(lines, m) for m in range(max(0, n - 1), min(n + 1, len(lines) - 1))] + costs[n + 2:]
+    def merge(lines):
+        costs = [pair(lines, n) for n in range(len(lines) - 1)]
+        while any(costs):
+            n = min((m for m, c in enumerate(costs) if c), key=lambda m: costs[m][0])
+            lines = lines[:n] + [costs[n][1]] + lines[n + 2:]
+            costs = (costs[:max(0, n - 1)]
+                     + [pair(lines, m) for m in range(max(0, n - 1), min(n + 1, len(lines) - 1))]
+                     + costs[n + 2:])
+        return lines
+
+    lines = merge(lines)
+    halved = _phrase_halves(lines, times, weights, end_ms)
+    if halved != lines:
+        lines = merge(halved)
 
     # 1b. every line refitted on its attacks, then whole where they agree
     refit = []

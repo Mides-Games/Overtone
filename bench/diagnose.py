@@ -33,9 +33,10 @@ time and are read as "this much of the songs is wrong for this reason":
 **Line problems**, counted per minute of song and as the share of maps that have
 at least one:
 
-- ``missed_change``: a map change (another BPM) with none of ours within 2 beats;
+- ``missed_change``: a map change (a BPM more than 1 % away) with none of ours
+  within 2 beats;
 - ``change_off``: the change is there, between 10 ms and 2 beats away;
-- ``phantom_change``: our change with no map line within 2 beats;
+- ``phantom_change``: our change (more than 1 %) with no map line within 2 beats;
 - ``double_tick``: our new line starts close after a beat of the previous one,
   so the beat sounds twice;
 - ``redundant_line``: our line repeats the previous one's BPM on its grid.
@@ -90,6 +91,8 @@ RATIO_TOL = 0.03      # relative, for the octave and ratio readings
 PHASE_MS = 10.0       # the stages' conv 10
 PHASE_SMALL_MS = 25.0 # up to here a shift may be the mapper's own offset
 CHANGE_BEATS = 2.0    # how far a change may be and still be the same change
+CHANGE_SHARE = 0.01   # a tempo change: more than 1 % (a ranked map's bar-by-bar
+                      # lines, 94.04 then 94.11, are one tempo timed closely)
 SAMPLES = 16          # beats checked per stretch: SAMPLES + 1
 TICK_SHARE = 0.4      # a new line this close after a beat sounds it twice
 TICK_ON_MS = 3.0      # ... unless it is on the previous grid
@@ -180,7 +183,7 @@ def line_problems(mlines, elines) -> dict[str, int]:
     out: dict[str, int] = defaultdict(int)
     if not mlines or not elines:
         return out
-    changes = [(o, b) for (o, b), (_, pb) in zip(mlines[1:], mlines) if abs(b - pb) > BPM_BAR]
+    changes = [(o, b) for (o, b), (_, pb) in zip(mlines[1:], mlines) if abs(b / pb - 1.0) > CHANGE_SHARE]
     ours = elines[1:]
     for offset, bpm in changes:
         reach = CHANGE_BEATS * 60000.0 / bpm
@@ -193,7 +196,7 @@ def line_problems(mlines, elines) -> dict[str, int]:
     for n in range(1, len(elines)):
         (offset, bpm), (po, pb) = elines[n], elines[n - 1]
         reach = CHANGE_BEATS * 60000.0 / bpm
-        if abs(bpm - pb) > BPM_BAR and not any(abs(s - offset) <= reach for s in starts):
+        if abs(bpm / pb - 1.0) > CHANGE_SHARE and not any(abs(s - offset) <= reach for s in starts):
             out["phantom_change"] += 1
         step = 60000.0 / pb
         after = (offset - po) % step          # how far past the last beat of the old grid

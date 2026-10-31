@@ -53,6 +53,10 @@ version is `v1.0.0-stable` (2026-10-28).
   of exactly one beat (202 against 200 over 30 s), which wraps to 0: 17 beats spread over
   the stretch are checked. (A set's own audio, never another set's: the unranked set's
   audio.mp3 has another offset, and against the ranked lines read 0 % right.)
+- A change, for the line problems, is now a BPM more than 1 % away: a ranked map's
+  bar-by-bar lines (94.04 then 94.11) counted as changes we missed. Bands' missed changes
+  went from 3.75 to 3.17 a minute, anime-variable's from 4.39 to 3.70: still the largest
+  line problem.
 
 ### Measured
 

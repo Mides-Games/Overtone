@@ -1945,7 +1945,8 @@
       "meter_differs": "마디당 {{meter}}비트라고 했지만, 엔진이 마디를 증명할 수 있었던 곳에서는 {{found}}을(를) 찾았고 자신의 값을 유지했어요.",
       "meter_applied_other": "red line {{count}}개는 엔진이 증명할 수 있는 마디가 없었어요: 입력한 마디당 {{meter}}비트를 써요.",
       "band_drums": "그리드를 읽기 전에 드럼을 믹스에서 분리했습니다.",
-      "band_no_separator": "이 워커에는 아직 드럼 분리기가 없어 평소처럼 믹스를 읽었습니다."
+      "band_no_separator": "이 워커에는 아직 드럼 분리기가 없어 평소처럼 믹스를 읽었습니다.",
+      "band_separator_failed": "이 워커에서 드럼 분리가 실패했습니다(메모리 또는 시간). 평소처럼 믹스를 읽었습니다."
     },
     "reanalyse": {
       "title": "다시 분석",
@@ -2810,7 +2811,11 @@
     "worker": {
       "memory": "메모리: 현재 {{rss}}, 마지막 작업의 최고치 {{peak}}, 한도 {{limit}}",
       "memoryAgo": "{{seconds}}초 전에 보고됨",
-      "noMemory": "워커가 메모리를 보고하지 않았어요 (Linux에서만 가능해요)."
+      "noMemory": "워커가 메모리를 보고하지 않았어요 (Linux에서만 가능해요).",
+      "stemsReady": "드럼 분리기 설치됨 (라이브 밴드 힌트)",
+      "stemsMissing": "드럼 분리기 없음: 라이브 밴드 힌트는 믹스를 읽습니다",
+      "room": "호스트 여유 {{free}}, 서비스 한도 {{max}}",
+      "noMax": "없음"
     },
     "failures": {
       "title": "실패, 최근 7일",

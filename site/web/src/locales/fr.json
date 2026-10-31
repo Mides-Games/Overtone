@@ -2031,7 +2031,8 @@
       "meter_applied_many": "{{count}} red lines n'avaient aucune mesure que le moteur pouvait prouver : elles utilisent vos {{meter}} temps par mesure.",
       "meter_applied_other": "{{count}} red lines n'avaient aucune mesure que le moteur pouvait prouver : elles utilisent vos {{meter}} temps par mesure.",
       "band_drums": "La batterie a été séparée du mix avant de lire la grille.",
-      "band_no_separator": "Ce worker n'a pas encore de séparateur de batterie : le mix a été lu comme d'habitude."
+      "band_no_separator": "Ce worker n'a pas encore de séparateur de batterie : le mix a été lu comme d'habitude.",
+      "band_separator_failed": "Le séparateur de batterie a échoué sur ce worker (mémoire ou temps) : le mix a été lu comme d'habitude."
     },
     "reanalyse": {
       "title": "Analyser à nouveau",
@@ -2926,7 +2927,11 @@
     "worker": {
       "memory": "Mémoire : {{rss}} maintenant, {{peak}} au pic de la dernière tâche, limite {{limit}}",
       "memoryAgo": "signalé il y a {{seconds}} s",
-      "noMemory": "Le worker n'a pas signalé sa mémoire (il ne le peut que sous Linux)."
+      "noMemory": "Le worker n'a pas signalé sa mémoire (il ne le peut que sous Linux).",
+      "stemsReady": "Séparateur de batterie installé (indice groupe en live)",
+      "stemsMissing": "Pas de séparateur de batterie : l'indice groupe en live lit le mix",
+      "room": "libre sur l'hôte {{free}}, limite du service {{max}}",
+      "noMax": "aucune"
     },
     "failures": {
       "title": "Échecs, 7 derniers jours",

@@ -385,7 +385,19 @@ test('a memory report keeps whole MB only, and nothing malformed', () => {
   reportMemory({ rss_mb: -1, peak_mb: 'x' });
   assert.equal(workerMemory(), null);
   reportMemory({ rss_mb: 100.5, peak_mb: 300, limit_mb: null, extra: '<script>' }, 1000);
-  assert.deepEqual(workerMemory(4000), { rssMb: null, peakMb: 300, limitMb: null, secondsAgo: 3 });
+  assert.deepEqual(workerMemory(4000), {
+    rssMb: null, peakMb: 300, limitMb: null, stems: null, hostFreeMb: null, serviceMaxMb: null, secondsAgo: 3,
+  });
+});
+
+test('the memory report says whether a live band fits: the separator and the room for it', () => {
+  resetWorkerMemory();
+  reportMemory({ rss_mb: 900, stems: true, host_free_mb: 5120, service_max_mb: 4096 }, 0);
+  const m = workerMemory(0);
+  assert.deepEqual([m.stems, m.hostFreeMb, m.serviceMaxMb], [true, 5120, 4096]);
+  reportMemory({ rss_mb: 900, stems: 'yes', host_free_mb: -5, service_max_mb: 1.5 }, 0);
+  const bad = workerMemory(0);
+  assert.deepEqual([bad.stems, bad.hostFreeMb, bad.serviceMaxMb], [null, null, null]);
 });
 
 // ── W13.20: limits that say when they free up ──────────────────────────────

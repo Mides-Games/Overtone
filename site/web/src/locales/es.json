@@ -1988,7 +1988,8 @@
       "meter_applied_one": "{{count}} red line no tenía un compás que el engine pudiera probar: usa tus {{meter}} tiempos por compás.",
       "meter_applied_other": "{{count}} red lines no tenían un compás que el engine pudiera probar: usan tus {{meter}} tiempos por compás.",
       "band_drums": "La batería se separó de la mezcla antes de leer la grilla.",
-      "band_no_separator": "Este worker todavía no tiene el separador de batería: se leyó la mezcla como siempre."
+      "band_no_separator": "Este worker todavía no tiene el separador de batería: se leyó la mezcla como siempre.",
+      "band_separator_failed": "El separador de batería falló en este worker (memoria o tiempo): se leyó la mezcla como siempre."
     },
     "reanalyse": {
       "title": "Analizar de nuevo",
@@ -2869,7 +2870,11 @@
     "worker": {
       "memory": "Memoria: {{rss}} ahora, {{peak}} en el pico del último trabajo, límite {{limit}}",
       "memoryAgo": "informado hace {{seconds}} s",
-      "noMemory": "El worker no informó su memoria (solo puede en Linux)."
+      "noMemory": "El worker no informó su memoria (solo puede en Linux).",
+      "stemsReady": "Separador de batería instalado (pista de banda en vivo)",
+      "stemsMissing": "Sin separador de batería: la pista de banda en vivo lee la mezcla",
+      "room": "libre en el host {{free}}, límite del servicio {{max}}",
+      "noMax": "ninguno"
     },
     "failures": {
       "title": "Fallas, últimos 7 días",

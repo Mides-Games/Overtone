@@ -1988,7 +1988,8 @@
       "meter_applied_one": "{{count}} red line had no bar the engine could prove: it uses your {{meter}} beats per bar.",
       "meter_applied_other": "{{count}} red lines had no bar the engine could prove: they use your {{meter}} beats per bar.",
       "band_drums": "The drums were separated from the mix before the grid was read.",
-      "band_no_separator": "This worker has no drums separator yet: the mix was read as usual."
+      "band_no_separator": "This worker has no drums separator yet: the mix was read as usual.",
+      "band_separator_failed": "The drums separator failed on this worker (memory or time): the mix was read as usual."
     },
     "reanalyse": {
       "title": "Analyse again",
@@ -2868,7 +2869,11 @@
     "worker": {
       "memory": "Memory: {{rss}} now, {{peak}} at the last job's peak, limit {{limit}}",
       "memoryAgo": "reported {{seconds}} s ago",
-      "noMemory": "The worker has not reported its memory (it can only on Linux)."
+      "noMemory": "The worker has not reported its memory (it can only on Linux).",
+      "stemsReady": "Drums separator installed (live band hint)",
+      "stemsMissing": "No drums separator: a live band's hint reads the mix",
+      "room": "host free {{free}}, service limit {{max}}",
+      "noMax": "none"
     },
     "failures": {
       "title": "Failures, last 7 days",

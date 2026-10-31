@@ -48,3 +48,6 @@ bench/.cache/
 # The end-to-end run's traces and reports (site/e2e).
 /site/e2e/test-results/
 /site/e2e/playwright-report/
+# Local analysis files and tokens
+profiles/
+token.txt

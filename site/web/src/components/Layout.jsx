@@ -1,5 +1,6 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Outlet, useLocation } from 'react-router'
+import { Outlet, useLocation, useNavigationType } from 'react-router'
 
 import { gutter } from '../lib/gutter.js'
 import { PaletteProvider } from './CommandPalette.jsx'
@@ -23,9 +24,30 @@ import Tray from './Tray.jsx'
  * and a footer in view was pushed down each time: layout shifts of 0.19-1.0
  * on a phone (site/e2e/vitals.mjs), against the 0.1 budget.
  */
+/**
+ * A followed link opens its page at the top, as a page load would; the
+ * browser keeps the scroll of the page before, since the frame stays. Only on
+ * a new page or a link to the page already open (the bar's "Analyze" from
+ * halfway down /analyze): a list that changes its ?sort= keeps its place, Back
+ * and Forward keep the browser's, and a #section link scrolls to that section.
+ */
+function useScrollToTop() {
+  const { pathname, search, hash, key } = useLocation()
+  const type = useNavigationType()
+  const before = useRef({ pathname, search, key })
+
+  useEffect(() => {
+    const was = before.current
+    before.current = { pathname, search, key }
+    if (key === was.key || type === 'POP' || hash) return
+    if (pathname !== was.pathname || search === was.search) window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [pathname, search, hash, key, type])
+}
+
 export default function Layout() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  useScrollToTop()
 
   return (
     // The palette's provider holds the global keys (Ctrl+K, ?) and both dialogs, on every page.

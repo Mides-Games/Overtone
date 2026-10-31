@@ -599,6 +599,46 @@ con `HSTS=1` (el default del egg), `Strict-Transport-Security: max-age=31536000`
 **Falta que el admin de Reviactyl diga dónde corre ese proxy.** Con eso, este
 apartado pasa a ser un paso más.
 
+## En el host de Mides (overtone.midesprojects.com, 2026-10-28)
+
+Mientras el panel no está, la web corre directo en el host de Mides
+(Ubuntu 22.04; su dirección está en el secret `DEPLOY_HOST` y no se escribe acá,
+porque Cloudflare la esconde), sin contenedores salvo la base. Usa el mismo
+`deploy/eggs/start.sh` de los eggs, con `OVERTONE_HOME=/opt/overtone`.
+
+| Pieza | Dónde |
+|---|---|
+| Checkout de `master` | `/opt/overtone`, del usuario `overtone` (sin login). Node 22 y Python 3.14 (uv) en `/opt/overtone/.local/bin` |
+| `overtone-site-api` | systemd, `:3102` (el firewall no lo abre) |
+| `overtone-site-web` | systemd, `serve.mjs` en `:3101` |
+| `overtone-site-worker` | systemd, `.venv` con el lock del motor y el voto de Beat This! |
+| Base | contenedor `overtone-db` (`postgres:16-alpine`), `127.0.0.1:15440`, datos en `/opt/overtone-db` |
+| Configuración y secretos | `/etc/overtone-site/*.env` (root, 600) |
+| nginx | `/etc/nginx/sites-available/overtone.midesprojects.com`: TLS y todo a `:3101`. Delante está Cloudflare: `TRUSTED_PROXY_HOPS=2`, `TRUST_PROXY=3` |
+| Certificado | certbot, webroot `/var/www/html`, renueva solo y recarga nginx |
+
+Las tres comparten un checkout, y el `pnpm install --filter ./site/web` de la web
+borra los `node_modules` de la api sin que su sello en `.overtone/` se entere. Por
+eso la unit de la api borra `.overtone/api-deps` antes de arrancar (reinstala en 2 s).
+
+**Cómo se actualiza.** `/usr/local/sbin/overtone-site-update` (de root, fuera del
+checkout) hace fast-forward de `master` como `overtone`, baja el LFS y reinicia
+web, api y worker en ese orden, esperando el puerto de cada uno. Lo arranca
+`overtone-site-update.service`:
+
+- cada push a `master`: el workflow entra como `overtone-deploy`, cuya clave solo
+  puede correr `sudo systemctl start --no-block overtone-site-update.service`;
+- cada 5 minutos, con `overtone-site-update.timer`, por si el push no llegó.
+
+Ver qué pasó: `journalctl -u overtone-site-update -u overtone-site-api -u overtone-site-web -u overtone-site-worker`.
+Volver atrás: un revert en `master` por PR; el server lo toma como cualquier push.
+
+**El login** (2026-10-30). `overtone` está en `SSO_APPS` de Mides-Dev-Web (tipo
+`web`, `secret_env` `SSO_SECRET_OVERTONE`). Ese valor, en el `backend/.env` de
+Mides, es el mismo que `MIDES_CLIENT_SECRET` en `/etc/overtone-site/api.env`. Si
+uno cambia sin el otro, Mides rechaza cada canje (`sso_not_configured` cuando falta
+allá, `invalid_client` cuando no coinciden) y el log de `overtone-site-api` lo dice.
+
 ## Qué se verificó y qué no
 
 Se verificó, el 2026-10-26, en Windows con Git Bash:

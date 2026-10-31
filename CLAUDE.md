@@ -51,7 +51,9 @@ commit messages are English; only the website's own UI strings stay bilingual
   owner's server to update, signing in as `overtone-deploy`, whose key can start
   `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
   pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
-  going; a timer does the same every five minutes when no push does.
+  going; a timer does the same every five minutes when no push does. On the Mides host
+  (overtone.midesprojects.com) the same key starts `overtone-site-update.service`
+  instead, which updates the website (docs/deploy.md, "En el host de Mides").
 - **No checks run in Actions.** No test, gate or benchmark workflow, no bots, no release
   pipelines, no secret but the deploy key. Checks run locally or on the owner's server
   (`bench/remote.py gates|suite`), each one line (see **Verification** below).

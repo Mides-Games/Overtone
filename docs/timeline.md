@@ -20,6 +20,27 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-31 · Beat This! as the fallback tracker, an experiment
+
+### Changed
+
+- **`beat-this-tracker` (BEAT_THIS_TRACKER, off).** By engine path, on the server's dev
+  reports of a7d6b6c (bench/diagnose.py), the fallback tracker is the engine's weakest
+  part: right 25.4 % of bands' time against the precision path's 71.5 %, 28.4 against
+  69.9 % on anime-variable, beats within 10 ms 53 against 77 %; and it takes 29 % and
+  25 % of those stages' maps. Its error is mostly BPMs slightly off (25-37 % of its time)
+  and tempo wrong (12-16 %), which is librosa's dynamic-programming tracker with
+  heuristics on top, not the language: the Rust and Python engines agree to 0.0001 ms
+  (golden). With the switch on, the fallback takes Beat This!'s beats (the judges' own
+  pass, so no second network run) and moves them onto the onset envelope's peaks as it
+  does the librosa tracker's. Beat This! alone sat up to ~10 ms off on its 50 fps grid
+  (2026-10, entry below); that snapping is what the earlier run lacked.
+
+### Measured
+
+- Not yet: the model is not installed on this machine. Queued on the server against
+  the same code with the switch off.
+
 ## Unreleased — 2026-10-31 · Which timing problems cost the most
 
 ### Changed

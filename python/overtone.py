@@ -220,6 +220,7 @@ STAGES = {
     "No fittable grid — falling back to the beat tracker…": "fallback",
     "Extracting transients and tempo hypotheses…": "transients",
     "Tracking beats (hybrid DP + PLP + peaks)…": "tracking",
+    "Tracking beats (Beat This!)…": "tracking-network",
     "Resolving half/double-time pulse…": "pulse",
     "Computing local tempo and persistent changes…": "local",
 }
@@ -3085,10 +3086,32 @@ def _moved_by(result: Analysis, shift: float) -> Analysis:
     return replace(result, beats=moved, points=points, beat_shift_s=shift)
 
 
+#: The fallback tracker's beats from Beat This! (BEAT_THIS_TRACKER), its 50 fps
+#: frames then moved onto the onset envelope's peaks as the librosa tracker's
+#: are (refine_beats). The fallback path is the engine's weakest: on the server's
+#: dev reports of a7d6b6c it was right 25 % of bands' time against the precision
+#: path's 72 %, its beats within 10 ms 53 % against 77 %. Beat This! alone sat up
+#: to ~10 ms off on its frame grid (docs/timeline.md, its 2026-10 measurement);
+#: the snapping is what that run lacked. Off until measured (beat-this-tracker).
+BEAT_THIS_TRACKER = False
+
+
+def _beat_this_frames(heard, sr: int, hop: int, frames: int) -> np.ndarray | None:
+    """Beat This!'s beats as onset-envelope frames, or None without them."""
+    if heard is None:
+        return None
+    beats = heard()
+    if beats is None or len(beats) < 8:
+        return None
+    out = np.unique(np.round(np.asarray(beats, dtype=float) * sr / hop).astype(int))
+    out = out[(out >= 0) & (out < frames)]
+    return out if out.size >= 8 else None
+
+
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
                      min_delta: float, persistence: int, prefer_map_bpm: bool,
                      min_confidence: float, say: Callable[[str], None],
-                     factor: float, refine_beats: bool) -> Analysis:
+                     factor: float, refine_beats: bool, heard=None) -> Analysis:
     """v2 tracker path: used when no regular pulse grid can be fitted.
 
     It refuses audio with no pulse at all instead of tracking one: a beat
@@ -3116,8 +3139,13 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     guides = _global_tempo_guides(onset, sr, hop, frame_tempi)
     prior = guides[0][0] if guides else None
 
-    say("Tracking beats (hybrid DP + PLP + peaks)…")
-    beat_frames = _track_beats_hybrid(onset, sr, hop, prior, tracker_bpm)
+    network = _beat_this_frames(heard, sr, hop, onset.shape[-1]) if BEAT_THIS_TRACKER else None
+    if network is not None:
+        say("Tracking beats (Beat This!)…")
+        beat_frames = network
+    else:
+        say("Tracking beats (hybrid DP + PLP + peaks)…")
+        beat_frames = _track_beats_hybrid(onset, sr, hop, prior, tracker_bpm)
     if len(beat_frames) < 8:
         raise ValueError("Not enough beats detected. Try a file with clearer percussion.")
     if refine_beats:
@@ -3219,7 +3247,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
     analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
-                                min_confidence, say, float(force_subdivision), refine_beats)
+                                min_confidence, say, float(force_subdivision), refine_beats,
+                                heard=lambda: _beat_this_judge_beats(y_mix, sr))
     if force_subdivision or not prefer_map_bpm or not osu_conventions:
         return analysis
     tracked = _local_tempo_track(analysis)

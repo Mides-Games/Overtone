@@ -236,7 +236,11 @@ prepare_worker() {
         fi
     done
     KEY=$(key python/requirements.lock)
-    once worker-venv install_worker
+    once worker-venv install_worker || return 1
+    # The drums separator for a live band's hint: without it the worker reads
+    # the mix and the result says so, so a failed download only warns.
+    python deploy/eggs/stemsplit.py .overtone/stemsplit ||
+        say "WARNING: the drums separator is not installed; a live band's hint reads the mix."
 }
 
 install_worker() {
@@ -285,6 +289,11 @@ run_worker() {
             MKL_NUM_THREADS=$WORKER_THREADS NUMBA_NUM_THREADS=$WORKER_THREADS
     fi
     export NUMBA_CACHE_DIR="$HOME/.cache/numba" PYTHONUNBUFFERED=1
+    if [ -x .overtone/stemsplit/stemsplit ] && [ -f .overtone/stemsplit/stemsplit.safetensors ]; then
+        export STEMSPLIT_CLI="$PWD/.overtone/stemsplit/stemsplit"             STEMSPLIT_MODEL="$PWD/.overtone/stemsplit/stemsplit.safetensors"
+        # the separator's thread pool (rayon), capped like the others
+        [ -n "${WORKER_THREADS:-}" ] && export RAYON_NUM_THREADS=$WORKER_THREADS
+    fi
     exec .venv/bin/python worker/main.py
 }
 

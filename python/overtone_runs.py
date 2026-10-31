@@ -90,6 +90,7 @@ EXPERIMENTS = {
     "octave-continuity": {"OCTAVE_CONTINUITY": True},
     "octave-rule": {"OCTAVE_RULE": True},
     "lines-on-downbeats": {"LINES_ON_DOWNBEATS": True},
+    "phrase-lines-off": {"PHRASE_LINES": False},
     "octave-rule-floor": {"OCTAVE_RULE_HALVE_FLOOR": 0.05},
     "octave-rule-no-halve": {"OCTAVE_RULE_HALVE_FLOOR": 99.0},
     "local-step": {"LOCAL_STEP_JUMPS": True},

@@ -7899,6 +7899,38 @@ class DiagnoseTests(unittest.TestCase):
         self.assertEqual(out["time"]["half"], 50.0)
 
 
+class BeatThisTrackerTests(unittest.TestCase):
+    """BEAT_THIS_TRACKER: the fallback tracker's beats from Beat This!, snapped."""
+
+    def _clicks(self, bpm=120.0, seconds=20.0, sr=44100):
+        rng = np.random.default_rng(3)
+        y = (rng.standard_normal(int(seconds * sr)) * 0.002).astype(np.float32)
+        hit = (rng.standard_normal(2000) * np.exp(-np.arange(2000) / 200.0)).astype(np.float32)
+        t = 0.5
+        while t < seconds - 0.1:
+            i = int(t * sr)
+            y[i:i + hit.size] += hit
+            t += 60.0 / bpm
+        return y, sr
+
+    def test_on_its_beats_replace_the_trackers(self):
+        import overtone
+        y, sr = self._clicks()
+        beats = np.arange(0.5, 19.9, 0.5) + 0.004  # a frame grid's few ms off
+        with mock.patch.object(overtone, "BEAT_THIS_TRACKER", True),                 mock.patch.object(overtone, "_track_beats_hybrid", side_effect=AssertionError("tracker ran")):
+            a = overtone._legacy_analysis("x.wav", y, sr, 1.5, 12, True, 0.75, lambda _m: None, 0.0, True,
+                                          heard=lambda: beats)
+        self.assertAlmostEqual(float(a.global_bpm), 120.0, delta=1.0)
+
+    def test_off_or_without_the_network_the_tracker_runs(self):
+        import overtone
+        self.assertIsNone(overtone._beat_this_frames(None, 22050, 512, 1000))
+        self.assertIsNone(overtone._beat_this_frames(lambda: None, 22050, 512, 1000))
+        self.assertIsNone(overtone._beat_this_frames(lambda: np.array([1.0, 2.0]), 22050, 512, 1000))
+        frames = overtone._beat_this_frames(lambda: np.arange(0.5, 10.0, 0.5), 22050, 512, 1000)
+        self.assertEqual(frames.size, 19)
+
+
 class OctaveCapTests(unittest.TestCase):
     """OCTAVE_CAP: a red line above 260 BPM is read at half, on its strong beats."""
 

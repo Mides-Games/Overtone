@@ -20,6 +20,55 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-10-30 · Out of the OOM loop; tidy, octave, drums and downbeats
+
+### Fixed
+
+- **The server in an OOM restart loop all day** (#91). `PERCUSSIVE_INPUT = 1.0` by
+  default (#89, no gates run) changed the engine hash, so the service re-analysed all
+  4693 songs, each through librosa's whole-song HPSS in the service process: 1.75 GB a
+  five-minute song, four at a time, past the 7.3 GB memory cap before one song was
+  committed. The kernel killed it every ~3.7 min from 08:12, with every measurement run,
+  gate and suite with it. Drums-only input back off by default.
+- **Real decimal tempos rounded away** (#92). #90 wrote every BPM with one decimal:
+  128.37 -> 128.4, ~40 ms of drift over a three-minute line (benchmark decimal-128.37
+  MISS, test_odd_tempo_is_exact). One decimal now only where the line's ends move
+  `TIDY_BPM_DRIFT_MS` (2 ms) or less; 233.433 still reads 233.4 on lines up to ~1.5 min.
+- **The octave rule halved fast songs** (#94). With nothing on the half beats it cannot
+  tell a slow song read at double from a fast one without subdivision: 174 and 180 BPM
+  click tracks read 87 and 90, camisa-negra 194 -> 97. Its halving is off
+  (`OCTAVE_RULE_HALVE_FLOOR = inf`); the doubling stays.
+- **The update never restarted the service on a fix** (found, not changed): with the
+  service in its kill loop the busy check got no answer and every tick waited. Stopping
+  `overtone-api` by hand let it through, as the script intends.
+
+### Changed
+
+- **HPSS in 20 s blocks** (#93), padded 2 s and aligned to the STFT hop: output
+  identical to the whole song (difference 0.0), peak 207 MB instead of 1.75 GB.
+- **Experiments added, all off:** `lines-on-downbeats` (#95, roadmap 27.7: a tempo
+  change moves by whole beats of its own onto the previous line's next bar line, kept
+  only if the 10 ms fit loses at most 0.002), `stems-drums` (#88, Stemsplit's drums
+  stem through its CLI; the server has the binary and the epoch-30 model),
+  `octave-rule-floor`, `octave-rule-no-halve`.
+- **bench/stages.py reports `line_on_bar`**: the share of the engine's red lines after
+  the first that start within 20 ms of one of the map's bar lines (4/4 assumed).
+
+### Measured
+
+Rust engine, 08501366, ranked maps, dev [held out]:
+
+| | bands tempo ok | bands octave x1 | bands beats 10 ms | anime-single tempo ok |
+|---|---|---|---|---|
+| base | 47.6 [61.0] | 63.2 [75.7] | 54.0 | 78.4 [82.2] |
+| octave-rule-floor | 47.6 [61.0] | 63.2 [75.7] | 54.0 | 78.0 [82.2] |
+| octave-rule-no-halve | 47.6 [61.0] | 63.2 [75.7] | 54.0 | 78.1 [82.2] |
+| percussive | **59.7 [64.3]** | **72.3 [77.6]** | **63.1** | (running) |
+
+Halving never fired on bands. Percussive answered 526 of 636 bands dev maps (base 450).
+The rust engine refuses where app falls back to v3, so these sit below app's numbers
+(app, ed3b02f: bands 51.3 [65.4], anime-single 84.2 [84.4]); app runs are queued.
+
 ## Unreleased — 2026-10-29 · The .osz kept on this device, to download again
 
 ### Changed

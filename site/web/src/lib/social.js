@@ -1,7 +1,6 @@
 /**
  * Social v2 on published timings (W5.6, W6, W13.15, W13.18), as the pages ask
- * for it: stars, "I used this", comments, collections, profiles and the
- * ranking of timers. Pure where it can be, so the tests reach it without a
+ * for it: stars, "I used this", comments, collections and profiles. Pure where it can be, so the tests reach it without a
  * browser; the requests go through lib/api.js.
  */
 import { api } from './api.js'
@@ -150,5 +149,4 @@ export const updateProfile = (change) => api('/me/profile', { method: 'PUT', jso
 export const userActivity = (username, cursor = null) =>
   api(`/users/${encodeURIComponent(username)}/activity${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`)
 export const refreshOsu = () => api('/links/osu/refresh', { method: 'POST', json: {} })
-export const timers = (by = 'uses') => api(`/timers?by=${by === 'stars' ? 'stars' : 'uses'}`)
 export const sortedTimings = (filters, options) => api(`/timings${sortedQuery(filters, options)}`)

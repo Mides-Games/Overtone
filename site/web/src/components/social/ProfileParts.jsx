@@ -1,3 +1,4 @@
+import { ProfileRanks } from '../team/RankBadge.jsx'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
@@ -62,6 +63,7 @@ export function ProfileCard({ user, totals, visits = null, children }) {
           <div className="min-w-0 flex-1 basis-56 space-y-1 pt-2">
             <h1 className="heading-headline break-words">{user.displayName || user.username}</h1>
             <p className="readout text-label text-muted">@{user.username}</p>
+            <ProfileRanks user={user} />
             {visits && (
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 text-caption text-dim" title={t('social.profile.visits.note')}>
                 <Icon name="eye" size={14} />

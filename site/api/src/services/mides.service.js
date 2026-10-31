@@ -93,8 +93,20 @@ export const toUser = (u) => ({
   // Shown to the account itself (the linked-accounts card), as text. Mides'
   // full profile had no Discord username on 2026-10-28; read when it does.
   discordUsername: discordName(u.discord_username),
+  // Staff here is still `is_moderator` alone. Mides' rank (owner, admin,
+  // moderator) only names which, read from `staff_rank` when Mides sends one;
+  // a global `role` is never taken (it is not this app's to read).
+  midesRank: midesRank(u),
   role: u.is_moderator === true ? 'moderator' : null,
 });
+
+/** The Mides Projects ranks this site shows, highest first. Only Mides gives them. */
+export const MIDES_RANKS = ['owner', 'admin', 'moderator'];
+
+export const midesRank = (u) => {
+  if (u?.is_moderator !== true) return null;
+  return MIDES_RANKS.includes(u.staff_rank) ? u.staff_rank : 'moderator';
+};
 
 /** Where a person changes their photo, banner and name: Mides' settings page (its App.jsx route). */
 export const midesSettingsUrl = () => (env.midesWebUrl ? `${env.midesWebUrl}/settings` : null);

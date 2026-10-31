@@ -16,7 +16,7 @@ const { upsertFromMides } = await import('../src/services/account.service.js');
 const { COOKIE, issue } = await import('../src/services/session.service.js');
 const { social } = await import('../src/services/social.service.js');
 const {
-  atMsOf, badgesOf, beatmapUrlOf, COLLECTIONS_PER_ACCOUNT, MIN_RATINGS_TO_RANK, rankScore, TIMER_MIN_RATINGS, TIMER_MIN_USES,
+  atMsOf, badgesOf, beatmapUrlOf, COLLECTIONS_PER_ACCOUNT, MIN_RATINGS_TO_RANK, rankScore,
 } = await import('../src/utils/social.js');
 const { listFilters } = await import('../src/utils/timings.js');
 const { ABOUT_MAX, linkOf, profileEdit } = await import('../src/utils/profile.js');
@@ -425,7 +425,7 @@ test('a profile shows what its timer published, their totals and badges; a priva
   const profile = await call('GET', '/users/CAROL');
   assert.equal(profile.status, 200);
   assert.deepEqual(profile.body.user, {
-    username: 'carol', displayName: 'CAROL', avatarUrl: null, bannerUrl: null, about: null, links: {}, accent: null,
+    username: 'carol', displayName: 'CAROL', avatarUrl: null, bannerUrl: null, about: null, links: {}, accent: null, midesRank: null, overtoneRank: null,
   });
   assert.equal(profile.body.osu, null);
   assert.equal(profile.body.edit, undefined, 'what the owner edits is the owner\'s view only');
@@ -476,37 +476,6 @@ test('an accepted suggestion and public collections show on the profile; private
   assert.deepEqual(profile.collections.map((c) => c.id), [open.id]);
   const me = (await call('GET', '/me/collections', { cookie: dave })).body;
   assert.equal(me.collections.length, 2);
-});
-
-test('the ranking of timers: by uses or by stars, a minimum to enter, private profiles left out', async () => {
-  // erin: three uses by others and five ratings; frank: one use. gina rates and uses, and publishes nothing.
-  const erin = extra[2];
-  const frank = extra[3];
-  const t1 = await timing({ cookie: erin });
-  const t2 = await timing({ cookie: erin });
-  const f1 = await timing({ cookie: frank });
-  for (const cookie of [alice, bob, extra[4]]) await call('PUT', `/timings/${t1}/use`, { cookie, body: {} });
-  for (const cookie of [alice, bob, extra[0], extra[1], extra[4]]) await call('PUT', `/timings/${t2}/rating`, { cookie, body: { stars: 4 } });
-  await call('PUT', `/timings/${f1}/use`, { cookie: alice, body: {} });
-
-  const byUses = await call('GET', '/timers');
-  assert.equal(byUses.body.by, 'uses');
-  assert.deepEqual(byUses.body.min, { uses: TIMER_MIN_USES, ratings: TIMER_MIN_RATINGS });
-  const erinRow = byUses.body.timers.find((r) => r.user.username === 'erin');
-  assert.deepEqual(erinRow, {
-    user: { username: 'erin', displayName: 'ERIN', avatarUrl: null }, published: 2, uses: 3, rating: { average: 4, count: 5 },
-  });
-  assert.ok(!byUses.body.timers.some((r) => r.user.username === 'frank'));
-  assert.ok(byUses.body.timers.every((r) => r.uses >= TIMER_MIN_USES));
-
-  const byStars = await call('GET', '/timers?by=stars');
-  assert.ok(byStars.body.timers.some((r) => r.user.username === 'erin'));
-  assert.ok(byStars.body.timers.every((r) => r.rating.count >= TIMER_MIN_RATINGS));
-  assert.equal((await call('GET', '/timers?by=nonsense')).body.by, 'uses');
-
-  await call('PUT', '/me/profile', { cookie: erin, body: { private: true } });
-  assert.ok(!(await call('GET', '/timers')).body.timers.some((r) => r.user.username === 'erin'));
-  await call('PUT', '/me/profile', { cookie: erin, body: { private: false } });
 });
 
 /** A new member with a session, made directly (the dev login has two). */
@@ -641,7 +610,6 @@ test('nothing this file read carried an upload\'s SHA-1, address hash or anonymo
   await call('PUT', `/timings/${anon}/use`, { cookie: bob, body: {} });
   await call('GET', `/timings/${anon}/social`);
   await call('GET', '/timings?sort=used');
-  await call('GET', '/timers?by=stars');
   assert.ok(secrets.length > 20);
   const all = seen.join('\n');
   for (const secret of secrets) assert.ok(!all.includes(secret), `a response carried ${secret}`);

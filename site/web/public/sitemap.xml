@@ -7,7 +7,6 @@
   <url><loc>https://overtone.midesprojects.com/queue</loc></url>
   <url><loc>https://overtone.midesprojects.com/community</loc></url>
   <url><loc>https://overtone.midesprojects.com/recent</loc></url>
-  <url><loc>https://overtone.midesprojects.com/timers</loc></url>
   <url><loc>https://overtone.midesprojects.com/status</loc></url>
   <url><loc>https://overtone.midesprojects.com/stats</loc></url>
   <url><loc>https://overtone.midesprojects.com/how-it-works</loc></url>
@@ -19,5 +18,7 @@
   <url><loc>https://overtone.midesprojects.com/privacy</loc></url>
   <url><loc>https://overtone.midesprojects.com/disclaimer</loc></url>
   <url><loc>https://overtone.midesprojects.com/credits</loc></url>
+  <url><loc>https://overtone.midesprojects.com/team</loc></url>
+  <url><loc>https://overtone.midesprojects.com/testers</loc></url>
   <url><loc>https://overtone.midesprojects.com/developers</loc></url>
 </urlset>

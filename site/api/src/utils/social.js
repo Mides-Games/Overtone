@@ -37,19 +37,6 @@ export const starsOf = (raw) => {
   return raw;
 };
 
-// ── Ranking of timers (W6) ──────────────────────────────────────────────────
-
-/**
- * A timer enters the ranking by uses with this many uses of their published
- * timings by other accounts, and the ranking by stars with this many ratings
- * received. Small on purpose: few people use the site at first, and a bar
- * nobody clears would make the page a promise. The page states both.
- */
-export const TIMER_MIN_USES = 3;
-export const TIMER_MIN_RATINGS = 5;
-export const TIMERS_LIMIT = 50;
-export const TIMER_SORTS = ['uses', 'stars'];
-
 // ── The recent list's orders (W5.1) ─────────────────────────────────────────
 
 /**

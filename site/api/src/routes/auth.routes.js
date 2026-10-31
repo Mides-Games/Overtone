@@ -145,6 +145,7 @@ const devUser = (code) => {
       // `discord_id` would (W9.1), so the bot's linked path can be tried.
       discordId: provider === 'discord' ? DEV_DISCORD_ID : null,
       role: provider === 'google' ? 'moderator' : null,
+      midesRank: provider === 'google' ? 'admin' : null,
     },
   };
 };

@@ -32,11 +32,80 @@ const LINKS = [
   { to: '/', key: 'nav.home', end: true },
   { to: '/analyze', key: 'nav.analyze' },
   { to: '/queue', key: 'nav.queue' },
-  { to: '/community', key: 'community.nav' },
   { to: '/recent', key: 'timings.nav.recent' },
-  { to: '/timers', key: 'social.nav.timers' },
-  { to: '/profile', key: 'nav.profile' },
+  { to: '/community', key: 'community.nav' },
 ]
+
+/** The team's pages, behind one "Team" in the bar that opens on them. */
+const TEAM = [
+  { to: '/team', key: 'crew.nav', icon: 'shield' },
+  { to: '/testers', key: 'crew.testersNav', icon: 'flask' },
+]
+
+/**
+ * "Team" in the bar: a menu that drops open (`.pop-in`, from its top left)
+ * on Staff and Testers, lit while either page is open. Closes on Escape, a
+ * click outside or a followed link.
+ */
+function TeamMenu({ tab }) {
+  const { t } = useTranslation()
+  const { pathname } = useLocation()
+  const [open, setOpen] = useState(false)
+  const [at, setAt] = useState(null)
+  const ref = useRef(null)
+  const active = TEAM.some((item) => pathname === item.to)
+
+  useEffect(() => setOpen(false), [pathname])
+  useEffect(() => {
+    if (!open) return undefined
+    const close = (event) => {
+      if (event.type === 'keydown' ? event.key === 'Escape' : !ref.current?.contains(event.target)) setOpen(false)
+    }
+    // Placed where the button was: a scroll or a resize would leave it behind.
+    const away = () => setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    window.addEventListener('scroll', away, { passive: true })
+    window.addEventListener('resize', away)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', close)
+      window.removeEventListener('scroll', away)
+      window.removeEventListener('resize', away)
+    }
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative flex h-full">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          // The places scroll sideways, which would clip a menu hung inside
+          // them: it is placed on the page instead, under the button.
+          const box = event.currentTarget.getBoundingClientRect()
+          setAt({ left: box.left, top: box.bottom })
+          setOpen((v) => !v)
+        }}
+        className={`${tab({ isActive: active })} gap-1`}
+      >
+        {t('crew.teamNav')}
+        <Icon name="chevron-down" size={14} className={`transition-transform duration-200 ease-out ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div role="menu" className="menu pop-in fixed z-50 mt-1 w-48" style={{ '--origin': 'top left', left: at?.left ?? 0, top: at?.top ?? 0 }}>
+          {TEAM.map((item) => (
+            <Link key={item.to} role="menuitem" to={item.to} className="menu-item gap-2.5" onClick={() => setOpen(false)}>
+              <Icon name={item.icon} size={16} className="text-dim" />
+              {t(item.key)}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const SHEET_ID = 'site-menu'
 
@@ -173,12 +242,15 @@ function Places() {
     }`
   return (
     // min-w-0 and its own scroll: at a large font size (W12.15) the places scroll rather than push the account off the bar.
-    <nav aria-label="Overtone" className="hidden h-full min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] lg:flex">
+    <nav aria-label="Overtone" className="hidden h-full min-w-0 items-stretch lg:flex">
+      <div className="flex h-full min-w-0 items-stretch overflow-x-auto [scrollbar-width:none]">
       {LINKS.map((link) => (
         <NavLink key={link.to} to={link.to} end={link.end} className={tab}>
           {t(link.key)}
         </NavLink>
       ))}
+      <TeamMenu tab={tab} />
+      </div>
     </nav>
   )
 }
@@ -207,6 +279,19 @@ function Sheet({ account, onClose, firstRef }) {
                         {isActive && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-accent" />}
                       </>
                     )}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+            <p className="label px-3 pb-1 pt-4">{t('crew.teamNav')}</p>
+            <ul className="space-y-0.5">
+              {TEAM.map((link) => (
+                <li key={link.to}>
+                  <NavLink to={link.to} className={row} onClick={onClose}>
+                    <span className="flex items-center gap-3">
+                      <Icon name={link.icon} size={18} className="text-dim" />
+                      {t(link.key)}
+                    </span>
                   </NavLink>
                 </li>
               ))}

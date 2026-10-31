@@ -607,3 +607,20 @@ CREATE TABLE IF NOT EXISTS profile_visits (
 
 -- /stats counts the songs timed in the last 7 and 30 days by when they finished.
 CREATE INDEX IF NOT EXISTS analyses_finished_idx ON analyses (finished_at) WHERE status = 'done' AND deleted_at IS NULL AND cached_from IS NULL;
+
+-- ── The team (2026-10-31) ───────────────────────────────────────────────────
+
+-- Mides Projects' own rank (owner, admin, moderator), as the last sign-in
+-- brought it. Mides decides it; Overtone only shows it on /team and never
+-- changes it. `mides_role` stays the one permission check (isStaff).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS mides_rank text CHECK (mides_rank IN ('owner', 'admin', 'moderator'));
+
+-- Overtone's own ranks: the only ones this site can give. One per account,
+-- given and taken by Mides staff on /staff; the account itself must have
+-- signed in here first, so every holder has an Overtone account.
+CREATE TABLE IF NOT EXISTS overtone_ranks (
+  account_id      uuid PRIMARY KEY REFERENCES accounts (id) ON DELETE CASCADE,
+  rank            text NOT NULL CHECK (rank IN ('developer', 'tester', 'translator', 'contributor')),
+  granted_by      uuid REFERENCES accounts (id) ON DELETE SET NULL,
+  granted_at      timestamptz NOT NULL DEFAULT now()
+);

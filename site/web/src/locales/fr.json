@@ -2075,9 +2075,6 @@
     }
   },
   "social": {
-    "nav": {
-      "timers": "Timeurs"
-    },
     "title": "Ce que les gens ont fait de ce timing",
     "failed": "Cela n'a pas fonctionné. Réessayez dans un instant.",
     "cancel": "Annuler",
@@ -2189,26 +2186,6 @@
       "usedNote": "Les timings que des personnes ont déclaré avoir utilisés dans une map, les plus utilisés d'abord.",
       "ratedEmpty": "Aucun timing n'a encore assez de notes pour être classé.",
       "usedEmpty": "Personne n'a encore déclaré en avoir utilisé un."
-    },
-    "timers": {
-      "title": "Timeurs",
-      "subtitle": "Les personnes dont d'autres ont utilisé les timings publiés dans leurs maps, ou les ont le mieux notés. Modeste et honnête : il y a un minimum pour y entrer.",
-      "link": "Classement des timeurs",
-      "by": {
-        "uses": "Par utilisations",
-        "stars": "Par étoiles"
-      },
-      "minUses_one": "Un timeur y entre avec {{count}} utilisation de ses timings par d'autres personnes.",
-      "minUses_many": "Un timeur y entre avec {{count}} utilisations de ses timings par d'autres personnes.",
-      "minUses_other": "Un timeur y entre avec {{count}} utilisations de ses timings par d'autres personnes.",
-      "minStars_one": "Un timeur y entre avec {{count}} note reçue.",
-      "minStars_many": "Un timeur y entre avec {{count}} notes reçues.",
-      "minStars_other": "Un timeur y entre avec {{count}} notes reçues.",
-      "published_one": "{{count}} publié",
-      "published_many": "{{count}} publiés",
-      "published_other": "{{count}} publiés",
-      "empty": "Personne n'a encore atteint le minimum.",
-      "howOrdered": "Les étoiles sont classées selon une moyenne qui compte trois notes de 3 en plus, pour que quelques notes parfaites ne l'emportent pas sur beaucoup de bonnes. Les profils privés sont exclus."
     },
     "profile": {
       "title": "Timeur",
@@ -2994,5 +2971,46 @@
     "whenFinished_other": "Vous pourrez en envoyer une autre quand l'une de vos {{count}} chansons dans la file sera terminée.",
     "seeQueue": "Voir la file",
     "signIn": "Connectez-vous pour une limite quotidienne plus élevée"
+  },
+  "crew": {
+    "nav": "Staff",
+    "testersNav": "Testeurs",
+    "eyebrow": "L'équipe",
+    "staffTitle": "Staff",
+    "staffLede": "Qui s'occupe d'Overtone : le staff de Mides Projects et l'équipe d'Overtone.",
+    "testersTitle": "Testeurs",
+    "testersLede": "Les personnes qui testent, traduisent et aident à construire Overtone.",
+    "midesGroup": "Mides Projects",
+    "midesNote": "Rangs donnés par Mides Projects. Ils sont affichés ici et ne se changent que sur Mides.",
+    "overtoneGroup": "Équipe d'Overtone",
+    "noStaff": "Personne pour l'instant.",
+    "noTesters": "Aucun testeur pour l'instant.",
+    "failed": "L'équipe n'a pas pu être lue. Réessayez dans un instant.",
+    "midesTitle": "Un rang de Mides Projects",
+    "related": "Lié à Overtone",
+    "relatedTitle": "A aussi un rang Overtone",
+    "mides": {
+      "owner": "Propriétaire",
+      "admin": "Admin",
+      "moderator": "Modérateur"
+    },
+    "overtone": {
+      "developer": "Développeur",
+      "tester": "Testeur",
+      "translator": "Traducteur",
+      "contributor": "Contributeur"
+    },
+    "form": {
+      "title": "Rangs Overtone",
+      "note": "Donnez un rang Overtone à un compte qui s'est déjà connecté ici, ou retirez-le. Les rangs de Mides Projects se donnent sur Mides, pas ici.",
+      "username": "Nom d'utilisateur",
+      "rank": "Rang",
+      "none": "Aucun rang (retirer)",
+      "save": "Enregistrer",
+      "given": "@{{name}} est maintenant {{rank}}.",
+      "taken": "@{{name}} n'a plus de rang Overtone.",
+      "noAccount": "Aucun compte Overtone n'a ce nom. La personne doit d'abord se connecter ici une fois."
+    },
+    "teamNav": "Équipe"
   }
 }

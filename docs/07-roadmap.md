@@ -36,7 +36,7 @@ Train and the Songs browser were parked on `parked/desktop-extras`: the core is 
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **parked with the app** (2026-10-26; `parked/desktop-app`) — v0.1.0-alpha was published: per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **567** Python (526 engine + 41 worker) · **231** Rust.
+Tests: **570** Python (527 engine + 43 worker) · **231** Rust.
 
 ### Current priorities — 2026-10-16
 

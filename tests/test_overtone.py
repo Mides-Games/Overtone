@@ -7846,6 +7846,17 @@ class PhraseLinesTests(unittest.TestCase):
             self.assertIs(overtone._phrase_lines(a), a)
 
 
+class TidyBpmTests(unittest.TestCase):
+    """A BPM is written with two decimals, as a ranked mapper writes it (2026-10-31)."""
+
+    def test_two_decimals_and_one_with_the_old_rule(self):
+        import overtone
+        self.assertEqual(overtone._tidy_bpm(233.433, 400.0), 233.43)
+        self.assertEqual(overtone._tidy_bpm(94.0449, 64.0), 94.04)
+        with mock.patch.object(overtone, "TIDY_BPM_DECIMALS", 1):
+            self.assertEqual(overtone._tidy_bpm(233.433, 4.0), 233.4)
+
+
 class PercussiveBlocksTests(unittest.TestCase):
     """HPSS a block at a time reads what the whole song at once reads."""
 

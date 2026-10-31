@@ -36,7 +36,12 @@ const mb = (value) => (Number.isInteger(value) && value >= 0 && value <= 1_048_5
 
 export const reportMemory = (raw, now = Date.now()) => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
-  const report = { rssMb: mb(raw.rss_mb), peakMb: mb(raw.peak_mb), limitMb: mb(raw.limit_mb) };
+  const report = {
+    rssMb: mb(raw.rss_mb), peakMb: mb(raw.peak_mb), limitMb: mb(raw.limit_mb),
+    // what a live band's hint needs: the separator, and room for it on the host
+    stems: typeof raw.stems === 'boolean' ? raw.stems : null,
+    hostFreeMb: mb(raw.host_free_mb), serviceMaxMb: mb(raw.service_max_mb),
+  };
   if (report.rssMb === null && report.peakMb === null && report.limitMb === null) return;
   memoryReport = { ...report, at: now };
 };
@@ -47,6 +52,9 @@ export const workerMemory = (now = Date.now()) =>
     rssMb: memoryReport.rssMb,
     peakMb: memoryReport.peakMb,
     limitMb: memoryReport.limitMb,
+    stems: memoryReport.stems,
+    hostFreeMb: memoryReport.hostFreeMb,
+    serviceMaxMb: memoryReport.serviceMaxMb,
     secondsAgo: Math.max(0, Math.round((now - memoryReport.at) / 1000)),
   };
 

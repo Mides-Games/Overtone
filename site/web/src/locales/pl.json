@@ -2074,7 +2074,8 @@
       "meter_applied_many": "{{count}} red lines nie miało taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt.",
       "meter_applied_other": "{{count}} red line nie miało taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt.",
       "band_drums": "Perkusja została oddzielona od miksu przed odczytaniem siatki.",
-      "band_no_separator": "Ten worker nie ma jeszcze separatora perkusji: miks odczytano jak zwykle."
+      "band_no_separator": "Ten worker nie ma jeszcze separatora perkusji: miks odczytano jak zwykle.",
+      "band_separator_failed": "Separator perkusji zawiódł na tym workerze (pamięć lub czas): miks odczytano jak zwykle."
     },
     "reanalyse": {
       "title": "Analizuj ponownie",
@@ -2984,7 +2985,11 @@
     "worker": {
       "memory": "Pamięć: {{rss}} teraz, {{peak}} w szczycie ostatniego zadania, limit {{limit}}",
       "memoryAgo": "zgłoszone {{seconds}} s temu",
-      "noMemory": "Worker nie zgłosił swojej pamięci (potrafi to tylko na Linuksie)."
+      "noMemory": "Worker nie zgłosił swojej pamięci (potrafi to tylko na Linuksie).",
+      "stemsReady": "Separator perkusji zainstalowany (wskazówka zespołu na żywo)",
+      "stemsMissing": "Brak separatora perkusji: wskazówka zespołu na żywo czyta miks",
+      "room": "wolne na hoście {{free}}, limit usługi {{max}}",
+      "noMax": "brak"
     },
     "failures": {
       "title": "Błędy, ostatnie 7 dni",

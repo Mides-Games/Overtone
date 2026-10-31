@@ -1988,7 +1988,8 @@
       "meter_applied_one": "{{count}} red line não tinha um compasso que o motor conseguisse provar: ela usa as suas {{meter}} batidas por compasso.",
       "meter_applied_other": "{{count}} red lines não tinham um compasso que o motor conseguisse provar: elas usam as suas {{meter}} batidas por compasso.",
       "band_drums": "A bateria foi separada da mixagem antes de ler a grade.",
-      "band_no_separator": "Este worker ainda não tem o separador de bateria: a mixagem foi lida como sempre."
+      "band_no_separator": "Este worker ainda não tem o separador de bateria: a mixagem foi lida como sempre.",
+      "band_separator_failed": "O separador de bateria falhou neste worker (memória ou tempo): a mixagem foi lida como sempre."
     },
     "reanalyse": {
       "title": "Analisar de novo",
@@ -2869,7 +2870,11 @@
     "worker": {
       "memory": "Memória: {{rss}} agora, {{peak}} no pico do último trabalho, limite {{limit}}",
       "memoryAgo": "informado há {{seconds}} s",
-      "noMemory": "O worker não informou a memória (só consegue no Linux)."
+      "noMemory": "O worker não informou a memória (só consegue no Linux).",
+      "stemsReady": "Separador de bateria instalado (dica de banda ao vivo)",
+      "stemsMissing": "Sem separador de bateria: a dica de banda ao vivo lê a mixagem",
+      "room": "livre no host {{free}}, limite do serviço {{max}}",
+      "noMax": "nenhum"
     },
     "failures": {
       "title": "Falhas, últimos 7 dias",

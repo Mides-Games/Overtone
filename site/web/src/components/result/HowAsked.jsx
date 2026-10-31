@@ -95,6 +95,7 @@ function checkText(t, { key, values = {} }) {
       return t('modes.checks.meter_applied', { meter: values.meter, count: values.count })
     case 'band_drums':
     case 'band_no_separator':
+    case 'band_separator_failed':
       return t(`modes.checks.${key}`)
     default:
       return key

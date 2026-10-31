@@ -1988,7 +1988,8 @@
       "meter_applied_one": "{{count}} red line hatte keinen Takt, den die Engine belegen konnte: Sie nutzt deine {{meter}} Beats pro Takt.",
       "meter_applied_other": "{{count}} red lines hatten keinen Takt, den die Engine belegen konnte: Sie nutzen deine {{meter}} Beats pro Takt.",
       "band_drums": "Das Schlagzeug wurde vor dem Lesen des Rasters vom Mix getrennt.",
-      "band_no_separator": "Dieser Worker hat noch keinen Schlagzeug-Separator: Der Mix wurde wie üblich gelesen."
+      "band_no_separator": "Dieser Worker hat noch keinen Schlagzeug-Separator: Der Mix wurde wie üblich gelesen.",
+      "band_separator_failed": "Der Schlagzeug-Separator ist auf diesem Worker fehlgeschlagen (Speicher oder Zeit): Der Mix wurde wie üblich gelesen."
     },
     "reanalyse": {
       "title": "Erneut analysieren",
@@ -2868,7 +2869,11 @@
     "worker": {
       "memory": "Speicher: {{rss}} jetzt, {{peak}} beim Spitzenwert des letzten Jobs, Limit {{limit}}",
       "memoryAgo": "gemeldet vor {{seconds}} s",
-      "noMemory": "Der Worker hat seinen Speicher nicht gemeldet (das geht nur unter Linux)."
+      "noMemory": "Der Worker hat seinen Speicher nicht gemeldet (das geht nur unter Linux).",
+      "stemsReady": "Schlagzeug-Separator installiert (Live-Band-Hinweis)",
+      "stemsMissing": "Kein Schlagzeug-Separator: Der Live-Band-Hinweis liest den Mix",
+      "room": "frei auf dem Host {{free}}, Dienstlimit {{max}}",
+      "noMax": "keins"
     },
     "failures": {
       "title": "Fehlschläge, letzte 7 Tage",

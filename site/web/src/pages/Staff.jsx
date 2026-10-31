@@ -169,6 +169,16 @@ function QueueAndWorker({ queue, worker }) {
         ) : (
           <p className="text-dim">{t('staff.worker.noMemory')}</p>
         )}
+        {worker.memory && worker.memory.stems !== null && worker.memory.stems !== undefined && (
+          <p className="readout text-muted">
+            {t(worker.memory.stems ? 'staff.worker.stemsReady' : 'staff.worker.stemsMissing')}
+            {' · '}
+            {t('staff.worker.room', {
+              free: mb(worker.memory.hostFreeMb),
+              max: worker.memory.serviceMaxMb === null ? t('staff.worker.noMax') : mb(worker.memory.serviceMaxMb),
+            })}
+          </p>
+        )}
       </div>
       {queue.live.length === 0 ? (
         <EmptyState title={t('queue.empty')} className="border-y border-line py-6" />

@@ -1988,7 +1988,8 @@
       "meter_applied_one": "{{count}} red line non aveva una battuta che il motore potesse dimostrare: usa i tuoi {{meter}} beat per battuta.",
       "meter_applied_other": "{{count}} red line non avevano una battuta che il motore potesse dimostrare: usano i tuoi {{meter}} beat per battuta.",
       "band_drums": "La batteria è stata separata dal mix prima di leggere la griglia.",
-      "band_no_separator": "Questo worker non ha ancora il separatore della batteria: il mix è stato letto come sempre."
+      "band_no_separator": "Questo worker non ha ancora il separatore della batteria: il mix è stato letto come sempre.",
+      "band_separator_failed": "Il separatore della batteria non è riuscito su questo worker (memoria o tempo): il mix è stato letto come sempre."
     },
     "reanalyse": {
       "title": "Analizza di nuovo",
@@ -2869,7 +2870,11 @@
     "worker": {
       "memory": "Memoria: {{rss}} ora, {{peak}} al picco dell'ultimo job, limite {{limit}}",
       "memoryAgo": "segnalata {{seconds}} s fa",
-      "noMemory": "Il worker non ha segnalato la sua memoria (può farlo solo su Linux)."
+      "noMemory": "Il worker non ha segnalato la sua memoria (può farlo solo su Linux).",
+      "stemsReady": "Separatore della batteria installato (indizio band dal vivo)",
+      "stemsMissing": "Nessun separatore della batteria: l'indizio band dal vivo legge il mix",
+      "room": "libera sull'host {{free}}, limite del servizio {{max}}",
+      "noMax": "nessuno"
     },
     "failures": {
       "title": "Fallimenti, ultimi 7 giorni",

@@ -7784,6 +7784,15 @@ class PhraseLinesTests(unittest.TestCase):
         self.assertAlmostEqual(out.points[0].offset_ms % 500.0, 0.0, delta=1.0)
         self.assertAlmostEqual(out.points[1].offset_ms, 20000.0, delta=1.0)
 
+    def test_a_band_that_pushes_the_tempo_gets_a_new_line(self):
+        import overtone
+        # One 200 BPM line; from 20.1 s the band pushes to 202 and stays there.
+        a = self._analysis([TimingPoint(0.0, 200.0, 1.0, 0), TimingPoint(30000.0, 200.0, 1.0, 0)],
+                           [(0.0, 20100.0, 200.0), (20100.0, 39900.0, 202.0)])
+        out = overtone._phrase_lines(a)
+        self.assertGreaterEqual(len(out.points), 2)
+        self.assertAlmostEqual(out.points[-1].bpm, 202.0, delta=0.3)
+
     def test_short_lines_at_one_tempo_merge(self):
         import overtone
         step = 60000.0 / 200

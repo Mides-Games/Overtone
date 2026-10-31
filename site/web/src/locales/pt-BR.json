@@ -1935,6 +1935,8 @@
       "to": "Fim (m:ss)",
       "stretchNote": "Deixe os dois vazios para a música inteira. Os tempos do resultado ficam na linha do tempo da própria música.",
       "stretchOne": "Só dá para escolher um trecho para uma música de cada vez.",
+      "band": "Banda ao vivo",
+      "bandNote": "Separa a bateria antes de ler a grade: beats melhores numa música com baterista ao vivo, cerca de dois minutos a mais.",
       "honest": "As dicas nunca se sobrepõem ao áudio. Um tempo esperado escolhe a oitava em que o motor lê a música, e um compasso só preenche os compassos que o motor não conseguiu provar; onde o áudio discorda de uma dica, o resultado avisa.",
       "reset": "Voltar ao padrão"
     },
@@ -1968,7 +1970,8 @@
       "hints": "Suas dicas:",
       "aboutBpm": "uns {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "só {{from}}–{{to}}"
+      "stretchShort": "só {{from}}–{{to}}",
+      "band": "banda ao vivo"
     },
     "checks": {
       "tempo_not_constant_one": "Você disse um BPM só do início ao fim, e o motor encontrou {{count}} tempo.",
@@ -1983,7 +1986,9 @@
       "octave_window_moved": "O seu tempo escolheu a oitava em que o motor leu a música ({{low}}–{{high}} BPM). Sem ele, o motor a teria lido em {{bpm}} BPM.",
       "meter_differs": "Você disse {{meter}} batidas por compasso; onde o motor conseguiu provar o compasso, encontrou {{found}}, e manteve o dele.",
       "meter_applied_one": "{{count}} red line não tinha um compasso que o motor conseguisse provar: ela usa as suas {{meter}} batidas por compasso.",
-      "meter_applied_other": "{{count}} red lines não tinham um compasso que o motor conseguisse provar: elas usam as suas {{meter}} batidas por compasso."
+      "meter_applied_other": "{{count}} red lines não tinham um compasso que o motor conseguisse provar: elas usam as suas {{meter}} batidas por compasso.",
+      "band_drums": "A bateria foi separada da mixagem antes de ler a grade.",
+      "band_no_separator": "Este worker ainda não tem o separador de bateria: a mixagem foi lida como sempre."
     },
     "reanalyse": {
       "title": "Analisar de novo",

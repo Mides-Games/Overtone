@@ -23,6 +23,7 @@ export const EMPTY_FORM = {
   meter: '', // '' or a number of beats
   start: '', // 'm:ss' or seconds
   end: '',
+  band: false, // a live band: the worker separates the drums
 }
 
 /** "1:23.5", "83.5" or "" as seconds; NaN for anything else. */
@@ -92,6 +93,7 @@ export function buildRequest(form, { durationS = null, allowStretch = true } = {
     options.start_s = Math.round(from * 1000) / 1000
     options.end_s = Math.round(Math.min(to, durationS ?? to) * 1000) / 1000
   }
+  if (form.band === true) options.band = true
   return { mode, options, error: null }
 }
 

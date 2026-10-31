@@ -1935,6 +1935,8 @@
       "to": "Fine (m:ss)",
       "stretchNote": "Lascia entrambi vuoti per tutta la canzone. I tempi del risultato restano sulla linea temporale della canzone.",
       "stretchOne": "Si può scegliere un tratto per una sola canzone alla volta.",
+      "band": "Band dal vivo",
+      "bandNote": "Separa la batteria prima di leggere la griglia: beat migliori su un brano con batterista dal vivo, circa due minuti in più.",
       "honest": "I suggerimenti non prevalgono mai sull'audio. Un tempo atteso sceglie l'ottava a cui il motore legge la canzone, e un metro riempie solo le battute che il motore non è riuscito a dimostrare; dove l'audio non concorda con un suggerimento, il risultato lo dice.",
       "reset": "Torna alle impostazioni predefinite"
     },
@@ -1968,7 +1970,8 @@
       "hints": "I tuoi suggerimenti:",
       "aboutBpm": "circa {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "solo {{from}}–{{to}}"
+      "stretchShort": "solo {{from}}–{{to}}",
+      "band": "band dal vivo"
     },
     "checks": {
       "tempo_not_constant_one": "Hai indicato un solo BPM per tutta la canzone, e il motore ha trovato {{count}} tempo.",
@@ -1983,7 +1986,9 @@
       "octave_window_moved": "Il tuo tempo ha scelto l'ottava a cui il motore ha letto la canzone ({{low}}–{{high}} BPM). Senza di esso, il motore l'avrebbe letta a {{bpm}} BPM.",
       "meter_differs": "Hai indicato {{meter}} beat per battuta; dove il motore ha potuto dimostrare la battuta ne ha trovati {{found}}, e ha tenuto i suoi.",
       "meter_applied_one": "{{count}} red line non aveva una battuta che il motore potesse dimostrare: usa i tuoi {{meter}} beat per battuta.",
-      "meter_applied_other": "{{count}} red line non avevano una battuta che il motore potesse dimostrare: usano i tuoi {{meter}} beat per battuta."
+      "meter_applied_other": "{{count}} red line non avevano una battuta che il motore potesse dimostrare: usano i tuoi {{meter}} beat per battuta.",
+      "band_drums": "La batteria è stata separata dal mix prima di leggere la griglia.",
+      "band_no_separator": "Questo worker non ha ancora il separatore della batteria: il mix è stato letto come sempre."
     },
     "reanalyse": {
       "title": "Analizza di nuovo",

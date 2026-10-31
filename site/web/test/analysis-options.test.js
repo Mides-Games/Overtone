@@ -38,6 +38,12 @@ test('each hint becomes the field the API takes', () => {
   assert.deepEqual(buildRequest({ ...EMPTY_FORM, bpmKind: 'about' }).options, {})
 })
 
+test('a live band asks the worker to separate the drums', () => {
+  assert.deepEqual(buildRequest({ ...EMPTY_FORM, band: true }).options, { band: true })
+  assert.deepEqual(buildRequest({ ...EMPTY_FORM, band: false }).options, {})
+  assert.equal(isDefault(buildRequest({ ...EMPTY_FORM, band: true })), false)
+})
+
 test('a mistake is named before anything is sent', () => {
   const error = (form, context) => buildRequest({ ...EMPTY_FORM, ...form }, context).error
   assert.equal(error({ bpmKind: 'about', bpm: '1000' }), 'bpm')

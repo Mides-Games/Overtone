@@ -164,6 +164,7 @@ components:
         meter: { type: integer, minimum: 1, maximum: 16 }
         start_s: { type: number, minimum: 0 }
         end_s: { type: number, description: 'At most MAX_AUDIO_SECONDS, and at least 10 s after start_s.' }
+        band: { type: boolean, description: 'A live band: the worker separates the drums before reading the grid (sent only as true).' }
     Queue:
       type: object
       required: [live, more, recent, at]

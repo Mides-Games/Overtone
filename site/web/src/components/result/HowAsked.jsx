@@ -69,6 +69,7 @@ export function hintList(t, options) {
   if (Number.isFinite(options.start_s)) {
     out.push(t('modes.result.stretchShort', { from: formatTime(options.start_s), to: formatTime(options.end_s) }))
   }
+  if (options.band) out.push(t('modes.result.band'))
   return out
 }
 
@@ -92,6 +93,9 @@ function checkText(t, { key, values = {} }) {
       return t('modes.checks.meter_differs', { meter: values.meter, found: (values.found ?? []).join(', ') })
     case 'meter_applied':
       return t('modes.checks.meter_applied', { meter: values.meter, count: values.count })
+    case 'band_drums':
+    case 'band_no_separator':
+      return t(`modes.checks.${key}`)
     default:
       return key
   }

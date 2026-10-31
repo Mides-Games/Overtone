@@ -153,6 +153,19 @@ export default function AnalysisOptions({ form, onChange, costs = null, duration
           </fieldset>
         </div>
 
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={form.band === true}
+            onChange={(event) => onChange({ ...form, band: event.target.checked })}
+            className="mt-1 accent-[var(--accent)]"
+          />
+          <span className="space-y-0.5">
+            <span className="block text-label font-semibold text-text">{t('modes.options.band')}</span>
+            <span className="block text-caption text-dim">{t('modes.options.bandNote')}</span>
+          </span>
+        </label>
+
         <p className="text-caption leading-relaxed text-dim">{t('modes.options.honest')}</p>
 
         {changed && (

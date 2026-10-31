@@ -42,6 +42,13 @@ test('every hint is checked, and a bad one is a 400 that names it', () => {
   assert.deepEqual(parseOptions({ bpm_min: 90, bpm_max: 180 }).options, { bpm_min: 90, bpm_max: 180 });
 });
 
+test('a live band is a hint of its own, true or left out', () => {
+  assert.deepEqual(parseOptions({ band: true }), { options: { band: true }, key: 'band=true' });
+  assert.deepEqual(parseOptions({ band: false }), { options: {}, key: '' });
+  assert.equal(parseOptions({ band: true, meter: 4 }).key, 'band=true;meter=4');
+  for (const raw of [{ band: 'yes' }, { band: 1 }]) assert.equal(catchCode(() => parseOptions(raw)), 'BAD_OPTIONS');
+});
+
 test('the upload header is percent-encoded JSON, capped', () => {
   const header = encodeURIComponent(JSON.stringify({ tempo: 'changes', meter: 7 }));
   assert.equal(optionsFromHeader(header).key, 'meter=7;tempo=changes');

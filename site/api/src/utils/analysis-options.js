@@ -12,6 +12,7 @@ import { HttpError } from './http-error.js';
  *   bpm_min, bpm_max                 an expected range (both, min < max)
  *   meter    1-16                    beats per bar
  *   start_s, end_s                   analyse only this stretch, in seconds
+ *   band     true                    a live band: the worker separates the drums
  *
  * The mode and the hints are part of the cache key: the same audio asked for
  * another way is another result. `optionsKey` is that key, one canonical
@@ -27,7 +28,7 @@ export const MIN_STRETCH_S = 10;
 /** The options travel in a header on upload: no more than this, as JSON. */
 export const MAX_OPTIONS_BYTES = 512;
 
-const KEYS = ['tempo', 'bpm', 'bpm_min', 'bpm_max', 'meter', 'start_s', 'end_s'];
+const KEYS = ['tempo', 'bpm', 'bpm_min', 'bpm_max', 'meter', 'start_s', 'end_s', 'band'];
 
 const bad = (message) => new HttpError(400, message, 'BAD_OPTIONS');
 
@@ -92,6 +93,10 @@ export const parseOptions = (raw, { maxSeconds = 3600 } = {}) => {
     if (end - start < MIN_STRETCH_S) throw bad(`The stretch is at least ${MIN_STRETCH_S} seconds long.`);
     out.start_s = round3(start);
     out.end_s = round3(end);
+  }
+  if (given('band')) {
+    if (typeof raw.band !== 'boolean') throw bad('band is true or false.');
+    if (raw.band) out.band = true;
   }
   return { options: out, key: optionsKey(out) };
 };

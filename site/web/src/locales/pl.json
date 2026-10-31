@@ -2011,6 +2011,8 @@
       "to": "Koniec (m:ss)",
       "stretchNote": "Zostaw oba puste, żeby analizować cały utwór. Czasy w wyniku pozostają na osi czasu samego utworu.",
       "stretchOne": "Fragment można wybrać tylko dla jednego utworu naraz.",
+      "band": "Zespół na żywo",
+      "bandNote": "Oddziela perkusję przed odczytaniem siatki: lepsze beaty w utworze z perkusistą na żywo, około dwóch minut dłużej.",
       "honest": "Wskazówki nigdy nie mają pierwszeństwa przed audio. Oczekiwane tempo wybiera oktawę, w której silnik odczytuje utwór, a metrum wypełnia tylko takty, których silnik nie zdołał udowodnić; tam, gdzie audio nie zgadza się ze wskazówką, wynik to mówi.",
       "reset": "Przywróć domyślne"
     },
@@ -2048,7 +2050,8 @@
       "hints": "Twoje wskazówki:",
       "aboutBpm": "około {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "tylko {{from}}–{{to}}"
+      "stretchShort": "tylko {{from}}–{{to}}",
+      "band": "zespół na żywo"
     },
     "checks": {
       "tempo_not_constant_one": "Podałeś jedno BPM przez cały utwór, a silnik znalazł {{count}} tempo.",
@@ -2069,7 +2072,9 @@
       "meter_applied_one": "{{count}} red line nie miała taktu, który silnik mógłby udowodnić: używa twoich {{meter}} beatów na takt.",
       "meter_applied_few": "{{count}} red lines nie miały taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt.",
       "meter_applied_many": "{{count}} red lines nie miało taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt.",
-      "meter_applied_other": "{{count}} red line nie miało taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt."
+      "meter_applied_other": "{{count}} red line nie miało taktu, który silnik mógłby udowodnić: używają twoich {{meter}} beatów na takt.",
+      "band_drums": "Perkusja została oddzielona od miksu przed odczytaniem siatki.",
+      "band_no_separator": "Ten worker nie ma jeszcze separatora perkusji: miks odczytano jak zwykle."
     },
     "reanalyse": {
       "title": "Analizuj ponownie",

@@ -1897,6 +1897,8 @@
       "to": "끝 (m:ss)",
       "stretchNote": "곡 전체를 분석하려면 둘 다 비워 두세요. 결과의 시간은 곡 자체의 타임라인 기준이에요.",
       "stretchOne": "구간은 한 번에 한 곡에만 지정할 수 있어요.",
+      "band": "라이브 밴드",
+      "bandNote": "그리드를 읽기 전에 드럼을 분리합니다. 라이브 드러머 곡에서 비트가 더 정확해지고, 약 2분 더 걸립니다.",
       "honest": "힌트는 오디오보다 우선하지 않아요. 예상 템포는 엔진이 곡을 읽는 옥타브를 고르고, 박자는 엔진이 증명하지 못한 마디만 채워요. 오디오가 힌트와 다르면 결과에 그렇게 표시돼요.",
       "reset": "기본값으로 되돌리기"
     },
@@ -1928,7 +1930,8 @@
       "hints": "내 힌트:",
       "aboutBpm": "약 {{bpm}} BPM",
       "rangeBpm": "{{low}}–{{high}} BPM",
-      "stretchShort": "{{from}}–{{to}}만"
+      "stretchShort": "{{from}}–{{to}}만",
+      "band": "라이브 밴드"
     },
     "checks": {
       "tempo_not_constant_other": "처음부터 끝까지 하나의 BPM이라고 했지만, 엔진은 서로 다른 템포 {{count}}개를 찾았어요. 엔진의 red line은 유지되니, 바뀌는 곳을 들어 보세요.",
@@ -1940,7 +1943,9 @@
       "octave_window": "입력한 템포가 엔진이 곡을 읽는 옥타브({{low}}–{{high}} BPM)를 정했어요.",
       "octave_window_moved": "입력한 템포가 엔진이 곡을 읽는 옥타브({{low}}–{{high}} BPM)를 정했어요. 그게 없었다면 엔진은 {{bpm}} BPM으로 읽었을 거예요.",
       "meter_differs": "마디당 {{meter}}비트라고 했지만, 엔진이 마디를 증명할 수 있었던 곳에서는 {{found}}을(를) 찾았고 자신의 값을 유지했어요.",
-      "meter_applied_other": "red line {{count}}개는 엔진이 증명할 수 있는 마디가 없었어요: 입력한 마디당 {{meter}}비트를 써요."
+      "meter_applied_other": "red line {{count}}개는 엔진이 증명할 수 있는 마디가 없었어요: 입력한 마디당 {{meter}}비트를 써요.",
+      "band_drums": "그리드를 읽기 전에 드럼을 믹스에서 분리했습니다.",
+      "band_no_separator": "이 워커에는 아직 드럼 분리기가 없어 평소처럼 믹스를 읽었습니다."
     },
     "reanalyse": {
       "title": "다시 분석",

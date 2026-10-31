@@ -65,6 +65,21 @@ class ResultOnAudioTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    def test_a_separator_that_fails_leaves_the_mix_and_says_so(self):
+        real = tr.ta.analyze_audio
+
+        def analyze(*args, **kwargs):
+            if tr.ta.STEMS_DRUMS:
+                raise tr.ta.SeparatorFailed("The separator failed (exit -9): killed")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(tr, "stems_available", return_value=True), mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
+            result = tr.analyse(self.change, vote=False, hash_="test", options={"band": True})
+        self.assertFalse(result["refused"])
+        self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
+        self.assertIn("band_separator_failed", [c["key"] for c in result["hint_checks"]])
+        self.assertFalse(tr.ta.STEMS_DRUMS)
+
     def test_a_tempo_change_gives_two_red_lines_at_its_bpms(self):
         stages = []
         result = tr.analyse(self.change, vote=False, hash_="test",
@@ -262,9 +277,27 @@ class MemoryReportTests(unittest.TestCase):
         import isolate
         runner = isolate.Runner(None, isolate.Limits(memory_mb=1800), self_test=False)
         runner.job_peak_mb, runner.limited = 1234, True
-        self.assertEqual(runner.memory_report(), {"rss_mb": None, "peak_mb": 1234, "limit_mb": 1800})
+        report = runner.memory_report()
+        self.assertEqual({k: report[k] for k in ("rss_mb", "peak_mb", "limit_mb")},
+                         {"rss_mb": None, "peak_mb": 1234, "limit_mb": 1800})
+        self.assertIn("stems", report)
+        self.assertIn("host_free_mb", report)
+        self.assertIn("service_max_mb", report)
         runner.limited = False
         self.assertEqual(runner.memory_report()["limit_mb"], None)
+
+    def test_the_service_limit_is_read_from_its_cgroup(self):
+        import isolate
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "system.slice" / "w.service").mkdir(parents=True)
+            (root / "cg").write_text("0::/system.slice/w.service")
+            limit = root / "system.slice" / "w.service" / "memory.max"
+            limit.write_text(str(4 * 1024 ** 3))
+            self.assertEqual(isolate.service_limit_mb(str(root), str(root / "cg")), 4096)
+            limit.write_text("max")
+            self.assertIsNone(isolate.service_limit_mb(str(root), str(root / "cg")))
+        self.assertIsNone(isolate.service_limit_mb("/no/such/root", "/no/such/cgroup"))
 
     def test_the_claim_sends_the_report_only_when_there_is_one(self):
         import main
@@ -542,6 +575,14 @@ class ResultPartsTests(unittest.TestCase):
                 self.assertTrue(egg.binary_name().endswith(name), libc)
         self.assertEqual(set(egg.SHA256), {"stemsplit-x86_64-linux-gnu", "stemsplit-x86_64-linux-musl",
                                            "stemsplit.safetensors"})
+
+    def test_the_separator_gets_half_the_jobs_time(self):
+        self.assertEqual(tr.stems_timeout(300.0), 450.0)
+        self.assertEqual(tr.stems_timeout(10.0), tr.STEMS_MIN_TIMEOUT_S)
+        self.assertIsNone(tr.stems_timeout(None))
+        with tr.engine_settings("normal", None, stems=True, stems_timeout_s=450.0):
+            self.assertEqual(tr.ta.STEMSPLIT_TIMEOUT_S, 450.0)
+        self.assertNotEqual(tr.ta.STEMSPLIT_TIMEOUT_S, 450.0)
 
     def test_without_the_separator_a_band_is_analysed_on_the_mix(self):
         with mock.patch.object(tr.ta, "STEMSPLIT_CLI", "no-such-stemsplit-binary"):

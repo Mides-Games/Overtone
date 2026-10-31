@@ -4560,18 +4560,33 @@ STEMSPLIT_WEIGHTS = "stemsplit.safetensors"
 STEMSPLIT_TIMEOUT_S = 900.0
 
 
+class SeparatorFailed(RuntimeError):
+    """The drums separator (STEMS_DRUMS) is missing, failed or ran out of time
+    or memory: the one failure a caller may answer by reading the mix."""
+
+
 def _stems_drums(y: np.ndarray, sr: int) -> np.ndarray:
-    """``y``'s drums stem through the stemsplit CLI, mono and peak-normalized."""
+    """``y``'s drums stem through the stemsplit CLI, mono and peak-normalized.
+    Any failure of the separator is a SeparatorFailed."""
+    try:
+        return _stems_drums_run(y, sr)
+    except SeparatorFailed:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- timeout, killed, unreadable output
+        raise SeparatorFailed(f"The separator failed: {type(exc).__name__}: {exc}") from exc
+
+
+def _stems_drums_run(y: np.ndarray, sr: int) -> np.ndarray:
     import shutil
     import subprocess
     import tempfile
     import soundfile
     binary = shutil.which(STEMSPLIT_CLI) or (STEMSPLIT_CLI if os.path.isfile(STEMSPLIT_CLI) else None)
     if binary is None:
-        raise RuntimeError(f"STEMS_DRUMS is on but the separator ({STEMSPLIT_CLI}) is not installed")
+        raise SeparatorFailed(f"STEMS_DRUMS is on but the separator ({STEMSPLIT_CLI}) is not installed")
     model = STEMSPLIT_MODEL or os.fspath(ROOT / "assets" / "models" / STEMSPLIT_WEIGHTS)
     if not os.path.isfile(model):
-        raise RuntimeError(f"STEMS_DRUMS is on but the separator's weights are missing ({model})")
+        raise SeparatorFailed(f"STEMS_DRUMS is on but the separator's weights are missing ({model})")
     with tempfile.TemporaryDirectory() as scratch:
         mix = os.path.join(scratch, "mix.wav")
         soundfile.write(mix, np.asarray(y, dtype=np.float32), sr, subtype="FLOAT")
@@ -4581,7 +4596,7 @@ def _stems_drums(y: np.ndarray, sr: int) -> np.ndarray:
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if done.returncode != 0:
             detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
-            raise RuntimeError(f"The separator failed (exit {done.returncode}): {detail}")
+            raise SeparatorFailed(f"The separator failed (exit {done.returncode}): {detail}")
         drums, _ = soundfile.read(os.path.join(scratch, "drums.wav"), dtype="float32", always_2d=True)
     out = drums.mean(axis=1)[: len(y)]
     peak = float(np.max(np.abs(out))) if out.size else 0.0

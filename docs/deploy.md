@@ -196,12 +196,20 @@ workers). Swap en 0 en todos.
   worker) y 566 MB sin él; antes decía 512 MB sin medir.
 - **Banda en vivo: 4 GB.** La pista `band` separa la batería con Stemsplit antes de
   leer la grilla. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
-  versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`; si falla, el worker
-  arranca igual y esos análisis leen la mezcla, y el resultado lo dice
-  (`band_no_separator`). El separador solo pica ~2,4 GB y tarda ~2,5 min un tema de
-  5 minutos en 6 núcleos (VPS de mediciones, 2026-10-31), más que los 2 GB de arriba:
-  con 2 GB un análisis de banda muere por memoria. Con 4 GB alcanza, porque el
-  separador corre antes que el motor y termina antes de que este cargue.
+  versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`. El separador solo pica
+  ~2,4 GB en un tema de 5 minutos y tarda ~0,5 veces la duración en 6 núcleos (0,6
+  con el binario estático, el que toma un glibc anterior a 2.39 como el de Ubuntu
+  22.04). Corre como proceso aparte, así que `WORKER_MEMORY_MB` no lo cuenta; lo que
+  lo frena es la memoria del host o del servicio. Si falla (sin memoria, sin tiempo:
+  tiene 1,5 veces la duración del audio, o sin instalar), el worker lee la mezcla y
+  el resultado lo dice (`band_separator_failed`, `band_no_separator`): un análisis
+  de banda nunca falla por el separador.
+  **Hoy el worker corre en el host de Mides** (abajo), no en el panel: no hay server
+  que agrandar en Reviactyl. Lo que hace falta lo dice la página de **staff**, sin
+  entrar al host: si el separador está instalado, la memoria libre del host y el
+  límite del servicio (`memory.max` de su cgroup, `ninguno` sin `MemoryMax`). Con
+  menos de ~3 GB libres, quien administra el host (no el dueño de Overtone) sube el
+  `MemoryMax` de `overtone-site-worker` o libera memoria.
 - **El CPU limit no alcanza solo.** Con el límite, el worker no pasa de cuatro
   núcleos de cuota, pero esa cuota la toma de cualquier núcleo, incluidos los que
   usan los servers de Minecraft en ese momento. El **pinning** (el campo

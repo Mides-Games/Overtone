@@ -134,6 +134,38 @@ def resident_mb(pid) -> int | None:
     return _status_mb(pid, "VmRSS")
 
 
+def host_available_mb() -> int | None:
+    """The host's available memory (MemAvailable), in MB; None without /proc."""
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def service_limit_mb(root: str = "/sys/fs/cgroup", cgroup: str = "/proc/self/cgroup") -> int | None:
+    """The memory limit of this process's cgroup (cgroup v2 memory.max: a
+    systemd MemoryMax or a container's limit), in MB; None for none or unknown.
+    Read, never set: it says whether a live band's separator fits here."""
+    try:
+        for line in Path(cgroup).read_text().splitlines():
+            if line.startswith("0::"):
+                value = (Path(root) / line[3:].lstrip("/") / "memory.max").read_text().strip()
+                return None if value == "max" else int(value) // (1024 * 1024)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def separator_ready() -> bool:
+    """Whether start.sh installed the drums separator (STEMSPLIT_CLI and
+    STEMSPLIT_MODEL, deploy/eggs/stemsplit.py), without importing the engine."""
+    cli, model = os.environ.get("STEMSPLIT_CLI", ""), os.environ.get("STEMSPLIT_MODEL", "")
+    return bool(cli and model and os.path.isfile(cli) and os.path.isfile(model))
+
+
 def resident_peak_mb() -> int | None:
     """This process's peak resident memory (Linux), for the start-up log."""
     return _status_mb("self", "VmHWM")
@@ -272,7 +304,10 @@ class Runner:
         if rss is None and self.job_peak_mb is None:
             return None
         limit = self.limits.memory_mb if self.limited and self.limits.memory_mb > 0 else None
-        return {"rss_mb": rss, "peak_mb": self.job_peak_mb, "limit_mb": limit}
+        # what a live band's hint needs (docs/deploy.md): the separator, and room for it
+        return {"rss_mb": rss, "peak_mb": self.job_peak_mb, "limit_mb": limit,
+                "stems": separator_ready(), "host_free_mb": host_available_mb(),
+                "service_max_mb": service_limit_mb()}
 
     def start(self) -> None:
         """A ready child, starting one if there is none. Raises WorkerBroken."""

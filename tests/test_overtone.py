@@ -7777,6 +7777,13 @@ class PhraseLinesTests(unittest.TestCase):
         out = overtone._phrase_lines(self._analysis(points, segs))
         self.assertEqual([round(p.bpm, 2) for p in out.points], [120.0])
 
+    def test_a_line_a_few_ms_off_moves_onto_its_attacks(self):
+        import overtone
+        points = [TimingPoint(7.0, 120.0, 1.0, 0), TimingPoint(20007.0, 150.0, 1.0, 0)]
+        out = overtone._phrase_lines(self._analysis(points, [(0.0, 20000.0, 120.0), (20000.0, 39900.0, 150.0)]))
+        self.assertAlmostEqual(out.points[0].offset_ms % 500.0, 0.0, delta=1.0)
+        self.assertAlmostEqual(out.points[1].offset_ms, 20000.0, delta=1.0)
+
     def test_short_lines_at_one_tempo_merge(self):
         import overtone
         step = 60000.0 / 200

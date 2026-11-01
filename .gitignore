@@ -51,3 +51,4 @@ bench/.cache/
 # Local analysis files and tokens
 profiles/
 token.txt
+reviactyl-token.txt

@@ -7719,6 +7719,71 @@ class LinesOnDownbeatsTests(unittest.TestCase):
         self.assertIs(overtone._lines_on_downbeats(a), a)
 
 
+class ConstantGridTests(unittest.TestCase):
+    """CONSTANT_GRID: a song one steady grid explains is read as one red line."""
+
+    def _analysis(self, bpms):
+        import overtone
+        points = [TimingPoint(n * 4000.0, b, 1.0, 0) for n, b in enumerate(bpms)]
+        return overtone.Analysis(source="x", duration=280.0, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=points, hop_length=512, sample_rate=44100, subdivision=1.0,
+                                 engine="legacy")
+
+    def _beats(self, half_parts):
+        # A 212 BPM grid from 1290 ms on Beat This!'s 20 ms frames, every
+        # other beat only inside ``half_parts``.
+        step = 60000.0 / 212
+        out, n = [], 0
+        while 1290.0 + n * step < 279000.0:
+            t = 1290.0 + n * step
+            if not any(a <= t < b for a, b in half_parts) or n % 2 == 0:
+                out.append(round(t / 20.0) * 20.0 / 1000.0)
+            n += 1
+        return np.asarray(out)
+
+    def test_half_time_parts_still_read_as_one_grid(self):
+        import overtone
+        # Beat This! as it heard the song: every beat only from 20 to 60 s and
+        # 200 to 220 s, every other beat elsewhere, so the median gap is 560 ms.
+        halves = [(0.0, 20000.0), (60000.0, 200000.0), (220000.0, 280000.0)]
+        beats = self._beats(halves)
+        bpms = [213.3, 211.73, 213.23, 211.4, 213.95, 210.9, 212.54, 208.16]
+        out = overtone._constant_grid(self._analysis(bpms), lambda: beats)
+        self.assertEqual(len(out.points), 1)
+        self.assertAlmostEqual(out.points[0].bpm, 212.0, delta=0.05)
+
+    def _one_line(self, bpm, played):
+        import overtone
+        step = 60000.0 / played
+        times = np.arange(500.0, 200000.0, step) / 1000.0
+        weights = np.where(np.arange(times.size) % 4 == 0, 3.0, 1.0)
+        return overtone.Analysis(source="x", duration=200.0, beats=np.zeros(0), local_bpms=np.zeros(0),
+                                 points=[TimingPoint(500.0, bpm, 1.0, 0)], hop_length=512,
+                                 sample_rate=44100, subdivision=1.0, attack_times=times,
+                                 attack_weights=weights, engine="legacy")
+
+    def test_the_one_line_reads_at_the_whole_bpm_its_attacks_play(self):
+        import overtone
+        out = overtone._snap_constant_line(self._one_line(220.05, 220.0))
+        self.assertEqual(out.points[0].bpm, 220.0)
+        self.assertAlmostEqual(out.points[0].offset_ms, 500.0, delta=1.0)
+
+    def test_a_line_its_attacks_play_off_the_whole_bpm_stays(self):
+        import overtone
+        a = self._one_line(220.4, 220.4)
+        self.assertIs(overtone._snap_constant_line(a), a)
+
+    def test_a_real_tempo_change_is_left_alone(self):
+        import overtone
+        a = 60000.0 / 150
+        first = [n * a for n in range(300)]
+        b = 60000.0 / 180
+        second = [first[-1] + n * b for n in range(1, 400)]
+        beats = np.asarray(first + second) / 1000.0
+        analysis = self._analysis([150.0, 150.4, 180.2, 179.8])
+        self.assertIs(overtone._constant_grid(analysis, lambda: beats), analysis)
+
+
 class PhraseLinesTests(unittest.TestCase):
     """PHRASE_LINES: jitter merges into phrases, changes land on phrase points."""
 

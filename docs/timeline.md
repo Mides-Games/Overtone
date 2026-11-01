@@ -20,6 +20,58 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-01 · Four experiments against their own baseline
+
+### Changed
+
+- Nothing in the engine. Every switch below stays as it is: `BEAT_THIS_TRACKER` and
+  `STEMS_DRUMS` off by default, the octave cap and `PHRASE_LINES` on.
+
+### Measured
+
+Server, app engine, ranked maps, all on 50991ef, each experiment against the same code
+with every switch off (bench/diagnose.py `--compare`). The share of the songs' time read
+right, and in brackets the change against that baseline:
+
+| experiment | bands dev | bands held out | anime-variable dev | anime-variable held out | anime-single dev | anime-single held out |
+|---|---|---|---|---|---|---|
+| baseline | 55.5 | 46.5 | 61.6 | 59.7 | 70.7 | 73.5 |
+| beat-this-tracker | 55.5 (+0.0) | 46.7 (+0.2) | 61.6 (+0.0) | 59.9 (+0.2) | 70.6 (−0.1) | 73.2 (−0.3) |
+| octave-cap-off | 56.3 (+0.8) | 46.3 (−0.2) | 59.5 (−2.1) | 57.7 (−2.0) | 69.4 (−1.3) | 71.4 (−2.1) |
+| phrase-lines-off | 57.8 (+2.3) | 48.2 (+1.7) | – | – | – | – |
+| stems-drums | **68.7 (+13.2)** | **55.2 (+8.7)** | running | queued | **81.8 (+11.1)** | **83.8 (+10.3)** |
+
+- **beat-this-tracker:** the network did run (it changed the red lines of 124 of the 185
+  fallback maps on bands dev, 291 of 403 on anime-variable dev), but on those maps tempo
+  ok stayed 26.5 % and beats within 10 ms went 51.1 → 50.7 % (bands dev; held out
+  2.2 → 2.3 %, anime-variable dev 51.3 → 51.4 %). The tracker's beats were not what the
+  fallback lacked: the tempo it settles on comes from what is read on top of them.
+- **octave-cap-off:** read at double rises 3.0–3.1 points on anime-variable and 1.1–1.5
+  on anime-single. The cap of #114 holds.
+- **phrase-lines-off:** with phrases on, bands lose 1.7–2.3 points of right time, almost
+  all of it BPM slightly off (+2.4 dev, +4.7 held out), and gain fewer double ticks
+  (0.8 a minute fewer, in 37–41 % of the songs instead of 24 %). The trade is the
+  owner's: phrases are how the ranked set they were built from is timed.
+- **stems-drums:** the largest gain measured on real songs: tempo wrong −4.9 / −2.7 and
+  beats 10–25 ms off −6.4 on bands, BPM slightly off −3.3 / −5.4 and beats 10–25 ms off
+  −6.8 / −2.6 on anime-single. Its cost is unchanged: one job at a time, 5,108–22,701 s a
+  run against 420–1,210 s for two jobs without it, peak 2.5–3.8 GB. anime-variable is
+  still running and is recorded when it lands.
+- **Gates on the server:** suite 536 OK; every gate passes but `real-audio`, which has
+  failed on every server run since the phrase work: noble 14 → 6 red lines and
+  calm-down-juliet 102 → 174 (bar-by-bar lines on the fallback, #108). Its snapshot was
+  last pinned on the server before #103; it is not re-pinned here, because whether those
+  readings are the intended ones is the owner's call.
+- The a7d6b6c baseline for anime-single held out (20261031-162119-2c9360) finished in
+  16 s and is not a measurement; the experiments were first compared against a7d6b6c,
+  where #109–#117 lent each of them 1–5 points they did not earn.
+
+### Rejected / tried and dropped
+
+- **Beat This! as the fallback tracker.** No change in tempo or beats on any stage,
+  above. The switch stays, off, so the run can be repeated if the tracker's later stages
+  change.
+
 ## Unreleased — 2026-10-31 · Beat This! as the fallback tracker, an experiment
 
 ### Changed
@@ -38,8 +90,8 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ### Measured
 
-- Not yet: the model is not installed on this machine. Queued on the server against
-  the same code with the switch off.
+- Not on this machine (no model). On the server: no change, recorded in the entry of
+  2026-11-01 above.
 
 ## Unreleased — 2026-10-31 · Which timing problems cost the most
 

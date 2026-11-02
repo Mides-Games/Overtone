@@ -20,6 +20,26 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-02 · Where the time is lost with the drums separated
+
+### Measured
+
+- With stems-drums on (the 1c10374 runs of the entry below), **read at double** is the
+  one problem high on every stage: 7.6 % of bands' dev time, 7.6 % of anime-variable's,
+  4.2 % of anime-single's. By stretch, on dev: 8 bands songs, 22 anime-variable and 23
+  anime-single are mostly at double, nearly all on the precision path, mapped at 71–122
+  BPM and read at 142–256: the octave window (120–240) folds a slow song up.
+- Among dev songs read at 150–250 BPM (49 at double, 766 right), the off-beat ratio
+  does not tell them apart: halving below 0.3 would fix 16 and break 15; below 0.4, fix
+  25 and break 80. 210–250 holds 17 doubled songs against 54 right, too few for a rule.
+
+### Rejected / tried and dropped
+
+- **Halving slow songs on the off-beat ratio.** As above: no threshold gains more than
+  it breaks. With the Beat This! song octave of 2026-10-28 (4 fixed, 8 broken on bands)
+  that is two signals that cannot place a slow song's octave; a third needs its own
+  feature (where the vocal or bass phrase lands, say) and an untouched split.
+
 ## Unreleased — 2026-11-02 · Fast mode stays fast, and the queue's estimate counts the drums
 
 ### Fixed

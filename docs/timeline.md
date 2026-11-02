@@ -20,6 +20,43 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-02 · Every song's drums separated on the site
+
+### Changed
+
+- **The site's worker separates every song's drums** before the grid is read, not only
+  a live band's (`STEMS_EVERY_SONG`, `worker/timing_result.py`). Without the separator,
+  or when it fails, the mix is read as before and the result says which
+  (`band_drums`, `band_separator_failed`). `OVERTONE_STEMS=0` turns it off on a worker.
+  The engine's own `STEMS_DRUMS` stays off: the command line and the gates are unchanged.
+- A worker that separates gets another `engine_hash` than one that cannot, so neither
+  serves the other's cached results.
+
+### Measured
+
+Server, app engine, ranked maps, 1c10374 (the engine of cd0b4ac), stems-drums with
+Stemsplit v0.2.0 at one job against the same code without it. Share of the songs' time
+read right, and analysis time per song:
+
+| | dev | held out | time per song, without → with |
+|---|---|---|---|
+| bands-variable | 60.0 → **69.0 (+9.0)** | 51.4 → **55.8 (+4.4)** | 12.4 → 22.8 s |
+| anime-variable | 64.7 → **67.7 (+3.0)** | 62.2 → **65.8 (+3.6)** | 10.3–14.4 → 16.6–17.4 s |
+| anime-single | 72.4 → **82.2 (+9.8)** | 76.4 → **83.8 (+7.4)** | 4.3–4.5 → 10.8–12.8 s |
+
+- Gains everywhere, mostly beats 10–25 ms off (−7.0 anime-single dev, −6.3 bands dev)
+  and tempo wrong (−4.3 bands dev). It costs read at double +2.2 on bands dev, +1.1 on
+  anime-single held out.
+- With Stemsplit v0.1.0 the same runs took 73–94 s a song (41 on anime-single): the
+  separator is now 1.2–2.5 times an analysis, where it was 6–19.
+- Times without stems come from two-job runs (anime-single's from 50991ef's, whose
+  baselines here were cached), those with it from one-job runs: rough ratios.
+- **Two jobs with the separator do not fit the server's 5 GB service cap**: the first
+  runs at two jobs lost a process (BrokenProcessPool, the cgroup at its MemoryMax). The
+  site's worker runs one job at a time; `docs/deploy.md` keeps 4 GB for it.
+- Worker suite: the three new tests pass; the two-engine test fails here as on master
+  (it needs what this PC lacks). `bench/facts.py` passes.
+
 ## Unreleased — 2026-11-02 · The drums separator four times faster
 
 ### Changed

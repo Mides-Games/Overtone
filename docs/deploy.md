@@ -194,8 +194,10 @@ workers). Swap en 0 en todos.
   `bench/worker_perf.py` (2026-10-27, Windows, 4 hilos): un tema de 10 minutos pica
   1200 MB con el voto (1824 antes de apagar el memory pattern también en el loader del
   worker) y 566 MB sin él; antes decía 512 MB sin medir.
-- **Banda en vivo: 4 GB.** La pista `band` separa la batería con Stemsplit antes de
-  leer la grilla. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
+- **Con el separador: 4 GB.** Desde el 2026-11-02 el worker separa la batería con
+  Stemsplit en **todas** las canciones antes de leer la grilla (`STEMS_EVERY_SONG`,
+  `worker/timing_result.py`; `OVERTONE_STEMS=0` en su entorno lo apaga), no solo con
+  la pista `band`. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
   versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`. Desde la v0.2.0 el
   separador solo pica ~1 GB en un tema de 5 minutos (1,4 GB en uno de 7) y tarda
   ~0,13 veces la duración en 6 núcleos con otro trabajo corriendo; el binario
@@ -204,7 +206,8 @@ workers). Swap en 0 en todos.
   lo frena es la memoria del host o del servicio. Si falla (sin memoria, sin tiempo:
   tiene 1,5 veces la duración del audio, o sin instalar), el worker lee la mezcla y
   el resultado lo dice (`band_separator_failed`, `band_no_separator`): un análisis
-  de banda nunca falla por el separador.
+  nunca falla por el separador. Sin el separador instalado, cada canción se lee de la
+  mezcla como antes del 2026-11-02, con otro `engine_hash`.
   **Hoy el worker corre en el host de Mides** (abajo), no en el panel: no hay server
   que agrandar en Reviactyl. Lo que hace falta lo dice la página de **staff**, sin
   entrar al host: si el separador está instalado, la memoria libre del host y el

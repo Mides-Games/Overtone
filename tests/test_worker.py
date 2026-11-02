@@ -9,6 +9,7 @@ Kept fast: the tempo-change fixture is the benchmark's change-128-142 cut to
 seconds and the benchmark already gates what it does to red lines.
 """
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -24,6 +25,17 @@ sys.path.insert(0, str(ROOT / "bench"))
 import numpy as np  # noqa: E402
 
 import timing_result as tr  # noqa: E402
+
+
+def setUpModule():
+    # Every song's drums are separated where the separator is installed (the
+    # owner's server has it): these tests read the mix there too, children
+    # included, unless one asks for the separator itself.
+    os.environ["OVERTONE_STEMS"] = "0"
+
+
+def tearDownModule():
+    os.environ.pop("OVERTONE_STEMS", None)
 
 
 class ModelRecordTests(unittest.TestCase):
@@ -79,6 +91,39 @@ class ResultOnAudioTests(unittest.TestCase):
         self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
         self.assertIn("band_separator_failed", [c["key"] for c in result["hint_checks"]])
         self.assertFalse(tr.ta.STEMS_DRUMS)
+
+    def _separated(self, fail: bool = False):
+        """analyse() on the change with the separator said to be installed; the
+        engine records whether it was asked for the drums and reads the mix."""
+        real, asked = tr.ta.analyze_audio, []
+
+        def analyze(*args, **kwargs):
+            asked.append(tr.ta.STEMS_DRUMS)
+            if tr.ta.STEMS_DRUMS and fail:
+                raise tr.ta.SeparatorFailed("The separator failed (exit -9): killed")
+            with mock.patch.object(tr.ta, "STEMS_DRUMS", False):
+                return real(*args, **kwargs)
+
+        with mock.patch.object(tr, "stems_available", return_value=True),                 mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
+            return tr.analyse(self.change, vote=False, hash_="test"), asked
+
+    def test_every_song_has_its_drums_separated_and_says_so(self):
+        with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+            result, asked = self._separated()
+        self.assertEqual(asked, [True])
+        self.assertIn({"level": "info", "key": "band_drums", "values": {}}, result["hint_checks"])
+
+    def test_a_song_whose_separation_fails_is_read_on_the_mix_and_says_so(self):
+        with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+            result, asked = self._separated(fail=True)
+        self.assertEqual(asked, [True, False])
+        self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
+        self.assertIn("band_separator_failed", [c["key"] for c in result["hint_checks"]])
+
+    def test_overtone_stems_0_reads_every_song_on_the_mix(self):
+        result, asked = self._separated()
+        self.assertEqual(asked, [False])
+        self.assertNotIn("band_drums", [c["key"] for c in result["hint_checks"]])
 
     def test_a_tempo_change_gives_two_red_lines_at_its_bpms(self):
         stages = []
@@ -530,6 +575,10 @@ class ResultPartsTests(unittest.TestCase):
 
     def test_engine_hash_depends_on_the_vote(self):
         self.assertNotEqual(tr.engine_hash(True), tr.engine_hash(False))
+        with mock.patch.object(tr, "stems_available", return_value=True):
+            with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+                separated = tr.engine_hash(False)
+            self.assertNotEqual(separated, tr.engine_hash(False))  # OVERTONE_STEMS=0 here
         self.assertEqual(tr.engine_hash(False), tr.engine_hash(False))
         self.assertRegex(tr.engine_hash(False), r"^[0-9a-f]{16}$")
 

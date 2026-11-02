@@ -196,10 +196,11 @@ workers). Swap en 0 en todos.
   worker) y 566 MB sin él; antes decía 512 MB sin medir.
 - **Banda en vivo: 4 GB.** La pista `band` separa la batería con Stemsplit antes de
   leer la grilla. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
-  versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`. El separador solo pica
-  ~2,4 GB en un tema de 5 minutos y tarda ~0,5 veces la duración en 6 núcleos (0,6
-  con el binario estático, el que toma un glibc anterior a 2.39 como el de Ubuntu
-  22.04). Corre como proceso aparte, así que `WORKER_MEMORY_MB` no lo cuenta; lo que
+  versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`. Desde la v0.2.0 el
+  separador solo pica ~1 GB en un tema de 5 minutos (1,4 GB en uno de 7) y tarda
+  ~0,13 veces la duración en 6 núcleos con otro trabajo corriendo; el binario
+  estático, el que toma un glibc anterior a 2.39 como el de Ubuntu 22.04, tarda el
+  doble (medido en el server, 2026-11-02). Con la v0.1.0 eran ~2,4 GB y ~0,5 veces. Corre como proceso aparte, así que `WORKER_MEMORY_MB` no lo cuenta; lo que
   lo frena es la memoria del host o del servicio. Si falla (sin memoria, sin tiempo:
   tiene 1,5 veces la duración del audio, o sin instalar), el worker lee la mezcla y
   el resultado lo dice (`band_separator_failed`, `band_no_separator`): un análisis

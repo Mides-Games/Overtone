@@ -10,7 +10,7 @@ never a reason not to start.
 Downloads the CLI and the weights of one release, checks each against the
 SHA-256 written here (not one served beside them), and keeps them until the
 pinned release changes. The glibc build is the one Overtone measured; the
-static musl build, a third slower, is taken only where glibc is older than it
+static musl build, about twice as slow, is taken only where glibc is older than it
 needs. Standard library only: the runtime image has Python, not curl.
 """
 from __future__ import annotations
@@ -22,11 +22,11 @@ import sys
 import urllib.request
 from pathlib import Path
 
-VERSION = "v0.1.0"
+VERSION = "v0.2.0"
 BASE = f"https://github.com/Mides-Games/Stemsplit/releases/download/{VERSION}/"
 SHA256 = {
-    "stemsplit-x86_64-linux-gnu": "b45245fa5660b91ac0b4daaa5fa1c93af667b95dc4031068e2c2854b187daa68",
-    "stemsplit-x86_64-linux-musl": "be3e1c917fa6ea22eae6e5efba7e13f32e58bd2eaf0c0d1944c0149e17193518",
+    "stemsplit-x86_64-linux-gnu": "7e2fc60157682ede2dc9bd700a1150ceec7d70c357b10f85681e565b907b335d",
+    "stemsplit-x86_64-linux-musl": "2d169f8dc03a83cc55e6beb37d98bc1a442a8bac196dfc28f1d9ff32551523a3",
     "stemsplit.safetensors": "07e337023c1ff56e7453de4aa5b2df877b5bac91f0ba9d878c8c702648deea43",
 }
 #: The glibc the gnu build links against (objdump -T: GLIBC_2.39).

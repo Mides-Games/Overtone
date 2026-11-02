@@ -20,6 +20,33 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-02 · The drums separator four times faster
+
+### Changed
+
+- **The site's worker takes Stemsplit v0.2.0** (`deploy/eggs/stemsplit.py`, version and
+  SHA-256): its U-Net runs in Stemsplit's own convolutions and builds only the stems asked
+  for (Mides-Games/Stemsplit#2). Same weights, byte for byte.
+
+### Measured
+
+On the owner's server (6-core Haswell, a stage running alongside), `separate --stems
+drums`, v0.1.0's code against v0.2.0, one at a time:
+
+| song | audio | wall | peak memory |
+|---|---|---|---|
+| Calm Down Juliet | 279.9 s | 152.2 → 37.7 s | 2.07 → 0.97 GB |
+| DragonForce - Fury of the Storm | 405.2 s | 207.1 → 48.9 s | 3.03 → 1.39 GB |
+| LiSA - Akeboshi (TV Size) | 89.1 s | 39.4 → 11.8 s | 0.69 → 0.37 GB |
+
+- The drums stem matches v0.1.0's to 127–128 dB SDR (largest sample difference
+  ≤ 5.3e-7), so stems-drums' readings of 2026-11-01 stand; only its cost moves, from
+  13–19 times an analysis to roughly 4 (not yet re-run through the stages).
+- The static musl build matches the glibc one to 134 dB and takes about twice as long
+  (15.3 against 7.1 s on Akeboshi): it is only for hosts with glibc older than 2.39.
+- `deploy/eggs/stemsplit.py` run on the server fetches v0.2.0's glibc build, checks it
+  and runs it. Worker suite as on master (the two-engine test needs what this PC lacks).
+
 ## Unreleased — 2026-11-02 · Phrase lines after the steady-grid fix
 
 ### Changed

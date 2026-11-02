@@ -20,6 +20,31 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-02 · Phrase lines after the steady-grid fix
+
+### Changed
+
+- Nothing in the engine. `PHRASE_LINES` stays on, now by measurement as well as by the
+  owner's request.
+
+### Measured
+
+Server, app engine, ranked maps, cd0b4ac (#120), bands-variable with `phrase-lines-off`
+against the same code with the switch on (right 60.0 % dev, 51.4 % held out):
+
+- Right 60.4 dev (+0.4), 49.9 held out (−1.5). Double ticks +0.5 a minute in both
+  (33.9 and 27.8 % of the songs have one), offbeat +0.5 / +2.1; BPM slightly off −1.1 /
+  −1.7 is all the switch-off buys.
+- Before #120 the same comparison gave +2.3 / +1.7 for turning them off (entry of
+  2026-11-01 below): the songs a steady grid now reads as one line were the ones the
+  phrases timed bar by bar on tracker jitter.
+- Server gates of cd0b4ac: all 15 pass, real-audio included after its re-pin (Calm Down
+  Juliet 174 → 1 red line at 212, the reading #120 intended); suite 540 OK.
+- Stemsplit's drums-only separation (stems-drums' cost): 140 s wall, 273 s CPU at 206 %,
+  2.07 GB for a 4.6-minute song on the server, building all four stems for one. Its fix
+  is Mides-Games/Stemsplit#2 (14.6 s and 0.93 GB on the owner's PC, not yet measured on
+  the server).
+
 ## Unreleased — 2026-11-01 · One grid for songs Beat This! hears at half in parts
 
 ### Fixed

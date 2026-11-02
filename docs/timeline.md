@@ -20,6 +20,62 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-01 · One grid for songs Beat This! hears at half in parts
+
+### Fixed
+
+- **A steady song with half-time parts got a red line a bar** (Calm Down Juliet, ranked
+  set 1466264: 212 throughout, timed 106 in its slow parts; the real-audio gate pinned
+  174 lines). Not the phrase lines: `_constant_grid`, which should have read the song as
+  one grid, numbered Beat This!'s beats by adding up gaps over their median. Beat This!
+  marks that song every other beat almost everywhere, so the median gap was 560 ms, each
+  280 ms gap counted as a whole 560 ms beat, the count drifted by seconds and 0.5 % of
+  the beats sat on the grid. The song fell through to the tracker, and the phrase lines
+  timed its jitter bar by bar. `_steady_grid` takes the faster pulse when a tenth of the
+  gaps is at it and searches the period and phase directly, numbering each beat by the
+  grid it is tested on: 212.002 BPM, 85 % of the beats within 30 ms, one red line.
+- **The fallback's one line sat a few hundredths off the whole BPM** (220.05 for 220,
+  40 ms off by the end of a song): it is read off Beat This!'s 20 ms frames, and
+  `_snap_whole_points` snaps the precision engine's lines only. `_snap_constant_line`
+  reads it at the whole BPM, on its attacks' phase, where they agree.
+
+### Measured
+
+Locally: benchmark 24/24 (median 0.0000 BPM, 0.14 ms), bpm-snapshot 24/24 unchanged,
+golden 27/27, robustness, parity and facts ok; suite 587, with the two that fail on
+master on this machine too (no Beat This! model; the worker's two-engine test).
+
+Server, app engine, ranked maps, against 50991ef (the runs of the entry below). Each
+stage was run whole from a copy of the checkout, so its held-out maps take dev's
+convention, where the baseline's held-out run fitted its own: held-out beat shares are
+not comparable, its tempo shares are. Share of the songs' time read right:
+
+| | bands dev | bands held out | anime-variable dev | anime-variable held out |
+|---|---|---|---|---|
+| baseline | 55.5 | 46.5 | 61.6 | 59.7 |
+| `_steady_grid` | 58.8 (+3.3) | 47.0 (+0.5) | 65.8 (+4.2) | 60.7 (+1.0) |
+| and `_snap_constant_line` (this change) | **61.1 (+5.6)** | 46.8 (+0.3) | **65.0 (+3.4)** | **61.8 (+2.1)** |
+
+- bands: 153 of 908 maps changed (29 songs); the 79 now read as one line went tempo ok
+  26.6 → 77.2 %. Tempo wrong −2.5, 3/2-type ratios −1.3 (dev); beats 10–25 ms off
+  +2.4, the whole-BPM drift the second fix is for.
+- anime-variable: 414 of 2,295 maps changed (74 songs); the 249 now one line went from
+  39.6 to 66.5 % of beats within 10 ms. BPM slightly off −2.8 dev, −4.2 held out;
+  changes the map lacks −1.9 a minute.
+- `_snap_constant_line` against `_steady_grid` alone: bands dev +2.3 (beats 10–25 ms off
+  12.4 → 10.1: Kick Me, Shuuen Requiem and sTraNgeRs back on the map's beats),
+  held out −0.2; anime-variable dev −0.8, held out +1.1. It moved 112 bands and 388
+  anime-variable maps; the losses are lines it read 0.3–0.7 BPM from their own
+  (LONG SHOT PARTY - distance 199.68 → 199) and one held-out song, Paramore - Still
+  Into You (136.06 → 136), that lost its beats. Kept: it is ahead of the baseline on
+  all four, and its reach is not tuned on the same maps it would be judged on.
+- anime-single: running.
+- **stems-drums by engine path** (the 2026-10-31 runs, against 50991ef): it helps both.
+  bands dev, beats within 10 ms: precision path 77.4 → 87.0 %, fallback 51.1 → 59.9 %;
+  anime-single dev, tempo ok: precision 90.6 → 94.5 %, fallback 46.8 → 79.8 %. Running
+  it on fallback songs only would keep half the gain, so it stays on the `band` hint
+  until a cheaper separation is measured on the same stages.
+
 ## Unreleased — 2026-11-01 · Four experiments against their own baseline
 
 ### Changed

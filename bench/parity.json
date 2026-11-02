@@ -190,6 +190,14 @@
    "where": "legacy",
    "why": "the v2 fallback tracker, which the Rust engine does not implement"
   },
+  "_constant_grid": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_snap_constant_line": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
   "_expand_fit": {
    "rust": [
     "overtone-tempo/src/fit.rs::expand_absorbs_a_one_percent_seed_error"

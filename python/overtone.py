@@ -3262,6 +3262,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _follow_drummer(tracked, y_mix, sr)
     tracked = _piecewise_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr))
     tracked = _with_attacks(_constant_grid(tracked, lambda: _beat_this_judge_beats(y_mix, sr)), y, sr)
+    tracked = _snap_constant_line(tracked)
     return _tidy_bpms(_lines_on_downbeats(_phrase_lines(tracked)))
 
 
@@ -4046,18 +4047,10 @@ def _constant_grid(analysis: Analysis, heard) -> Analysis:
     beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
     if beats.size < 32:
         return analysis
-    gaps = np.diff(beats)
-    step = float(np.median(gaps))
-    if step <= 0:
+    grid = _steady_grid(beats, CONSTANT_GRID_TOL_MS)
+    if grid is None:
         return analysis
-    index = np.concatenate([[0], np.cumsum(np.maximum(1, np.round(gaps / step)))])
-    keep = np.ones(beats.size, dtype=bool)
-    for _ in range(3):  # least squares, then without the beats it misses by far
-        period, start = np.polyfit(index[keep], beats[keep], 1)
-        miss = np.abs(beats - (start + period * index))
-        keep = miss <= 2.0 * CONSTANT_GRID_TOL_MS
-        if keep.sum() < 32:
-            return analysis
+    period, start, miss = grid
     if float(np.mean(miss <= CONSTANT_GRID_TOL_MS)) < CONSTANT_GRID_SHARE:
         return analysis
     bpm = 60000.0 / float(period)
@@ -4071,6 +4064,69 @@ def _constant_grid(analysis: Analysis, heard) -> Analysis:
         offset -= period
     line = replace(points[0], bpm=bpm, offset_ms=float(offset))
     return _snap_whole_points(replace(analysis, points=[line]))
+
+
+#: A gap is the faster pulse's when it sits within this share of half the median.
+STEADY_GRID_HALF_TOL = 0.15
+#: and the faster pulse is the grid's when this share of the gaps is at it.
+STEADY_GRID_HALF_SHARE = 0.1
+#: Periods searched around that pulse (Beat This!'s 20 ms frames round 283 to 280).
+STEADY_GRID_RANGE = 0.04
+
+
+def _steady_grid(beats: np.ndarray, tol_ms: float):
+    """The one grid (period, start, |miss| per beat, all ms) that most of the
+    beats sit on, or None. Beat This! marks a song's half-time parts every
+    other beat: the grid's pulse is the faster one when a fair share of the
+    gaps is at it. Each beat is numbered by the grid it is tested on, never by
+    adding up gaps, where one miscounted beat moved every beat after it:
+    Calm Down Juliet (212 with parts at 106) counted its 280 ms gaps as 560 ms
+    beats, landed seconds off and fitted 0.5 % of its beats."""
+    gaps = np.diff(beats)
+    step = float(np.median(gaps))
+    if step <= 0:
+        return None
+    while float(np.mean(np.abs(gaps / (step / 2.0) - 1.0) <= STEADY_GRID_HALF_TOL)) >= STEADY_GRID_HALF_SHARE:
+        step /= 2.0
+    # phase histograms in 1 ms bins, a period every ~2 ms of drift over the song
+    width = int(round(tol_ms))
+    best = (-1.0, step, 0.0)
+    for period in np.arange(step * (1.0 - STEADY_GRID_RANGE), step * (1.0 + STEADY_GRID_RANGE),
+                            max(1e-3, 2.0 * step / max(beats[-1] - beats[0], step))):
+        bins = int(period)
+        hist = np.bincount(np.minimum(np.mod(beats, period).astype(int), bins - 1), minlength=bins)
+        near = np.convolve(np.concatenate([hist, hist[:2 * width]]), np.ones(2 * width + 1), "valid")[:bins]
+        k = int(np.argmax(near))
+        if near[k] > best[0]:
+            best = (float(near[k]), float(period), (k + width + 0.5) % period)  # the window's centre
+    _, period, start = best
+    index = np.round((beats - start) / period)
+    keep = np.abs(beats - (start + period * index)) <= 2.0 * tol_ms
+    for _ in range(3):  # least squares, then without the beats it misses by far
+        if keep.sum() < 32:
+            return None
+        period, start = np.polyfit(index[keep], beats[keep], 1)
+        miss = np.abs(beats - (start + period * index))
+        keep = miss <= 2.0 * tol_ms
+    return float(period), float(start), miss
+
+
+def _snap_constant_line(analysis: Analysis) -> Analysis:
+    """A fallback song's one red line at the whole BPM beside it, on its
+    attacks' phase, where they agree (_snap_whole_lines). _constant_grid reads
+    the BPM off Beat This!'s 20 ms frames, a few hundredths from the mapper's
+    whole one (220.05 for 220), which drifts its beats 40 ms off over a song;
+    _snap_whole_points only snaps the precision engine's lines."""
+    points = list(getattr(analysis, "points", None) or [])
+    if len(points) != 1 or not np.size(analysis.attack_times):
+        return analysis
+    lines = [(float(points[0].offset_ms), float(points[0].bpm))]
+    snapped = _snap_whole_lines(lines, np.asarray(analysis.attack_times, dtype=float),
+                                np.asarray(analysis.attack_weights, dtype=float),
+                                float(analysis.duration))
+    if snapped == lines:
+        return analysis
+    return _with_lines(analysis, snapped, beats=_beats_of(snapped, float(analysis.duration)))
 
 
 def _song_tempo(points: list, duration_ms: float) -> float | None:

@@ -20,6 +20,24 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-02 · Fast mode stays fast, and the queue's estimate counts the drums
+
+### Fixed
+
+- **Fast mode separated the drums too** since #123: ~5–8 s more per minute of audio on a
+  mode whose point is the wait (its analysis costs 0.77 s a minute quiet). It reads the
+  mix again unless the person ticks `band`; `normal` and `strict` separate.
+- **The queue's wait estimate left the separator out** (`site/api/src/utils/estimate.js`):
+  `normal` and `strict` now cost 3 + 9.9 s per minute quiet and 43 s per minute loaded,
+  where they cost 3 + 5.1 and 35.
+
+### Measured
+
+- The separator's share, Stemsplit v0.2.0 on the server: 4.8 s per minute of audio quiet
+  (Akeboshi, 7.1 s for 1.5 min), 8.1 loaded (37.7 s for 4.7 min, 48.9 for 6.8).
+- `pnpm --dir site/api test` 223 pass; tests.test_worker: the new fast-mode test passes,
+  the two-engine test fails here as on master; `bench/facts.py` passes.
+
 ## Unreleased — 2026-11-02 · Every song's drums separated on the site
 
 ### Changed

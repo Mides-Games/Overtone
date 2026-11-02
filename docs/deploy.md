@@ -195,7 +195,8 @@ workers). Swap en 0 en todos.
   1200 MB con el voto (1824 antes de apagar el memory pattern también en el loader del
   worker) y 566 MB sin él; antes decía 512 MB sin medir.
 - **Con el separador: 4 GB.** Desde el 2026-11-02 el worker separa la batería con
-  Stemsplit en **todas** las canciones antes de leer la grilla (`STEMS_EVERY_SONG`,
+  Stemsplit en **todas** las canciones de los modos normal y estricto (el rápido no,
+  salvo con la pista `band`) antes de leer la grilla (`STEMS_EVERY_SONG`,
   `worker/timing_result.py`; `OVERTONE_STEMS=0` en su entorno lo apaga), no solo con
   la pista `band`. El arranque baja su release fijado (`deploy/eggs/stemsplit.py`,
   versión y SHA-256 escritos ahí) a `.overtone/stemsplit/`. Desde la v0.2.0 el

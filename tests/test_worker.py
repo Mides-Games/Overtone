@@ -92,7 +92,7 @@ class ResultOnAudioTests(unittest.TestCase):
         self.assertIn("band_separator_failed", [c["key"] for c in result["hint_checks"]])
         self.assertFalse(tr.ta.STEMS_DRUMS)
 
-    def _separated(self, fail: bool = False):
+    def _separated(self, fail: bool = False, **kwargs):
         """analyse() on the change with the separator said to be installed; the
         engine records whether it was asked for the drums and reads the mix."""
         real, asked = tr.ta.analyze_audio, []
@@ -105,7 +105,7 @@ class ResultOnAudioTests(unittest.TestCase):
                 return real(*args, **kwargs)
 
         with mock.patch.object(tr, "stems_available", return_value=True),                 mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
-            return tr.analyse(self.change, vote=False, hash_="test"), asked
+            return tr.analyse(self.change, vote=False, hash_="test", **kwargs), asked
 
     def test_every_song_has_its_drums_separated_and_says_so(self):
         with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
@@ -119,6 +119,16 @@ class ResultOnAudioTests(unittest.TestCase):
         self.assertEqual(asked, [True, False])
         self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
         self.assertIn("band_separator_failed", [c["key"] for c in result["hint_checks"]])
+
+    def test_fast_mode_reads_the_mix_unless_the_person_says_band(self):
+        with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+            _, asked = self._separated(mode="fast")
+            self.assertEqual(asked, [False])
+            _, asked = self._separated(mode="fast", options={"band": True})
+            self.assertEqual(asked, [True])
+        with mock.patch.object(tr, "stems_available", return_value=True),                 mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+            separated = tr.engine_hash(False, "fast")
+        self.assertEqual(separated, tr.engine_hash(False, "fast"))
 
     def test_overtone_stems_0_reads_every_song_on_the_mix(self):
         result, asked = self._separated()

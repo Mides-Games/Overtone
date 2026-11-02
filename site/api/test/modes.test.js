@@ -73,8 +73,8 @@ test('a job costs a range, wider with the vote, and fast is cheaper', () => {
   assert.ok(normal.low < normal.high);
   assert.ok(fast.high < normal.low + normal.high);
   assert.ok(fast.low < normal.low && fast.high < normal.high);
-  // 35 s per audio minute with the vote, 11 without: the conservative ends.
-  assert.equal(Math.round(normal.high), Math.round(35 * 4.6));
+  // 35 s per audio minute with the vote and 8 for the drums, 11 without either.
+  assert.equal(Math.round(normal.high), Math.round(43 * 4.6));
   assert.equal(Math.round(fast.high), Math.round(11 * 4.6));
   assert.equal(jobCost('strict', 60).high, jobCost('normal', 60).high);
   // Unknown length: a floor and no ceiling.

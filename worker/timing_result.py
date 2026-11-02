@@ -98,10 +98,14 @@ DEFAULT_MODE = "normal"
 #: candidates, each "off until measured on the server" in python/overtone.py;
 #: none has a held-out measurement yet (docs/timeline.md, 2026-10-27), so none
 #: is switched on here. W11.4, the phase polish, is what is meant to fill it.
+#: ``drums``: whether the mode separates every song's drums (STEMS_EVERY_SONG).
+#: Fast does not: the separator would add ~5-8 s per minute of audio to a mode
+#: whose point is the wait (site/api/src/utils/estimate.js); a band's hint
+#: still separates in it.
 MODE_SETTINGS = {
-    "fast": {"vote": False, "judges": False, "flags": {}},
-    "normal": {"vote": True, "judges": True, "flags": {}},
-    "strict": {"vote": True, "judges": True, "flags": {}},
+    "fast": {"vote": False, "judges": False, "drums": False, "flags": {}},
+    "normal": {"vote": True, "judges": True, "drums": True, "flags": {}},
+    "strict": {"vote": True, "judges": True, "drums": True, "flags": {}},
 }
 
 #: Hints a person can give before analysing (W3.21), and their bounds. The
@@ -330,7 +334,7 @@ def engine_hash(vote: bool | None = None, mode: str = DEFAULT_MODE) -> str:
         label += f" mode={mode}"
     # A worker that separates the drums reads every song differently from one
     # that cannot: another hash, so neither serves the other's results.
-    if stems_every_song() and stems_available():
+    if MODE_SETTINGS[mode]["drums"] and stems_every_song() and stems_available():
         label += " drums=separated"
     digest = hashlib.sha1(label.encode())
     for path in (Path(ta.__file__), Path(__file__)):
@@ -797,7 +801,8 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     # The drums, separated, for the grid: every song's since STEMS_EVERY_SONG
     # (2026-11-02), a live band's on its hint even with it off. Without the
     # separator the mix is analysed and the result says so.
-    stems = (bool(options.get("band")) or stems_every_song()) and stems_available()
+    stems = ((bool(options.get("band")) or (stems_every_song() and MODE_SETTINGS[mode]["drums"]))
+             and stems_available())
 
     def refuse(message: str, duration_s: float | None = None) -> dict:
         return {**refused_result(message, vote=vote, hash_=hash_, duration_s=duration_s),

@@ -13,6 +13,11 @@
  *   quiet, vote      8.2 s at 1 min, 32 s at 6, 54 s at 10   ->  3 + 5.1 s/min
  *   quiet, no vote   2.1 s at 1 min, 5.4 s at 6, 9 s at 10   ->  1.4 + 0.77 s/min
  *
+ * Since 2026-11-02 `normal` and `strict` separate every song's drums first
+ * (worker/timing_result.py, STEMS_EVERY_SONG; `fast` does not). Stemsplit
+ * v0.2.0 on the server: 4.8 s per minute of audio quiet (Akeboshi, 7.1 s for
+ * 1.5 min), 8.1 loaded (37.7 s for 4.7 min, 48.9 for 6.8), added to both ends.
+ *
  * `fast` is the no-vote figure (it also skips the octave judges, so it can
  * only be cheaper); `strict` costs what `normal` does while it runs the same
  * analysis (worker/timing_result.py, MODE_SETTINGS).
@@ -24,8 +29,8 @@
  */
 export const COSTS = {
   fast: { fixed: 1.4, perMin: 0.77, highPerMin: 11 },
-  normal: { fixed: 3, perMin: 5.1, highPerMin: 35 },
-  strict: { fixed: 3, perMin: 5.1, highPerMin: 35 },
+  normal: { fixed: 3, perMin: 9.9, highPerMin: 43 },
+  strict: { fixed: 3, perMin: 9.9, highPerMin: 43 },
 };
 
 /** One job's cost in seconds, `{ low, high }`; `high` null when its length is unknown. */

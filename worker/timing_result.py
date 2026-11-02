@@ -158,6 +158,20 @@ def clean_options(raw) -> dict:
 STEMS_TIME_SHARE = 1.5
 STEMS_MIN_TIMEOUT_S = 60.0
 
+#: Every song's drums separated for the grid, not only a live band's
+#: (STEMS_DRUMS where the separator is installed). Measured on the server
+#: against the same code without it (cd0b4ac, 2026-11-02), share of the songs'
+#: time read right: bands-variable +9.0 dev / +4.4 held out, anime-variable
+#: +3.0 / +3.6, anime-single +9.8 / +7.4, at 1.2-2.5x an analysis's time with
+#: Stemsplit v0.2.0. Without the separator, or when it fails, the mix is read.
+#: OVERTONE_STEMS=0 in the worker's environment turns it off without an edit.
+STEMS_EVERY_SONG = True
+
+
+def stems_every_song() -> bool:
+    """Whether every song's drums are separated (STEMS_EVERY_SONG, OVERTONE_STEMS)."""
+    return STEMS_EVERY_SONG and os.environ.get("OVERTONE_STEMS", "1") != "0"
+
 
 def stems_timeout(seconds: float | None) -> float | None:
     """How long the separator may run on audio this long; None when unknown."""
@@ -314,6 +328,10 @@ def engine_hash(vote: bool | None = None, mode: str = DEFAULT_MODE) -> str:
         label += f" model={model_info()['sha1']}"
     if mode != DEFAULT_MODE:
         label += f" mode={mode}"
+    # A worker that separates the drums reads every song differently from one
+    # that cannot: another hash, so neither serves the other's results.
+    if stems_every_song() and stems_available():
+        label += " drums=separated"
     digest = hashlib.sha1(label.encode())
     for path in (Path(ta.__file__), Path(__file__)):
         digest.update(hashlib.sha1(path.read_bytes()).digest())
@@ -776,11 +794,10 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     options = clean_options(options)
     vote = bool(vote) and MODE_SETTINGS[mode]["vote"]
     window = octave_window(options)
-    # A live band's drums, separated, for the grid: the biggest measured gain on
-    # live-drummed songs (bands-variable dev, beats within 10 ms 69.4 -> 78.8 %,
-    # docs/timeline.md 2026-10-31). Without the separator the mix is analysed and
-    # the result says so.
-    stems = bool(options.get("band")) and stems_available()
+    # The drums, separated, for the grid: every song's since STEMS_EVERY_SONG
+    # (2026-11-02), a live band's on its hint even with it off. Without the
+    # separator the mix is analysed and the result says so.
+    stems = (bool(options.get("band")) or stems_every_song()) and stems_available()
 
     def refuse(message: str, duration_s: float | None = None) -> dict:
         return {**refused_result(message, vote=vote, hash_=hash_, duration_s=duration_s),
@@ -864,5 +881,9 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     result["hint_checks"] = hint_checks(result, options, window, applied)
     if options.get("band"):
         key = "band_drums" if stems else "band_separator_failed" if separator_failed else "band_no_separator"
+        result["hint_checks"].append({"level": "info" if stems else "warn", "key": key, "values": {}})
+    elif stems or separator_failed:
+        # what was read, said for every song now that every song is separated
+        key = "band_drums" if stems else "band_separator_failed"
         result["hint_checks"].append({"level": "info" if stems else "warn", "key": key, "values": {}})
     return result

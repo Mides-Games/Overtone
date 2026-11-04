@@ -20,6 +20,29 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-03 · Keep the worker engines' result schema aligned
+
+### Fixed
+
+- Rust's timing result omitted `model` when no vote ran, while Python included it
+  as `null`. The CLI now emits `model: null`, keeping both engine responses' keys
+  and JSON types aligned.
+
+### Hardening
+
+- The existing two-engine worker tests compare result keys and types, including
+  refused results. No test count changed.
+
+### Measured
+
+- VPS: worker 51/51; Rust workspace 231/231; Python engine 540/540 and gates
+  15/15; Rust benchmark gates 5/5; API 223/223; web 350/350; bundle budget,
+  bot 29/29, JavaScript client 13/13, Python client 10/10 and browser E2E
+  84/84 passed. E2E ran on Ubuntu 24.04 after installing Chromium's system
+  libraries for Playwright.
+
+---
+
 ## Unreleased — 2026-11-02 · Where the time is lost with the drums separated
 
 ### Measured

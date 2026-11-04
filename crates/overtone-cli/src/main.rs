@@ -348,6 +348,7 @@ fn timing_result(
         "engine_hash": executable_hash(),
         "app_version": env!("CARGO_PKG_VERSION"),
         "beat_vote": false,
+        "model": Value::Null,
         "params": {
             "min_delta": options.min_delta,
             "persistence": options.persistence,

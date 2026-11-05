@@ -20,6 +20,71 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-05 · Phase 27.3 measured; prototype did not move the stage
+
+### Changed
+
+- No engine behavior changed. `change-points` remains opt-in while its attack-based
+  splitter is redesigned.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- Compared exported red lines map by map, so an unchanged aggregate percentage could not
+  hide an inert experiment.
+
+### Measured
+
+- On the VPS at `b6043102`, the Python baseline and `change-points` both analysed all 436
+  `anime-variable` songs (2,295 maps). Every exported line set matched exactly. Both runs
+  measured `conv_10` at 26.5% dev / 20.4% held out, `tempo_ok` at 36.1% / 24.9%, and
+  `octave_x1` at 89.1% / 81.8%.
+- `change-points-loose` on the first 50 songs (230 maps) also left every line set unchanged.
+- The same splitter did find a controlled 140 → 141 BPM change at 30.4 s on the VPS
+  synthetic fixture, reducing attack RMS from 42.639 ms to 0.153 ms. It is active; the
+  real-audio sample did not provide candidates that passed its quality gate.
+- Phase-residual prototypes were measured on eight dev songs selected for missed map
+  changes. They produced extra cuts but did not improve the sample's tempo or `conv_10`
+  scores. This is exploratory evidence, not a gate.
+- Where `_change_points` stops (2026-11-06, a traced copy of it on the 89 dev
+  `anime-variable` songs that the baseline read as one precision line while their map
+  changes tempo): 66 at the whole-song gain gate, 10 not on one precision line, 9 with
+  one segment, 4 at the minimum step. None split. At the gate, the split's attack RMS was
+  usually *worse* than the single line's (for example 31.2 → 33.9 ms, 37.5 → 40.4 ms),
+  not narrowly short of the 15% gain. The splitter cuts where the map has no change: only
+  255 of the 1,420 map changes had a segment cut within 4 beats. The followed beats cover a
+  median of 85% of the expected beats (quartiles 78–89%), and the map changes it misses
+  are small (median 3.8%) or last a few beats. The gate is protecting the output, not
+  blocking good cuts.
+- Per-cut gate (`CHANGE_LOCAL`, prototype, not merged). Each cut was judged on its own
+  stretch against one shared line there, and kept only when the split fit followed beats
+  15% better and every attack got no worse. On 24 synthetic noisy cases it was right on
+  24, against 14 for the global gate. On real audio it was not:
+  - On the same 89 songs, 12 split. None of the cuts matched a map change: the BPM stayed
+    the same across the cut, or the cut was 10 s away from the change. Only 4 still had
+    more than one line after the downstream passes.
+  - On the 80 dev `anime-single` songs whose single map line the baseline reads right, 5
+    split and 2 reached the output with extra lines.
+
+### Rejected / tried and dropped
+
+- Judging each change-point cut on its own stretch (`CHANGE_LOCAL`): it invents cuts on
+  steady songs and finds none of the real changes, because the segments it judges come
+  from the same followed beats that miss the changes. The code was not merged. The next
+  attempt has to start from a better beat follower (coverage, short changes), not from a
+  different gate.
+
+- On the real-audio sample, loosening the current splitter's RMS gate or segmentation
+  settings did not produce useful cuts. A first phase-residual prototype over-segmented,
+  and unwrapping its phase did not improve the selected dev sample. Neither prototype is
+  being ported to Rust. Phase 27.3 remains open: its specified piecewise-linear phase fit
+  and per-cut margin still need a viable implementation and a held-out confirmation.
+
+---
+
 ## Unreleased — 2026-11-03 · Keep the worker engines' result schema aligned
 
 ### Fixed

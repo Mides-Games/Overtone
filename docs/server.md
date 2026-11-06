@@ -114,7 +114,7 @@ y nunca hace falta `safe.directory`.
 6. Comprobar que el motor y la API funcionan ahí:
 
    ```bash
-   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests'
+   sudo -u overtone -H sh -c 'cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone_library'
    ```
 
 7. Arrancarlo a mano una vez, como `overtone`. La primera vez escribe un
@@ -277,7 +277,7 @@ voto. Una lectura con voto nunca se sirve a una corrida sin él.
 **Gates y suite en el servidor.** Las mismas comprobaciones de
 `CLAUDE.md` corren en el servidor, para no cargar el PC: `gates` (todos los
 gates de Python, o los que se nombren) y `suite` (la suite de Python,
-`tests/test_overtone.py`). Cada gate se informa por separado, con el final de su
+`tests/test_overtone_*.py`). Cada gate se informa por separado, con el final de su
 salida. Los gates de Rust necesitan cargo, que el servicio no tiene. `perf`
 mide los presupuestos en la máquina que lo corre, que en un servidor es la
 del servidor.

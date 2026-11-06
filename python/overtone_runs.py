@@ -65,7 +65,8 @@ GATES = {
 #: test it was in. "all" runs every module here, each its own process: two
 #: modules in one process once added up past the server's 3 GB cap. Since the
 #: desktop shell and its tests left (2026-10-26) the engine module is the suite.
-SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"]}
+SUITES = {"engine": ["-m", "unittest", "-v",
+                     *sorted(f"tests.{path.stem}" for path in (ROOT / "tests").glob("test_overtone_*.py"))]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
 #: Engine changes a run may switch on by name, measured before any is on

@@ -246,7 +246,9 @@ python/                   v3 engine, osu! I/O and the command line
                             single_bpm.py over its Songs folder, one at a time, kept
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
-  test_overtone.py          engine, I/O, command-line and server tests
+  test_overtone_*.py        engine tests by area: grid, trackers, signal, editing,
+                            osu_io, mapping, cli, library, bench
+  engine_support.py         the synthetic tracks and sample maps they share
   fixtures/                 hand-timed samples the tests read
 assets/                   generated logo (assets/logo.py), icon and the Beat This!
                           model (assets/models/, Git LFS)

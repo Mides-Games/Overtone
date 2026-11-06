@@ -109,7 +109,7 @@ def _used(node: ast.AST, pool: set[str], helpers: dict[str, set[str]]) -> set[st
 
 
 def tests() -> dict[str, dict[str, set[str]]]:
-    """``{class: {test: {symbol, ...}}}`` for every test in the v3 test file.
+    """``{class: {test: {symbol, ...}}}`` for every test in the v3 test files.
 
     A test that builds its input in a fixture (``setUp``, a shared helper on
     the class) can reach the engine without naming it, so one whose own body
@@ -117,7 +117,11 @@ def tests() -> dict[str, dict[str, set[str]]]:
     one behaviour either way, and the alternative — a per-test line in the
     manifest for every fixture-driven test — is a second copy of the test file.
     """
-    tree = ast.parse((ROOT / "tests" / "test_overtone.py").read_text(encoding="utf-8"))
+    # The engine's tests and the helpers they share, read as one module.
+    tree = ast.Module(body=[], type_ignores=[])
+    for path in [ROOT / "tests" / "engine_support.py",
+                 *sorted((ROOT / "tests").glob("test_overtone_*.py"))]:
+        tree.body += ast.parse(path.read_text(encoding="utf-8")).body
     pool = _engine_symbols(tree)
     helpers: dict[str, set[str]] = {}
     for node in tree.body:

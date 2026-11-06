@@ -255,6 +255,7 @@ assets/                   generated logo (assets/logo.py), icon and the Beat Thi
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
+bench/gate_modes/         each gate in its own module; gates.py is their command line
 bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
 bench/fixtures.py         the one list of bench fixtures, derived from the definitions;
 bench/fixtures.json       what it writes, and what the Rust bench reads for its cases

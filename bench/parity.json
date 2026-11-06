@@ -156,7 +156,7 @@
   "TimingPoint": {
    "rust": [
     "overtone-core/src/lib.rs::units_round_trip",
-    "overtone-tempo/src/points.rs::osu_text_writes_whole_ms_and_the_proved_meter"
+    "overtone-tempo/src/points/tests.rs::osu_text_writes_whole_ms_and_the_proved_meter"
    ],
    "where": "rust"
   },
@@ -253,7 +253,7 @@
   },
   "_points_from_sections": {
    "rust": [
-    "overtone-tempo/src/points.rs::a_single_exact_section_gives_one_downbeat_point"
+    "overtone-tempo/src/points/tests.rs::a_single_exact_section_gives_one_downbeat_point"
    ],
    "where": "rust"
   },
@@ -421,7 +421,7 @@
   },
   "detect_bar": {
    "rust": [
-    "overtone-tempo/src/points.rs::detect_bar_finds_four_and_refuses_uniform"
+    "overtone-tempo/src/points/tests.rs::detect_bar_finds_four_and_refuses_uniform"
    ],
    "where": "rust"
   },
@@ -431,7 +431,7 @@
   },
   "downbeat_times": {
    "rust": [
-    "overtone-tempo/src/points.rs::a_proven_bar_anchors_the_red_line_to_a_downbeat"
+    "overtone-tempo/src/points/tests.rs::a_proven_bar_anchors_the_red_line_to_a_downbeat"
    ],
    "where": "rust"
   },
@@ -518,7 +518,7 @@
   },
   "meter_segments": {
    "rust": [
-    "overtone-tempo/src/points.rs::meter_regions_split_a_constant_bar_with_two_signatures"
+    "overtone-tempo/src/points/tests.rs::meter_regions_split_a_constant_bar_with_two_signatures"
    ],
    "where": "rust"
   },
@@ -548,8 +548,8 @@
   },
   "osu_timing_text": {
    "rust": [
-    "overtone-tempo/src/points.rs::osu_text_writes_whole_ms_and_the_proved_meter",
-    "overtone-tempo/src/points.rs::osu_text_rounds_and_falls_back_as_v3_does"
+    "overtone-tempo/src/points/tests.rs::osu_text_writes_whole_ms_and_the_proved_meter",
+    "overtone-tempo/src/points/tests.rs::osu_text_rounds_and_falls_back_as_v3_does"
    ],
    "where": "rust"
   },
@@ -566,7 +566,7 @@
   },
   "points_from_meter": {
    "rust": [
-    "overtone-tempo/src/points.rs::per_section_meter_comes_from_each_section"
+    "overtone-tempo/src/points/tests.rs::per_section_meter_comes_from_each_section"
    ],
    "where": "rust"
   },
@@ -596,7 +596,7 @@
   },
   "rebuild_with_subdivision": {
    "rust": [
-    "overtone-tempo/src/points.rs::subdivision_doubling_is_exact_and_keeps_the_offset"
+    "overtone-tempo/src/points/tests.rs::subdivision_doubling_is_exact_and_keeps_the_offset"
    ],
    "where": "rust"
   },
@@ -630,7 +630,7 @@
   },
   "section_measures": {
    "rust": [
-    "overtone-tempo/src/points.rs::per_section_meter_comes_from_each_section"
+    "overtone-tempo/src/points/tests.rs::per_section_meter_comes_from_each_section"
    ],
    "where": "rust"
   },
@@ -680,7 +680,7 @@
   },
   "snap_timing_points": {
    "rust": [
-    "overtone-tempo/src/points.rs::snapping_only_nudges_onto_the_previous_grid"
+    "overtone-tempo/src/points/tests.rs::snapping_only_nudges_onto_the_previous_grid"
    ],
    "where": "rust"
   },

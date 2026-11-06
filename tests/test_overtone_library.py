@@ -195,8 +195,8 @@ class LibraryIndexTests(unittest.TestCase):
             return real(raw, name, size)
 
         calls = []
-        with mock.patch.object(self.ol, "_parse_osu_header", parse), \
-                mock.patch.object(self.ol, "PROGRESS_SECONDS", 0.0):
+        with mock.patch.object(self.ol.osu_files, "_parse_osu_header", parse), \
+                mock.patch.object(self.ol.schema, "PROGRESS_SECONDS", 0.0):
             report = self.library.scan(self.songs, progress=lambda done, total, removing:
                                        calls.append((done, total, removing, len(parsed))))
         total = report["folders"]                        # the root, 6 sets, "not a set"
@@ -212,7 +212,7 @@ class LibraryIndexTests(unittest.TestCase):
         for folder in ("0 Band - Song0", "1 Band - Song1"):
             shutil.rmtree(self.songs / folder)
         calls.clear()
-        with mock.patch.object(self.ol, "PROGRESS_SECONDS", 3600.0):
+        with mock.patch.object(self.ol.schema, "PROGRESS_SECONDS", 3600.0):
             again = self.library.scan(self.songs, progress=lambda done, total, removing:
                                       calls.append((done, total, removing)))
         total = again["folders"]
@@ -262,7 +262,7 @@ class LibraryIndexTests(unittest.TestCase):
                 raise PermissionError(13, "The file is in use", str(hard))
             return real_open(path, *args, **kwargs)
 
-        with mock.patch.object(self.ol, "open", held, create=True):
+        with mock.patch.object(self.ol.osu_files, "open", held, create=True):
             report = self.library.scan(self.songs)
         self.assertEqual((report["failed"], report["removed"], report["updated"],
                           report["beatmaps"]), (1, 0, 0, 2))
@@ -420,10 +420,10 @@ class LibraryIndexTests(unittest.TestCase):
         stat = moved.stat()
         os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
         self.assertEqual(self.library.health(engine="python")["graded"], 1)
-        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+        with mock.patch.object(self.ol.schema, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
             self.assertEqual(self.library.health(engine="python")["graded"], 5)
         twin.unlink()                    # gone since the scan: the next scan's to drop
-        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 2):
+        with mock.patch.object(self.ol.schema, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 2):
             run = self.library.health(engine="python")
         self.assertEqual((run["graded"], run["counts"]["error"]), (4, 0))
 
@@ -479,7 +479,7 @@ class LibraryIndexTests(unittest.TestCase):
         self.library.scan(self.songs)
         self.library.health(engine="python")
         python = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
-        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+        with mock.patch.object(self.ol.schema, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
             self.assertEqual(self.library.health(engine="rust")["graded"], 2)
         rust = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
         self.assertEqual([(m["version"], m["verdict"]) for m in rust],
@@ -501,7 +501,7 @@ class LibraryIndexTests(unittest.TestCase):
                  "meter": "4/4", "residual_ms": 0.4, "duration": 4.0,
                  "lines": json.dumps([[250.0, 120.0, 4]]), "seconds": 0.01}
         seen = []
-        with mock.patch.object(self.ol, "_analyse_audio", return_value=found) as engine:
+        with mock.patch.object(self.ol.engines, "_analyse_audio", return_value=found) as engine:
             run = self.library.analyze(engine="python",
                                        progress=lambda done, total: seen.append((done, total)))
             json.dumps(run)
@@ -518,7 +518,7 @@ class LibraryIndexTests(unittest.TestCase):
             stat = audio.stat()
             os.utime(audio, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
             self.assertEqual(self.library.analyze(engine="python")["analysed"], 1)
-            with mock.patch.object(self.ol, "engine_fingerprint", return_value="another"):
+            with mock.patch.object(self.ol.engines, "engine_fingerprint", return_value="another"):
                 self.assertEqual(self.library.analyze(engine="python")["analysed"], 2)
             self.assertEqual(engine.call_count, 3)
         cached = self.library.analyses([str(audio), str(gone / "missing.mp3"), "elsewhere.ogg"])
@@ -531,7 +531,7 @@ class LibraryIndexTests(unittest.TestCase):
         import shutil
         shutil.rmtree(gone)
         self.library.scan(self.songs)
-        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+        with mock.patch.object(self.ol.engines, "_analyse_audio", return_value=found):
             self.assertEqual(self.library.analyze(engine="python")["dropped"], 1)
         with self.assertRaises(ValueError):
             self.library.analyze(engine="cobol")
@@ -633,8 +633,8 @@ class LibraryAudioPathTests(unittest.TestCase):
             # An index written before the scan refused such names.
             with closing(sqlite3.connect(self.library.path)) as db, db:
                 db.execute("UPDATE beatmaps SET audio_file = ?", (name,))
-            with mock.patch.object(self.ol, "_analyse_audio") as engine, \
-                    mock.patch.object(self.ol, "_attacks") as attacks:
+            with mock.patch.object(self.ol.engines, "_analyse_audio") as engine, \
+                    mock.patch.object(self.ol.engines, "_attacks") as attacks:
                 run = self.library.analyze(engine="python")
                 self.library.health(engine="python")
             engine.assert_not_called()
@@ -716,7 +716,7 @@ class LibraryServerTests(unittest.TestCase):
         beatmap = songs["sets"][0]["beatmaps"][0]
         self.assertEqual((beatmap["audio_path"], beatmap["analysis"]), (self.audio, None))
         found = {"verdict": "ok", "grid": "precision", "bpm": 150.0, "lines": "[[1000.0, 150.0, 4]]"}
-        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+        with mock.patch.object(self.ol.engines, "_analyse_audio", return_value=found):
             self.assertEqual(self._call("POST", "/api/analyze", {"limit": 5})[0], 202)
             analysis = self._wait("analyze")
         self.assertIsNone(analysis["error"])

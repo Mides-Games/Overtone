@@ -236,7 +236,9 @@ python/                   v3 engine, osu! I/O and the command line
     cli.py, __main__.py       the command line: python -m overtone
   overtone_paths.py         where Overtone's files live, and the release's version
   overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
-  overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
+  overtone_library/         the library index: a Songs folder in SQLite, searched (FTS5);
+                            Library is its mixins (scanning, searching, health,
+                            analyses) over schema, osu_files and engines
   library.sql               the index's schema, versioned; facts.py checks the version
   overtone_server.py        the measurement API, headless: the index and its BPM cache
                             over HTTP, behind a token, for a server that holds the

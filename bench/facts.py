@@ -85,7 +85,7 @@ def library_schema() -> tuple[int | None, int | None]:
     sql = re.search(r"^--\s*schema-version:\s*(\d+)",
                     (ROOT / "python" / "library.sql").read_text(encoding="utf-8"), re.M)
     code = re.search(r"^SCHEMA_VERSION = (\d+)",
-                     (ROOT / "python" / "overtone_library.py").read_text(encoding="utf-8"), re.M)
+                     (ROOT / "python" / "overtone_library" / "schema.py").read_text(encoding="utf-8"), re.M)
     return (int(sql.group(1)) if sql else None), (int(code.group(1)) if code else None)
 
 

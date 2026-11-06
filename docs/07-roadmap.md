@@ -1286,6 +1286,18 @@ is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the firs
 
 ### Steps, in order
 
+**State on 2026-11-06** (from `docs/timeline.md`; each step's text below is the plan as proposed):
+
+| Step | State |
+|---|---|
+| 27.1 | not run as specified: no count of neighbour octave steps is recorded. The 2026-11-06 `octave-smooth` runs found no step its Viterbi removes, and octave errors read as whole-song (×2) |
+| 27.2 | **built, inert** — `octave-smooth` and `octave-smooth-rule` changed 0 of 1,629 / 636 line sets (2026-11-06); off |
+| 27.3 | **open** — `CHANGE_POINTS` and the per-cut gate split no real change (2026-11-05/06); the bottleneck is the beat follower (85 % beat coverage, misses small and short changes), so the next attempt starts there, i.e. at 27.6 |
+| 27.4 | **on** — `OCTAVE_RULE` (2026-10-28/30): first lines at the right octave +63 maps dev, +44 held out |
+| 27.5 | **on** — `TIDY_BPM` (2026-10-28): tempo ok unchanged on every stage |
+| 27.6 | **built, measured, off** — `DBN_TRACKER` (#129) moves the beats of 88 bands / 131 anime fallback maps, 0 tempo ok fixed or broken (2026-11-06) |
+| 27.7–27.9 | not started |
+
 27.1 **Count the octave jumps on the engine's lines.** Re-run anime-variable and bands dev
      with the `lines` field; count songs whose engine lines step by ×2 / ×0.5 between
      neighbours, and how many of those the map does not. Pull 10 by name for listening.
@@ -1315,7 +1327,7 @@ is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the firs
      dependency; ports to Rust as arithmetic). Experiment `octave-rule`. Target: octave ×1
      83–85 → 90+ on bands and anime-variable. *Diff* medium · *Pri* P1.
 
-27.5 **BPM tidying** (`TIDY_BPM`, built 2026-10-28, measuring): two decimals at most, one
+27.5 **BPM tidying** (`TIDY_BPM`, on since 2026-10-28): two decimals at most, one
      where within 0.011, the line's middle beat held. Turn on if tempo ok and the
      convergence shares hold. *Diff* low · *Pri* P1.
 

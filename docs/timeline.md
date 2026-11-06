@@ -20,6 +20,46 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-06 · Phase 27.6's DBN tracker measured: no tempo moves
+
+### Changed
+
+- None. `DBN_TRACKER` (#129) stays off.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- Compared map by map (by folder and file) against same-code baselines, so a flag that
+  fires shows as changed line sets even where the aggregates do not move.
+
+### Measured
+
+VPS at `d83d3e9`, `app` engine, dev split, baselines on the same code: bands-variable
+`20261106-182805-caa93b`, anime-variable `20261106-182807-362ad6`.
+
+- `dbn-tracker` on bands-variable (`20261106-182806-f56c6d`): it fires, changing the lines
+  of 88 maps in 19 songs, all on the Python fallback path (186 of the 636 maps take it).
+  0 maps fixed, 0 broken: tempo ok 60.4 % both, octave x1 83.0 %, conv_10 45.8 %;
+  beat_f10 73.1 → 72.8 %, beat_f20 83.6 → 83.3 %.
+- `dbn-tracker-wide` (prior 3 octaves wide, `20261106-182807-2fbcee`): the same 88 maps,
+  the same lines as `dbn-tracker`. The octave prior decides nothing on these songs.
+- `dbn-tracker` on anime-variable (`20261106-182808-57139d`): 131 maps in 27 songs
+  changed, 0 fixed, 0 broken: tempo ok 36.3 % both; beat_f10 74.9 → 75.1 %, beat_f20
+  86.5 → 86.7 %. 2,216 s against the baseline's 1,556 s, peak 2.4 GB.
+
+### Rejected / tried and dropped
+
+- `DBN_TRACKER` as the fallback tracker's beats: the beats move, but the tracker path's
+  tempo, sections and octave are read downstream (`_tracker_result`, the octave passes)
+  and come out the same; the beat F-measure moves by a few tenths either way. It is not a
+  lead for 27.3 either: these runs change only fallback songs, while 27.3's misses sit on
+  the precision path's one line. The code stays, off, for a follower on that path.
+
+---
+
 ## Unreleased — 2026-11-06 · The v3 engine split into one module per stage
 
 ### Changed

@@ -3108,10 +3108,134 @@ def _beat_this_frames(heard, sr: int, hop: int, frames: int) -> np.ndarray | Non
     return out if out.size >= 8 else None
 
 
+#: Phase 27.6: the fallback tracker's beats decoded from Beat This!'s beat
+#: activation by a tempo-following HMM, written from Krebs, Böck and Widmer
+#: (ISMIR 2015): each state is (beat interval, position in it), the position
+#: advances one frame at a time, and the interval may change only on a beat,
+#: by a cost that grows with the ratio. Unlike madmom its range opens to
+#: DBN_BPM_RANGE (madmom stops at 55 BPM, which forces slow songs to double),
+#: and an explicit prior on the octave, a log-normal around DBN_PRIOR_BPM,
+#: leans towards how mappers time songs. Off until measured (dbn-tracker).
+DBN_TRACKER = False
+DBN_BPM_RANGE = (40.0, 300.0)
+#: Frames per second the activation is decoded at (Beat This!'s 50, upsampled):
+#: at 50 fps a 250 BPM beat is 12 frames and its neighbour 13 is 231 BPM.
+DBN_FPS = 100
+#: Beat-interval states, log-spaced over DBN_BPM_RANGE.
+DBN_TEMPI = 80
+#: The tempo-change cost on a beat, exp(-lambda * |ratio - 1|) (Krebs: 100).
+DBN_TRANSITION_LAMBDA = 100.0
+#: The share of an interval that counts as "on the beat" for the observation.
+DBN_BEAT_SHARE = 1.0 / 16
+#: How much a beat state's activation outweighs the rest's (Krebs: 16).
+DBN_OBSERVATION_LAMBDA = 16.0
+#: The octave prior: centre and width (in octaves) of the log-normal on the tempo.
+DBN_PRIOR_BPM = 150.0
+DBN_PRIOR_OCTAVES = 1.0
+
+
+def _beat_this_activation(y: np.ndarray, sr: int, session=None) -> np.ndarray | None:
+    """Beat This!'s beat probability per 50 fps frame, or None without the model."""
+    if session is None:
+        if not _BEAT_THIS_JUDGE:
+            _BEAT_THIS_JUDGE.append(_load_beat_this())
+        session = _BEAT_THIS_JUDGE[0]
+    if session is None or y.size == 0:
+        return None
+    import soxr
+    signal = soxr.resample(np.asarray(y, dtype=np.float64), sr, BEAT_THIS_SR) \
+        if sr != BEAT_THIS_SR else np.asarray(y, dtype=np.float64)
+    logits = _beat_this_logits(session, _beat_this_spectrogram(signal)).astype(np.float64)
+    return 1.0 / (1.0 + np.exp(-np.clip(logits, -50.0, 50.0)))
+
+
+def _dbn_beats(activation: np.ndarray, fps: float) -> np.ndarray:
+    """Beat times (s) decoded from a beat activation sampled at ``fps``.
+
+    Viterbi over the (interval, position) states. Within an interval the path
+    has one way forward, so only a beat's choice of the next interval is kept
+    per frame: memory is frames x DBN_TEMPI, time frames x states."""
+    act = np.asarray(activation, dtype=np.float64)
+    if fps != DBN_FPS:
+        t_in = np.arange(act.size) / fps
+        t_out = np.arange(int(act.size * DBN_FPS / fps)) / DBN_FPS
+        act = np.interp(t_out, t_in, act)
+    frames = act.size
+    lo, hi = DBN_BPM_RANGE
+    taus = np.unique(np.round(np.geomspace(60.0 * DBN_FPS / hi, 60.0 * DBN_FPS / lo,
+                                           DBN_TEMPI)).astype(int))
+    taus = taus[taus >= 2]
+    if frames < 2 * taus[0] or taus.size == 0:
+        return np.zeros(0)
+    n = taus.size
+    first = np.concatenate([[0], np.cumsum(taus)[:-1]])          # phase-0 state of each tempo
+    last = first + taus - 1
+    states = int(taus.sum())
+    tempo_of = np.repeat(np.arange(n), taus)
+    phase_of = np.arange(states) - first[tempo_of]
+    on_beat = phase_of < np.maximum(1, np.round(taus[tempo_of] * DBN_BEAT_SHARE))
+
+    ratio = taus[None, :] / taus[:, None]
+    log_t = -DBN_TRANSITION_LAMBDA * np.abs(ratio - 1.0)
+    log_t -= np.logaddexp.reduce(log_t, axis=1, keepdims=True)
+    bpm = 60.0 * DBN_FPS / taus
+    log_prior = -0.5 * (np.log2(bpm / DBN_PRIOR_BPM) / DBN_PRIOR_OCTAVES) ** 2
+    log_t = log_t + log_prior[None, :] - np.max(log_prior)
+
+    eps = 1e-6
+    a = np.clip(act, eps, 1.0 - eps)
+    obs_on, obs_off = np.log(a), np.log((1.0 - a) / (DBN_OBSERVATION_LAMBDA - 1.0))
+    delta = np.where(on_beat, obs_on[0], obs_off[0]) + log_prior[tempo_of] - np.log(states)
+    back = np.empty((frames, n), dtype=np.int16)
+    shifted = np.empty(states)
+    for f in range(1, frames):
+        shifted[1:] = delta[:-1]                                   # position advances
+        cand = delta[last][:, None] + log_t                        # last position -> a beat
+        back[f] = np.argmax(cand, axis=0)
+        shifted[first] = cand[back[f], np.arange(n)]
+        delta = shifted + np.where(on_beat, obs_on[f], obs_off[f])
+        delta -= delta.max()
+    s = int(np.argmax(delta))
+    beats, beat_tempi = [], []
+    for f in range(frames - 1, 0, -1):
+        k = tempo_of[s]
+        if s == first[k]:
+            beats.append(f)
+            beat_tempi.append(k)
+            s = int(last[back[f, k]])
+        else:
+            s -= 1
+    if s == first[tempo_of[s]]:
+        beats.append(0)
+        beat_tempi.append(tempo_of[s])
+    # The path enters a beat anywhere in its on-beat window; each beat goes to
+    # the activation's peak inside the window it chose.
+    widths = np.maximum(1, np.round(taus * DBN_BEAT_SHARE)).astype(int)
+    peaks = []
+    for f, k in zip(beats[::-1], beat_tempi[::-1]):
+        seg = act[f:f + widths[k]]
+        peaks.append(f + int(np.argmax(seg)) if seg.size else f)
+    return np.asarray(peaks, dtype=float) / DBN_FPS
+
+
+def _dbn_frames(activation, sr: int, hop: int, frames: int) -> np.ndarray | None:
+    """The DBN's beats as onset-envelope frames, or None without an activation."""
+    if activation is None:
+        return None
+    act = activation()
+    if act is None or len(act) < 16:
+        return None
+    beats = _dbn_beats(act, BEAT_THIS_SR / BEAT_THIS_HOP)
+    out = np.unique(np.round(beats * sr / hop).astype(int))
+    out = out[(out >= 0) & (out < frames)]
+    return out if out.size >= 8 else None
+
+
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
                      min_delta: float, persistence: int, prefer_map_bpm: bool,
                      min_confidence: float, say: Callable[[str], None],
-                     factor: float, refine_beats: bool, heard=None) -> Analysis:
+                     factor: float, refine_beats: bool, heard=None,
+                     activation=None) -> Analysis:
     """v2 tracker path: used when no regular pulse grid can be fitted.
 
     It refuses audio with no pulse at all instead of tracking one: a beat
@@ -3139,7 +3263,9 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     guides = _global_tempo_guides(onset, sr, hop, frame_tempi)
     prior = guides[0][0] if guides else None
 
-    network = _beat_this_frames(heard, sr, hop, onset.shape[-1]) if BEAT_THIS_TRACKER else None
+    network = _dbn_frames(activation, sr, hop, onset.shape[-1]) if DBN_TRACKER else None
+    if network is None and BEAT_THIS_TRACKER:
+        network = _beat_this_frames(heard, sr, hop, onset.shape[-1])
     if network is not None:
         say("Tracking beats (Beat This!)…")
         beat_frames = network
@@ -3248,7 +3374,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         say("No fittable grid — falling back to the beat tracker…" + failure)
     analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
                                 min_confidence, say, float(force_subdivision), refine_beats,
-                                heard=lambda: _beat_this_judge_beats(y_mix, sr))
+                                heard=lambda: _beat_this_judge_beats(y_mix, sr),
+                                activation=lambda: _beat_this_activation(y_mix, sr))
     if force_subdivision or not prefer_map_bpm or not osu_conventions:
         return analysis
     tracked = _local_tempo_track(analysis)

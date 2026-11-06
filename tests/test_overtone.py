@@ -7996,6 +7996,55 @@ class BeatThisTrackerTests(unittest.TestCase):
         self.assertEqual(frames.size, 19)
 
 
+class DbnTrackerTests(unittest.TestCase):
+    """DBN_TRACKER (phase 27.6): beats decoded from Beat This!'s activation."""
+
+    @staticmethod
+    def _activation(beats, seconds, fps=50, noise=0.15):
+        rng = np.random.default_rng(7)
+        t = np.arange(int(seconds * fps)) / fps
+        a = sum(np.exp(-0.5 * ((t - b) / 0.012) ** 2) for b in beats)
+        return np.clip(0.9 * a + rng.uniform(0, noise, t.size), 0, 1)
+
+    def _check(self, beats, seconds):
+        import overtone
+        found = overtone._dbn_beats(self._activation(beats, seconds), 50.0)
+        self.assertLessEqual(abs(found.size - beats.size), 1)
+        err = np.array([np.min(np.abs(beats - f)) for f in found])
+        self.assertLess(float(np.median(err)), 0.006)
+        return found
+
+    def test_follows_a_steady_tempo(self):
+        self._check(np.arange(0.3, 60, 0.5), 60)
+
+    def test_reads_below_madmoms_floor_without_doubling(self):
+        found = self._check(np.arange(0.5, 60, 60 / 50), 60)
+        self.assertAlmostEqual(float(np.median(60 / np.diff(found))), 50.0, delta=1.0)
+
+    def test_follows_a_tempo_change(self):
+        beats = np.concatenate([np.arange(0.2, 30, 0.5), 30 + np.arange(0, 30, 60 / 130)])
+        found = self._check(beats, 60)
+        d = 60 / np.diff(found)
+        self.assertAlmostEqual(float(np.median(d[:40])), 120.0, delta=1.5)
+        self.assertAlmostEqual(float(np.median(d[-40:])), 130.0, delta=1.5)
+
+    def test_frames_need_an_activation(self):
+        import overtone
+        self.assertIsNone(overtone._dbn_frames(None, 22050, 512, 1000))
+        self.assertIsNone(overtone._dbn_frames(lambda: None, 22050, 512, 1000))
+        self.assertIsNone(overtone._beat_this_activation(np.zeros(0, np.float32), 44100, session=object()))
+
+    def test_on_its_beats_replace_the_trackers(self):
+        import overtone
+        y, sr = BeatThisTrackerTests()._clicks()
+        act = self._activation(np.arange(0.5, 19.9, 0.5), 20)
+        with mock.patch.object(overtone, "DBN_TRACKER", True), \
+                mock.patch.object(overtone, "_track_beats_hybrid", side_effect=AssertionError("tracker ran")):
+            a = overtone._legacy_analysis("x.wav", y, sr, 1.5, 12, True, 0.75, lambda _m: None, 0.0, True,
+                                          activation=lambda: act)
+        self.assertAlmostEqual(float(a.global_bpm), 120.0, delta=1.0)
+
+
 class OctaveCapTests(unittest.TestCase):
     """OCTAVE_CAP: a red line above 260 BPM is read at half, on its strong beats."""
 

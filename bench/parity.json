@@ -784,6 +784,22 @@
    "where": "python-only",
    "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
   },
+  "DBN_TRACKER": {
+   "where": "python-only",
+   "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
+  },
+  "_dbn_beats": {
+   "where": "python-only",
+   "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
+  },
+  "_dbn_frames": {
+   "where": "python-only",
+   "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
+  },
+  "_beat_this_activation": {
+   "where": "python-only",
+   "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
+  },
   "_beat_this_frames": {
    "where": "python-only",
    "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"

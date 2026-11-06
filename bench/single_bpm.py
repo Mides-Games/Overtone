@@ -71,7 +71,7 @@ AUDIO_SUFFIXES = (".mp3", ".ogg", ".wav", ".m4a", ".flac", ".opus", ".mp4")
 
 def engine_fingerprint(engine: str, cli: Path | None) -> str:
     """The code that produced an analysis, as in corpus_b with our own key."""
-    files = [ROOT / "python" / "overtone.py"]
+    files = sorted((ROOT / "python" / "overtone").glob("*.py"))
     if engine in ("rust", "app"):
         files += [ROOT / "python" / "overtone_rust.py", cli]
     digest = hashlib.sha1(f"single_bpm cache {CACHE_FORMAT}".encode())

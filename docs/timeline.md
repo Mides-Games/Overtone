@@ -20,6 +20,43 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-06 · The v3 engine split into one module per stage
+
+### Changed
+
+- `python/overtone.py` (11,529 lines) is now the package `python/overtone/`: 23
+  modules by pipeline stage, the largest `precision_grid.py` at 1,376 lines.
+  Code moved, none changed. `import overtone` still sees every name, and a name
+  set on it (`mock.patch.object(overtone, ...)`, `overtone_runs.py`'s experiment
+  flags, `bench/golden.py`'s stage wrappers) reaches the module that defines it:
+  modules reach each other as `module.NAME` at call time, and the package
+  forwards writes. Every constant and flag lives in `params.py`.
+- The command line is `python -m overtone` (from `python/`); the frozen engine's
+  entry is `overtone/__main__.py`. Corpus B and single-BPM caches key on the
+  package's files, so they re-run once.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- `EngineLayoutTests` sets each of the 588 engine names through `overtone` and
+  checks the owning module sees it and gets the original back.
+
+### Measured
+
+- Every gate's output diffed against a clean master checkout run the same
+  minutes: benchmark (24/24, median 0.0000 BPM / 0.14 ms), coverage, measures,
+  signatures, robustness, reference, assisted identical but for timing columns
+  and temporary paths; bpm-snapshot 24/24, golden 27/27, fixtures, parity,
+  facts, fuzz_reader pass. unittest: 597 run, one failure that master shares
+  (no `onnxruntime` in the local `.venv`); `perf` fails on Beat This! for the
+  same reason on both; `real-audio` has no local library here. The PyInstaller
+  build was not run.
+
+---
+
 ## Unreleased — 2026-11-06 · Opt-in octave, tracker and drum experiments measured on the app engine
 
 ### Changed

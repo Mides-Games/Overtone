@@ -10,7 +10,7 @@ output goes to ``build/release/<version>/logs``:
 1. ``overtone-cli-<version>-windows-x64.exe``: the v4 Rust engine,
    ``cargo build --release -p overtone-cli``;
 2. ``overtone-engine-<version>-windows-x64.zip``: the v3 Python engine's
-   command line (``python/overtone.py``, what the site's worker runs), frozen
+   command line (``python -m overtone``, what the site's worker runs), frozen
    by PyInstaller (``scripts/overtone-engine.spec``) into ``overtone.exe`` with
    the Beat This! model beside it, then run once on a two-tempo click track;
    it must read both red lines (128 and 142 BPM);

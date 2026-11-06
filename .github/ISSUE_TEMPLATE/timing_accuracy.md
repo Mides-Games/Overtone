@@ -19,7 +19,7 @@ section). Reports with a hand-timed reference are the most useful kind. -->
 - Settings changed from the defaults: <!-- preset, Prefer map BPM, offset lead, ... -->
 
 **What Overtone gave**
-<!-- Paste the red lines (Timing → copy, or `overtone.py song.mp3 --stats`). -->
+<!-- Paste the red lines (Timing → copy, or `python -m overtone song.mp3 --stats`). -->
 
 **What the reference has**
 <!-- The map's [TimingPoints] red lines, or what you hear and where. -->

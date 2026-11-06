@@ -1,5 +1,9 @@
 {
  "classes": {
+  "EngineLayoutTests": {
+   "where": "python-only",
+   "why": "the v3 package's module layout: names set on overtone reach their stage module, which has no Rust counterpart"
+  },
   "StemsDrumsTests": {
    "where": "python-only",
    "why": "STEMS_DRUMS calls the stemsplit CLI (Mides-Games/Stemsplit) as a separate process, an experiment the Rust engine does not run"

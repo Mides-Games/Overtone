@@ -8486,8 +8486,9 @@ class PerfGateTests(unittest.TestCase):
     def test_every_stage_the_engine_announces_has_an_id(self) -> None:
         import re
         import overtone as ta
-        said = re.findall(r'(?:say|progress)\("([^"]+)"',
-                          Path(ta.__file__).read_text(encoding="utf-8"))
+        source = "".join(path.read_text(encoding="utf-8")
+                         for path in sorted(Path(ta.__file__).parent.glob("*.py")))
+        said = re.findall(r'(?:say|progress)\("([^"]+)"', source)
         # Every message named, every name still announced, one id per stage.
         self.assertEqual(sorted(set(said)), sorted(ta.STAGES))
         self.assertEqual(len(set(ta.STAGES.values())), len(ta.STAGES))
@@ -8930,6 +8931,38 @@ class StemsDrumsTests(unittest.TestCase):
             out = self.ta._percussive(self.y, 22050)
         self.assertEqual(out.shape, self.y.shape)
         self.assertLessEqual(float(np.max(np.abs(out))), 1.0 + 1e-6)
+
+
+class EngineLayoutTests(unittest.TestCase):
+    """The engine is a package of stage modules; ``overtone`` still behaves as
+    the one module it was, for every name a test or an experiment sets."""
+
+    def test_every_name_set_on_overtone_reaches_its_module_and_comes_back(self):
+        import overtone as ta
+        marker = object()
+        for name, module in ta._OWNER.items():
+            original = getattr(module, name)
+            with mock.patch.object(ta, name, marker):
+                self.assertIs(getattr(module, name), marker, name)
+                self.assertIs(getattr(ta, name), marker, name)
+            self.assertIs(getattr(module, name), original, name)
+            self.assertNotIn(name, vars(ta), name)
+
+    def test_a_flag_set_by_name_is_what_the_engine_reads(self):
+        import overtone as ta
+        with mock.patch.object(ta, "OCTAVE_CAP", False):
+            self.assertFalse(ta.params.OCTAVE_CAP)
+        setattr(ta, "DBN_TRACKER", True)
+        try:
+            self.assertTrue(ta.params.DBN_TRACKER)
+        finally:
+            setattr(ta, "DBN_TRACKER", False)
+
+    def test_a_patched_stage_is_the_one_its_callers_call(self):
+        import overtone as ta
+        with mock.patch.object(ta, "_load_audio", side_effect=RuntimeError("patched")):
+            with self.assertRaisesRegex(RuntimeError, "patched"):
+                ta.analyze_audio("song.ogg")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # PyInstaller spec: overtone.exe, the v3 Python engine's command line
-# (python/overtone.py), one folder, no window. Run it through the release
+# (python/overtone/, run as python -m overtone), one folder, no window. Run it through the release
 # script, which also lays the model and the version beside the executable and
 # smoke-tests the result:
 #
@@ -12,7 +12,7 @@
 # listed: the parked build froze the same engine the same way.
 #
 # The engine looks for its data at the repository's layout, one folder above
-# its code (python/overtone.py: ROOT = parent of the code's folder). Frozen,
+# its code (python/overtone/params.py: ROOT = two folders above it). Frozen,
 # its code sits in _internal, so ROOT is the folder holding overtone.exe, and
 # the release script copies assets/models/ and the version file there rather
 # than into _internal.
@@ -46,7 +46,7 @@ def version_resource() -> vi.VSVersionInfo:
 
 
 cli = Analysis(
-    [str(ROOT / "python" / "overtone.py")],
+    [str(ROOT / "python" / "overtone" / "__main__.py")],
     pathex=[str(ROOT / "python")],
     binaries=[],
     datas=[],

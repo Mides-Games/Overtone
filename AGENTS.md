@@ -64,7 +64,7 @@ commit messages are English; only the website's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (596 on 2026-11-06)
+.venv/Scripts/python.exe -m unittest discover -s tests   # all pass (599 on 2026-11-06)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -222,7 +222,18 @@ site/                     the website, Overtone's only interface (docs/site.md)
 bot/                      the Discord bot (discord.js): /time-song and friends through the
                           API's /api/internal/bot; scripts/register.mjs (docs/bot.md)
 python/                   v3 engine, osu! I/O and the command line
-  overtone.py               engine and command line
+  overtone/                 the engine, one module per pipeline stage; `import overtone`
+                            sees every name, and a name set on it (a test patch, an
+                            experiment flag) reaches the module that defines it
+    params.py                 every constant and experiment flag, read as params.NAME
+    pipeline.py               analyze_audio, analyze_batch; the stages beside it:
+                              audio_io, onsets, tempo_helpers, precision_grid,
+                              hybrid_tracker, beat_this, drum_signal, red_lines,
+                              octave_choice, phrases
+    osu_read.py, osu_write.py .osu reading; .osu/.osz writes and the audio swap
+                              (map_objects, reference_timing, validation, editing,
+                              exports, sounds, structure: the tools on top)
+    cli.py, __main__.py       the command line: python -m overtone
   overtone_paths.py         where Overtone's files live, and the release's version
   overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)

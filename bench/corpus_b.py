@@ -371,9 +371,9 @@ def locate(track: dict, songs: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 def engine_fingerprint(engine: str, cli: Path | None) -> str:
-    """The code that produced an analysis: overtone.py writes the red lines
+    """The code that produced an analysis: the overtone package writes the red lines
     for both engines; the Rust engine adds its bridge and its binary."""
-    files = [ROOT / "python" / "overtone.py"]
+    files = sorted((ROOT / "python" / "overtone").glob("*.py"))
     if engine in ("rust", "app"):
         files += [ROOT / "python" / "overtone_rust.py", cli]
     digest = hashlib.sha1(f"corpus_b cache {CACHE_FORMAT}".encode())

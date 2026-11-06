@@ -37,7 +37,8 @@ def python_tests() -> tuple[int, int, int]:
     """(all, engine, worker): every tests/test_*.py file, which is what
     `unittest discover -s tests` runs, and the two the docs break out."""
     total = sum(_count(p) for p in (ROOT / "tests").glob("test_*.py"))
-    engine, worker = (_count(ROOT / "tests" / name) for name in ("test_overtone.py", "test_worker.py"))
+    engine = sum(_count(p) for p in (ROOT / "tests").glob("test_overtone_*.py"))
+    worker = _count(ROOT / "tests" / "test_worker.py")
     return total, engine, worker
 
 

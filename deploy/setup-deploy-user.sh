@@ -27,7 +27,7 @@ USER_NAME=overtone-deploy
 # The update itself, and the timer that runs it when no push does. Written
 # from here, not copied from the checkout: what root installs is what this
 # reviewed file says. They are deploy/overtone-update.service and .timer,
-# byte for byte (tests/test_overtone.py holds the two copies together).
+# byte for byte (tests/test_overtone_bench.py holds the two copies together).
 cat > /etc/systemd/system/overtone-update.service <<'UNIT'
 [Unit]
 Description=Bring Overtone up to its stable branch on GitHub

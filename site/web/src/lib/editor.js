@@ -4,7 +4,7 @@
  * the same lines the same way.
  *
  * Ported from the desktop app's editing helpers, which are still in
- * `python/overtone.py` (`add_timing_point`, `update_timing_point`,
+ * `python/overtone/editing.py` (`add_timing_point`, `update_timing_point`,
  * `delete_timing_point`, `nudge_timing_point`, `set_meter`,
  * `rescale_section`, `split_section`, `merge_sections`), with the refit they
  * call (`_refit_section` over `_grade_span`, `_forward_fit`,

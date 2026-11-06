@@ -1569,7 +1569,7 @@
     "how": {
       "title": "Jak to działa",
       "description": "Co się dzieje między wysłaniem pliku a red lines: dekodowanie, ataki, przegląd tempa, oktawa, sekcje i pewność, krok po kroku.",
-      "intro": "Co się dzieje między wysłaniem pliku a red lines. Każdy krok poniżej to silnik v3 (python/overtone.py) w takiej postaci, w jakiej uruchamia go worker strony, z domyślnymi ustawieniami świeżej instalacji desktopowej. Każdy krok wskazuje dokument, w którym jest opisany, więc tę stronę można porównać z kodem.",
+      "intro": "Co się dzieje między wysłaniem pliku a red lines. Każdy krok poniżej to silnik v3 (python/overtone/) w takiej postaci, w jakiej uruchamia go worker strony, z domyślnymi ustawieniami świeżej instalacji desktopowej. Każdy krok wskazuje dokument, w którym jest opisany, więc tę stronę można porównać z kodem.",
       "diagram": {
         "title": "Potok przetwarzania",
         "desc": "Sześć kroków od pliku audio do timingu: dekodowanie, ataki, przegląd tempa i dopasowanie siatki, oktawa z głosem Beat This!, sekcje i red lines, poziomy pewności."
@@ -1638,8 +1638,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio i _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio i _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1657,8 +1657,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

@@ -23,7 +23,7 @@ export const MIN_TIMED = 5;
  * from the last edge up. The same reading as PostgreSQL's
  * `width_bucket(bpm, edges)`, which the pg store uses with this array, so the
  * two stores bucket a BPM on an edge the same way. 120-240 is the octave osu!
- * maps are read at (python/overtone.py MAP_OCTAVE_RANGE), so it sits in the
+ * maps are read at (python/overtone/params.py MAP_OCTAVE_RANGE), so it sits in the
  * middle with room on either side.
  */
 export const BPM_EDGES = [80, 100, 120, 140, 160, 180, 200, 220, 240, 260];

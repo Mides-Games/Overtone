@@ -1569,7 +1569,7 @@
     "how": {
       "title": "Как это работает",
       "description": "Что происходит между вашей загрузкой и red lines: декодирование, атаки, перебор темпа, октава, секции и уверенность, шаг за шагом.",
-      "intro": "Что происходит между вашей загрузкой и red lines. Каждый шаг ниже — это движок v3 (python/overtone.py) в том виде, в каком его запускает обработчик сайта, с настройками по умолчанию свежей настольной установки. У каждого указан документ, где он описан, так что эту страницу можно сверить с кодом.",
+      "intro": "Что происходит между вашей загрузкой и red lines. Каждый шаг ниже — это движок v3 (python/overtone/) в том виде, в каком его запускает обработчик сайта, с настройками по умолчанию свежей настольной установки. У каждого указан документ, где он описан, так что эту страницу можно сверить с кодом.",
       "diagram": {
         "title": "Конвейер",
         "desc": "Шесть шагов от аудиофайла до тайминга: декодирование, атаки, перебор темпа и подгонка сетки, октава с голосованием Beat This!, секции и red lines, уровни уверенности."
@@ -1638,8 +1638,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio и _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio и _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1657,8 +1657,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

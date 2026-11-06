@@ -1,6 +1,6 @@
 /**
  * The offset lab (W7), ported from the desktop app's (app/app.js `lab*`,
- * python/overtone.py `mp3_gapless_info`): what the file says about its own
+ * python/overtone/audio_io.py `mp3_gapless_info`): what the file says about its own
  * delay, and a blind test of which click shift sounds in time.
  *
  * The blind test: each trial plays the same passage twice, the clicks shifted

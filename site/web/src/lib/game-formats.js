@@ -5,7 +5,7 @@
  * timing is the part that transfers. The reader opens the file in the game's
  * editor and charts on it.
  *
- * Where the v3 engine has an exporter (python/overtone.py
+ * Where the v3 engine has an exporter (python/overtone/exports.py
  * `quaver_timing_text`, `stepmania_timing_text`), the timing text here is
  * the same, character for character but the comment line: the same numbers,
  * the same rounding (Python's half-to-even on exact ties, see `fixed`), the

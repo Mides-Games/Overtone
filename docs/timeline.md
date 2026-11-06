@@ -20,6 +20,62 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-06 · Opt-in octave, tracker and drum experiments measured on the app engine
+
+### Changed
+
+- None. Every flag below stays off.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- Compared each run with its baseline map by map, not only through the aggregates. A
+  flag that never fires then shows up as zero changed line sets, and is not mistaken for
+  a neutral result.
+
+### Measured
+
+All runs are on the VPS at `b6043102`, with the `app` engine on the dev split. The
+baselines are `anime-variable` `20261104-014002-8d580c` (1,629 maps) and `bands-variable`
+`20261104-014002-fe0b85` (636 maps).
+
+- `octave-smooth` and `octave-smooth-rule` changed **no line set** on either stage
+  (0 of 1,629 and 0 of 636). 313 anime maps and 188 band maps leave the engine with more
+  than one line, but none has an octave step between neighbours that the Viterbi pass
+  prefers to remove at the current costs.
+- `tracker-guard` changed 182 maps in 42 songs on `anime-variable`. tempo ok went from
+  36.34% to 36.59% (4 maps fixed, none broken), `conv_10` was unchanged at 26.52%, and
+  `beat_f10` fell from 74.91% to 73.36%. On `bands-variable` it changed 123 maps in 26
+  songs: tempo ok went from 60.38% to 57.86% (5 fixed, 21 broken), `conv_10` from 45.75%
+  to 43.87%, and `beat_f10` from 73.05% to 69.36%.
+- `drum-bands` changed every one of the 636 `bands-variable` maps. tempo ok went from
+  60.38% to 21.86%, `conv_10` from 45.75% to 16.51%, and `beat_f10` from 73.05% to 24.30%.
+  The `anime-variable` run died after 384 s, at a peak of 3,444 MB, when a worker process
+  was killed (`BrokenProcessPool`).
+- `drummer` died on both stages in under 4 minutes the same way (peaks 2.3 and 2.6 GB with
+  2 jobs). Run again with 1 job on `bands-variable` (`20261106-073458-1861af`, 1,661 s, peak
+  3,302 MB), it changed **no line set** (0 of 636), and every metric matched the baseline.
+  The anime run was not repeated.
+
+### Rejected / tried and dropped
+
+- `tracker-guard`: the 4 anime maps it fixes do not pay for the 21 band maps it breaks
+  and the beat-F10 loss on both stages.
+- `drum-bands`: feeding the grid only the percussive bands loses most of the sections
+  that the full mix reads right. Not worth fixing the anime run's memory to measure it
+  again.
+- `octave-smooth`: inert at these costs. Lowering `OCTAVE_SMOOTH_KEEP` would make it fire,
+  but nothing in these runs shows a neighbour octave step for it to fix: the stage's
+  octave errors are whole-song (`x2`), and `OCTAVE_RULE` already handles those.
+- `drummer`: it costs memory and changes nothing on the `app` engine's band maps. None of
+  these four flags is a lead for the variable stages. Phase 27.3's bottleneck is still the
+  beat follower that the change-point entry below describes.
+
+---
+
 ## Unreleased — 2026-11-05 · Phase 27.3 measured; prototype did not move the stage
 
 ### Changed

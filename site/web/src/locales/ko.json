@@ -1458,7 +1458,7 @@
     "how": {
       "title": "작동 방식",
       "description": "업로드부터 red line까지 일어나는 일: 디코딩, 어택, 템포 탐색, 옥타브, 구간, 신뢰도를 단계별로.",
-      "intro": "업로드부터 red line까지 일어나는 일이에요. 아래 모든 단계는 사이트의 워커가 실행하는 v3 엔진(python/overtone.py)이며, 새로 설치한 데스크톱 앱의 기본값을 써요. 각 단계에는 명세된 문서가 적혀 있어서, 이 페이지를 코드와 대조할 수 있어요.",
+      "intro": "업로드부터 red line까지 일어나는 일이에요. 아래 모든 단계는 사이트의 워커가 실행하는 v3 엔진(python/overtone/)이며, 새로 설치한 데스크톱 앱의 기본값을 써요. 각 단계에는 명세된 문서가 적혀 있어서, 이 페이지를 코드와 대조할 수 있어요.",
       "diagram": {
         "title": "파이프라인",
         "desc": "오디오 파일에서 타이밍까지 여섯 단계: 디코딩, 어택, 템포 탐색과 그리드 피팅, Beat This! 투표를 포함한 옥타브, 구간과 red line, 신뢰도 단계."
@@ -1527,8 +1527,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio and _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio and _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1546,8 +1546,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

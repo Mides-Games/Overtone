@@ -1532,7 +1532,7 @@
     "how": {
       "title": "Comment ça marche",
       "description": "Ce qui se passe entre votre envoi et les red lines : décodage, attaques, balayage du tempo, octave, sections et confiance, étape par étape.",
-      "intro": "Ce qui se passe entre votre envoi et les red lines. Chaque étape ci-dessous est le moteur v3 (python/overtone.py) tel que le processus du site l'exécute, avec les réglages par défaut d'une installation de bureau neuve. Chacune indique le document où elle est spécifiée, pour que cette page puisse être confrontée au code.",
+      "intro": "Ce qui se passe entre votre envoi et les red lines. Chaque étape ci-dessous est le moteur v3 (python/overtone/) tel que le processus du site l'exécute, avec les réglages par défaut d'une installation de bureau neuve. Chacune indique le document où elle est spécifiée, pour que cette page puisse être confrontée au code.",
       "diagram": {
         "title": "Le pipeline",
         "desc": "Six étapes du fichier audio au timing : décodage, attaques, balayage du tempo et ajustement de la grille, octave avec le vote de Beat This!, sections et red lines, niveaux de confiance."
@@ -1601,8 +1601,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio et _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio et _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1620,8 +1620,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

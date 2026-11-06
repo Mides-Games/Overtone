@@ -1458,7 +1458,7 @@
     "how": {
       "title": "仕組み",
       "description": "アップロードから red line までに起きること：デコード、アタック、テンポの探索、オクターブ、セクション、信頼度を順に。",
-      "intro": "アップロードから red line までに起きること。以下の各ステップは、サイトのワーカーが実行する v3 エンジン（python/overtone.py）で、デスクトップ版を新規インストールしたときの既定値を使っています。各ステップには仕様が書かれたドキュメントを挙げているので、このページをコードと照らし合わせられます。",
+      "intro": "アップロードから red line までに起きること。以下の各ステップは、サイトのワーカーが実行する v3 エンジン（python/overtone/）で、デスクトップ版を新規インストールしたときの既定値を使っています。各ステップには仕様が書かれたドキュメントを挙げているので、このページをコードと照らし合わせられます。",
       "diagram": {
         "title": "処理の流れ",
         "desc": "音声ファイルからタイミングまでの6ステップ：デコード、アタック、テンポ探索とグリッド当てはめ、Beat This! 投票を伴うオクターブ、セクションと red line、信頼度。"
@@ -1527,8 +1527,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio and _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio and _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1546,8 +1546,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

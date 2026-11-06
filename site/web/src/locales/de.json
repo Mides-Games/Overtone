@@ -1495,7 +1495,7 @@
     "how": {
       "title": "So funktioniert’s",
       "description": "Was zwischen deinem Upload und den red lines passiert: Dekodierung, Anschläge, der Tempo-Sweep, die Oktave, Abschnitte und Zuverlässigkeit, Schritt für Schritt.",
-      "intro": "Was zwischen deinem Upload und den red lines passiert. Jeder Schritt unten ist die v3-Engine (python/overtone.py), wie der Worker der Seite sie ausführt, mit den Voreinstellungen einer frischen Desktop-Installation. Jeder nennt das Dokument, in dem er spezifiziert ist, damit sich diese Seite am Code prüfen lässt.",
+      "intro": "Was zwischen deinem Upload und den red lines passiert. Jeder Schritt unten ist die v3-Engine (python/overtone/), wie der Worker der Seite sie ausführt, mit den Voreinstellungen einer frischen Desktop-Installation. Jeder nennt das Dokument, in dem er spezifiziert ist, damit sich diese Seite am Code prüfen lässt.",
       "diagram": {
         "title": "Die Pipeline",
         "desc": "Sechs Schritte von der Audiodatei zum Timing: Dekodieren, Anschläge, Tempo-Sweep und Raster-Fit, Oktave mit der Beat This!-Abstimmung, Abschnitte und red lines, Zuverlässigkeitsstufen."
@@ -1564,8 +1564,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, analyze_audio und _beat_this_vote",
-              "path": "python/overtone.py"
+              "label": "python/overtone/, analyze_audio und _beat_this_vote",
+              "path": "python/overtone"
             }
           ]
         },
@@ -1583,8 +1583,8 @@
               "path": "docs/05-dsp-pipeline.md"
             },
             {
-              "label": "python/overtone.py, _follow_drift",
-              "path": "python/overtone.py"
+              "label": "python/overtone/red_lines.py, _follow_drift",
+              "path": "python/overtone/red_lines.py"
             }
           ]
         },

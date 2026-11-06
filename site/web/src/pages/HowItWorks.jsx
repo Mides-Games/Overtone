@@ -10,7 +10,7 @@ import usePageMeta from '../hooks/usePageMeta.js'
  *
  * Every sentence is in the locale files under `learn.how` and was written from
  * the documents each step cites (docs/05-dsp-pipeline.md, docs/site.md,
- * python/overtone.py, worker/timing_result.py). The only accuracy figures
+ * python/overtone/, worker/timing_result.py). The only accuracy figures
  * quoted are the synthetic benchmark's, the same ones the disclaimer quotes;
  * real-map measurements (Corpus B) are named as research, without a number,
  * until the site publishes them. A change to the engine that changes a step

@@ -85,7 +85,7 @@ class ResultOnAudioTests(unittest.TestCase):
                 raise tr.ta.SeparatorFailed("The separator failed (exit -9): killed")
             return real(*args, **kwargs)
 
-        with mock.patch.object(tr, "stems_available", return_value=True), mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
+        with mock.patch.object(tr.settings, "stems_available", return_value=True), mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
             result = tr.analyse(self.change, vote=False, hash_="test", options={"band": True})
         self.assertFalse(result["refused"])
         self.assertEqual([round(line["bpm"], 2) for line in result["red_lines"]], [128.0, 142.0])
@@ -104,7 +104,7 @@ class ResultOnAudioTests(unittest.TestCase):
             with mock.patch.object(tr.ta, "STEMS_DRUMS", False):
                 return real(*args, **kwargs)
 
-        with mock.patch.object(tr, "stems_available", return_value=True),                 mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
+        with mock.patch.object(tr.settings, "stems_available", return_value=True),                 mock.patch.object(tr.ta, "analyze_audio", side_effect=analyze):
             return tr.analyse(self.change, vote=False, hash_="test", **kwargs), asked
 
     def test_every_song_has_its_drums_separated_and_says_so(self):
@@ -126,7 +126,7 @@ class ResultOnAudioTests(unittest.TestCase):
             self.assertEqual(asked, [False])
             _, asked = self._separated(mode="fast", options={"band": True})
             self.assertEqual(asked, [True])
-        with mock.patch.object(tr, "stems_available", return_value=True),                 mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
+        with mock.patch.object(tr.settings, "stems_available", return_value=True),                 mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
             separated = tr.engine_hash(False, "fast")
         self.assertEqual(separated, tr.engine_hash(False, "fast"))
 
@@ -585,7 +585,7 @@ class ResultPartsTests(unittest.TestCase):
 
     def test_engine_hash_depends_on_the_vote(self):
         self.assertNotEqual(tr.engine_hash(True), tr.engine_hash(False))
-        with mock.patch.object(tr, "stems_available", return_value=True):
+        with mock.patch.object(tr.settings, "stems_available", return_value=True):
             with mock.patch.dict(os.environ, {"OVERTONE_STEMS": "1"}):
                 separated = tr.engine_hash(False)
             self.assertNotEqual(separated, tr.engine_hash(False))  # OVERTONE_STEMS=0 here

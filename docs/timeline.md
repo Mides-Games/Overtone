@@ -20,6 +20,144 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-07 · Locked accuracy cohorts, a confirmation split, and the 27.8 tempo judge
+
+### Changed
+
+- Stage splits now group songs by shared audio bytes **and** by set folder, keyed by the
+  group's smallest audio hash: a set whose difficulties use two audio files, or one
+  recording uploaded in two sets, can no longer straddle dev and held out. Re-encoded
+  copies have different bytes and are still not joined; that is the audit's job.
+- `bench/stages.py --cohort <manifest>` scores a frozen cohort instead of the index's
+  current maps: the same maps, hashes and splits every run, and the report carries the
+  manifest's SHA-1. A locked map that changed, vanished or lost its red lines stops the
+  run instead of leaving the denominator. `bench/accuracy_compare.py` refuses to pair
+  reports from different cohorts.
+- `bench/accuracy_manifest.py freeze --confirmation --exclude <cohort>` freezes the third
+  split (roadmap 27.11): every row `confirmation`, refused if it shares any audio, map or
+  set folder with the excluded cohorts. `verify` re-checks that disjointness against the
+  excluded files' recorded SHA-1, and a set or recording in two splits fails it.
+  Manifests are format 2 (split key, folder path, ranked header); format 1 still verifies.
+- Roadmap 27.8 tooling, written 2026-11-07: `bench/tempo_model.py` trains a small numpy
+  classifier over log-spaced BPM classes from onset-envelope autocorrelation features,
+  labelled with each ranked song's dominant mapped tempo; `bench/tempo_judge_eval.py`
+  lets it pick x1/2, x1 or x2 for a stage's cached analyses and scores both. It is an
+  MLP, not the CNN the roadmap describes, and it is a judge, never the red lines.
+
+### Fixed
+
+- Nothing shipped was wrong; the leak closed above existed only in the uncommitted
+  audio-hash split.
+
+### Hardening
+
+- Tests now cover the set/recording grouping, a locked cohort scored through
+  `stages.main` (stale map → exit 2, wrong stage → refused), confirmation disjointness by
+  audio, map and set, a changed or missing excluded cohort, the tempo model learning a
+  synthetic tempo and judging x1/2 and x2 readings, and the dominant red-line label.
+
+### Measured
+
+- Python suite: 615 tests, all pass (the parity setup needed `overtone-cli` rebuilt: the
+  2026-10-07 binary lacked `--timing-result`). Benchmark 24/24, median 0.0000 BPM and
+  0.14 ms. Gates: bpm-snapshot 24/24 unchanged, golden 27/27, coverage, measures,
+  signatures, robustness, reference 24/24, assisted (70 sections), perf, fixtures 38/38,
+  parity, facts and fuzz 3000 mutants all pass. real-audio checked nothing: no local
+  library on this machine.
+- Rust: `cargo test --workspace` 231 pass; golden 27/27, nogrid, density 4/4 with 0 false
+  positives, elastic and map pass.
+- No ranked-song accuracy and no tempo-model result: this machine has neither the Songs
+  index nor the trained features. No accuracy gain is claimed.
+
+### Rejected / tried and dropped
+
+- Carving the confirmation split out of the existing hash space: every song there has
+  already been seen as dev or held out while tuning, so it would not be untouched. The
+  confirmation cohort is new maps, frozen later and checked disjoint instead.
+
+---
+
+## Unreleased — 2026-11-06 · Section-level beat-phase drift diagnostic
+
+### Changed
+
+- Added bench/phase_residual.py. It compares map beats with the detected grid
+  inside each map timing section and reports a robust Theil–Sen phase slope in
+  milliseconds per minute, initial phase, detrended residual and raw grid error.
+- Supports dev/holdout filtering, the pre-registered dense-map threshold and a
+  private JSON output. It does not alter timing results.
+- Stage reports now count tempo change points with one-to-one matching at 20 ms,
+  excluding meter-only changes and reporting precision, recall, F1, misses,
+  phantom changes and matched timing error overall and for dense maps.
+
+### Fixed
+
+- A synthetic check caught the slope conversion using milliseconds per second
+  as if it were milliseconds per millisecond; it now converts seconds to minutes.
+
+### Hardening
+
+- Sections shorter than eight beats and refused/error analyses are omitted.
+- Offset and drift are reported separately so a fixed audio/map lead is not
+  mistaken for tempo error.
+
+### Measured
+
+- Synthetic invariant: a constant 23 ms offset reports 0 ms/min drift; a
+  4 ms/min linear drift is recovered within numerical tolerance. Test passes.
+- Change-point fixture: one 15 ms-late transition matched; one missed and one
+  phantom transition are counted separately. Test passes.
+- No ranked-song result: this checkout has no Songs index or ranked corpus file.
+
+### Rejected / tried and dropped
+
+- None.
+
+---
+
+## Unreleased — 2026-11-06 · Phase 27 accuracy contract and corpus identity
+
+### Changed
+
+- Stage evaluation now splits on the audio content hash, preventing byte-identical
+  recordings in alternate beatmap sets from leaking between dev and holdout.
+- bench/stages.py reports red-line within-5-ms accuracy, beat F1 at 5/10/20 ms,
+  dense-map results (20+ red lines or at least one per audio minute), per-audio
+  macro accuracy and a deterministic 95% bootstrap interval clustered by audio.
+- bench/accuracy_manifest.py freeze|verify freezes ranked map/audio hashes and the
+  split into a local ignored manifest. Existing manifests are never overwritten.
+
+### Fixed
+
+- Refused/error timing rows remain misses in the red-line denominator.
+- SQLite read-only stage-index paths are URI-escaped, including Windows temp paths
+  containing # or spaces.
+
+### Hardening
+
+- The private manifest stores hashes and absolute local paths only; its tracked
+  example contains placeholders. Hash checks detect changed files and split drift.
+- The contract does not claim a frozen pairing is correct: dense-map audio/map
+  alignment still needs an independent audit.
+
+### Measured
+
+- Targeted phase-27 tests: 3/3 pass; all bench tooling tests: 61/61 pass (8 skipped).
+- Full suite: 600 run, 10 skipped and 10 errors. Nine API-server tests could not
+  bind/connect their localhost socket (WinError 10013); the worker parity setup
+  also failed to read the Rust CLI output. These environment failures are outside
+  the changed files.
+- bench/facts.py: 602 Python tests (551 engine + 51 worker), 268/551 Rust parity,
+  164 stages placed; facts check passed.
+- Real ranked corpus baseline not measured here: bench/corpus_b.local.json and the
+  Songs index are absent on this machine. No accuracy gain is claimed.
+
+### Rejected / tried and dropped
+
+- None.
+
+---
+
 ## Unreleased — 2026-11-06 · R6 graded on ranked maps, and 27.7's downbeat lines measured
 
 ### Changed

@@ -68,10 +68,10 @@ are outside the 0.3.0 required rows.
 
 `bench/facts.py` was run for this snapshot and reported `facts: ok`:
 
-- Python: 491 tests, 2026-10-26 after the desktop app was parked.
+- Python: 615 tests (564 engine + 51 worker), 2026-11-07.
 - Rust: 231 tests across 6 crates.
-- Golden vectors: 27; Rust parity manifest: 247 of 491 v3 engine tests held,
-  with 141 stages placed (the `.osu` reader's Rust twin is parked with
+- Golden vectors: 27; Rust parity manifest: 268 of 564 v3 engine tests held,
+  with 164 stages placed (the `.osu` reader's Rust twin is parked with
   `overtone-hitsound`).
 - Library schema: v3 in both `python/library.sql` and `python/overtone_library.py`.
 - Benchmark fixtures: 38 in code and 38 in `bench/fixtures.json`.
@@ -158,6 +158,8 @@ flowchart TD
 | `python/` | v3 reference engine, `.osu` I/O, CLI, library index and the headless measurement server | Rust adapter, bench, the owner's server |
 | `crates/` | Rust v4 analysis engine, sidecar and bench | Python adapter, audio and map inputs, Rust gates |
 | `bench/` | Accuracy, parity, robustness, coverage, performance and facts | Python v3, Rust crates, docs and benchmark data |
+| `bench/stages.py`, `bench/accuracy_manifest.py`, `bench/accuracy_audit.py`, `bench/accuracy_compare.py`, `bench/phase_residual.py` | Song- and set-disjoint ranked-map scoring, locked cohort runs (dev/held out and a disjoint confirmation cohort), dense-map metrics, duplicate-difficulty agreement, paired audio-clustered comparisons, robust phase-drift diagnostics | Local audio/map files; private reports stay under ignored `bench/.cache/` |
+| `bench/tempo_model.py`, `bench/tempo_judge_eval.py` | Roadmap 27.8: a numpy tempo/octave classifier trained on mapped tempi, and its octave judge scored on a stage's cached analyses | Server Songs folder and run cache; weights stay local |
 | `tests/` | Python engine, file I/O, command-line and server tests | `python/`, fixture files |
 | `proto/` | Python experiments for candidate algorithms | Bench prototypes before a Rust port |
 | `assets/` | Generated branding and the Beat This! model (Git LFS) | Python engine |

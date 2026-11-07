@@ -180,7 +180,7 @@
       "status": "partial research",
       "source": "docs/07-roadmap.md",
       "line": 51,
-      "summary": "Corpus B research, not 0.3.0. Fingerprint/reuse, neural beats, ensemble and alignment research remain; figures vary by dated source and are not freshly measured here."
+      "summary": "Phase 27 reset 2026-11-06 toward measured 85% dense-map accuracy. Song-disjoint content-hash splits, dense red-line and beat metrics, audio-clustered intervals, and private hash-manifest tools are built; the local ranked corpus, pairing audit and independent confirmation cohort remain."
     },
     {
       "id": "languages",

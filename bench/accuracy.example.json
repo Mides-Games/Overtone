@@ -1,0 +1,36 @@
+{
+  "_example": "Shape only. accuracy.local.json holds private paths and hashes; never commit it.",
+  "format": 2,
+  "cohort": "dev-holdout or confirmation",
+  "source_report": "private path to a ranked-only bench/stages.py report",
+  "source_engine_fingerprint": "engine fingerprint",
+  "stage": "bands-variable",
+  "ranked": {
+    "osu_db_version": 20260924,
+    "ranked_maps": 0
+  },
+  "split_rule": "the source report's rule; a confirmation cohort puts every row in confirmation",
+  "holdout_share": 0.3,
+  "dense_rule": "map_lines >= 20 OR map_lines / audio_minutes >= 1",
+  "excluded": [
+    {
+      "path": "private path to a cohort this one shares nothing with",
+      "sha1": "0000000000000000000000000000000000000000"
+    }
+  ],
+  "entries": [
+    {
+      "audio_sha1": "0000000000000000000000000000000000000000",
+      "osu_sha1": "0000000000000000000000000000000000000000",
+      "audio_path": "/private/Songs/set/audio.mp3",
+      "osu_path": "/private/Songs/set/difficulty.osu",
+      "folder": "private set folder",
+      "file": "private difficulty.osu",
+      "split": "dev",
+      "map_lines": 20,
+      "duration_s": 180.0,
+      "folder_path": "/private/Songs/set",
+      "split_key": "0000000000000000000000000000000000000000"
+    }
+  ]
+}

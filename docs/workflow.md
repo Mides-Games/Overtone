@@ -66,6 +66,47 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   No reducir `--tune` / `--heldout` para declarar el roadmap cerrado: el bar es
   +15 puntos tanto en ajuste como en la muestra independiente.
 
+  Para Phase 27, las particiones de los stages se asignan por hash del audio,
+  así que otros sets de la misma grabación no pueden caer en ambos grupos.
+  Genera un reporte solo con mapas ranked, congela sus hashes de mapa/audio en
+  el manifiesto local ignorado y verifica el corpus antes de comparar runs:
+
+  ```powershell
+  .venv/Scripts/python.exe bench/stages.py bands-variable --engine python --ranked-db "C:\osu!\osu!.db" --save-baseline
+  .venv/Scripts/python.exe bench/accuracy_manifest.py freeze bench/.cache/stages/bands-variable-python-ranked.json bench/accuracy.local.json --songs-root "C:\osu!\Songs"
+  .venv/Scripts/python.exe bench/accuracy_manifest.py verify bench/accuracy.local.json
+  ```
+
+  El reporte incluye precisión de red lines a 5 ms, beat F1 a 5/10/20 ms,
+  mapas densos (20+ red lines o al menos una por minuto), promedio macro por
+  audio y un intervalo bootstrap 95% agrupado por audio. Congelar el corpus
+  verifica identidad y estabilidad del split; no certifica por sí solo que el
+  archivo .osu esté correctamente emparejado con ese audio.
+
+  Una vez congelado, cada run se mide sobre esa cohorte y no sobre lo que el
+  índice tenga hoy: mismos mapas, mismos hashes y mismo split; un mapa cambiado
+  detiene el run en vez de salir del denominador. Una canción y un set quedan
+  siempre del mismo lado (se agrupan por audio y por carpeta del set). La
+  cohorte de confirmación es la tercera parte: mapas nuevos, curados después de
+  ajustar, que no comparten audio, mapa ni set con la cohorte ajustada:
+
+  ```powershell
+  .venv/Scripts/python.exe bench/stages.py bands-variable --engine python --cohort bench/accuracy.local.json
+  .venv/Scripts/python.exe bench/accuracy_audit.py bench/accuracy.local.json --json bench/.cache/accuracy/audit.json
+  .venv/Scripts/python.exe bench/accuracy_manifest.py freeze <reporte ranked posterior> bench/accuracy-confirm.local.json --songs-root "C:\osu!\Songs" --confirmation --exclude bench/accuracy.local.json
+  .venv/Scripts/python.exe bench/accuracy_compare.py <base> <candidato> --split holdout
+  ```
+
+  Para distinguir el offset fijo del tempo local incorrecto en mapas con muchas
+  líneas, ejecuta el diagnóstico robusto por sección:
+
+  ```powershell
+  .venv/Scripts/python.exe bench/phase_residual.py bench/.cache/stages/bands-variable-python-ranked.json --split dev --dense-only --json bench/.cache/phase-residual/dev.json
+  ```
+
+  El ajuste Theil–Sen entrega deriva de fase en ms/minuto, offset de fase y
+  residuo tras quitar la deriva. Es solo diagnóstico; no aplica correcciones.
+
 ## 4. Commitear: pocos commits (decisión del dueño, 2026-10-28)
 
 El historial de `master` se llenaba de commits chicos, merges de integración y

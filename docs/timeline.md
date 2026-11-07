@@ -20,6 +20,44 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-07 · The 27.8 tempo judge in the engine, off
+
+### Changed
+
+- `TEMPO_JUDGE` (off) runs the 27.8 model as an engine stage after the octave rule, on both
+  paths and through `overtone_rust`: it may move every red line by x2 or x1/2, and only
+  when it rates that tempo `TEMPO_JUDGE_MARGIN` (10) times the reading. A halved line keeps
+  the beats that carry more attacks (`octave_choice._halved_lines`, extracted unchanged
+  from the octave rule). Features and the judge moved from `bench/tempo_model.py` into
+  `python/overtone/tempo_judge.py`; the bench tools import them. Experiments `tempo-judge`
+  and `tempo-judge-3` on the server.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- The judge does nothing on manual points or with the flag off, and never reads the
+  audio then.
+
+### Measured
+
+- Training (server, 2026-11-07): 2,698 ranked songs' dominant red-line BPM; on 1,102
+  held-out songs the mapped octave from a reading at x1/2 / x1 / x2 in 95.8 / 91.3 /
+  95.2 %, against 89.3 % for the fixed 120-240 range.
+- On the stages' cached analyses (`bench/tempo_judge_eval.py`): always deciding broke 14
+  band maps; at margin 10 none, held-out tempo ok anime-single 92.1 -> 93.2,
+  anime-variable 25.1 -> 25.4, bands-variable 71.3 -> 71.3. Not measured end to end,
+  hence off.
+- With the flag off, every gate holds (numbers in the PR): the stage returns its input.
+
+### Rejected / tried and dropped
+
+- Deciding without a margin: 14 band maps broken on held out.
+
+---
+
 ## Unreleased — 2026-11-07 · Locked accuracy cohorts, a confirmation split, and the 27.8 tempo judge
 
 ### Changed

@@ -23,7 +23,7 @@ from scipy.ndimage import median_filter
 
 from overtone_paths import app_version, data_root
 
-from . import audio_io, beat_this, data_model, drum_signal, hybrid_tracker, octave_choice, onsets, params, phrases, precision_grid, red_lines, tempo_helpers
+from . import audio_io, beat_this, data_model, drum_signal, hybrid_tracker, octave_choice, onsets, params, phrases, precision_grid, red_lines, tempo_helpers, tempo_judge
 
 
 def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
@@ -214,8 +214,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = red_lines._fold_local_to_map_octave(
                 analysis, before, before_beats, lambda: red_lines._beat_this_tempo(y_mix, sr))
             analysis = beat_this._song_octave_by_beat_this(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
-            return phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(octave_choice._octave_rule(octave_choice._smooth_octaves(
-                red_lines._fold_lines_to_song_octave(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr))))))))
+            return phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(phrases._snap_whole_points(tempo_judge._tempo_judge(octave_choice._octave_rule(octave_choice._smooth_octaves(
+                red_lines._fold_lines_to_song_octave(analysis, lambda: beat_this._beat_this_judge_beats(y_mix, sr)))), lambda: (y_mix, sr))))))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -238,6 +238,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = red_lines._piecewise_grid(tracked, lambda: beat_this._beat_this_judge_beats(y_mix, sr))
     tracked = phrases._with_attacks(red_lines._constant_grid(tracked, lambda: beat_this._beat_this_judge_beats(y_mix, sr)), y, sr)
     tracked = red_lines._snap_constant_line(tracked)
+    tracked = tempo_judge._tempo_judge(tracked, lambda: (y_mix, sr))
     return phrases._tidy_bpms(octave_choice._lines_on_downbeats(phrases._phrase_lines(tracked)))
 
 

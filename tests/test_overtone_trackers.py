@@ -940,3 +940,35 @@ class TidyBpmTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TempoJudgeTests(unittest.TestCase):
+    """TEMPO_JUDGE (phase 27.8): the octave by a model of mapped tempi."""
+
+    @staticmethod
+    def _clicks(bpm, seconds=40, sr=22050):
+        rng = np.random.default_rng(3)
+        y = np.zeros(int(seconds * sr))
+        for b in np.arange(0, seconds, 60.0 / bpm):
+            at = int(b * sr)
+            y[at:at + 200] += rng.standard_normal(min(200, y.size - at))
+        return y, sr
+
+    def test_moves_a_click_track_to_the_mapped_octave(self):
+        from overtone import tempo_judge as tj
+        x = tj.mix_features(*self._clicks(120.0))
+        self.assertEqual(tj.factor(tj.model(), x, 60.0, 10.0), 2.0)
+        self.assertEqual(tj.factor(tj.model(), x, 120.0, 10.0), 1.0)
+        self.assertEqual(tj.factor(tj.model(), x, 240.0, 10.0), 0.5)
+
+    def test_no_margin_reached_keeps_the_reading(self):
+        from overtone import tempo_judge as tj
+        x = tj.mix_features(*self._clicks(120.0))
+        self.assertEqual(tj.factor(tj.model(), x, 60.0, 1e12), 1.0)
+
+    def test_off_and_manual_lines_are_left_alone(self):
+        import overtone
+        analysis = mock.Mock(points=[mock.Mock(manual=True, bpm=60.0)], global_bpm=60.0)
+        self.assertIs(overtone._tempo_judge(analysis, lambda: self.fail("read the audio")), analysis)
+        with mock.patch.object(overtone, "TEMPO_JUDGE", True):
+            self.assertIs(overtone._tempo_judge(analysis, lambda: self.fail("read the audio")), analysis)

@@ -36,7 +36,7 @@ Train and the Songs browser were parked on `parked/desktop-extras`: the core is 
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **parked with the app** (2026-10-26; `parked/desktop-app`) — v0.1.0-alpha was published: per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **615** Python (564 engine + 51 worker) · **231** Rust.
+Tests: **618** Python (567 engine + 51 worker) · **231** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -1339,7 +1339,7 @@ is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the firs
 | 27.5 | **on** — `TIDY_BPM` (2026-10-28): tempo ok unchanged on every stage |
 | 27.6 | **built, measured, off** — `DBN_TRACKER` (#129) moves the beats of 88 bands / 131 anime fallback maps, 0 tempo ok fixed or broken (2026-11-06) |
 | 27.7 | **built, measured, off** — `lines-on-downbeats`: line_on_bar +1.6 / +0.3 points, tempo ok unchanged, more double ticks on anime (2026-11-06) |
-| 27.8 | **built, not measured here** — `bench/tempo_model.py` (a numpy MLP over onset-envelope autocorrelation features, not the CNN below) and `bench/tempo_judge_eval.py`; synthetic tests only, no ranked-song result recorded (2026-11-07) |
+| 27.8 | **built, measured on cached analyses, off** — `TEMPO_JUDGE` (`python/overtone/tempo_judge.py`, weights in `assets/models/tempo_judge.npz`): a numpy MLP over onset-envelope features, not the CNN below, trained by `bench/tempo_model.py` on 2,698 ranked songs. Held out (1,102 songs) it picks the mapped octave from a x1/2 / x1 / x2 reading in 95.8 / 91.3 / 95.2 % vs 89.3 % for the fixed 120–240 range; on the stages' cached analyses at margin 10, held-out tempo ok anime-single 92.1 → 93.2, anime-variable 25.1 → 25.4, bands 71.3 → 71.3 (2026-11-07). Not yet measured end to end |
 | 27.9 | not started |
 
 27.1 **Count the octave jumps on the engine's lines.** Re-run anime-variable and bands dev

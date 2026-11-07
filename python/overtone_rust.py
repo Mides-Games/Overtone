@@ -226,9 +226,14 @@ def _analyze(path, source: str, binary, min_delta: float, persistence: int,
         heard()
         return ta._beat_this_tempo(*audio[0])
 
+    def mix():
+        if not audio:
+            audio.append(ta._load_audio(os.fspath(path), lambda _message: None))
+        return audio[0]
+
     analysis = ta._fold_local_to_map_octave(analysis, before, before_beats, tempo)
     analysis = ta._song_octave_by_beat_this(analysis, heard)
-    return ta._tidy_bpms(ta._lines_on_downbeats(ta._phrase_lines(ta._snap_whole_points(ta._octave_rule(ta._smooth_octaves(ta._fold_lines_to_song_octave(analysis, heard)))))))
+    return ta._tidy_bpms(ta._lines_on_downbeats(ta._phrase_lines(ta._snap_whole_points(ta._tempo_judge(ta._octave_rule(ta._smooth_octaves(ta._fold_lines_to_song_octave(analysis, heard))), mix)))))
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

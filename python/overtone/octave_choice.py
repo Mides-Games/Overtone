@@ -101,23 +101,30 @@ def _octave_rule(analysis: Analysis) -> Analysis:
     if bpm < params.OCTAVE_RULE_DOUBLE[0] and ratio >= params.OCTAVE_RULE_DOUBLE[1] and bpm * 2.0 <= 300.0:
         lines = [(p.offset_ms, p.bpm * 2.0) for p in points]
     elif bpm > params.OCTAVE_RULE_HALVE[0] and params.OCTAVE_RULE_HALVE_FLOOR <= ratio < params.OCTAVE_RULE_HALVE[1]:
-        times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
-        weights = np.asarray(analysis.attack_weights, dtype=float)
-        lines = []
-        for n, p in enumerate(points):
-            end = points[n + 1].offset_ms if n + 1 < len(points) else float(analysis.duration) * 1000.0
-            period = 120000.0 / p.bpm
-            inside = (times >= p.offset_ms) & (times < end)
-
-            def weight(start: float) -> float:
-                phase = np.mod((times[inside] - start) / period, 1.0)
-                return float(weights[inside][(phase < 0.05) | (phase > 0.95)].sum())
-
-            start = max((p.offset_ms, p.offset_ms + period / 2.0), key=weight)
-            lines.append((start, p.bpm / 2.0))
+        lines = _halved_lines(analysis, points)
     else:
         return analysis
     return phrases._with_lines(analysis, lines, beats=red_lines._beats_of(lines, float(analysis.duration)))
+
+
+def _halved_lines(analysis: Analysis, points: list) -> list[tuple[float, float]]:
+    """Each line at half its tempo, on whichever of its beats carries more of
+    the attacks."""
+    times = np.asarray(analysis.attack_times, dtype=float) * 1000.0
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    lines = []
+    for n, p in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else float(analysis.duration) * 1000.0
+        period = 120000.0 / p.bpm
+        inside = (times >= p.offset_ms) & (times < end)
+
+        def weight(start: float) -> float:
+            phase = np.mod((times[inside] - start) / period, 1.0)
+            return float(weights[inside][(phase < 0.05) | (phase > 0.95)].sum())
+
+        start = max((p.offset_ms, p.offset_ms + period / 2.0), key=weight)
+        lines.append((start, p.bpm / 2.0))
+    return lines
 
 
 def _lines_on_downbeats(analysis: Analysis) -> Analysis:

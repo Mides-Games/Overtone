@@ -77,12 +77,12 @@ import types as _types
 from . import (params, data_model, onsets, hybrid_tracker, tempo_helpers,  # noqa: E402
                precision_grid, audio_io, pipeline, red_lines, beat_this, drum_signal,
                octave_choice, phrases, exports, validation, editing, osu_write, osu_read,
-               map_objects, reference_timing, sounds, structure, cli)
+               map_objects, reference_timing, sounds, structure, cli, tempo_judge)
 
 _MODULES = (params, data_model, onsets, hybrid_tracker, tempo_helpers, precision_grid,
             audio_io, pipeline, red_lines, beat_this, drum_signal, octave_choice, phrases,
             exports, validation, editing, osu_write, osu_read, map_objects, reference_timing,
-            sounds, structure, cli)
+            sounds, structure, cli, tempo_judge)
 #: Names every module imports (``np``, ``os``, ``Path``...): a write reaches all.
 _SHARED = frozenset(n for n in vars() if not n.startswith("__") and n not in
                     {m.__name__.rpartition(".")[2] for m in _MODULES} | {"_types"})

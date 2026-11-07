@@ -2454,12 +2454,42 @@ and the session. Both stores; the columns are in `schema.sql` (`profile_*`,
 **The osu! card.** Read at link time from the `/me` the identify scope gets (username,
 country, global and country rank, pp, accuracy, play count, ranked maps; the profile URL
 is built from the id), and again only when the owner presses "Refresh"
-(`POST /links/osu/refresh`): `/users/{id}/osu` with the app's client-credentials token,
+(`POST /links/osu/refresh`): `/users/{id}` with the app's client-credentials token,
 five minutes apart per account (429 `OSU_REFRESH_SOON`), ten an hour per address. No
 page view asks osu!. Shown on `/profile` (with Refresh) and on `/u/<name>` unless
 private. No avatar: `a.ppy.sh` stays out of `img-src`, so a public profile's visitors
 never tell osu!'s host whose page they read. Without `OSU_CLIENT_ID` the row says
 "not available yet". A ranked count above zero earns **Ranked mapper**.
+
+**The wider card (2026-11-07).** The same answer carries more than those six numbers,
+and the card now keeps an allow-list of it in `osu_details` (jsonb, 16 KB at most;
+`osu.service.js` `cleanDetails`, which also re-checks every stored row as it is read):
+the ruleset, level and progress, grades (SS/S silver and gold, A), play time, ranked
+score, total hits, max combo, replays watched, first places, medals, followers, the
+highest rank and its date, the join date, supporter, the last 90 days of global rank,
+the last 24 months of plays, beatmap sets by state (loved, guest, pending, graveyard,
+nominated, favourites; ranked is the column above), mapping subscribers, kudosu, and
+up to six osu! groups (short name, name, a `#rrggbb` colour). No field asks osu! for
+anything more: still one `/me` per link and one `/users/{id}` per Refresh.
+`components/social/OsuCard.jsx` draws it, with the arithmetic in `lib/osu-card.js`
+(`test/osu-card.test.js`): a level ring where a picture would be, the four headline
+numbers, the rank line (a better rank higher; a day osu! had no rank breaks the line;
+the pointer reads any day), the grades, the play numbers, the beatmap sets as one bar
+by state, and plays per month (months osu! leaves out drawn as zero; the busiest and
+the latest stand out). Each chart has its summary in words for screen readers. A link
+made before this has `details: null` and shows the six numbers until its next Refresh,
+and its owner is told so. Both reads now name **no ruleset**, so the numbers are the
+account's own (`playmode`): until this change the Refresh read `/users/{id}/osu` and
+replaced a mania or taiko player's link-time numbers with osu!standard's.
+
+Checked by hand (2026-11-07) against a stand-in osu! serving a made-up UserExtended,
+through the real link flow (start, authorize, `/link/osu`, exchange) in the dev
+server: `/profile` and `/u/<name>` at 1280 px dark and 375 px light, Spanish, the
+rank line's pointer readout, no horizontal scroll at 375 px. Not checked: a real osu!
+answer with these fields (the field names are osu-web's documented UserExtended),
+another ruleset's card by eye. axe checks the linked card on `/profile` and `/u/<name>`
+in both themes: `site/e2e/serve-api.mjs` runs a stand-in osu! on 3091 (`E2E_OSU_PORT`)
+answering with `fixture.mjs`'s `fakeOsuUser`, and the a11y spec links through it.
 
 **Stats, badges, activity.** `GET /users/<name>` adds `stats` (the published timings over
 `/stats`' BPM buckets, single vs variable, the most used one), `badgeDates` (derived

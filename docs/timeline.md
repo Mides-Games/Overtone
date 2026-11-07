@@ -20,6 +20,64 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-07 · A wider osu! card on the profile
+
+### Changed
+
+- The osu! card keeps more of the answer osu! already sends at a link or a Refresh: the
+  ruleset, level, grades, play time, ranked score, total hits, max combo, replays
+  watched, first places, medals, followers, the highest rank, the join date, supporter,
+  the last 90 days of global rank, the last 24 months of plays, beatmap sets by state,
+  mapping subscribers, kudosu and osu! groups. They live in one new column,
+  `accounts.osu_details` (jsonb), as an allow-list in Overtone's own shape. Still one
+  `/me` per link and one read per Refresh: nothing asks osu! for more.
+- The card is its own component (`components/social/OsuCard.jsx`, arithmetic in
+  `lib/osu-card.js`): a level ring where a picture would be, the four headline numbers,
+  the rank line with a pointer readout, grades, play numbers, beatmap sets as one bar by
+  state, and plays per month. A panel with the profile's accent on `/u/<name>`; bare
+  inside the linked-accounts panel on `/profile`. No image from osu!'s host, as before.
+- The osu! scope text on `/profile` now says what is read and when (public profile,
+  ranks, stats and map counts, at the link and at each Refresh), in all ten languages;
+  it still said "read once" and "ranked map count" from before the card existed.
+
+### Fixed
+
+- A Refresh replaced a mania, taiko or catch player's numbers with osu!standard's. The
+  link read `/me`, which answers with the account's own ruleset, and the Refresh read
+  `/users/{id}/osu`, which names standard. The Refresh now reads `/users/{id}` with no
+  ruleset, the same as `/me`.
+- The privacy page said nothing about the osu! link (since W9.2, 2026-10-27): what is
+  kept, when it is read, where it shows and that unlinking deletes it. It now says so
+  under "Your account", in all ten languages, and the legal pages' date moves to today.
+
+### Hardening
+
+- `cleanDetails` re-checks every field on the way in and every stored row on the way out:
+  whole numbers in range, ISO dates, month keys, group short names of letters and digits,
+  colours as `#rrggbb` only, at most 90 days, 24 months and six groups; the column is
+  capped at 16 KB by a CHECK. A row edited by hand cannot put anything else on a page.
+- A link made before this keeps working: `details` is `null`, the card shows the six
+  numbers it had, and its owner is told a Refresh fills in the rest.
+- Security review of this diff (`docs/security-review.md`). In scope: identity and
+  limits (no new route; link and Refresh keep their same-origin check, rate limits and
+  session) and data and privacy (an allow-list of what osu! already shows publicly,
+  rendered as text, a group colour only as `#rrggbb` set through React's style object,
+  which `style-src 'self'` allows; the card stays hidden on a private profile). Not in
+  scope: uploads and the worker, the edge (`serve.mjs` and the CSP unchanged), deploy
+  and dependencies (none added; the e2e stand-in's secret is a dummy). One finding,
+  the privacy page above, fixed here. Nothing needs the owner.
+
+### Measured
+
+- Not a performance change; no speed or accuracy claim. Checks: `site/api` 225 tests
+  pass (2 new), `site/web` 358 (8 new, `test/osu-card.test.js`), `budget` ok (initial JS
+  138.7 kB gzip, the profile chunk 8.4 of its 12 kB), `site/e2e` 86 pass in Chromium
+  (2 new: axe on the linked card in each theme, through a stand-in osu!), `bench/facts.py`
+  clean. By hand: the real link flow against the same stand-in in the dev server, 1280 px
+  dark and 375 px light. Not checked: a real osu! answer carrying these fields.
+
+---
+
 ## Unreleased — 2026-11-07 · The 27.8 tempo judge in the engine, off
 
 ### Changed

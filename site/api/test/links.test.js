@@ -43,7 +43,8 @@ const fakeOsu = createServer((req, res) => {
       if (req.headers.authorization !== 'Bearer osu-access') return send(401, {});
       return send(200, osu.me);
     }
-    const user = /^\/api\/v2\/users\/(\d+)\/osu\?key=id$/.exec(req.url);
+    // No ruleset in the path: osu! answers with the account's own, as /me does.
+    const user = /^\/api\/v2\/users\/(\d+)\?key=id$/.exec(req.url);
     if (req.method === 'GET' && user) {
       osu.userCalls += 1;
       if (req.headers.authorization !== 'Bearer osu-app') return send(401, {});
@@ -70,7 +71,7 @@ process.env.SPOOL_DIR = mkdtempSync(join(tmpdir(), 'overtone-links-'));
 const { app } = await import('../src/app.js');
 const { toUser } = await import('../src/services/mides.service.js');
 const { normalizeCode } = await import('../src/services/links.service.js');
-const { toOsuProfile } = await import('../src/services/osu.service.js');
+const { cleanDetails, toOsuProfile } = await import('../src/services/osu.service.js');
 
 let server;
 let root;
@@ -207,9 +208,15 @@ test('osu! links: code exchanged server side with the PKCE verifier, /me read on
   const response = await exchangeOsu(bob, stateCookie, { code: 'good-code', state: url.searchParams.get('state') });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual({ ...body.osu, linkedAt: undefined, refreshedAt: undefined }, {
+  assert.deepEqual({ ...body.osu, linkedAt: undefined, refreshedAt: undefined, details: undefined }, {
     id: 2, username: 'peppy', url: 'https://osu.ppy.sh/users/2', country: 'AU', globalRank: 1234, countryRank: 56,
-    pp: 4321.99, accuracy: 98.77, playCount: 4500, rankedCount: 7, linkedAt: undefined, refreshedAt: undefined,
+    pp: 4321.99, accuracy: 98.77, playCount: 4500, rankedCount: 7, linkedAt: undefined, refreshedAt: undefined, details: undefined,
+  });
+  // A /me with none of the wider fields gives a wider card of blanks, not a guess.
+  assert.deepEqual(body.osu.details, {
+    mode: null, level: null, grades: null, playTime: null, rankedScore: null, totalHits: null, maxCombo: null, replaysWatched: null,
+    firstPlaces: null, medals: null, peakRank: null, rankHistory: [], monthlyPlays: [], joinedAt: null, supporter: false,
+    followers: null, mappingFollowers: null, kudosu: null, maps: null, groups: [],
   });
   // The avatar is kept but not sent: the page loads no image from osu!'s host.
   assert.ok(!JSON.stringify(body).includes('a.ppy.sh'));
@@ -299,8 +306,10 @@ test('a stale osu! code, or a verifier that does not match the challenge, is ref
 });
 
 test('osu!\'s /me is reduced to an allow-list; an avatar off ppy.sh and numbers out of range are dropped', () => {
-  assert.deepEqual(toOsuProfile({ id: 5, username: 'a\u0000b', avatar_url: 'https://evil.example/x.png', ranked_and_approved_beatmapset_count: 3 }), {
+  const plain = toOsuProfile({ id: 5, username: 'a\u0000b', avatar_url: 'https://evil.example/x.png', ranked_and_approved_beatmapset_count: 3 });
+  assert.deepEqual({ ...plain, details: undefined }, {
     id: 5, username: 'ab', avatarUrl: null, rankedCount: 3, country: null, globalRank: null, countryRank: null, pp: null, accuracy: null, playCount: null,
+    details: undefined,
   });
   const odd = toOsuProfile({
     id: 5, username: 'a', country_code: 'es<script>', statistics: { global_rank: -1, country_rank: 1.5, pp: 'lots', hit_accuracy: 101, play_count: 2 ** 40 },
@@ -309,6 +318,87 @@ test('osu!\'s /me is reduced to an allow-list; an avatar off ppy.sh and numbers 
   assert.equal(toOsuProfile({ id: 'x', username: 'a' }), null);
   assert.equal(toOsuProfile({ id: 5, username: '' }), null);
   assert.equal(toOsuProfile({ id: 5, username: 'a' }).rankedCount, null);
+});
+
+/** An osu! UserExtended as /me and /users/{id} send it, cut to what the wider card reads (2026-11-07). */
+const RICH_ME = {
+  id: 7, username: 'mania_mapper', country_code: 'AR', playmode: 'mania', is_supporter: true, join_date: '2015-03-02T18:04:11+00:00',
+  follower_count: 812, mapping_follower_count: 140, kudosu: { total: 233, available: 12 }, scores_first_count: 4,
+  ranked_beatmapset_count: 5, loved_beatmapset_count: 1, guest_beatmapset_count: 9, pending_beatmapset_count: 2,
+  graveyard_beatmapset_count: 31, nominated_beatmapset_count: 0, favourite_beatmapset_count: 77,
+  user_achievements: [{ achievement_id: 1 }, { achievement_id: 2 }, { achievement_id: 3 }],
+  rank_highest: { rank: 2950, updated_at: '2023-08-01T00:00:00Z' },
+  rank_history: { mode: 'mania', data: [...Array.from({ length: 100 }, (_, i) => 5000 - i * 10), 0] },
+  monthly_playcounts: Array.from({ length: 30 }, (_, i) => ({ start_date: `20${22 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}-01`, count: i * 3 })).reverse(),
+  groups: [
+    { short_name: 'BN', name: 'Beatmap Nominators', colour: '#A347EB', is_probationary: true },
+    { short_name: '<b>', name: 'x', colour: 'red' },
+  ],
+  statistics: {
+    global_rank: 4120, country_rank: 31, pp: 6543.21, hit_accuracy: 97.5, play_count: 15000, play_time: 1_234_567,
+    ranked_score: 9_876_543_210, total_hits: 4_000_000, maximum_combo: 3456, replays_watched_by_others: 12,
+    level: { current: 101, progress: 42 }, grade_counts: { ss: 10, ssh: 2, s: 300, sh: 15, a: 800 },
+  },
+};
+
+test('the wider osu! card keeps its own shape: the ruleset, the last 90 days and 24 months, groups checked', () => {
+  const { details } = toOsuProfile(RICH_ME);
+  assert.equal(details.mode, 'mania');
+  assert.deepEqual(details.level, { current: 101, progress: 42 });
+  assert.deepEqual(details.grades, { ssh: 2, ss: 10, sh: 15, s: 300, a: 800 });
+  assert.equal(details.rankedScore, 9_876_543_210);
+  assert.deepEqual([details.playTime, details.totalHits, details.maxCombo, details.replaysWatched], [1_234_567, 4_000_000, 3456, 12]);
+  assert.deepEqual([details.firstPlaces, details.medals, details.followers, details.mappingFollowers, details.kudosu], [4, 3, 812, 140, 233]);
+  assert.deepEqual(details.peakRank, { rank: 2950, at: '2023-08-01T00:00:00.000Z' });
+  assert.equal(details.joinedAt, '2015-03-02T18:04:11.000Z');
+  assert.equal(details.supporter, true);
+  // The last 90 days, oldest first; a day osu! sends as 0 (unranked) is a gap.
+  assert.equal(details.rankHistory.length, 90);
+  assert.equal(details.rankHistory.at(-1), null);
+  assert.equal(details.rankHistory.at(-2), 5000 - 99 * 10);
+  // Months oldest first whatever order osu! sends, the last 24.
+  assert.equal(details.monthlyPlays.length, 24);
+  assert.deepEqual(details.monthlyPlays[0], { month: '2022-07', count: 18 });
+  assert.deepEqual(details.monthlyPlays.at(-1), { month: '2024-06', count: 87 });
+  assert.deepEqual(details.maps, { loved: 1, guest: 9, pending: 2, graveyard: 31, nominated: 0, favourite: 77 });
+  // A group with a short name that is not one, or a colour that is not a hex, is dropped or blanked.
+  assert.deepEqual(details.groups, [{ short: 'BN', name: 'Beatmap Nominators', colour: '#a347eb', probationary: true }]);
+
+  // What a stored row reads back as: the same, and anything else in it goes.
+  assert.deepEqual(cleanDetails(JSON.parse(JSON.stringify(details))), details);
+  const edited = cleanDetails({ ...details, extra: '<script>', mode: 'osu!', level: { current: 'x' }, groups: [{ short: 'GMT', name: 'a\u0007b', colour: 'url(x)' }] });
+  assert.equal(edited.extra, undefined);
+  assert.equal(edited.mode, null);
+  assert.equal(edited.level, null);
+  assert.deepEqual(edited.groups, [{ short: 'GMT', name: 'ab', colour: null, probationary: false }]);
+  assert.equal(cleanDetails('not an object'), null);
+  assert.equal(cleanDetails([]), null);
+});
+
+test('a refresh asks for no ruleset and keeps the account\'s own, wider card included', async () => {
+  osu.me = { ...RICH_ME, id: 11, username: 'mania_one' };
+  const { url, stateCookie } = await startOsu(alice);
+  assert.equal((await exchangeOsu(alice, stateCookie, { code: 'good-code', state: url.searchParams.get('state') })).status, 200);
+  const linked = (await links(alice)).osu;
+  assert.equal(linked.details.mode, 'mania');
+  assert.equal(linked.details.groups[0].short, 'BN');
+
+  const { memory } = await import('../src/services/account.service.js');
+  const row = [...memory.accounts.values()].find((a) => Number(a.osu_user_id) === 11);
+  row.osu_refreshed_at = new Date(Date.now() - 6 * 60_000);
+  osu.user = { ...RICH_ME, id: 11, username: 'mania_one', statistics: { ...RICH_ME.statistics, global_rank: 4000 } };
+  const fresh = await refresh(alice);
+  assert.equal(fresh.status, 200);
+  const card = (await fresh.json()).osu;
+  assert.equal(card.globalRank, 4000);
+  assert.equal(card.details.mode, 'mania');
+  assert.equal(card.details.rankHistory.length, 90);
+
+  // A link made before the wider card has no details until its next Refresh.
+  row.osu_details = null;
+  assert.equal((await links(alice)).osu.details, null);
+  await fetch(`${base}/links/osu`, { method: 'DELETE', headers: { ...SAME_ORIGIN, Cookie: alice } });
+  assert.equal(row.osu_details, null);
 });
 
 test('link codes read as typed: case, spaces and the dash do not matter, look-alikes are not in it', () => {

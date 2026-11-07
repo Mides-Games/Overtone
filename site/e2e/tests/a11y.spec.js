@@ -90,6 +90,24 @@ for (const theme of ['dark', 'light']) {
       await audit(page)
     })
 
+    test('the osu! card, linked, on the profile and the public page', async ({ page }) => {
+      await signInAsStaff(page)
+      await ready(page)
+      // The other theme's run linked this account already: start unlinked.
+      await page.request.delete('/api/v1/links/osu', { headers: { 'X-Requested-With': 'overtone-web' } })
+      await page.reload()
+      await ready(page)
+      // The stand-in osu! (serve-api.mjs) authorizes at once and sends the browser back.
+      await page.getByRole('button', { name: 'Link osu!' }).click()
+      await page.waitForURL(/\/profile$/)
+      await expect(page.getByRole('heading', { name: 'Global rank, last 90 days' })).toBeVisible()
+      await audit(page)
+      await page.getByRole('link', { name: 'Your public page' }).click()
+      await ready(page)
+      await expect(page.getByRole('heading', { name: 'Plays per month' })).toBeVisible()
+      await audit(page)
+    })
+
     test('the bell, its panel and /notifications, signed in as staff', async ({ page, request }) => {
       await signInAsStaff(page)
       // A notification to show: staff hear of a report made by someone else

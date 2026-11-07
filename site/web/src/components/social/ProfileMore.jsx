@@ -14,10 +14,11 @@ import { SkeletonRows } from '../ui/Skeleton.jsx'
 /**
  * The parts of a profile the edit of 2026-10-28 added, shared by /profile
  * and /u/<username>: the About text and links, the pinned timings, the tempo
- * stats, the osu! card, the activity and the "copy link" button. What the
- * person wrote is rendered as text (React escapes it); a link goes only to
- * what the API kept, each to its own site, and is marked `ugc` with
- * `nofollow` so a profile cannot lend this site's standing to a link.
+ * stats, the activity and the "copy link" button (the osu! card has its own
+ * file, OsuCard.jsx). What the person wrote is rendered as text (React
+ * escapes it); a link goes only to what the API kept, each to its own site,
+ * and is marked `ugc` with `nofollow` so a profile cannot lend this site's
+ * standing to a link.
  */
 
 const LINK_REL = 'noopener nofollow ugc'
@@ -129,61 +130,6 @@ export function ProfileStats({ stats, published }) {
           </div>
         </div>
       </div>
-    </section>
-  )
-}
-
-/**
- * The linked osu! account as osu! said at link time or at the owner's last
- * "Refresh": never fetched on a page view. No avatar: the page loads no image
- * from osu!'s host (deploy/web/serve.mjs, img-src).
- */
-export function OsuCard({ osu, action = null }) {
-  const { t, i18n } = useTranslation()
-  if (!osu) return null
-  const number = (n, digits = 0) => (n === null || n === undefined ? '–' : Number(n).toLocaleString(i18n.language, { maximumFractionDigits: digits }))
-  let country = osu.country
-  try {
-    if (osu.country) country = new Intl.DisplayNames([i18n.language], { type: 'region' }).of(osu.country) ?? osu.country
-  } catch {
-    // An old browser without DisplayNames: the two letters.
-  }
-  const cells = [
-    { key: 'globalRank', value: osu.globalRank === null ? '–' : `#${number(osu.globalRank)}` },
-    { key: 'countryRank', value: osu.countryRank === null ? '–' : `#${number(osu.countryRank)}` },
-    { key: 'pp', value: number(osu.pp) },
-    { key: 'accuracy', value: osu.accuracy === null ? '–' : `${number(osu.accuracy, 2)} %` },
-    { key: 'playCount', value: number(osu.playCount) },
-    { key: 'ranked', value: number(osu.rankedCount) },
-  ]
-  const asOf = osu.refreshedAt ? new Date(osu.refreshedAt).toLocaleDateString(i18n.language, { dateStyle: 'medium' }) : null
-  return (
-    <section aria-labelledby="profile-osu" className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h2 id="profile-osu" className="heading-title">
-            {t('social.profile.osu.title')}
-          </h2>
-          <p className="flex flex-wrap items-center gap-x-2 text-label text-muted">
-            <a href={osu.url} target="_blank" rel="noopener noreferrer" className="link inline-flex items-center gap-1 font-semibold">
-              {osu.username}
-              <Icon name="external" size={13} />
-              <span className="sr-only">{t('common.newTab')}</span>
-            </a>
-            {country && <span>· {country}</span>}
-          </p>
-        </div>
-        {action}
-      </div>
-      <dl className="grid grid-cols-2 border-y border-line sm:grid-cols-3 lg:grid-cols-6">
-        {cells.map((cell) => (
-          <div key={cell.key} className="space-y-1.5 border-b border-line py-3 pr-3 last:border-b-0 sm:border-b-0">
-            <dt className="label">{t(`social.profile.osu.${cell.key}`)}</dt>
-            <dd className="readout text-title font-semibold text-text">{cell.value}</dd>
-          </div>
-        ))}
-      </dl>
-      {asOf && <p className="readout text-caption text-dim">{t('social.profile.osu.asOf', { date: asOf })}</p>}
     </section>
   )
 }

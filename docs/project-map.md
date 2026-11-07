@@ -51,10 +51,12 @@ HTML with the workflow command below.
 ### Shipped areas and longer-term work
 
 Timing analysis, map checking, structure and export are shipped engine
-capabilities. Overtone is web-only since 2026-10-26: the website (`site/`) is its
-interface, and the desktop app -- the web window, the classic Tk window and the
-installer -- was parked that day on the protected branch `parked/desktop-app` and
-the tag `v3-desktop-app`; its editing tools come back on the web in W7. Phase W1 of [the web platform](16-web-platform.md) parked four
+capabilities. Overtone is web-only since 2026-10-26: the website is its interface, and since
+2026-11-07 it lives in its own repository, [Mides-Games/overtone-site](https://github.com/Mides-Games/overtone-site),
+as the Discord bot does ([Mides-Games/overtone-bot](https://github.com/Mides-Games/overtone-bot)).
+The desktop app -- the web window, the classic Tk window and the
+installer -- was parked on 2026-10-26 on the protected branch `parked/desktop-app` and
+the tag `v3-desktop-app`; its editing tools come back on the web in W7. Phase W1 of the web platform (`docs/16-web-platform.md` in overtone-site) parked four
 unfinished desktop extras on 2026-10-26 so the project's core is timing: the
 hitsound engine (Phase 6), Compile (Phase 25), Train with its hotkey (Phase 26)
 and the Library view's Songs browser and health page. They are kept whole on
@@ -89,8 +91,9 @@ about real-song accuracy.
 
 ```mermaid
 flowchart TD
-    User[Mapper] --> Site[site/web<br/>React · EN/ES]
-    Site <--> API[site/api<br/>Express · PostgreSQL · Mides sign-in]
+    User[Mapper] --> Site[website and API<br/>Mides-Games/overtone-site]
+    Site --> Worker[worker/<br/>runs the engine on queued songs]
+    Worker --> Engine
     Owner[Owner / bench/remote.py] --> Server[python/overtone_server.py<br/>headless measurement API]
     Shell[Command line] --> Engine
 
@@ -154,7 +157,7 @@ flowchart TD
 
 | Path | Responsibility | Main connections |
 |---|---|---|
-| `site/` | The website, Overtone's only interface: `site/api` and `site/web` | Mides sign-in, PostgreSQL, the engine through its own services |
+| `worker/` | The analysis worker the website queues songs on (the website and the bot are their own repositories since 2026-11-07) | Mides-Games/overtone-site's API, the Python engine |
 | `python/` | v3 reference engine, `.osu` I/O, CLI, library index and the headless measurement server | Rust adapter, bench, the owner's server |
 | `crates/` | Rust v4 analysis engine, sidecar and bench | Python adapter, audio and map inputs, Rust gates |
 | `bench/` | Accuracy, parity, robustness, coverage, performance and facts | Python v3, Rust crates, docs and benchmark data |
@@ -163,7 +166,7 @@ flowchart TD
 | `tests/` | Python engine, file I/O, command-line and server tests | `python/`, fixture files |
 | `proto/` | Python experiments for candidate algorithms | Bench prototypes before a Rust port |
 | `assets/` | Generated branding and the Beat This! model (Git LFS) | Python engine |
-| `deploy/` | The owner's server updater and the site's hosting | `python/overtone_server.py`, `site/` |
+| `deploy/` | The owner's server updater, its deploy user and the worker's egg | `python/overtone_server.py`, `worker/` |
 | `.agents/` | Graphify coding-agent skill | Local contributor workflows; no runtime dependency |
 | `docs/` | Audit, architecture, design, roadmap, workflow and engineering record | All implementation areas |
 

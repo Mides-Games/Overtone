@@ -13,7 +13,7 @@ members = [
 version = "1.0.0-stable"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/Mides-Games/Overtone"
+repository = "https://github.com/Mides-Games/overtone"
 rust-version = "1.85"
 
 [workspace.lints.rust]

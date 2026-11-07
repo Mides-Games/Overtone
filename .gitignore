@@ -37,18 +37,12 @@ bench/.cache/
 # ONNX Runtime's shape-inference temporaries (a model export's scratch files).
 /sym_shape_infer_temp.onnx
 /*.data
-# Website (site/): dependencies, builds and local secrets. `.env.example` is
-# committed; a real `.env` never is.
+# The website and the bot left for their own repositories on 2026-11-07; their
+# folders may linger on old checkouts with dependencies and secrets in them.
 /node_modules/
-/site/*/node_modules/
-/site/*/dist/
-/site/*/.env
-# The Discord bot (bot/): the same rule, its token included.
-/bot/node_modules/
-/bot/.env
-# The end-to-end run's traces and reports (site/e2e).
-/site/e2e/test-results/
-/site/e2e/playwright-report/
+/site/
+/bot/
+/clients/
 # Local analysis files and tokens
 profiles/
 token.txt

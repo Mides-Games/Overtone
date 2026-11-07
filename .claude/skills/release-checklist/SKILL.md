@@ -1,6 +1,6 @@
 ---
 name: release-checklist
-description: The checks to run and what a pull request must say before Overtone work is merged, and before a release is tagged on master. Use when finishing a branch, opening a PR with gh, preparing a release, or when asked which gates apply to a change. Covers the site's local checks, where the engine's gates run, the commit and PR rules, and the docs a change must update.
+description: The checks to run and what a pull request must say before Overtone work is merged, and before a release is tagged on master. Use when finishing a branch, opening a PR with gh, preparing a release, or when asked which gates apply to a change. Covers where the engine's gates run, the commit and PR rules, and the docs a change must update.
 ---
 
 # Release checklist
@@ -21,19 +21,11 @@ them in the order you use them. When they disagree with this file, they win: fix
 
 ## Checks
 
-**Site** (`site/`, `deploy/web/`): run locally, each one line, after
-`pnpm install --frozen-lockfile`. The counts to expect are in CLAUDE.md's Verification.
-
-```
-pnpm --dir site/api test        # node:test, the API and serve.mjs
-pnpm --dir site/web test        # node:test, the web's libraries
-pnpm --dir site/web budget      # builds; initial JS under 200 kB gzip, every chunk in its budget
-pnpm --dir site/e2e test        # Playwright + axe in Chromium, its own ports
-```
-
-The e2e run needs Chromium once per machine:
-`pnpm --dir site/e2e exec playwright install chromium`. LCP and CLS are a measurement,
-not a gate: `pnpm --dir site/e2e vitals` after a build.
+**Site and bot**: they are their own repositories since 2026-11-07
+(Mides-Games/overtone-site, Mides-Games/overtone-bot), each with its checks in its
+CLAUDE.md. A change here that the site reads (the worker's result format,
+`docs/timeline.md`, `assets/logo-web.svg`, a file "how it works" cites) runs the
+site's `pnpm --dir site/web test` with this checkout beside it.
 
 **Engine** (`python/`, `crates/`, `worker/`, `bench/`): the owner's rule is that the
 Python suite, the benchmark and the gates are not run on this machine. They run on the
@@ -51,14 +43,15 @@ baseline (24/24 within 0.05 BPM and 5 ms) does not move without a reason written
 **Docs counts:** `bench/facts.py` holds the test counts stated in CLAUDE.md to the source.
 Update the counts in CLAUDE.md and AGENTS.md together (they must stay byte-identical).
 
-**Security:** a change to the API, uploads, the worker or the deploy gets the
-`security-review` skill on its diff (`docs/security-review.md`). A release gets it on the
-whole diff since the last release tag.
+**Security:** a change to the worker or the deploy gets a security review on its diff,
+following Mides-Games/overtone-site's `.claude/skills/security-review` skill and its
+`docs/security-review.md`: their worker/ and deploy/ parts apply to this repository. A
+release gets it on the whole diff since the last release tag.
 
 ## Commits
 
 - English, `type(scope/task): lowercase imperative description`, one line, no period,
-  e.g. `fix(site/queue): keep a cancelled song out of the count`.
+  e.g. `fix(engine/octave): prefer the mapped pulse on ties`.
 - One logical change per commit: a DSP change and a UI change are two commits.
 - The body says **why**, not what. A `perf` or accuracy claim names its measurement; a
   gate change names the gates run and their result.
@@ -70,11 +63,7 @@ whole diff since the last release tag.
 - `docs/timeline.md`: one entry at the top, `## Unreleased — <date> · <title>`, with
   Changed / Fixed / Hardening / Measured as they apply, and `Rejected / tried and
   dropped` when an approach was abandoned. "Not measured" is a valid line.
-- `docs/16-web-platform.md`: the roadmap rows the change finishes or advances, with what
-  is left.
-- `docs/site.md`: for site work, what was built, how it was checked and what was not.
-- New public routes: `site/web/public/sitemap.xml`, or the PRIVATE list in
-  `site/web/test/seo.test.js`.
+- `docs/07-roadmap.md`: the engine's roadmap rows the change finishes or advances.
 
 ## The pull request
 

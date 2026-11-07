@@ -6,20 +6,27 @@ Repository conventions for any AI agent or contributor working here.
 ## Commits, branches and pull requests
 
 Commits, branch names and PR titles are in **English**. Code, comments and
-commit messages are English; only the website's own UI strings stay bilingual
-(EN/ES).
+commit messages are English.
+
+**Three repositories** (owner's decision, 2026-11-07): this one is the engine and the
+analysis worker; the website (`site/`, `clients/`, `deploy/web/`) is
+**Mides-Games/overtone-site** and the Discord bot is **Mides-Games/overtone-bot**.
+Each has its own CLAUDE.md with the same conventions, its own checks and its own
+deploy. Their history up to the split is in this repository too. Mentions here of
+`docs/site.md`, `docs/deploy.md`, `docs/design.md`, `docs/security-review.md`,
+`docs/bot.md` and `docs/16-web-platform.md` name overtone-site's copies.
 
 - **Do not add `Co-Authored-By` trailers.** No AI attribution lines, no
   `Generated with …` footers, no tool signatures in commit messages or PR descriptions.
   Commits are authored by the repository owner.
 - Commit subject: `type(scope/task): short imperative description`, e.g.
   `fix(engine/octave): prefer the mapped pulse on ties`,
-  `feature(site/export): add gain option to the click track`.
+  `bench(bench/corpus): score the ranked cohorts`.
   Types: `feature` (new capability), `fix` (bug fix), `refactor` (same
   behaviour, clearer structure), `perf` (faster — with numbers), `bench`
   (benchmark, gates or golden vectors), `test` (tests only), `docs`
   (documentation only), `chore` (layout, dependencies, tooling).
-  Scope is the area (`engine`, `site`, `app`, `bench`, `rust`, `docs`, `repo`) plus the task after a slash. Description in lowercase, imperative,
+  Scope is the area (`engine`, `worker`, `bench`, `rust`, `docs`, `repo`) plus the task after a slash. Description in lowercase, imperative,
   no trailing period, one line.
 - Body explains **why**, not what. The diff already says what. A `perf` or
   accuracy claim names its measurement; a gate change names the gates run
@@ -53,7 +60,8 @@ commit messages are English; only the website's own UI strings stay bilingual
   pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
   going; a timer does the same every five minutes when no push does. On the Mides host
   (overtone.midesprojects.com) the same key starts `overtone-site-update.service`
-  instead, which updates the website (docs/deploy.md, "En el host de Mides").
+  instead, which updates this checkout (the worker) and overtone-site's (the web and
+  the API): overtone-site's docs/deploy.md, "En el host de Mides".
 - **No checks run in Actions.** No test, gate or benchmark workflow, no bots, no release
   pipelines, no secret but the deploy key. Checks run locally or on the owner's server
   (`bench/remote.py gates|suite`), each one line (see **Verification** below).
@@ -116,42 +124,19 @@ cargo run --release -q -p overtone-bench -- map        # no false changes
 
 Every mode reads the golden vectors, so a new golden fixture must pass all five.
 
-And the site's, before any commit that touches `site/` or `bot/` (after `pnpm install --frozen-lockfile`):
-
-```bash
-pnpm --dir site/api test                               # all pass (225 on 2026-11-07)
-pnpm --dir site/web test                               # all pass (358 on 2026-11-07)
-pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
-pnpm --dir site/e2e test                               # 86 pass in Chromium: the main paths, axe on every page in both themes
-pnpm --dir bot test                                    # all pass (29 on 2026-10-27)
-```
-
-The community clients (`clients/`, W13.22), when they or the token routes change. Both
-start the real API in memory (`clients/testing/api.mjs`); neither is in a suite above:
-
-```bash
-node --test --test-concurrency=1 "clients/js/test/*.test.js"   # all pass (13 on 2026-10-28)
-.venv/Scripts/python.exe -m unittest discover -s clients/python   # all pass (10 on 2026-10-28); needs Node (OVERTONE_NODE)
-```
-
-`site/e2e` starts its own API (in memory, with a fake worker) and Vite on 3090 and 5290
-(`E2E_API_PORT`, `E2E_WEB_PORT`), never in CI. Chromium is installed once per machine
-with `pnpm --dir site/e2e exec playwright install chromium`. A measurement, not a gate:
-`pnpm --dir site/e2e vitals` (after a build) prints each page's LCP and CLS on the built site
-under Lighthouse's mobile profile (docs/site.md, W10.1).
-
-`bench/facts.py` counts the `test(` calls in `site/api/test`, `site/web/test` and `bot/test`
-and holds the number stated here to them, so a test that lands without its count moving is named.
-Their PostgreSQL paths run against an
-in-memory store; `pnpm --dir site/api check` applies `schema.sql` twice when
-`DATABASE_URL` is set.
+The website and the bot are checked in their own repositories. A change here that
+the site reads (the worker's result format, `docs/timeline.md`, which its changelog
+page is built from, `assets/logo-web.svg`, a file its "how it works" page cites) runs
+overtone-site's `pnpm --dir site/web test` with this checkout beside it
+(`OVERTONE_ENGINE`, or this folder as its sibling `Overtone-master`).
 
 The release build is a build step, not a gate: it builds a release's executables into
 `dist/release/<version>/` (gitignored), smoke-tests the frozen engine once, and publishes
-only with `--publish`, from `master` (docs/release.md):
+only with `--publish`, from `master` (docs/release.md). The website's self-hosting
+ZIP is overtone-site's to release since 2026-11-07:
 
 ```bash
-.venv/Scripts/python.exe scripts/release.py <version>   # CLI .exe, engine and site ZIPs, SHA256SUMS, notes
+.venv/Scripts/python.exe scripts/release.py <version>   # CLI .exe, engine ZIP, SHA256SUMS, notes
 ```
 `structure <case>` and `resample` are measurements, not gates: whole-track spectral
 memory (peak working set, read from outside with the one-liner in the mode's doc) and
@@ -199,10 +184,9 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
 6. No telemetry, no update checks, no third-party APIs. The engine, the command line
-   and the gates run fully offline. The website talks only to its own API and worker
-   (`site/`, `docs/site.md`), to Mides for sign-in, and to osu!'s OAuth only when a
-   person links their osu! account (W9.2, `identify`, one read); the Discord bot
-   (`bot/`, `docs/bot.md`) talks to Discord and to that API; the measurement server (`overtone_server.py`) only answers
+   and the gates run fully offline. The worker talks only to the website's API
+   (overtone-site, whose own rules cover the website and its osu! and Mides calls); the
+   Discord bot (overtone-bot) talks to Discord and to that API; the measurement server (`overtone_server.py`) only answers
    and makes no outbound calls. The desktop app was parked on 2026-10-26
    (`parked/desktop-app`, tag `v3-desktop-app`); editing tools come back on the web (W7).
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
@@ -211,16 +195,14 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 ## Layout
 
-The root holds almost nothing on purpose: `README.md`, the workspaces
-(`Cargo.toml`, `Cargo.lock`; `package.json`, `pnpm-workspace.yaml`,
-`pnpm-lock.yaml` for the site and the bot), the agent rules (`AGENTS.md`, `CLAUDE.md` —
+The root holds almost nothing on purpose: `README.md`, the Rust workspace
+(`Cargo.toml`, `Cargo.lock`), the agent rules (`AGENTS.md`, `CLAUDE.md` —
 identical) and the Git plumbing (`.gitignore`, `.gitattributes`). Everything
 else lives in a folder:
 
 ```
-site/                     the website, Overtone's only interface (docs/site.md)
-bot/                      the Discord bot (discord.js): /time-song and friends through the
-                          API's /api/internal/bot; scripts/register.mjs (docs/bot.md)
+worker/                   the website's analysis worker: an HTTP client of overtone-site's
+                          /api/internal, running python/overtone (docs/server.md)
 python/                   v3 engine, osu! I/O and the command line
   overtone/                 the engine, one module per pipeline stage; `import overtone`
                             sees every name, and a name set on it (a test patch, an
@@ -286,12 +268,9 @@ crates/                   the v4 Rust workspace
                             points, density, elastic grid, 2-D coherence map
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
-clients/                  community clients of the public token API (W13.22): js/ (one
-                          ES module on fetch), python/ (one module on urllib), and
-                          testing/api.mjs, the real API in memory their tests start
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
                           its systemd timer and setup-deploy-user.sh (docs/server.md);
-                          eggs/ and web/ host the site (docs/deploy.md)
+                          eggs/ the worker's panel egg and start.sh
 scripts/                  release.py: a release's executables, checksums and notes, and
                           `bump` to set every version; overtone-engine.spec freezes the
                           Python engine's command line; requirements-release.txt pins
@@ -300,8 +279,9 @@ scripts/                  release.py: a release's executables, checksums and not
 docs/                     audit, stack evaluation, architecture, UI, DSP, roadmap,
                           ML evaluation, naming, precision plan, MSI distribution
                           (historical: the installer was parked), comfort features,
-                          audit backlog, other languages, web platform, site, workflow,
-                          library server, releases, timeline
+                          audit backlog, other languages, workflow, library server,
+                          releases, timeline (the web platform's plan and the site's
+                          docs are overtone-site's)
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```
@@ -316,6 +296,6 @@ docs/                     audit, stack evaluation, architecture, UI, DSP, roadma
 - Rust: rustup 1.29 / rustc 1.98.1 on `x86_64-pc-windows-msvc`, with Visual Studio
   Build Tools 2022 17.14 supplying the linker. `Cargo.lock` is committed.
 - The local folder is `Overtone-master`, matching the `<Name>-master` convention used by
-  the other projects here; the GitHub repository is `Mides-Games/Overtone`. Nothing in
+  the other projects here; the GitHub repository is `Mides-Games/overtone`. Nothing in
   the build depends on either name — the bench resolves the repository root at runtime by
   walking up for `Cargo.toml` and `bench/golden/`, precisely so a rename cannot break it.

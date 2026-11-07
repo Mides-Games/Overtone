@@ -14,17 +14,15 @@ output goes to ``build/release/<version>/logs``:
    by PyInstaller (``scripts/overtone-engine.spec``) into ``overtone.exe`` with
    the Beat This! model beside it, then run once on a two-tempo click track;
    it must read both red lines (128 and 142 BPM);
-3. ``overtone-site-<version>.zip``: the built web (``site/web`` -> ``dist``),
-   the API's tracked source (``site/api``, no ``node_modules``) and
-   ``deploy/web/serve.mjs``, for self-hosting;
-4. ``SHA256SUMS.txt`` over those three;
-5. ``notes.md``: the "Changed" bullets of every ``docs/timeline.md`` entry
+3. ``SHA256SUMS.txt`` over those two;
+4. ``notes.md``: the "Changed" bullets of every ``docs/timeline.md`` entry
    added since the previous release tag (``--since`` names it instead).
 
 The version is the product's: ``[workspace.package] version`` in Cargo.toml
 (which ``python/overtone_paths.py``'s ``app_version()`` reads for the Python
-engine) and ``version`` in ``site/web`` and ``site/api``'s package.json. The
-script refuses to run unless all of them equal ``<version>``; ``bump`` sets
+engine). The website, and its self-hosting ZIP, are released from their own
+repository since 2026-11-07 (Mides-Games/overtone-site). The script refuses
+to run unless all of them equal ``<version>``; ``bump`` sets
 them, the crates' path-dependency pins and Cargo.lock's entries at once.
 
 ``--publish`` first checks that the tree is clean and HEAD is ``master``
@@ -54,7 +52,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 TIMELINE = ROOT / "docs" / "timeline.md"
-PACKAGE_JSONS = (ROOT / "site" / "web" / "package.json", ROOT / "site" / "api" / "package.json")
 CRATES = ROOT / "crates"
 SPEC = SCRIPTS / "overtone-engine.spec"
 RELEASE_REQUIREMENTS = SCRIPTS / "requirements-release.txt"
@@ -86,8 +83,6 @@ def cargo_version() -> str | None:
     return found.group(1) if found else None
 
 
-def package_version(path: Path) -> str | None:
-    return json.loads(path.read_text(encoding="utf-8")).get("version")
 
 
 def engine_version() -> str:
@@ -113,8 +108,6 @@ def version_problems(version: str) -> list[str]:
     problems = []
     found = {"Cargo.toml [workspace.package]": cargo_version(),
              "python/overtone_paths.py app_version()": engine_version()}
-    for path in PACKAGE_JSONS:
-        found[path.relative_to(ROOT).as_posix()] = package_version(path)
     for manifest in _crate_manifests():
         for pin in _CRATE_PIN.finditer(manifest.read_text(encoding="utf-8")):
             found[f"{manifest.relative_to(ROOT).as_posix()} {pin.group(1).split()[0]}"] = pin.group(2)
@@ -141,17 +134,11 @@ def bump(version: str) -> None:
         _write(manifest, _CRATE_PIN.sub(rf"\g<1>{version}\g<3>", _read(manifest)))
     lock = ROOT / "Cargo.lock"
     _write(lock, _LOCK_ENTRY.sub(rf"\g<1>{version}\g<3>", _read(lock)))
-    for path in PACKAGE_JSONS:
-        new, count = re.subn(r'^(  "version":\s*")[^"]+(")', rf"\g<1>{version}\g<2>",
-                             _read(path), count=1, flags=re.M)
-        if count != 1:
-            raise SystemExit(f"{path.relative_to(ROOT)} states no top-level version")
-        _write(path, new)
     left = version_problems(version)
     if left:
         raise SystemExit("bumped, but these still differ:\n  " + "\n  ".join(left))
-    print(f"Every version now reads {version}: Cargo.toml, the crates' pins, Cargo.lock, "
-          "site/web and site/api. Commit it on its own: "
+    print(f"Every version now reads {version}: Cargo.toml, the crates' pins and Cargo.lock. "
+          "Commit it on its own: "
           f"chore(repo/version): set the version to {version}")
 
 
@@ -273,7 +260,7 @@ Keep the folder together: overtone.exe reads _internal and assets beside it.
 The first run of a session compiles some kernels and takes longer.
 
 Licence: MIT (LICENSE). The model's licence: assets\\models\\LICENSE-beat-this.txt.
-Source: https://github.com/Mides-Games/Overtone
+Source: https://github.com/Mides-Games/overtone
 """
 
 
@@ -390,72 +377,6 @@ def zip_tree(asset: Path, folders: dict[str, Path], files: dict[str, Path] | Non
 
 
 # ---------------------------------------------------------------------------
-# 3. The site, for self-hosting
-# ---------------------------------------------------------------------------
-
-SITE_README = """Overtone {version} -- the website, for self-hosting
-
-    web/         the built frontend (site/web, vite build): static files
-    api/         the API's source (site/api): Express 5 and PostgreSQL
-    serve.mjs    serves web/ and forwards /api to the API (deploy/web/serve.mjs)
-
-Needs Node.js 22 or newer and a PostgreSQL database.
-
-1. The API:
-       cd api
-       npm install --omit=dev
-       copy .env.example .env      (fill it in; docs/site.md in the repository
-                                    explains each value)
-       npm run db:migrate
-       npm start
-2. The site, in another terminal, from this folder:
-       set WEB_ROOT=web
-       set API_UPSTREAM=http://127.0.0.1:4012     (the API's PORT)
-       set HSTS=0                                  (plain http on one machine)
-       node serve.mjs
-   then open http://localhost:8080. serve.mjs's header lists its other settings.
-
-Analyses are run by the worker (worker/main.py in the repository) with the
-Python engine; overtone-engine-{version}-windows-x64.zip is that engine frozen.
-The production setup (TLS, the proxy secret, the worker) is in docs/deploy.md.
-
-Licence: MIT (LICENSE). Source: https://github.com/Mides-Games/Overtone
-"""
-
-
-def find_pnpm() -> str:
-    found = os.environ.get("PNPM") or shutil.which("pnpm") or shutil.which("pnpm.cmd")
-    if not found:
-        raise SystemExit("pnpm is not on PATH; set PNPM to its path")
-    return found
-
-
-def build_site(version: str, out: Path, steps: Steps) -> Path:
-    pnpm = find_pnpm()
-    steps.run("pnpm-install", [pnpm, "install", "--frozen-lockfile"])
-    steps.run("site-build", [pnpm, "--dir", "site/web", "build"])
-    dist = ROOT / "site" / "web" / "dist"
-    if not (dist / "index.html").is_file():
-        raise SystemExit("site/web's build wrote no dist/index.html")
-    # The API as Git tracks it: never node_modules, never a real .env.
-    tracked = git("ls-files", "-z", "--", "site/api").split("\0")
-    api = {f"overtone-site-{version}/api/{Path(name).relative_to('site/api').as_posix()}":
-           ROOT / name for name in tracked if name and (ROOT / name).is_file()}
-    if any("node_modules" in name or name.endswith("/.env") for name in api):
-        raise SystemExit("site/api's tracked files hold node_modules or a .env")
-    files = dict(api)
-    files[f"overtone-site-{version}/serve.mjs"] = ROOT / "deploy" / "web" / "serve.mjs"
-    files[f"overtone-site-{version}/LICENSE"] = ROOT / "LICENSE"
-    asset = out / f"overtone-site-{version}.zip"
-    zip_tree(asset, {f"overtone-site-{version}/web": dist}, files,
-             {f"overtone-site-{version}/README.txt": SITE_README.format(version=version)})
-    return asset
-
-
-# ---------------------------------------------------------------------------
-# 4-5. Checksums and notes
-# ---------------------------------------------------------------------------
-
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -542,8 +463,6 @@ def release_notes(version: str, since: str | None, assets: list[Path]) -> tuple[
         "overtone-engine-": "the v3 Python engine's command line, the one the website runs, "
                             "with the Beat This! model; unzip and run `overtone.exe song.mp3`. "
                             "No Python needed.",
-        "overtone-site-": "the website for self-hosting: the built frontend, the API's source "
-                          "and `serve.mjs`; `README.txt` inside says how to run it.",
         "SHA256SUMS": "the SHA-256 of each file above: `sha256sum -c SHA256SUMS.txt`, or "
                       "`Get-FileHash <file>` in PowerShell.",
     }
@@ -614,8 +533,7 @@ def build(version: str, publish: bool, since: str | None) -> None:
 
     cli = build_rust_cli(version, out, steps)
     engine, smoke = build_engine(version, out, work, steps)
-    site = build_site(version, out, steps)
-    assets = [cli, engine, site]
+    assets = [cli, engine]
     sums = write_sums(out, assets)
     notes, cut = release_notes(version, since, assets + [sums])
     (out / "notes.md").write_text(notes, encoding="utf-8", newline="\n")

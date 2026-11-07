@@ -13,7 +13,8 @@ Outputs (all idempotent, byte for byte):
                     PNG: every size Windows asks for at 100-200 % scaling
   assets/logo.svg   the same mark as vectors
   assets/logo-web.svg  the website's cleaner mark (web_svg_text), = favicon.svg
-  site/web/public/  the website's icons: the web mark (render_web), the same idea
+  <site>/site/web/public/  the website's icons (Mides-Games/overtone-site, a sibling
+                    checkout or OVERTONE_SITE; skipped, and said, without one): the web mark (render_web), the same idea
                     cleaner for a browser tab: favicon.svg, favicon-32, apple-touch-icon (180, opaque),
                     icon-192, icon-512, icon-maskable-512 (the mark inside the
                     central 80 %) and og-image (1200x630, the mark on the
@@ -30,6 +31,7 @@ through, does not reliably read PNG frames below 256.
 """
 
 import math
+import os
 import struct
 import zlib
 from pathlib import Path
@@ -389,11 +391,18 @@ def main():
     web.write_bytes(web_svg_text().encode())
     for path in (png, ico, svg, web):
         print(f"wrote {path} ({path.stat().st_size} bytes)")
-    public = HERE.parent / "site" / "web" / "public"
-    if public.is_dir():
-        for name, data in site_icons().items():
-            (public / name).write_bytes(data)
-            print(f"wrote {public / name} ({len(data)} bytes)")
+    # The website's icons, into its own checkout (Mides-Games/overtone-site since
+    # 2026-11-07): OVERTONE_SITE, or a sibling overtone-site-master / overtone-site.
+    named = os.environ.get("OVERTONE_SITE", "").strip()
+    sites = [Path(named)] if named else [HERE.parent.parent / n for n in ("overtone-site-master", "overtone-site")]
+    public = next((s / "site" / "web" / "public" for s in sites if (s / "site" / "web" / "public").is_dir()), None)
+    if public is None:
+        print("no overtone-site checkout (OVERTONE_SITE, or a sibling overtone-site-master); "
+              "the website's icons were not written")
+        return
+    for name, data in site_icons().items():
+        (public / name).write_bytes(data)
+        print(f"wrote {public / name} ({len(data)} bytes)")
 
 
 if __name__ == "__main__":

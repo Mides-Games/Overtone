@@ -1,7 +1,7 @@
 #!/bin/bash
 # Start one Overtone server inside its panel container: update, prepare, run.
 #
-#   bash deploy/eggs/start.sh web|api|worker|bot
+#   bash deploy/eggs/start.sh worker
 #
 # This is the egg's whole startup line. Restarting the server in the panel is
 # the release gesture: with AUTO_UPDATE=1 the checkout fast-forwards to
@@ -31,8 +31,8 @@ set -u
 main() {
     role=${1:-}
     case "$role" in
-        web | api | worker | bot) ;;
-        *) echo "usage: bash deploy/eggs/start.sh web|api|worker|bot"; return 2 ;;
+        worker) ;;
+        *) echo "usage: bash deploy/eggs/start.sh worker"; return 2 ;;
     esac
 
     # OVERTONE_HOME exists for trying this script against a scratch clone.
@@ -174,53 +174,6 @@ once() {
     echo "$KEY" >"$stamp"
 }
 
-pnpm() {
-    # corepack ships with Node 24 and honours package.json's packageManager.
-    # CI=1 makes pnpm non-interactive; it is set for pnpm only, never for the app.
-    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_HOME="$HOME/.cache/corepack" CI=1 \
-        corepack pnpm --config.confirmModulesPurge=false "$@"
-}
-
-need_lockfile() {
-    [ -f pnpm-lock.yaml ] && return 0
-    say "ERROR: no pnpm-lock.yaml at the repository root; a server only installs from a lockfile."
-    return 1
-}
-
-prepare_web() {
-    need_lockfile || return 1
-    KEY=$(key package.json pnpm-lock.yaml pnpm-workspace.yaml site/web)
-    once web-build build_web
-}
-
-build_web() {
-    say "installing and building site/web"
-    pnpm install --frozen-lockfile --filter ./site/web && pnpm --dir site/web build &&
-        [ -f site/web/dist/index.html ]
-}
-
-prepare_api() {
-    need_lockfile || return 1
-    KEY=$(key package.json pnpm-lock.yaml pnpm-workspace.yaml site/api/package.json)
-    once api-deps install_api
-}
-
-install_api() {
-    say "installing site/api's production dependencies"
-    pnpm install --frozen-lockfile --prod --filter ./site/api
-}
-
-prepare_bot() {
-    need_lockfile || return 1
-    KEY=$(key package.json pnpm-lock.yaml pnpm-workspace.yaml bot/package.json)
-    once bot-deps install_bot
-}
-
-install_bot() {
-    say "installing bot's production dependencies"
-    pnpm install --frozen-lockfile --prod --filter ./bot
-}
-
 prepare_worker() {
     # The model first: a pointer where the model should be means the beat vote
     # cannot run, and the worker would analyse differently from the app.
@@ -252,31 +205,6 @@ install_worker() {
     python -m venv .venv &&
         .venv/bin/python -m pip install --quiet --disable-pip-version-check --no-input \
             -r .overtone/worker-requirements.txt
-}
-
-run_web() {
-    [ -n "${API_UPSTREAM:-}" ] || { say "ERROR: API_UPSTREAM is empty."; return 1; }
-    export PORT=$SERVER_PORT WEB_ROOT=site/web/dist
-    exec node deploy/web/serve.mjs
-}
-
-run_api() {
-    export PORT=$SERVER_PORT HOST=0.0.0.0 NODE_ENV=production
-    say "migrating"
-    node site/api/src/db/migrate.js || { say "ERROR: the migration failed; not starting."; return 1; }
-    exec node site/api/src/index.js
-}
-
-run_bot() {
-    [ -f bot/src/index.js ] || { say "ERROR: bot/src/index.js is not in $(revision)."; return 1; }
-    # The slash commands go with the code: registered at every start when the
-    # application id is known. One PUT of the whole list, which Discord takes
-    # unchanged as a no-op; a failure is said and does not stop the bot.
-    if [ -n "${DISCORD_APP_ID:-}" ] && [ -n "${DISCORD_TOKEN:-}" ]; then
-        node bot/scripts/register.mjs || say "WARNING: the slash commands were not registered; starting anyway."
-    fi
-    # Without its secrets the bot says it is off and exits 0 (bot/src/index.js).
-    exec node bot/src/index.js
 }
 
 run_worker() {

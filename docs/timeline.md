@@ -20,6 +20,55 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-06 · R6 graded on ranked maps, and 27.7's downbeat lines measured
+
+### Changed
+
+- **`bench/health_truth.py`**: the library health check graded without listening. Every
+  ranked map with two red lines or more (one line: moving it is the map's common offset,
+  which the check absorbs by design) is graded intact, where every flag is false, and
+  with one seeded red line moved 5, 15 and 30 ms, where only a flag on that line counts.
+  The bar, set in the script before the run, mirrors R6's 15 of 25: 60 % of a half-shifted
+  pool's *actionable* flags true.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- R6 no longer waits on a person: the sheet's 25 verdicts were owed since 2026-10-06.
+
+### Measured
+
+Server, Rust attacks, dev split, ranked maps (`9ea5901`):
+
+| | bands-variable | anime-variable |
+|---|---|---|
+| maps / lines graded | 55 / 3,042 | 320 / 5,235 |
+| *actionable* on correctly timed lines | 10.9 % | 12.1 % |
+| shifted lines found, 5 / 15 / 30 ms | 1.8 / 10.9 / 10.9 % | 3.8 / 7.5 / 9.1 % |
+| precision on the 15 ms pool | 0.9 % | 2.0 % |
+| *weak* on correctly timed lines | 22.6 % | 19.4 % |
+
+- `lines-on-downbeats` (27.7) against same-code baselines, app engine, dev: bands
+  (`20261106-231654-e06759` vs `-215001-fe0ff5`) tempo ok 60.4 % both, line_on_bar
+  6.7 → 8.3 %, beat_f10 73.1 → 72.9 %; anime-variable (`-231656-1d40db` vs
+  `-231655-85e56f`) tempo ok 36.3 % both, line_on_bar 4.1 → 4.4 %, double ticks
+  +0.4 a minute, songs right 64.6 → 64.3 % of the time.
+
+### Rejected / tried and dropped
+
+- **The words *actionable* and *weak***: R6 closed by measurement. The check flags about
+  one correctly timed line in nine and misses nine of ten 15 ms errors, so it is not a
+  precision tool on variable maps. Nothing user-facing shows the words now (the health
+  page was parked with the desktop app); a web health page needs a detector that passes
+  `health_truth.py` first.
+- **`LINES_ON_DOWNBEATS` on by default** (27.7): a point or two more lines on a bar,
+  no tempo moved, and extra double ticks on anime. Off.
+
+---
+
 ## Unreleased — 2026-11-06 · Phase 27.6's DBN tracker measured: no tempo moves
 
 ### Changed

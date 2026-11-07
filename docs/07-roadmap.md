@@ -43,11 +43,14 @@ Tests: **599** Python (548 engine + 51 worker) · **231** Rust.
 The audit backlog is closed: every finding was fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The remaining 0.3.0 required row is:
 
-1. **R6 — owner precision verdicts.** The 25-item listening sheet is ready at
-   `bench/health_sample.local.md` (local only: it names a private library's maps;
-   `bench/health_sample.py` writes it). The pre-set rule keeps
-   “actionable” and “weak” only with at least 15 true flags; listen at each linked red
-   line and mark true, false or skip.
+1. **R6 — closed by measurement, 2026-11-06, without listening.** `bench/health_truth.py`
+   grades the health check on ranked maps (the stage plan's truth) once intact and once
+   with one red line moved 5 / 15 / 30 ms. On bands-variable and anime-variable dev
+   (375 maps, 8,277 lines) *actionable* flags 10.9–12.1 % of correctly timed lines and
+   finds 7.5–10.9 % of the 15 ms shifts: precision 0.9–2.0 % against the 60 % bar set
+   before the run. The words fail; nothing user-facing carries them today (the health
+   page was parked with the desktop app), and a web health page may not bring them back
+   without a detector that passes this measurement.
 T1, T3, T4 and T5 are done; T2 signing was dropped by owner decision. T6 is closed
 for 0.3.0 by measured disposition: no section labels ship, and the Kiai card keeps
 refusing to guess. T7's H6/H7 review is also closed by measurement: keep instrument
@@ -216,7 +219,7 @@ underneath.
 
 | # | What | Why it has to be in | Where | State |
 |---|---|---|---|---|
-| R6 | **The library health check's precision sample, verdicts in** — carried from 0.2.0-alpha, where it shipped open by owner decision | The words *actionable* and *weak* are already installed; 0.3.0 either backs them with the 15/25 bar or renames them | [P19](#phase-19--app-sections) | todo — sample and sheet drawn 2026-10-06, verdicts owed |
+| R6 | **The library health check's precision sample, verdicts in** — carried from 0.2.0-alpha, where it shipped open by owner decision | The words *actionable* and *weak* are already installed; 0.3.0 either backs them with the 15/25 bar or renames them | [P19](#phase-19--app-sections) | **closed by measurement** 2026-11-06 — `bench/health_truth.py`: precision 0.9–2.0 % against the 60 % bar, so the words do not ship; the health page is parked |
 | T1 | **The Train section's browser-harness pass, EN and ES** — carried from 0.2.0-alpha | Every other section earned it; the static pass (ids, keys, calls, events) is not a layout check | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-07 — owner ran it ("si funciona") |
 | T2 | **Signed artefacts** (10.13.6): the certificate bought, the MSI signed in `build.py`, SmartScreen path documented | The single biggest thing between this and a build a stranger trusts; no amount of work here moves it until the purchase does | [`11`](11-msi-distribution.md) | **dropped 2026-10-07** — the owner will not purchase a certificate. Every release ships unsigned with the hash to check, as the alphas do; the row returns if that changes |
 | T3 | **The trainer's nicer rows**: ladders (26.16), feel in full with mod emulation (26.9, 26.10), undo and clean up (26.15) | This is what makes the trainer better than the tool it answers, not just more correct | P26 | **done** 2026-10-14 — 26.9, 26.10, 26.15 landed in #97 and 26.16 in #96; the owner's T1 harness pass (#107) covers the ladder, copies, presets, mods, detect and hotkey rows per 26.21; `bench/gates.py train` green including the ladder |
@@ -1241,7 +1244,7 @@ encodes, run one after another with the progress panel naming which rung.
 5. **Whether a copy should be deleted when its original changes.** The write log knows the
    original's hash, so the copy can at least be marked stale.
 
-## Phase 27 — Accuracy on real maps (proposed 2026-10-28)
+## Phase 27 — Accuracy on real maps (proposed 2026-10-28; reset 2026-11-06)
 
 Phase 10 made the engine exact on synthetic ground truth; the server's stages measure it
 on ranked maps, and there it is far from done. Every step below is measured on the
@@ -1251,6 +1254,45 @@ experiment in `python/overtone_runs.py` before it is a default, and recorded in
 (owner, 2026-10-27).
 
 ### Where it stands (2026-10-28, engine `app`, ranked maps)
+
+**Revised objective (2026-11-06):** reach at least 85% of valid red-line spans
+within 5 ms on a locked, song-disjoint confirmation corpus, with a separately
+reported result for maps having many timing points. This is a research target,
+not a forecast or guarantee. Count a refused/error map as a miss; report pooled
+line accuracy and per-song macro accuracy so long drift maps cannot dominate.
+The old 27.x targets below are hypotheses from 2026-10-28 and are not additive
+or accepted projections. The Phase 10 cumulative projection is withdrawn; its
+phase gains were never measured and its 90–95% claim is not supported.
+
+The current evidence says this is a different problem from synthetic grid
+accuracy. The 2026-11-06 health-truth run on 375 maps / 8,277 lines found only
+0.9–2.0% actionable-flag precision and 7.5–10.9% recall for 15 ms shifts.
+November stage reports show whole-song octave errors, short/weak tempo-change
+misses, and beat-following limitations. Beat This! as a fallback did not
+improve tempo-ok or beat accuracy; drums separation helped several held-out
+groups by 5–9 points, at substantial compute cost. Use these measurements as
+the starting baseline, not the smaller private Corpus B headline.
+
+### Revised work order — evidence before another model
+
+| Step | Work | Exit evidence | Priority |
+|---|---|---|---|
+| 27.10 | **Freeze an accuracy contract.** Separate constant-tempo one-line maps, multitempo maps, and dense drift maps (pre-register a dense threshold, e.g. ≥20 red lines or ≥1/minute). Report exact-grid-within-5ms, beat F1 at 5/10/20 ms, BPM/octave, change-point precision/recall with tolerance, coverage/refusal, pooled and per-song macro scores. | Reproducible baseline from identical commit; confidence intervals clustered by song/set; all failed/refused songs included. | P0 |
+| 27.11 | **Audit truth and alignment.** Build a private manifest of licensed/local audio and matching ranked maps; verify hashes and duplicate-difficulty timing agreement. Detect audio versions/offset edits, decoder delay, map lead, and mapper convention separately. Do not fit a global lead on the scored set. | Three disjoint splits by song/set; hand-audited dense-map subset; publish only aggregate metrics and local reproducible commands. | P0 |
+| 27.12 | **Diagnose dense drift before fitting.** On dev only, compare attacks, multiband/percussive signals, Beat This! activations, and map-derived beat sequence. Plot phase residual versus time; quantify local tempo bias, missed/phantom changes, octave, and anchor error. Compare robust local regression, change-point detection and semi-Markov/Viterbi grid tracking against current elastic/ramp path. | Each error class has a ranked contribution; synthetic gates and untouched held-out do not regress. | P0 |
+| 27.13 | **Run controlled signal/model ablations.** First test existing HPSS/percussive input and Stemsplit drum stem, then beat trackers (Beat This!, madmom/BeatNet only where dependency/model licensing permits), each as observation source into the same grid fitter. Do not use a model's raw beats as final red lines. | Keep a component only with a held-out gain whose song-clustered 95% interval excludes zero, no material subgroup regression, and measured runtime/RAM. | P1 |
+| 27.14 | **Domain fine-tuning only after 27.10–13.** Osu2MIR's released subset has 741 annotations / 708 audios and specifically warns that closely spaced timing points need curation. Expand via local Songs and/or the authors' pipeline only after provenance, legal basis, annotation quality, and set-level leakage are audited. Train on server; ship no copyrighted audio or annotations. | Strong improvement on an untouched confirmation set, compared with the same model and preprocessing; no network/API in product. | P2 |
+| 27.15 | **Dense-map confirmation and release gate.** Once a candidate clears dev/holdout, evaluate a newly locked, independently curated set of dense maps. | ≥85% within 5 ms overall and in dense subgroup, with lower 95% song-clustered confidence bound ≥80%; publish per-song distribution, refusal rate and worst categories. If missed, report the achieved level and keep assisted/manual timing. | P0 |
+
+Research references checked 2026-11-06: [Beat This! paper](https://arxiv.org/abs/2407.21658) and [official implementation/model licence](https://github.com/CPJKU/beat_this); [Osu2MIR paper](https://arxiv.org/abs/2509.12667) and [dataset pipeline/subset](https://github.com/ziyunliu4444/osu2mir); [2026 SMC blind-spot analysis](https://arxiv.org/abs/2605.12287). The model's MIT licence does not license source recordings used for training; evaluate datasets individually. Other candidates include [BeatNet](https://github.com/mjhydri/BeatNet), [madmom](https://github.com/CPJKU/madmom), [Beat Transformer](https://arxiv.org/abs/2209.07140), [All-In-One](https://arxiv.org/abs/2307.16425), and [Essentia RhythmExtractor2013](https://essentia.upf.edu/tutorial_rhythm_beatdetection.html). For implementation language, a [Rust Beat This! port](https://github.com/danigb/beat-this-rs) and ONNX runtimes offer local deployment options, but a port changes packaging/runtime, not the model's accuracy; Overtone already has Beat This! and its measured result was neutral. Audit exact code, weights, datasets and DBN dependency terms before adopting anything. No hosted inference API is proposed: it violates the project's offline rule and cannot resolve map/audio identity or mapper convention by itself.
+
+### Original proposal status
+
+The following 2026-10-28 steps remain useful experiments only; their projected
+percentage gains are retired. Beat This! already failed as a fallback tracker
+on measured stages, and the current 27.3 change-point proposal must be tested
+against residual diagnostics rather than its original 40% dev target. Any
+training must split by song/set, never by individual timing point.
 
 Tempo ok is every red line of a map at the right octave and within 0.05 BPM; *within 0.5*
 is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the first line's.
@@ -1296,7 +1338,8 @@ is the owner's ear (a tidy 199 for 198.89 is the same tempo); octave is the firs
 | 27.4 | **on** — `OCTAVE_RULE` (2026-10-28/30): first lines at the right octave +63 maps dev, +44 held out |
 | 27.5 | **on** — `TIDY_BPM` (2026-10-28): tempo ok unchanged on every stage |
 | 27.6 | **built, measured, off** — `DBN_TRACKER` (#129) moves the beats of 88 bands / 131 anime fallback maps, 0 tempo ok fixed or broken (2026-11-06) |
-| 27.7–27.9 | not started |
+| 27.7 | **built, measured, off** — `lines-on-downbeats`: line_on_bar +1.6 / +0.3 points, tempo ok unchanged, more double ticks on anime (2026-11-06) |
+| 27.8–27.9 | not started |
 
 27.1 **Count the octave jumps on the engine's lines.** Re-run anime-variable and bands dev
      with the `lines` field; count songs whose engine lines step by ×2 / ×0.5 between

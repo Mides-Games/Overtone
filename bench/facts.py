@@ -10,10 +10,11 @@ document that disagrees. It also holds the library index's two sides together:
 the schema version library.sql states and the one overtone_library.py reads. It runs no analysis and imports nothing heavy.
 
 Counts are static: a Rust test is a `#[test]` attribute, a Python test a
-`def test_` method, a site test a top-level `test(` call in `site/api/test`,
-`site/web/test` or `bot/test`. None of the suites has parametrised, inherited or nested
-tests, so the static count is what `cargo test`, `unittest` and `node --test`
-report; if that ever stops being true, this is the place to say so.
+`def test_` method. Neither suite has parametrised, inherited or nested
+tests, so the static count is what `cargo test` and `unittest` report; if that
+ever stops being true, this is the place to say so. The website, its clients and
+the Discord bot left for their own repositories on 2026-11-07
+(Mides-Games/overtone-site, Mides-Games/overtone-bot), and their counts with them.
 """
 from __future__ import annotations
 
@@ -40,29 +41,6 @@ def python_tests() -> tuple[int, int, int]:
     engine = sum(_count(p) for p in (ROOT / "tests").glob("test_overtone_*.py"))
     worker = _count(ROOT / "tests" / "test_worker.py")
     return total, engine, worker
-
-
-def site_tests() -> tuple[int, int]:
-    """(site/api, site/web): the `test(` calls `node --test "test/*.test.js"` runs
-    in each package, one per test since none is nested or generated."""
-    def count(package: str) -> int:
-        return sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
-                   for p in (ROOT / "site" / package / "test").glob("*.test.js"))
-    return count("api"), count("web")
-
-
-def bot_tests() -> int:
-    """The Discord bot's `test(` calls (bot/test), counted as the site's are."""
-    return sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
-               for p in (ROOT / "bot" / "test").glob("*.test.js"))
-
-
-def client_tests() -> tuple[int, int]:
-    """(JavaScript, Python): the community clients' tests (clients/, W13.22),
-    counted as the site's and the engine's are. Not part of either suite."""
-    js = sum(len(re.findall(r"^test\(", p.read_text(encoding="utf-8"), re.M))
-             for p in (ROOT / "clients" / "js" / "test").glob("*.test.js"))
-    return js, _count(ROOT / "clients" / "python" / "test_overtone_client.py")
 
 
 def crate_dirs() -> list[str]:
@@ -98,13 +76,8 @@ def main() -> int:
                         "the docs break out; name the new file in python_tests() and the roadmap")
     crates = crate_dirs()
     golden = golden_vectors()
-    site_api, site_web = site_tests()
-    bot = bot_tests()
-    client_js, client_py = client_tests()
     print(f"source: {python} Python tests ({engine} engine + {worker} worker), "
-          f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors, "
-          f"{site_api} site/api, {site_web} site/web and {bot} bot tests, "
-          f"{client_js} JS and {client_py} Python client tests")
+          f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors")
 
     def expect(doc: str, what: str, found: list[str], want: int) -> None:
         if not found:
@@ -128,19 +101,6 @@ def main() -> int:
         expect(doc, "golden vectors", re.findall(r"(\d+) committed vector files", text), golden)
         expect(doc, "golden cases in the golden check",
                re.findall(r"golden\.py check\s+# (\d+)/\d+", text), golden)
-        expect(doc, "site/api tests",
-               re.findall(r"pnpm --dir site/api test\s+# all pass \((\d+) on", text), site_api)
-        # site/web had no tests when this check was written: its line is
-        # required from the first one on, and must not outlive the last.
-        stated_web = re.findall(r"pnpm --dir site/web test\s+# all pass \((\d+) on", text)
-        if site_web or stated_web:
-            expect(doc, "site/web tests", stated_web, site_web)
-        expect(doc, "bot tests",
-               re.findall(r"pnpm --dir bot test\s+# all pass \((\d+) on", text), bot)
-        expect(doc, "JS client tests",
-               re.findall(r'clients/js/test/\*\.test\.js"\s+# all pass \((\d+) on', text), client_js)
-        expect(doc, "Python client tests",
-               re.findall(r"discover -s clients/python\s+# all pass \((\d+) on", text), client_py)
         listed = sorted(set(re.findall(r"^\s+(overtone-[a-z]+)/", text, re.M)))
         if listed != crates:
             problems.append(f"{doc}: layout lists crates {listed}, crates/ holds {crates}")

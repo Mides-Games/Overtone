@@ -14,7 +14,9 @@
 # password, no shell of its own, no forwarding, no terminal) and whose key
 # runs one forced command whatever it asks: start overtone-update.service.
 # Every other account's sign-in is left exactly as it was. Also installs the
-# update timer as the fallback. Safe to run again.
+# update timer as the fallback. Safe to run again: it replaces only its own
+# line in that user's authorized_keys and keeps the others (the bot's and the
+# website's deploy keys, each with its own forced command).
 set -eu
 
 KEY=${1:?"usage: $0 'ssh-ed25519 AAAA... comment'"}
@@ -22,7 +24,20 @@ case "$KEY" in
     ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*) ;;
     *) echo "That does not look like a public key: $KEY" >&2; exit 2 ;;
 esac
+# The key's body (its second field): empty is no key, and a body another line
+# of authorized_keys already holds would give that key two forced commands.
+KEY_BODY=$(printf '%s\n' "$KEY" | awk '{ print $2 }')
+if [ -z "$KEY_BODY" ]; then
+    echo "That key has no body: $KEY" >&2; exit 2
+fi
 USER_NAME=overtone-deploy
+KEYS="/var/lib/$USER_NAME/.ssh/authorized_keys"
+# This script's own line is the one whose forced command starts the update.
+OWN='overtone-update.service"'
+if [ -f "$KEYS" ] && grep -vF "$OWN" "$KEYS" | grep -qF -- "$KEY_BODY"; then
+    echo "That key is already in $KEYS for another command; give this one its own key." >&2
+    exit 2
+fi
 
 # The update itself, and the timer that runs it when no push does. Written
 # from here, not copied from the checkout: what root installs is what this
@@ -62,21 +77,37 @@ if ! id "$USER_NAME" >/dev/null 2>&1; then
 fi
 passwd -l "$USER_NAME" >/dev/null
 install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "/var/lib/$USER_NAME/.ssh"
-printf 'restrict,command="sudo -n /usr/bin/systemctl start --no-block overtone-update.service" %s\n' \
-    "$KEY" > "/var/lib/$USER_NAME/.ssh/authorized_keys"
-chown "$USER_NAME:$USER_NAME" "/var/lib/$USER_NAME/.ssh/authorized_keys"
-chmod 600 "/var/lib/$USER_NAME/.ssh/authorized_keys"
+# Every other line stays as it was; this script's own line is replaced.
+# Written beside the file and moved over it, so sshd never reads half a file.
+{
+    if [ -f "$KEYS" ]; then
+        grep -vF "$OWN" "$KEYS" || true
+    fi
+    printf 'restrict,command="sudo -n /usr/bin/systemctl start --no-block overtone-update.service" %s\n' \
+        "$KEY"
+} > "$KEYS.new"
+chown "$USER_NAME:$USER_NAME" "$KEYS.new"
+chmod 600 "$KEYS.new"
+mv -f "$KEYS.new" "$KEYS"
 
 # What it may run as root: that one command. The update itself runs as
 # overtone (overtone-update.service), whose only root step is restarting the
-# service it just updated.
+# service it just updated. Written under a name with a dot in it, which sudo
+# ignores, and checked before it takes its real name: a file visudo refuses is
+# never installed (a broken sudoers.d file breaks sudo for everyone).
+SUDOERS_TMP=$(mktemp /etc/sudoers.d/.overtone-deploy.XXXXXX)
 {
     printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block overtone-update.service\n' \
         "$USER_NAME"
     printf 'overtone ALL=(root) NOPASSWD: /usr/bin/systemctl restart overtone-api\n'
-} > /etc/sudoers.d/overtone-deploy
-chmod 440 /etc/sudoers.d/overtone-deploy
-visudo -cf /etc/sudoers.d/overtone-deploy >/dev/null
+} > "$SUDOERS_TMP"
+if ! visudo -cf "$SUDOERS_TMP" >/dev/null; then
+    rm -f "$SUDOERS_TMP"
+    echo "visudo refused the sudoers file; nothing was installed." >&2
+    exit 1
+fi
+chmod 440 "$SUDOERS_TMP"
+mv -f "$SUDOERS_TMP" /etc/sudoers.d/overtone-deploy
 
 # Key only for this user; root and everyone else keep what they had.
 mkdir -p /etc/ssh/sshd_config.d

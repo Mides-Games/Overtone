@@ -25,8 +25,9 @@ changes. Overtone listens to the song and does that for you, then lets you check
 result by ear before you start mapping.
 
 It is a free website, **[overtone.midesprojects.com](https://overtone.midesprojects.com)**,
-and this repository is everything behind it: the analysis engine, the website and the
-servers it runs on.
+and this repository is the analysis engine behind it, with the worker that runs it for
+the site. The website is [overtone-site](https://github.com/Mides-Games/overtone-site)
+and the Discord bot [overtone-bot](https://github.com/Mides-Games/overtone-bot).
 
 ## What do you get out of it?
 
@@ -82,14 +83,10 @@ result are kept, and everything you play or export is done in your own browser.
 
 ## Run it yourself
 
-The website needs Node 22+ and pnpm (`corepack enable`). From the repository root:
-
-```bash
-pnpm install && pnpm dev
-```
-
-Open http://localhost:5173. The API runs on :3001 with a local analysis worker. No
-secrets and no database are needed in development. The worker needs the Python engine:
+The website, with its own instructions, is
+[overtone-site](https://github.com/Mides-Games/overtone-site): clone it beside this
+checkout and its `pnpm dev` starts this repository's worker. The worker needs the Python
+engine:
 
 ```bash
 python -m venv .venv
@@ -102,13 +99,12 @@ the red lines in osu!'s `[TimingPoints]` format.
 ## Development
 
 ```
-site/      the website: site/api (Express + PostgreSQL), site/web (React)
 worker/    the analysis worker the API hands jobs to
 python/    the v3 engine (the one in production), its CLI and the measurement server
 crates/    the v4 engine in Rust: decode, DSP, tempo, CLI, golden-vector bench
 bench/     benchmark, gates, golden vectors and the real-map corpus tooling
-deploy/    the Reviactyl eggs and the servers' updater
-docs/      design, roadmap (docs/16-web-platform.md), timeline
+deploy/    the worker's Reviactyl egg and the servers' updater
+docs/      design, roadmap, timeline
 ```
 
 Every gate is a one-line local command; nothing runs in CI.

@@ -4,8 +4,9 @@
 # the suite run locally or on that server (CLAUDE.md). It signs in as
 # overtone-deploy, a user whose key can do one thing -- start the update -- and
 # whatever it asks is ignored. On the Mides host that is
-# overtone-site-update.service, which pulls master, rebuilds and restarts the
-# website at overtone.midesprojects.com (docs/deploy.md, "En el host de Mides");
+# overtone-site-update.service, which pulls this repository and the website's
+# (Mides-Games/overtone-site) and restarts the worker, the API and the web at
+# overtone.midesprojects.com (overtone-site's docs/deploy.md, "En el host de Mides");
 # on a library VPS it is overtone-update.service (deploy/setup-deploy-user.sh,
 # deploy/overtone-update.sh). Secrets: DEPLOY_HOST, DEPLOY_SSH_KEY,
 # DEPLOY_KNOWN_HOSTS.

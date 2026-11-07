@@ -20,6 +20,42 @@ version is `v1.0.0-stable` (2026-10-28).
 
 ---
 
+## Unreleased — 2026-11-07 · Three repositories: the engine, the website and the bot
+
+### Changed
+
+- The website (`site/`, `clients/`, `deploy/web/`, the web, API and database eggs, and
+  docs/site.md, deploy.md, design.md, security-review.md, bot.md and 16-web-platform.md)
+  is now **Mides-Games/overtone-site**, and the Discord bot (`bot/`) **Mides-Games/overtone-bot**,
+  each with its history from here, its own lockfile, checks and deploy. This repository
+  keeps the engine, the worker, the bench and the worker's egg. Owner's decision: one
+  repository with the bot inside it was not what they wanted.
+- The site reads what it needs from here through its `site/engine.mjs` (a sibling
+  checkout or `OVERTONE_ENGINE`): this `docs/timeline.md` for its changelog page, the
+  worker for `pnpm dev`, `python/requirements.lock` and the model card for its credits,
+  `assets/logo-web.svg` for its favicon. `assets/logo.py` writes the site's icons into a
+  sibling `overtone-site-master` (or `OVERTONE_SITE`).
+- `scripts/release.py` builds the CLI and the engine ZIP; the site's self-hosting ZIP
+  and its version are overtone-site's. `bench/facts.py` counts the engine's tests only.
+
+### Fixed
+
+- None.
+
+### Hardening
+
+- The bot's deploy no longer rides on the site's checkout: overtone-bot's
+  `deploy/setup.sh` gives it its own checkout, units, a sudo rule for restarting it alone
+  and a deploy key whose forced command starts its update and nothing else.
+
+### Measured
+
+- No engine code changed; the engine's suite and gates were not re-run for it.
+  `bench/facts.py`, `bench/fixtures.py` and `bench/parity.py` pass. In the new
+  repositories, with this checkout beside them: overtone-site's site/api 223/223,
+  site/web 350/350, clients 13/13 (JS) and 10/10 (Python), budget ok; overtone-bot 29/29
+  with its contract suite against the split site/api.
+
 ## Unreleased — 2026-11-07 · A wider osu! card on the profile
 
 ### Changed
@@ -75,8 +111,6 @@ version is `v1.0.0-stable` (2026-10-28).
   (2 new: axe on the linked card in each theme, through a stand-in osu!), `bench/facts.py`
   clean. By hand: the real link flow against the same stand-in in the dev server, 1280 px
   dark and 375 px light. Not checked: a real osu! answer carrying these fields.
-
----
 
 ## Unreleased — 2026-11-07 · The 27.8 tempo judge in the engine, off
 

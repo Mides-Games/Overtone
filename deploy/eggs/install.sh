@@ -1,12 +1,13 @@
 #!/bin/bash
-# Install script of the overtone-web, overtone-api, overtone-worker and overtone-bot eggs.
+# Install script of the overtone-worker egg (the web, api and db eggs are
+# Mides-Games/overtone-site's since 2026-11-07, with this same script).
 #
 # Runs once, as root, in the panel's throwaway installer container, with the
 # server's disk at /mnt/server. It only puts the repository there: the
 # dependencies (pnpm, pip) are installed by deploy/eggs/start.sh on the first
 # start, inside the runtime image whose Node or Python they are built for.
 #
-# egg.py replaces @ROLE@ with web, api, worker or bot when it writes the egg.
+# egg.py replaces @ROLE@ with worker, the one egg left here, when it writes the egg.
 #
 # Variables the eggs declare:
 #   GIT_ADDRESS   the repository, https

@@ -76,7 +76,7 @@ y nunca hace falta `safe.directory`.
    ```
 
    ```bash
-   sudo -u overtone -H git clone https://github.com/Mides-Games/Overtone.git /opt/overtone
+   sudo -u overtone -H git clone https://github.com/Mides-Games/overtone.git /opt/overtone
    ```
 
 3. Python 3.14 con `uv` y las dependencias del motor, como `overtone`:
@@ -365,7 +365,10 @@ sh /root/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
 ```
 
 Si el script cambia en el repositorio, se repite igual: copiar, revisar,
-ejecutar la copia.
+ejecutar la copia. Repetirlo solo reemplaza su propia línea en el
+`authorized_keys` de `overtone-deploy` y conserva las demás llaves de ese
+usuario (la del bot o la del sitio, cada una con su comando forzado); rechaza
+una llave que ya esté en otra línea.
 
 Qué hizo cada vez:
 

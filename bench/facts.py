@@ -119,7 +119,10 @@ def main() -> int:
         problems.append("AGENTS.md differs from CLAUDE.md; they must be identical")
     for doc, text in (("CLAUDE.md", claude),):
         expect(doc, "Python tests",
-               re.findall(r"discover -s tests\s+# all pass \((\d+) on", text), python)
+               [next(value for value in row if value)
+                for row in re.findall(
+                    r"discover -s tests\s+# (?:all pass \((\d+) on|(?:all pass )?(\d+) tests discovered)",
+                    text)], python)
         expect(doc, "Rust tests",
                re.findall(r"cargo test --workspace\s+# all pass \((\d+) on", text), rust)
         expect(doc, "golden vectors", re.findall(r"(\d+) committed vector files", text), golden)

@@ -364,6 +364,402 @@ class MeasurementRunTests(unittest.TestCase):
         kept, skipped = stages.build_stage(stage, self.index, 0.3, ranked)
         self.assertEqual([Path(s["folder"]).name for s in kept], ["1 Band - Clicks"])
         self.assertEqual(skipped, ["1 maps not ranked, approved or loved in osu!.db"])
+        scored = stages.score_song(kept[0], {"lines": [], "path": "refused", "duration_s": 10.0})
+        self.assertEqual(len(scored), 1)
+        self.assertEqual(scored[0]["osu_sha1"], stages.audio_identity(Path(kept[0]["maps"][0]["path"])))
+
+    def test_identical_audio_is_kept_in_one_accuracy_split(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import stages
+        first = self.tmp / "first.wav"
+        second = self.tmp / "second.wav"
+        first.write_bytes(b"same recording")
+        second.write_bytes(first.read_bytes())
+        first_hash, second_hash = stages.audio_identity(first), stages.audio_identity(second)
+        self.assertEqual(first_hash, second_hash)
+        self.assertEqual(stages.audio_split(first_hash, 0.3),
+                         stages.audio_split(second_hash, 0.3))
+
+    def test_stage_accuracy_reports_dense_line_share_and_song_cluster_interval(self):
+        import stages
+
+        def map_row(audio_hash, folder, errors):
+            rows = [{"octave": 1.0, "bpm_error": 0.0, "error_ms": error}
+                    for error in errors]
+            return {"folder": folder, "audio_sha1": audio_hash, "rows": rows,
+                    "map_lines": len(rows), "detected_lines": len(rows),
+                    "duration_s": 60.0, "path": "precision", "d_map": np.zeros(2),
+                    "d_eng": np.zeros(2), "bar_hits": []}
+
+        dense_a = map_row("a" * 40, "song-a", [0.0] * 19 + [None])
+        dense_b = map_row("b" * 40, "song-b", [0.0] * 10 + [6.0] * 10)
+        summary = stages.summarise([dense_a, dense_b], 0.0)
+        self.assertEqual((summary["dense_maps"], summary["dense_songs"],
+                          summary["dense_redlines"]), (2, 2, 40))
+        self.assertEqual(summary["dense_redline_within_5ms"], 29 / 40)
+        self.assertEqual(summary["dense_song_macro_within_5ms"], 0.725)
+        self.assertEqual(len(summary["dense_song_macro_ci95"]), 2)
+
+    def test_accuracy_manifest_freezes_and_verifies_file_identity(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import accuracy_manifest
+        import stages
+        audio = self.tmp / "song.wav"
+        osu = self.tmp / "map.osu"
+        audio.write_bytes(b"audio")
+        osu.write_bytes(b"ranked map")
+        folder = self.tmp / "song-folder"
+        folder.mkdir()
+        (folder / audio.name).write_bytes(audio.read_bytes())
+        (folder / osu.name).write_bytes(osu.read_bytes())
+        report = self.tmp / "ranked-report.json"
+        report.write_text(json.dumps({
+            "ranked": {"osu_db_version": 1},
+            "stage": {"id": "bands-variable"},
+            "holdout_share": 0.3,
+            "fingerprint": "engine",
+            "maps": [{"folder_name": folder.name, "audio_filename": audio.name,
+                      "folder": folder.name, "file": osu.name,
+                      "audio_sha1": stages.audio_identity(audio),
+                      "osu_sha1": stages.audio_identity(osu),
+                      "split": stages.audio_split(stages.audio_identity(audio), 0.3), "map_lines": 22,
+                      "duration_s": 300}],
+        }), encoding="utf-8")
+        manifest = self.tmp / "accuracy.local.json"
+        self.assertEqual(accuracy_manifest.freeze(report, manifest, self.tmp), 0)
+        self.assertEqual(accuracy_manifest.verify(manifest), 0)
+        with self.assertRaises(FileExistsError):
+            accuracy_manifest.freeze(report, manifest, self.tmp)
+        (folder / audio.name).write_bytes(b"changed")
+        self.assertEqual(accuracy_manifest.verify(manifest), 1)
+        with self.assertRaisesRegex(ValueError, "stale audio_sha1"):
+            accuracy_manifest.freeze(report, self.tmp / "stale.local.json", self.tmp)
+        self.assertFalse((self.tmp / "stale.local.json").exists())
+        (folder / audio.name).write_bytes(audio.read_bytes())
+        (folder / osu.name).write_bytes(b"edited timing")
+        with self.assertRaisesRegex(ValueError, "stale osu_sha1"):
+            accuracy_manifest.freeze(report, self.tmp / "stale.local.json", self.tmp)
+        (folder / osu.name).write_bytes(osu.read_bytes())
+        payload = json.loads(report.read_text(encoding="utf-8"))
+        payload["maps"][0]["split"] = ("dev" if payload["maps"][0]["split"] == "holdout" else "holdout")
+        report.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "split does not match"):
+            accuracy_manifest.freeze(report, self.tmp / "stale.local.json", self.tmp)
+
+    def test_accuracy_manifest_rejects_empty_cohorts_and_invalid_split_rules(self):
+        from bench import accuracy_manifest
+        manifest = self.tmp / "invalid.local.json"
+        manifest.write_text(json.dumps({"format": 1, "entries": []}), encoding="utf-8")
+        self.assertEqual(accuracy_manifest.verify(manifest), 1)
+        for share in (0, 1, -0.1, float("nan"), float("inf"), "0.3"):
+            with self.subTest(share=share), self.assertRaises(ValueError):
+                accuracy_manifest.expected_split("a" * 40, share)
+        for digest in ("a", "z" * 40, " " * 40):
+            with self.subTest(digest=digest), self.assertRaises(ValueError):
+                accuracy_manifest.expected_split(digest, 0.3)
+
+    def test_phase_residual_separates_constant_offset_from_linear_tempo_drift(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import phase_residual
+        times = np.arange(0.0, 60.0, 0.5)
+        fixed = phase_residual.phase_metrics(times, np.full(times.shape, 23.0))
+        drifting_errors = 23.0 + (4.0 / 60.0) * times
+        drifting = phase_residual.phase_metrics(times, drifting_errors)
+        self.assertAlmostEqual(fixed["drift_ms_per_min"], 0.0, places=8)
+        self.assertAlmostEqual(fixed["phase_offset_ms"], 23.0, places=8)
+        self.assertAlmostEqual(drifting["drift_ms_per_min"], 4.0, places=8)
+        self.assertLess(drifting["median_abs_phase_residual_ms"], 1e-8)
+        sections = phase_residual.section_metrics(
+            [{"offset_ms": 0.0, "bpm": 120.0}],
+            [(20.0, 120.0)], 12.0)
+        self.assertEqual(len(sections), 1)
+        self.assertAlmostEqual(sections[0]["phase_offset_ms"], 20.0, places=8)
+        self.assertAlmostEqual(sections[0]["drift_ms_per_min"], 0.0, places=8)
+        long_times = np.arange(10000) * 0.5
+        long = phase_residual.phase_metrics(long_times, 23 + long_times * 4 / 60)
+        self.assertEqual((long["beats"], long["fit_beats"]), (10000, 512))
+        self.assertAlmostEqual(long["drift_ms_per_min"], 4.0, places=8)
+        self.assertIsNone(phase_residual.phase_metrics(np.zeros(8), np.ones(8)))
+
+    def test_accuracy_audit_separates_identical_offset_and_octave_disagreements(self):
+        from bench.accuracy_audit import compare_grids, audit
+        self.assertEqual(compare_grids([(0, 120)], [(0, 120)], 60)["status"], "agree")
+        shifted = compare_grids([(0, 120)], [(23, 120)], 60)
+        self.assertEqual(shifted["status"], "disagree")
+        self.assertAlmostEqual(shifted["signed_offset_ms"], 23)
+        self.assertLess(shifted["p95_after_constant_offset_ms"], 1e-8)
+        self.assertEqual(compare_grids([(0, 120)], [(0, 240)], 60)["status"], "disagree")
+        self.assertEqual(compare_grids([], [(0, 120)], 60)["status"], "unscorable")
+        self._anime_song("same-set")
+        path = next((self.songs / "same-set").glob("*.osu"))
+        entries = [{"audio_sha1": digest, "osu_path": str(path), "folder": "same-set",
+                    "split": split, "duration_s": 24} for digest, split in
+                   (("a" * 40, "dev"), ("b" * 40, "holdout"))]
+        self.assertEqual(audit({"entries": entries})["sets_crossing_splits"], 1)
+
+    def test_accuracy_comparison_pairs_audio_clusters_and_keeps_refusals(self):
+        import copy
+        from bench.accuracy_compare import compare_reports
+        maps = [{"folder": str(i), "file": "map.osu", "split": "holdout",
+                 "audio_sha1": str(i) * 40, "osu_sha1": "f" * 40,
+                 "map_lines": n, "duration_s": 60, "path": "precision",
+                 "rows": [{"error_ms": 10.0}] * n} for i, n in ((1, 20), (2, 100))]
+        baseline = {"ranked": True, "stage": {"id": "test"}, "split_rule": "audio",
+                    "holdout_share": .3, "maps": maps}
+        candidate = copy.deepcopy(baseline)
+        for row in candidate["maps"]:
+            row["rows"] = [{"error_ms": 0.0}] * row["map_lines"]
+        measured = compare_reports(baseline, candidate)["groups"]["all"]
+        self.assertEqual(measured["delta_macro"], 1.0)
+        self.assertEqual(measured["delta_ci95"], [1.0, 1.0])
+        candidate["maps"][1]["path"] = "refused"
+        measured = compare_reports(baseline, candidate)["groups"]["all"]
+        self.assertEqual(measured["delta_macro"], .5)
+        self.assertFalse(measured["positive_interval"])
+        candidate["maps"].pop()
+        with self.assertRaisesRegex(ValueError, "same maps"):
+            compare_reports(baseline, candidate)
+        candidate = copy.deepcopy(baseline)
+        candidate["maps"][0]["osu_sha1"] = "b" * 40
+        with self.assertRaisesRegex(ValueError, "changed osu_sha1"):
+            compare_reports(baseline, candidate)
+
+    def test_change_points_are_matched_one_to_one_with_lost_and_phantom_counts(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import stages
+        truth = [(0.0, 120.0), (10000.0, 130.0), (20000.0, 120.0)]
+        predicted = [(0.0, 120.0), (10015.0, 130.0), (30000.0, 140.0)]
+        result = stages.change_point_counts(truth, predicted, tolerance_ms=20.0)
+        self.assertEqual((result["true"], result["predicted"], result["tp"],
+                          result["fp"], result["fn"]), (2, 2, 1, 1, 1))
+        self.assertEqual((result["precision"], result["recall"]), (0.5, 0.5))
+        self.assertEqual(stages.octave_steps([(0, 120), (10000, 240), (20000, 120)]), 2)
+        self.assertEqual(stages.octave_steps(truth), 0)
+
+    def _ranked_report(self, folder: str) -> tuple[Path, list[dict]]:
+        """A ranked stage report over one generated song, as stages.py writes it."""
+        import stages
+        self._anime_song(folder)
+        self.library.scan(self.songs)
+        stage = next(s for s in stages.load_manifest()["stages"] if s["id"] == "anime-single")
+        songs, _ = stages.build_stage(stage, self.index, 0.3)
+        song = next(s for s in songs if Path(s["folder"]).name == folder)
+        scored = stages.score_song(song, {"lines": [], "path": "refused", "duration_s": 24.0})
+        report = self.tmp / f"{folder}-report.json"
+        report.write_text(json.dumps({
+            "ranked": {"osu_db_version": 1}, "stage": {"id": "anime-single"},
+            "holdout_share": 0.3, "split_rule": stages.SPLIT_RULE, "fingerprint": "engine",
+            "maps": [{k: v for k, v in m.items() if k not in ("d_map", "d_eng")}
+                     for m in scored]}), encoding="utf-8")
+        return report, songs
+
+    def test_a_set_and_a_recording_never_straddle_dev_and_held_out(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import stages
+        # Two audio files in one set, the first recording again in another
+        # set, and an unrelated song.
+        songs = [{"audio_sha1": "c" * 40, "folder": "/Songs/1 Set"},
+                 {"audio_sha1": "a" * 40, "folder": "/Songs/1 SET"},
+                 {"audio_sha1": "c" * 40, "folder": "/Songs/2 Reupload"},
+                 {"audio_sha1": "e" * 40, "folder": "/Songs/3 Other"}]
+        stages.assign_splits(songs, 0.3)
+        self.assertEqual([s["split_key"] for s in songs], ["a" * 40] * 3 + ["e" * 40])
+        self.assertEqual({s["split"] for s in songs[:3]}, {stages.audio_split("a" * 40, 0.3)})
+        self.assertEqual(songs[3]["split"], stages.audio_split("e" * 40, 0.3))
+
+    def test_a_locked_cohort_is_scored_as_frozen_and_stops_on_a_changed_map(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import accuracy_manifest
+        import stages
+        report, songs = self._ranked_report("1 Band - Clicks")
+        manifest = self.tmp / "accuracy.local.json"
+        self.assertEqual(accuracy_manifest.freeze(report, manifest, self.songs), 0)
+        frozen = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertEqual((frozen["format"], frozen["cohort"]), (2, "dev-holdout"))
+        self.assertEqual(frozen["ranked"], {"osu_db_version": 1})
+        cohort = stages.cohort_songs(frozen)
+        # The same folder string as the index gives, so the analysis cache is shared.
+        self.assertEqual(cohort[0]["folder"], songs[0]["folder"])
+        self.assertEqual(cohort[0]["split"], songs[0]["split"])
+        refused = {"lines": [], "path": "refused", "duration_s": 24.0}
+        self.assertEqual(len(stages.score_song(cohort[0], refused)), 1)
+        osu = Path(cohort[0]["maps"][0]["path"])
+        osu.write_bytes(osu.read_bytes() + b"\r\n")
+        with self.assertRaisesRegex(ValueError, "locked map changed"):
+            stages.score_song(cohort[0], refused)
+        osu.unlink()
+        with self.assertRaisesRegex(ValueError, "locked map unreadable"):
+            stages.score_song(cohort[0], refused)
+
+    def test_the_stage_command_scores_a_locked_cohort_and_refuses_a_stale_one(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import io
+        import accuracy_manifest
+        import corpus_b
+        import single_bpm
+        import stages
+        report, _ = self._ranked_report("1 Band - Clicks")
+        manifest = self.tmp / "accuracy.local.json"
+        accuracy_manifest.freeze(report, manifest, self.songs)
+        analysed = []
+
+        def fake_runs(todo, engine, cli, jobs):
+            for song, _audio in todo:
+                analysed.append(song["audio"])
+                yield song, {"lines": [[250.0, 120.0]], "path": "precision", "duration_s": 24.0}
+
+        out_dir = self.tmp / "stages-out"
+        with mock.patch.object(single_bpm, "CACHE_DIR", self.tmp / "cache"), \
+                mock.patch.object(stages, "OUT_DIR", out_dir), \
+                mock.patch.object(corpus_b, "run_analyses", fake_runs), \
+                mock.patch("sys.stdout", new_callable=io.StringIO), \
+                mock.patch("sys.stderr", new_callable=io.StringIO):
+            self.assertEqual(stages.main(["anime-single", "--cohort", str(manifest)]), 0)
+            written = json.loads((out_dir / "anime-single-python-cohort-accuracy.json")
+                                 .read_text(encoding="utf-8"))
+            self.assertEqual(written["cohort"]["maps"], 1)
+            self.assertEqual(written["cohort"]["sha1"], stages.audio_identity(manifest))
+            self.assertEqual(written["ranked"], {"osu_db_version": 1})
+            self.assertEqual(written["split_rule"], stages.SPLIT_RULE)
+            self.assertEqual(len(written["maps"]), 1)
+            self.assertEqual(len(analysed), 1)
+            with self.assertRaises(SystemExit):
+                stages.main(["anime-variable", "--cohort", str(manifest)])
+            osu = next((self.songs / "1 Band - Clicks").glob("*.osu"))
+            osu.write_bytes(osu.read_bytes() + b"\r\n")
+            self.assertEqual(stages.main(["anime-single", "--cohort", str(manifest)]), 2)
+
+    def test_a_confirmation_cohort_shares_no_audio_map_or_set_with_the_tuned_one(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import io
+        import accuracy_manifest
+        first_report, _ = self._ranked_report("1 Band - Clicks")
+        tuned = self.tmp / "accuracy.local.json"
+        accuracy_manifest.freeze(first_report, tuned, self.songs)
+        confirm = self.tmp / "accuracy-confirm.local.json"
+        with self.assertRaisesRegex(ValueError, "--exclude"):
+            accuracy_manifest.freeze(first_report, confirm, self.songs, confirmation=True)
+        # The click track is generated identically, so even a new set with the
+        # same recording overlaps: by audio, not by name.
+        with self.assertRaisesRegex(ValueError, "not disjoint"):
+            accuracy_manifest.freeze(first_report, confirm, self.songs, True, [tuned])
+        later_report, _ = self._ranked_report("2 Band - Later")
+        with self.assertRaisesRegex(ValueError, "not disjoint.*audio"):
+            accuracy_manifest.freeze(later_report, confirm, self.songs, True, [tuned])
+        # A different recording and map in a new set is disjoint.
+        import stages
+        audio = self.songs / "2 Band - Later" / "audio.wav"
+        _click_track(audio, 150.0, duration=24.0)
+        osu = next((self.songs / "2 Band - Later").glob("*.osu"))
+        osu.write_bytes(osu.read_bytes() + b"\r\n")
+        payload = json.loads(later_report.read_text(encoding="utf-8"))
+        for row in payload["maps"]:
+            row["audio_sha1"] = row["split_key"] = accuracy_manifest.sha1_file(audio)
+            row["osu_sha1"] = accuracy_manifest.sha1_file(osu)
+            row["split"] = stages.audio_split(row["split_key"], 0.3)
+        later_report.write_text(json.dumps(payload), encoding="utf-8")
+        self.assertFalse(confirm.exists())
+        self.assertEqual(accuracy_manifest.freeze(later_report, confirm, self.songs, True, [tuned]), 0)
+        frozen = json.loads(confirm.read_text(encoding="utf-8"))
+        self.assertEqual({e["split"] for e in frozen["entries"]}, {"confirmation"})
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as said:
+            self.assertEqual(accuracy_manifest.verify(confirm), 0)
+            self.assertIn("disjoint from 1 cohort", said.getvalue())
+            tuned.write_text(tuned.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+            self.assertEqual(accuracy_manifest.verify(confirm), 1)
+            self.assertIn("excluded cohort changed", said.getvalue())
+            tuned.unlink()
+            self.assertEqual(accuracy_manifest.verify(confirm), 1)
+            self.assertIn("disjointness unchecked", said.getvalue())
+
+    def test_the_manifest_refuses_a_set_split_across_dev_and_held_out(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import io
+        import accuracy_manifest
+        entries = [{"audio_sha1": digest, "osu_sha1": digest, "folder": "One Set",
+                    "split": split} for digest, split in (("a" * 40, "dev"), ("b" * 40, "holdout"))]
+        self.assertEqual(accuracy_manifest.straddling(entries), ["set one set"])
+        manifest = self.tmp / "straddle.local.json"
+        manifest.write_text(json.dumps({"format": 2, "holdout_share": .3, "entries": [
+            dict(e, audio_path=str(self.tmp / "none.wav"), osu_path=str(self.tmp / "none.osu"))
+            for e in entries]}), encoding="utf-8")
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as said:
+            self.assertEqual(accuracy_manifest.verify(manifest), 1)
+        self.assertIn("assigned to multiple splits: set one set", said.getvalue())
+
+    def test_paired_reports_must_score_the_same_locked_cohort(self):
+        from bench.accuracy_compare import compare_reports
+        row = {"folder": "1", "file": "map.osu", "split": "confirmation", "audio_sha1": "1" * 40,
+               "osu_sha1": "f" * 40, "map_lines": 1, "duration_s": 60, "path": "precision",
+               "rows": [{"error_ms": 1.0}]}
+        report = {"ranked": True, "stage": {"id": "test"}, "split_rule": "audio",
+                  "holdout_share": .3, "maps": [row], "cohort": {"sha1": "x"}}
+        self.assertEqual(compare_reports(report, report, "confirmation")["groups"]["all"]
+                         ["delta_macro"], 0.0)
+        with self.assertRaisesRegex(ValueError, "same locked cohort"):
+            compare_reports(report, dict(report, cohort={"sha1": "y"}), "confirmation")
+
+    def test_the_tempo_model_learns_mapped_octaves_and_judges_a_reading(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import tempo_judge_eval
+        import tempo_model as tm
+        self.assertEqual(tm.bpm_bin(tm.BPM_LO), 0.0)
+        self.assertAlmostEqual(tm.bpm_bin(2 * tm.BPM_LO), tm.PER_OCTAVE)
+        self.assertEqual(tm.BINS, 4 * tm.PER_OCTAVE)
+        t = tm.targets(np.array([60.0, 175.0]))
+        np.testing.assert_allclose(t.sum(1), 1.0)
+        self.assertEqual(int(np.argmax(t[0])), round(tm.bpm_bin(60.0)))
+        np.testing.assert_allclose(tm.fold(np.array([60.0, 130.0, 480.0]), 120.0),
+                                   [120.0, 130.0, 120.0])
+        # Features that name the mapped tempo, blurred, as a stand-in for the
+        # onset autocorrelation: the model must learn to read them back.
+        rng = np.random.default_rng(5)
+        bpm = np.exp(rng.uniform(np.log(70), np.log(250), 400))
+        x = tm.targets(bpm, sigma=2.0) * 10 + rng.normal(0, 0.05, (400, tm.BINS))
+        model = tm.train(x[:300], bpm[:300], hidden=32, epochs=60)
+        held = {"x": x[300:], "bpm": bpm[300:], "split": np.array(["holdout"] * 100)}
+        measured = tm.report(model, held, "holdout")
+        self.assertEqual(measured["songs"], 100)
+        self.assertGreater(measured["top1_within_4pct"], 0.9)
+        self.assertGreater(measured["judge_from_x2"], 0.9)
+        self.assertGreater(measured["judge_from_x0.5"], 0.9)
+        # The evaluator's judge agrees, and a margin keeps the reading.
+        song = x[300]
+        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300] / 2, 1.0), 2.0)
+        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300], 1.0), 1.0)
+        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300] / 2, 1e12), 1.0)
+
+    def test_the_tempo_label_is_the_red_line_tempo_that_spans_most_of_the_map(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import tempo_model as tm
+        osu = self.tmp / "two.osu"
+        osu.write_text(_mapset_osu("Hard", audio="audio.wav",
+                                   reds=((250, 500.0, 4), (10250, 400.0, 4))),
+                       encoding="utf-8", newline="")
+        self.assertEqual(tm.dominant_bpm(str(osu), 24.0), 150.0)
+        self.assertEqual(tm.dominant_bpm(str(osu), 15.0), 120.0)
 
     def test_the_commit_is_read_from_the_checkout(self):
         commit = self.runs.git_commit()

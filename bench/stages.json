@@ -1,5 +1,5 @@
 {
- "about": "Phase 10 timing stages: slices of the user's Songs folder, chosen from the library index, timed one at a time. Each stage is a SQL condition over the index's beatmaps table (read only). Mapper red lines are the truth; songs split by folder hash into a dev part (tune here) and a held-out part (confirm here). Read by bench/stages.py.",
+ "about": "Phase 10 timing stages: slices of the user's Songs folder, chosen from the library index, timed one at a time. Each stage is a SQL condition over the index's beatmaps table (read only). Mapper red lines are the truth; songs split by audio hash, one group per recording and per set folder, into a dev part (tune here) and a held-out part (confirm here); a locked confirmation cohort (bench/accuracy_manifest.py) is the third, disjoint part. Read by bench/stages.py.",
  "holdout_share": 0.3,
  "stages": [
   {

@@ -13,15 +13,45 @@
  */
 import { randomBytes } from 'node:crypto'
 import { mkdtempSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { fakeResult } from './fixture.mjs'
+import { fakeOsuUser, fakeResult } from './fixture.mjs'
 
 const port = process.env.E2E_API_PORT || '3090'
 const site = process.env.E2E_SITE_URL || `http://127.0.0.1:${process.env.E2E_WEB_PORT || '5290'}`
+const osuPort = process.env.E2E_OSU_PORT || '3091'
+
+/**
+ * A stand-in osu! for the osu! card (2026-11-07): it authorizes anything,
+ * sends the browser straight back with a code, and answers /me and
+ * /users/{id} with fixture.mjs's made-up account. Never the real osu!.
+ */
+createServer((req, res) => {
+  const url = new URL(req.url, `http://127.0.0.1:${osuPort}`)
+  const send = (status, data) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(data))
+  }
+  req.resume()
+  if (url.pathname === '/oauth/authorize') {
+    const back = new URL(url.searchParams.get('redirect_uri'))
+    back.searchParams.set('code', 'e2e-code')
+    back.searchParams.set('state', url.searchParams.get('state'))
+    res.writeHead(302, { Location: back.href })
+    return res.end()
+  }
+  if (url.pathname === '/oauth/token') return send(200, { access_token: 'e2e', token_type: 'Bearer', expires_in: 86400 })
+  if (url.pathname === '/api/v2/me' || /^\/api\/v2\/users\/\d+$/.test(url.pathname)) return send(200, fakeOsuUser())
+  return send(404, {})
+}).listen(Number(osuPort), '127.0.0.1')
 
 Object.assign(process.env, {
+  OSU_CLIENT_ID: '4242',
+  OSU_CLIENT_SECRET: 'e2e-osu-secret',
+  OSU_REDIRECT_URI: `${site}/link/osu`,
+  OSU_URL: `http://127.0.0.1:${osuPort}`,
   PORT: port,
   SITE_URL: site,
   OVERTONE_WORKER: '0',

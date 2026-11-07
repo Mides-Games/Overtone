@@ -92,8 +92,11 @@ leaves it out should the first real link fail on it. The state check stays.
 One osu! user links to one account: linking proves who holds it now, so an older
 link elsewhere is cleared. The profile shows an osu! card (2026-10-28): username
 (linked to the osu! profile), country, global and country rank, pp, accuracy, play
-count and ranked maps, all from that one `/me`. "Refresh" on the owner's own
-profile reads `/users/{id}/osu` again with the app's **client-credentials** token
+count and ranked maps, all from that one `/me`; since 2026-11-07 also the level,
+grades, the 90-day rank history, monthly plays, beatmap sets by state, kudosu and
+groups from the same answer (docs/site.md, "The wider card"). "Refresh" on the owner's
+own profile reads `/users/{id}` (no ruleset named, so the account's own, as `/me`)
+again with the app's **client-credentials** token
 (scope `public`, no user behind it; kept in memory until a minute before it
 expires), at most once per five minutes per account; nobody's page view calls osu!.
 The avatar is stored but not shown: images load only from this site and Mides
@@ -123,7 +126,7 @@ there for that); ask before serious long-term use. `identify` reads the user's
 public profile through `/me`.
 
 What Overtone does: one `/me` per link, made by the person pressing "Link osu!",
-and one `/users/{id}/osu` per "Refresh" the person presses (five minutes apart at
+and one `/users/{id}` per "Refresh" the person presses (five minutes apart at
 least), and nothing else. No polling, no beatmap or score data, no stored user
 token. The app is named as Mides Projects' and never presented as
 osu!'s. **W9.6 stays a rule:** no `.osz` or audio is downloaded from osu!; the

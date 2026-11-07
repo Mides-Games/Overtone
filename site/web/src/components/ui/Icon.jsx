@@ -198,6 +198,7 @@ const PATHS = {
       <path d="M12 13.5V17M8.5 19.5h7" />
     </>
   ),
+  heart: <path d="M12 19.5s-7.25-4.35-7.25-9.6A4.15 4.15 0 0 1 12 7.6a4.15 4.15 0 0 1 7.25 2.3c0 5.25-7.25 9.6-7.25 9.6Z" />,
 }
 
 export const ICONS = Object.keys(PATHS)

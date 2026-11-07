@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { hasDatabase, query } from '../config/database.js';
 import { ACCENTS, storedLinks } from '../utils/profile.js';
+import { cleanDetails } from './osu.service.js';
 
 /**
  * Accounts, from the Mides profile each sign-in brings. No Mides token is kept.
@@ -19,13 +20,13 @@ export const COLUMNS =
   'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at, ' +
   'discord_notify, osu_user_id, osu_username, osu_avatar_url, osu_ranked_count, osu_linked_at, profile_private, ' +
   'profile_about, profile_name, profile_links, profile_accent, profile_showcase, discord_username, ' +
-  'osu_country, osu_global_rank, osu_country_rank, osu_pp, osu_accuracy, osu_play_count, osu_refreshed_at, mides_rank';
+  'osu_country, osu_global_rank, osu_country_rank, osu_pp, osu_accuracy, osu_play_count, osu_refreshed_at, mides_rank, osu_details';
 
 /** The osu! card's columns, empty: what unlinking leaves (services/links.service.js). */
 export const OSU_EMPTY = {
   osu_user_id: null, osu_username: null, osu_avatar_url: null, osu_ranked_count: null, osu_linked_at: null,
   osu_country: null, osu_global_rank: null, osu_country_rank: null, osu_pp: null, osu_accuracy: null, osu_play_count: null,
-  osu_refreshed_at: null,
+  osu_refreshed_at: null, osu_details: null,
 };
 
 /** The W9 and profile fields a new memory row starts with, as the table's defaults. */
@@ -183,6 +184,8 @@ export const osuCard = (row) =>
         rankedCount: number(row.osu_ranked_count),
         linkedAt: iso(row.osu_linked_at),
         refreshedAt: iso(row.osu_refreshed_at ?? row.osu_linked_at),
+        // The wider card (2026-11-07): `null` for a link made before it, until its next Refresh.
+        details: cleanDetails(row.osu_details),
       }
     : null;
 

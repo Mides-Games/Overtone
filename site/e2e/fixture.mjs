@@ -106,3 +106,58 @@ export function fakeResult(engineHash) {
     pulse_hints: [],
   }
 }
+
+/**
+ * The osu! account the stand-in osu! (serve-api.mjs) answers with: shaped as
+ * osu-web's UserExtended with one ruleset's statistics, every field the wider
+ * osu! card reads (2026-11-07) filled, a few days of rank missing and two
+ * months without plays, so each chart draws its gaps. Made up; nobody's.
+ */
+export function fakeOsuUser() {
+  const history = Array.from({ length: 90 }, (_, i) => (i >= 40 && i < 44 ? 0 : 18_400 - i * 95 + (i % 7) * 35))
+  const months = []
+  for (let i = 0; i < 26; i++) {
+    if (i === 9 || i === 10) continue
+    const y = 2024 + Math.floor((i + 5) / 12)
+    const m = ((i + 5) % 12) + 1
+    months.push({ start_date: `${y}-${String(m).padStart(2, '0')}-01`, count: 100 + i * 12 })
+  }
+  return {
+    id: 4040,
+    username: 'e2e_mapper',
+    country_code: 'AR',
+    playmode: 'osu',
+    is_supporter: true,
+    join_date: '2016-04-12T20:11:05+00:00',
+    follower_count: 1342,
+    mapping_follower_count: 287,
+    kudosu: { total: 419, available: 40 },
+    scores_first_count: 3,
+    ranked_beatmapset_count: 6,
+    loved_beatmapset_count: 1,
+    guest_beatmapset_count: 11,
+    pending_beatmapset_count: 3,
+    graveyard_beatmapset_count: 24,
+    nominated_beatmapset_count: 0,
+    favourite_beatmapset_count: 156,
+    user_achievements: Array.from({ length: 87 }, (_, i) => ({ achievement_id: i })),
+    rank_highest: { rank: 9512, updated_at: '2025-06-03T00:00:00Z' },
+    rank_history: { mode: 'osu', data: history },
+    monthly_playcounts: months,
+    groups: [{ short_name: 'BN', name: 'Beatmap Nominators', colour: '#A347EB', is_probationary: false }],
+    statistics: {
+      global_rank: history.at(-1),
+      country_rank: 212,
+      pp: 5873.42,
+      hit_accuracy: 98.1234,
+      play_count: 23_817,
+      play_time: 2_918_400,
+      ranked_score: 18_734_998_112,
+      total_hits: 6_120_331,
+      maximum_combo: 2410,
+      replays_watched_by_others: 58,
+      level: { current: 102, progress: 63 },
+      grade_counts: { ss: 41, ssh: 12, s: 612, sh: 88, a: 1290 },
+    },
+  }
+}

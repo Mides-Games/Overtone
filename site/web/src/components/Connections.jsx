@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { api } from '../lib/api.js'
 import { refreshOsu } from '../lib/social.js'
-import { OsuCard } from './social/ProfileMore.jsx'
+import OsuCard from './social/OsuCard.jsx'
 import Icon from './ui/Icon.jsx'
 import SectionHeader from './ui/SectionHeader.jsx'
 import Skeleton from './ui/Skeleton.jsx'
@@ -17,7 +17,8 @@ import Skeleton from './ui/Skeleton.jsx'
  * bot as `/link`. osu! is its own OAuth, `identify` only. Each part says when
  * this server cannot offer it, instead of showing a button that fails.
  *
- * Once osu! is linked, its card (rank, pp, accuracy, plays, ranked maps) is
+ * Once osu! is linked, its card (OsuCard.jsx: ranks, level, grades, the rank
+ * history, beatmap sets by state, plays per month) is
  * shown here with "Refresh", the one thing that asks osu! again, rate
  * limited by the API; the same card shows on the public profile, read from
  * what is stored, never fetched per visitor.
@@ -207,6 +208,7 @@ export default function Connections({ onOsuChange = () => {} }) {
             <div className="sm:pl-9">
               <OsuCard
                 osu={osu}
+                framed={false}
                 action={
                   available.osu && (
                     <button type="button" className="btn-ghost btn-sm" onClick={refresh} disabled={busy !== null}>

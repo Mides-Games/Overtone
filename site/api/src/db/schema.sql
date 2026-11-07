@@ -573,7 +573,7 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_showcase text[] NOT NULL D
 -- The Discord username, when Mides sends one with the Discord id (it did not
 -- on 2026-10-28). Shown to the account itself, as text.
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS discord_username text CHECK (char_length(discord_username) <= 32);
--- The osu! card: what /me said at link time, or /users/{id}/osu at the last
+-- The osu! card: what /me said at link time, or /users/{id} at the last
 -- "Refresh" (services/osu.service.js). Never fetched on a page view.
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_country      text CHECK (osu_country ~ '^[A-Z]{2}$');
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_global_rank  integer CHECK (osu_global_rank > 0);
@@ -582,6 +582,12 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_pp           real CHECK (osu_p
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_accuracy     real CHECK (osu_accuracy BETWEEN 0 AND 100);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_play_count   integer CHECK (osu_play_count >= 0);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_refreshed_at timestamptz;
+-- The wider card (2026-11-07): level, grades, the 90-day rank history, monthly
+-- plays, maps by state, kudosu, groups. The same answer the columns above come
+-- from, in Overtone's own shape (osu.service.js `cleanDetails`, re-checked on
+-- every read). NULL for a link made before it, until its next Refresh.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS osu_details      jsonb
+  CHECK (osu_details IS NULL OR (jsonb_typeof(osu_details) = 'object' AND octet_length(osu_details::text) <= 16384));
 
 -- ── Profile visits (2026-10-28) ───────────────────────────────────────────────
 

@@ -139,6 +139,7 @@ const osuColumns = (profile) => ({
   osu_pp: profile.pp ?? null,
   osu_accuracy: profile.accuracy ?? null,
   osu_play_count: profile.playCount ?? null,
+  osu_details: profile.details ?? null,
 });
 
 /** Writes `fields` (osu_* columns from the fixed lists above) to the account. */

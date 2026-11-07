@@ -681,6 +681,16 @@ gain. `bpm-snapshot` and Corpus A gates remain green throughout.
 
 ## Cumulative accuracy projection on Corpus B
 
+**Withdrawn 2026-11-06.** The table below is historical planning arithmetic,
+not an evidence-backed forecast. Its per-phase gains were not measured and
+must not be added or used to claim that 90–95% is attainable. Phase 27 in
+[`07-roadmap.md`](07-roadmap.md#phase-27--accuracy-on-real-maps-proposed-2026-10-28-reset-2026-11-06)
+now defines the acceptance contract, dense-map subgroup, and confirmation gate.
+Current evaluation shows that beat tracking alone is insufficient: the
+existing Beat This! voter did not improve the held-out timing metrics, while
+drum separation gains were category-dependent and expensive. Revisit this
+table only if experiments on locked, song-disjoint data support projections.
+
 | After phase | % within 5 ms | Median error |
 |---|---:|---:|
 | today (Corpus B, v3, 2026-09-26) | 1.7 % | 34 ms |

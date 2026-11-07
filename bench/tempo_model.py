@@ -32,19 +32,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "python"))
 sys.path.insert(0, str(HERE))
 
-#: log-spaced BPM classes: 32 per octave from 30 to 480 (four octaves)
-BPM_LO, BPM_HI, PER_OCTAVE = 30.0, 480.0, 32
-BINS = int(round(np.log2(BPM_HI / BPM_LO) * PER_OCTAVE))
-CENTRES = BPM_LO * 2.0 ** (np.arange(BINS) / PER_OCTAVE)
-WINDOW_S, STEP_S = 12.0, 6.0
+from overtone.tempo_judge import (BINS, BPM_HI, BPM_LO, CENTRES, PER_OCTAVE,  # noqa: E402,F401
+                                    bpm_bin, song_features)
+
 SEED = 27
-
-
-def bpm_bin(bpm: float) -> float:
-    return float(np.log2(bpm / BPM_LO) * PER_OCTAVE)
-
-
-# ---------------------------------------------------------------- labels
 
 
 def dominant_bpm(path: str, duration_s: float) -> float | None:
@@ -63,40 +54,6 @@ def dominant_bpm(path: str, duration_s: float) -> float | None:
 
 
 # -------------------------------------------------------------- features
-
-
-def _acf_at_bins(env: np.ndarray, fps: float) -> np.ndarray:
-    x = env - env.mean()
-    n = 1 << int(np.ceil(np.log2(2 * x.size)))
-    spec = np.fft.rfft(x, n)
-    acf = np.fft.irfft(np.abs(spec) ** 2, n)[: x.size]
-    acf /= acf[0] if acf[0] > 0 else 1.0
-    lags = 60.0 * fps / CENTRES
-    return np.interp(lags, np.arange(acf.size), acf, right=0.0)
-
-
-def _spectrum_at_bins(env: np.ndarray, fps: float) -> np.ndarray:
-    x = (env - env.mean()) * np.hanning(env.size)
-    mag = np.abs(np.fft.rfft(x))
-    freqs = np.fft.rfftfreq(x.size, 1.0 / fps) * 60.0
-    out = np.interp(CENTRES, freqs, mag)
-    return out / (out.max() or 1.0)
-
-
-def song_features(y: np.ndarray, sr: int) -> np.ndarray:
-    """4 x BINS: whole-song autocorrelation and spectrum of the onset envelope,
-    and the median and upper decile of the windowed autocorrelation."""
-    import librosa
-    hop = 512
-    env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop).astype(np.float64)
-    fps = sr / hop
-    whole = _acf_at_bins(env, fps)
-    spectrum = _spectrum_at_bins(env, fps)
-    w, s = int(WINDOW_S * fps), int(STEP_S * fps)
-    wins = [_acf_at_bins(env[a:a + w], fps) for a in range(0, max(1, env.size - w + 1), s)] \
-        if env.size > w else [whole]
-    wins = np.asarray(wins)
-    return np.concatenate([whole, spectrum, np.median(wins, 0), np.quantile(wins, 0.9, 0)]).astype(np.float32)
 
 
 def _one(song: dict, cache: str) -> tuple[str, str]:

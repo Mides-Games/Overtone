@@ -31,22 +31,7 @@ sys.path.insert(0, str(HERE))
 import corpus_b as cb  # noqa: E402
 import single_bpm as sb  # noqa: E402
 import stages  # noqa: E402
-import tempo_model as tm  # noqa: E402
-
-
-def judged_factor(model: dict, x: np.ndarray, reading: float, margin: float) -> float:
-    """x1/2, x1 or x2: the model's pick, kept only when it rates it ``margin``
-    times higher than the reading as it stands."""
-    _z, _h, p = tm.forward(model, x[None, :])
-    def score(f: float) -> float:
-        bpm = reading * f
-        if not tm.BPM_LO <= bpm <= tm.BPM_HI:
-            return -1.0
-        b = min(max(tm.bpm_bin(bpm), 0.0), tm.BINS - 1.0)
-        lo = int(b); hi = min(lo + 1, tm.BINS - 1); w = b - lo
-        return float((1 - w) * p[0, lo] + w * p[0, hi])
-    best = max((0.5, 1.0, 2.0), key=score)
-    return best if best != 1.0 and score(best) > margin * max(score(1.0), 1e-9) else 1.0
+from overtone import tempo_judge as tj  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model", required=True)
     p.add_argument("--engine", default="app")
     p.add_argument("--cli")
-    p.add_argument("--margin", type=float, default=1.0,
+    p.add_argument("--margin", type=float, default=10.0,
                    help="change the octave only when the model rates it this many times the reading")
     p.add_argument("--out")
     args = p.parse_args(argv)
@@ -71,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     stage = next(s for s in manifest["stages"] if s["id"] == args.stage)
     ranked, _h = stages.ranked_maps(Path(args.ranked_db))
     songs, _skipped = stages.build_stage(stage, Path(args.db), manifest.get("holdout_share", 0.3), ranked)
-    model = dict(np.load(args.model))
+    model = {k: v.astype(np.float64) for k, v in np.load(args.model).items()}
 
     base_maps, judged_maps, factors, missing = [], [], {}, 0
     for n, song in enumerate(songs):
@@ -82,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
             missing += 1
             continue
         reading = float(analysis.get("global_bpm") or analysis["lines"][0][1])
-        f = judged_factor(model, np.load(feat)["x"].astype(np.float64), reading, args.margin)
+        f = tj.factor(model, np.load(feat)["x"].astype(np.float64), reading, args.margin)
         factors[f] = factors.get(f, 0) + 1
         judged = dict(analysis, lines=[[o, b * f, *rest] for o, b, *rest in analysis["lines"]],
                       global_bpm=reading * f)

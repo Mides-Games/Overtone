@@ -640,6 +640,19 @@ OCTAVE_RULE_HALVE = (160.0, 0.3)      # above this BPM, below this off-beat rati
 OCTAVE_RULE_HALVE_FLOOR = float("inf")
 
 
+#: The song's octave by a model of mapped tempi (TEMPO_JUDGE, roadmap 27.8,
+#: overtone/tempo_judge.py): trained on 2,698 ranked songs' dominant red-line
+#: BPM (bench/tempo_model.py). On 1,102 held-out songs it picks the mapped
+#: octave from a reading at x1/2, x1, x2 in 95.8 / 91.3 / 95.2 % against
+#: 89.3 % for the fixed 120-240 range. Applied to the stages' cached analyses
+#: (2026-11-07) it changes a song only when it rates the new octave
+#: TEMPO_JUDGE_MARGIN times the reading; with no margin it broke 14 band maps.
+#: Off until measured end to end (experiment tempo-judge).
+TEMPO_JUDGE = False
+TEMPO_JUDGE_MARGIN = 10.0
+TEMPO_JUDGE_MODEL = "tempo_judge.npz"
+
+
 #: Octaves smoothed across neighbouring red lines (OCTAVE_SMOOTH): the owner's
 #: report of 2026-10-28, a run of tempo changes read at double, or a song that
 #: starts at double and settles. Each line may stay, double or halve; leaving

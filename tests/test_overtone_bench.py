@@ -721,7 +721,8 @@ class MeasurementRunTests(unittest.TestCase):
         bench = str(Path(__file__).resolve().parent.parent / "bench")
         if bench not in sys.path:
             sys.path.insert(0, bench)
-        import tempo_judge_eval
+        import tempo_judge_eval  # noqa: F401 -- the evaluator must import
+        from overtone import tempo_judge as tj
         import tempo_model as tm
         self.assertEqual(tm.bpm_bin(tm.BPM_LO), 0.0)
         self.assertAlmostEqual(tm.bpm_bin(2 * tm.BPM_LO), tm.PER_OCTAVE)
@@ -743,11 +744,11 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertGreater(measured["top1_within_4pct"], 0.9)
         self.assertGreater(measured["judge_from_x2"], 0.9)
         self.assertGreater(measured["judge_from_x0.5"], 0.9)
-        # The evaluator's judge agrees, and a margin keeps the reading.
+        # The engine's judge agrees, and a margin keeps the reading.
         song = x[300]
-        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300] / 2, 1.0), 2.0)
-        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300], 1.0), 1.0)
-        self.assertEqual(tempo_judge_eval.judged_factor(model, song, bpm[300] / 2, 1e12), 1.0)
+        self.assertEqual(tj.factor(model, song, bpm[300] / 2, 1.0), 2.0)
+        self.assertEqual(tj.factor(model, song, bpm[300], 1.0), 1.0)
+        self.assertEqual(tj.factor(model, song, bpm[300] / 2, 1e12), 1.0)
 
     def test_the_tempo_label_is_the_red_line_tempo_that_spans_most_of_the_map(self):
         bench = str(Path(__file__).resolve().parent.parent / "bench")

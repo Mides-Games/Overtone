@@ -815,6 +815,14 @@
   "_track_beats_hybrid": {
    "where": "python-only",
    "why": "the fallback tracker (v2's beat tracker) runs in Python only; the Rust engine is the precision path"
+  },
+  "TEMPO_JUDGE": {
+   "where": "python-only",
+   "why": "an osu! convention applied in Python after either engine, as the octave rule is; the model reads the mix, which the Rust report does not carry"
+  },
+  "_tempo_judge": {
+   "where": "python-only",
+   "why": "an osu! convention applied in Python after either engine, as the octave rule is; the model reads the mix, which the Rust report does not carry"
   }
  }
 }

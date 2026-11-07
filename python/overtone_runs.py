@@ -100,6 +100,8 @@ EXPERIMENTS = {
     "octave-cap-off": {"OCTAVE_CAP": False},
     "beat-this-tracker": {"BEAT_THIS_TRACKER": True},
     "dbn-tracker": {"DBN_TRACKER": True},
+    "tempo-judge": {"TEMPO_JUDGE": True},
+    "tempo-judge-3": {"TEMPO_JUDGE": True, "TEMPO_JUDGE_MARGIN": 3.0},
     "dbn-tracker-wide": {"DBN_TRACKER": True, "DBN_PRIOR_OCTAVES": 3.0},
     "percussive": {"PERCUSSIVE_INPUT": 1.0},
     "percussive-strong": {"PERCUSSIVE_INPUT": 3.0},
